@@ -9,11 +9,12 @@
 # (and its flow stays hidden); without the emulator zip /emu/ says the emulator is not attached. Neither fails the job.
 name: Pages
 
+# No `release` trigger: a release event runs from the release tag, and the github-pages environment only allows
+# deployments from main, so that run would fail at the deploy step. After publishing or editing a release, run this
+# workflow by hand (Actions > Pages > Run workflow, branch main): it picks up the newest release's files.
 on:
   push:
     branches: [main]
-  release:
-    types: [published, edited]
   workflow_dispatch:
 
 permissions:
