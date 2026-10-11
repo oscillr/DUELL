@@ -1,0 +1,44 @@
+# build outputs (rebuild with felucca-base/build.sh and felucca-base/web/emu/build.sh)
+build/
+site/
+*.fwsc
+*.wasm
+*.zip
+
+# local environments and tools
+.venv/
+venv/
+__pycache__/
+*.pyc
+node_modules/
+.emsdk/
+emsdk/
+
+# OS and editor
+.DS_Store
+._*
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~
+
+# private artwork and sources: never commit these here by accident
+# (anchored with a leading slash so that docs/logo/, which README uses, stays tracked)
+/logo/
+/images/
+/docs/presentation/
+*.ai
+*.psd
+design_preview*.png
+~ai-*.tmp
+
+# scratch and logs
+t[0-9].txt
+*.log
+scratch/
+tmp/
+.env
+.env.*
+*.pem
+*.key

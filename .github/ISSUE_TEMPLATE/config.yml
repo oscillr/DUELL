@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Quick start (how to play DUELL)
+    url: https://github.com/oscillr/DUELL/blob/main/docs/QUICKSTART.md
+    about: A short tour of the parts, modes, morph, effects and MIDI.
+  - name: Known issues (read before reporting)
+    url: https://github.com/oscillr/DUELL/blob/main/docs/KNOWN_ISSUES.md
+    about: What is already known to be broken or untested in the beta.
+  - name: Troubleshooting
+    url: https://github.com/oscillr/DUELL/blob/main/docs/TROUBLESHOOTING.md
+    about: Common problems with the installer, the emulator and the device.

@@ -1,0 +1,56 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-3.0-only
+     DUELL site landing page (GitHub Pages). Copyright (C) 2026 OSCILL/R (DUELL). Part of DUELL, a modified version of Felucca. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DUELL - MultiMorphing Bitimbral Synthesizer by OSCILL/R</title>
+<style>
+  :root { --bg: #fff; --fg: #000; --dim: #666; --line: #ccc; --warn: #b00020; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #000; --fg: #fff; --dim: #999; --line: #444; --warn: #ff6b81; } }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif; }
+  main { max-width: 600px; margin: 0 auto; padding: 48px 16px 64px; }
+  h1 { font-size: 40px; font-weight: 700; margin: 0; letter-spacing: .02em; }
+  .tag { margin: 0 0 24px; color: var(--dim); }
+  .tag b { color: var(--fg); }
+  a { color: inherit; }
+  ul.links { list-style: none; padding: 0; margin: 24px 0; }
+  ul.links li { border: 1px solid var(--line); border-radius: 8px; margin: 8px 0; padding: 10px 14px; }
+  ul.links a { font-weight: 700; }
+  ul.links span { display: block; color: var(--dim); font-size: 14px; }
+  .box { border: 1px solid var(--warn); border-radius: 8px; padding: 4px 14px; }
+  a.btn { display: inline-block; background: var(--fg); color: var(--bg); text-decoration: none; font-weight: 700; font-size: 18px; padding: 12px 28px; border-radius: 8px; }
+  .small { color: var(--dim); font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>DUELL</h1>
+  <p class="tag"><b>MultiMorphing<br>Bitimbral Synthesizer</b><br>by OSCILL/R</p>
+
+  <p><b>Two synths in one small box.</b> DUELL is free, open-source firmware for the M-VAVE FM-1. It turns the FM-1 into a bitimbral instrument: two complete parts, three ways to play them together (SPLIT, STEREO, LAYER), and a morph that glides between two versions of every sound.</p>
+
+  <p><a class="btn" href="emu/">Open the emulator</a></p>
+
+  <div class="box">
+    <p><b>Public beta: the browser emulator is available now. The firmware package for the FM-1 follows after more hardware testing.</b></p>
+    <p>The firmware has been run on one real FM-1 by its author. The way back to the official firmware has not been tested yet, so there is no firmware download and no flashing instructions yet. Please do not flash anything.</p>
+  </div>
+
+  <ul class="links">
+    <li><a href="emu/">Open the emulator</a><span>DUELL in your browser, no FM-1 needed. Click the page once to start the sound. It keeps your saved data in the browser.</span></li>
+    <li><a href="install/">Installer (firmware coming soon)</a><span>Not usable yet: the firmware is not released.</span></li>
+    <li><a href="https://github.com/oscillr/DUELL/blob/main/docs/QUICKSTART.md">Quick start</a><span>The short tour. More guides are in the <a href="https://github.com/oscillr/DUELL/tree/main/docs">docs folder</a>: install, recovery, troubleshooting, known issues, testing.</span></li>
+    <li><a href="https://github.com/oscillr/DUELL/issues/new/choose">Report a bug</a><span>Found something in the emulator? Please open an issue with the bug report form.</span></li>
+    <li><a href="https://github.com/oscillr/DUELL/releases">Releases</a><span>The emulator build and the release notes. The firmware package will appear here later.</span></li>
+    <li><a href="https://github.com/oscillr/DUELL">Source code on GitHub</a><span>The full design (SPEC.md) is there too.</span></li>
+  </ul>
+
+  <p class="small">DUELL is free software under the GPL-3.0, with <b>no warranty</b>. It is a modified version of
+    <a href="https://github.com/hugelton/Felucca">Felucca</a> by Leo Kuroshita, Hügelton Instruments, with the SHIM and RESO reverbs from JIANT.
+    See <a href="https://github.com/oscillr/DUELL/blob/main/NOTICE.md">NOTICE</a>.
+    DUELL is independent and not affiliated with M-VAVE. M-VAVE and FM-1 are trademarks of their respective owners.</p>
+</main>
+</body>
+</html>

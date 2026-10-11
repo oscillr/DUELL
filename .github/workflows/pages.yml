@@ -1,0 +1,81 @@
+# Publishes the DUELL site (landing page, installer, emulator) to GitHub Pages.
+#
+# Nothing generated is committed. The workflow builds the site from the committed sources with
+# felucca-base/web/make_site.py. The two build products that need the firmware toolchain or Emscripten
+# are NOT built here; they are taken from the newest release (pre-releases count, drafts do not), if it has them:
+#   duell-*.fwsc            the firmware package  -> /install/
+#   duell-emulator*.zip     the emulator (the contents of felucca-base/build/emu, zipped) -> /emu/
+# An emulator-only release is fine: without the .fwsc the installer page shows "DUELL firmware is not yet released"
+# (and its flow stays hidden); without the emulator zip /emu/ says the emulator is not attached. Neither fails the job.
+name: Pages
+
+on:
+  push:
+    branches: [main]
+  release:
+    types: [published, edited]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Fetch the package and the emulator from the newest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          mkdir -p dl/emu
+          # `gh release list` includes pre-releases; --exclude-drafts keeps unpublished drafts out
+          tag=$(gh release list --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName' || true)
+          if [ -n "$tag" ]; then
+            echo "release: $tag"
+            gh release download "$tag" --pattern 'duell-*.fwsc' --dir dl || echo "no package in $tag"
+            gh release download "$tag" --pattern 'duell-emulator*.zip' --dir dl || echo "no emulator in $tag"
+          else
+            echo "no release yet"
+          fi
+          for z in dl/duell-emulator*.zip; do
+            [ -f "$z" ] && unzip -q -o "$z" -d dl/emu
+          done
+          true
+          ls -la dl dl/emu
+
+      - name: Build the site
+        run: |
+          args=""
+          if ls dl/duell-*.fwsc >/dev/null 2>&1; then args="$args --pkg $(ls dl/duell-*.fwsc | head -n 1)"; fi
+          if [ -f dl/emu/index.html ]; then args="$args --emu dl/emu"; fi
+          # no --pkg: make_site.py would fall back to build/duell-0.1-beta.fwsc, which does not exist in a fresh checkout
+          python3 felucca-base/web/make_site.py $args site
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

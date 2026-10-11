@@ -1,0 +1,68 @@
+name: Bug report
+description: Something in DUELL (the firmware, the emulator or the installer page) does not work as expected
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **DUELL** - MultiMorphing Bitimbral Synthesizer by OSCILL/R.
+        Thanks for testing the beta. DUELL is licensed under the GPL-3.0 with no warranty, and is not affiliated with M-VAVE.
+        Please do not paste private information. Back up your data before testing.
+  - type: input
+    id: version
+    attributes:
+      label: Firmware version
+      description: Hold HOME and open ABOUT, or the emulator page footer. For example "DUELL 0.1 beta" or the build you made.
+    validations:
+      required: true
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where did it happen?
+      options:
+        - Real FM-1 hardware
+        - Browser emulator
+        - Installer page
+        - Host tests / building
+    validations:
+      required: true
+  - type: input
+    id: hardware
+    attributes:
+      label: Hardware and setup
+      description: FM-1 revision or serial info if you know it, computer and browser, USB cable (data cable, hub or not), MIDI devices connected.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: "1. ...\n2. ...\n3. ..."
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual
+      description: What happened instead. Screen text, error messages, sounds.
+    validations:
+      required: true
+  - type: textarea
+    id: files
+    attributes:
+      label: Saved patches and files
+      description: Drag in your saved patches, MULTIs, backup file or the emulator's "Download saved data" file if they help reproduce this.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before sending
+      options:
+        - label: I backed up my data, and I understand this is a beta with no warranty.
+          required: true

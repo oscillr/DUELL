@@ -1,0 +1,755 @@
+/* SPDX-License-Identifier: GPL-3.0-only
+ * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
+/* Felucca menu (HOME held): its rows in tabs (1.0.5: DISPLAY CONTROL AUDIO SYSTEM; 1.2: MIDI before SYSTEM; SELECT
+ * walks the rows across the tabs, SPEC 1.1a; no scrolling), the rows in menu_items.c (the settings, shared with the editor's
+ * MENU_DESC / MENU_SET; 1.2: TUNE and MIDI IN, the project's). No BACK row: HOME closes it (ui_input.c). The two-valued
+ * rows are bits of ui_prefs (MENU_FLAGS). SELECT scrolls from ABOUT through all credits (OCT- back to the tabs).
+ * ui.menu: 1 the tabs, 2 ABOUT (information and credits), 3 INFO (1.2: the device's state, the old SYSTEM page's USB and
+ * CPU readings). */
+/* ------------------------------------------------------------ menu --- */
+/* (the rows, their values and names, usb_serial_apply: menu_items.c) */
+
+
+/* DUELL CPU LOAD METER (GLO > TEST: the full card, graph_test below; MENU > SYSTEM > INFO keeps a CPU row, ABOUT a line). The audio ISR (audio.c) adds each I2S half's
+ * render time to cpu_sum / cpu_n, keeps the longest in cpu_pk and counts the halves that missed their time (cpu_miss); this
+ * reads them once a second, only while TEST, INFO or ABOUT is shown (cpu_meter_poll from their signature), so nothing runs for it
+ * otherwise. AVERAGE = the sum / (halves x the half's time) of the last second; PEAK = the longest half of the last second,
+ * held (the highest of the last CPU_HOLD_MS, then it falls to the latest); MISSED = halves over their time or overtaken
+ * by the DMA since power-on. Colours (fixed, flat): below 80 % the theme, 80 % and up amber (NEAR LIMIT), 95 % and up or a
+ * miss in the last 5 s red (the word says it too: MONO has no colours). Emulator: FELUCCA_METER_EST, a voice-count
+ * ESTIMATE (audio.c), shown as such */
+#define CPU_WIN_MS 1000u
+#define CPU_HOLD_MS 4000u
+#define CPU_RECENT_MS 5000u
+#define CPU_WARN 80u
+#define CPU_HOT 95u
+static struct {
+    uint16_t avg, peak, hold;                          /* % (peak and hold up to 999) */
+    uint32_t miss, miss_t, t, hold_t, n0, sum0;        /* the misses seen, when the last one was seen, window start, ... */
+    uint32_t base;                                     /* TEST's RESET: the misses counted from here (INFO and ABOUT: since power-on) */
+    uint8_t seen;                                      /* a miss was ever seen (miss_t valid) */
+} cpum;
+static void cpu_meter_open(void)                       /* INFO / ABOUT opened: a fresh window (the IIR load until it is over) */
+{
+    cpum.n0 = cpu_n;
+    cpum.sum0 = cpu_sum;
+    cpu_pk = 0;
+    cpum.t = fm1_ms;
+    cpum.avg = cpum.peak = cpum.hold = (uint16_t)(song.cpu_q8 * 100u / 256u);
+    cpum.hold_t = fm1_ms;
+    cpum.miss = cpu_miss;
+    cpum.seen = 0;
+}
+static void cpu_meter_poll(void)                       /* once a window, and only when asked */
+{
+    uint32_t n, sum, pk;
+    if (fm1_ms - cpum.t < CPU_WIN_MS)
+        return;
+    do {
+        n = cpu_n;
+        sum = cpu_sum;
+    } while (n != cpu_n);
+    pk = cpu_pk;
+    cpu_pk = 0;
+    cpum.t = fm1_ms;
+    if (n != cpum.n0)
+        cpum.avg = (uint16_t)clamp((int32_t)((uint64_t)(sum - cpum.sum0) * 100u / ((uint64_t)(n - cpum.n0) * CPU_BUDGET_US)), 0, 999);
+    cpum.n0 = n;
+    cpum.sum0 = sum;
+    cpum.peak = (uint16_t)clamp((int32_t)((uint64_t)pk * 100u / CPU_BUDGET_US), 0, 999);
+    if (cpum.peak >= cpum.hold || fm1_ms - cpum.hold_t >= CPU_HOLD_MS) {
+        cpum.hold = cpum.peak;
+        cpum.hold_t = fm1_ms;
+    }
+    if (cpu_miss != cpum.miss) {
+        cpum.miss = cpu_miss;
+        cpum.miss_t = fm1_ms;
+        cpum.seen = 1;
+    }
+}
+static uint32_t cpu_recent(void) { return cpum.seen && fm1_ms - cpum.miss_t < CPU_RECENT_MS; }
+static uint32_t cpu_level(void)                        /* 0 fine, 1 near the limit, 2 at it or blocks missed */
+{
+    return cpu_recent() || cpum.avg >= CPU_HOT ? 2u : cpum.avg >= CPU_WARN ? 1u : 0u;
+}
+static const char *cpu_word(void)
+{
+    return cpu_recent() ? "BLOCKS MISSED JUST NOW" : cpum.avg >= CPU_HOT ? "AT THE LIMIT" : cpum.avg >= CPU_WARN ? "NEAR THE LIMIT" : "OK";
+}
+static uint16_t cpu_col(uint32_t lvl, uint16_t bg)     /* flat colours; MONO: the text colour */
+{
+    if (lvl == 0u)                                     /* (High Contrast's theme colour is red: no warning colour then) */
+        return UI_PALETTES[ux.pal % NPALETTES].hc ? T_TEXT : vt(T_THEME, bg);
+    if (ux.mono || ux.bw)
+        return T_TEXT;
+    return lvl == 2u ? T_REC : ux.light ? 0xB2C0u : 0xFD20u;
+}
+static uint32_t cpu_sig(void)                          /* what a redraw depends on */
+{
+    return cpum.avg * 7u + cpum.hold * 31u + cpum.miss * 211u + cpum.base * 4099u + cpu_level() * 1009u + 1u;
+}
+static void cpu_pct(char *d, uint32_t v)               /* "37 %" */
+{
+    fmt_int(d, (int32_t)v);
+    str_cpy(d + str_len(d), " %", 3);
+}
+
+/* https://hugelton.github.io/Felucca, QR version 3, correction M, generated by CoreImage.
+ * One row per word, leftmost module in bit 0; the constant matrix needs no encoder or RAM. */
+static const uint32_t ABOUT_QR[29] = {
+    0x1FCD247Fu, 0x1059C541u, 0x1745765Du, 0x1758E85Du, 0x174E575Du, 0x104C3A41u,
+    0x1FD5557Fu, 0x000B7000u, 0x091BCA55u, 0x1270DC8Au, 0x1DB4375Au, 0x083E9FA1u,
+    0x1A63124Eu, 0x12513981u, 0x1AE2524Du, 0x0A2E78A0u, 0x1A7F4FC3u, 0x167154B0u,
+    0x19A228D5u, 0x0A561C2Au, 0x01F10B4Du, 0x1D1B3F00u, 0x1B5A467Fu, 0x1B13F641u,
+    0x11F24D5Du, 0x1D1B625Du, 0x1389315Du, 0x08DFD641u, 0x1813977Fu,
+};
+
+static void draw_about_qr(int32_t x, int32_t y)
+{
+    uint32_t row, col;
+    cv_rect(x, y, 74, 74, UI_QR_LIGHT);             /* fixed light / dark, independent of the palette */
+    for (row = 0; row < 29u; row++)
+        for (col = 0; col < 29u; col++)
+            if ((ABOUT_QR[row] >> col) & 1u)
+                cv_rect(x + 8 + (int32_t)col * 2, y + 8 + (int32_t)row * 2, 2, 2, UI_QR_DARK);
+}
+
+/* All notices are in flash. Wrap at the font's actual width, without dropping URL
+ * characters; the same layout computes the scroll limit and draws clipped bands.
+ * Mixed case here (long text); S throughout, the title in L. */
+static uint32_t about_t0;                              /* ABOUT opened (fm1_ms): its animation's clock */
+static uint32_t about_step(void)                       /* the animation's step (ANIM OFF: the first frame, still); 0 off the first view */
+{
+    return ui.menu == 2 && !ui.menu_scroll && !(ui_prefs & PREF_ANIM_OFF) ? (fm1_ms - about_t0) / SPL_STEP_MS : 0u;
+}
+#define MENU_DOC_H 196                                /* the document: screen rows 24..220 */
+enum { MC_TEXT, MC_TITLE, MC_URL };
+typedef struct { const char *text; uint8_t kind; } menu_credit_t;
+static const menu_credit_t MENU_CREDITS[] = {
+    {"H\xFCgelton Instruments", MC_TITLE},  /* Felucca's own: above; these are ours too */
+    {"Leo Kuroshita", MC_TEXT},
+    {"CrispyZebra (PHASE waveforms), the DRUM voices, the Sample Pack: GPL-3.0", MC_TEXT},
+    {"Fukiai icon font: MIT", MC_TEXT},
+    {"https://github.com/hugelton", MC_URL},
+    {"", MC_TEXT},
+    {"KLATTSCH", MC_TITLE},
+    {"Tony Gies / MIT", MC_TEXT},
+    {"https://github.com/tgies/klattsch", MC_URL},
+    {"", MC_TEXT},
+    {"DAISYSP", MC_TITLE},
+    {"Electrosmith, Emilie Gillet", MC_TEXT},
+    {"MIT", MC_TEXT},
+    {"https://github.com/electro-smith/DaisySP", MC_URL},
+    {"", MC_TEXT},
+    {"DEXED + MSFA", MC_TITLE},
+    {"Pascal Gauthier, Google Inc.", MC_TEXT},
+    {"msfa: Apache-2.0, Dexed: GPL-3.0", MC_TEXT},
+    {"https://github.com/asb2m10/dexed", MC_URL},
+    {"", MC_TEXT},
+    {"RINGS", MC_TITLE},
+    {"Emilie Gillet / MIT", MC_TEXT},
+    {"https://github.com/pichenettes/eurorack", MC_URL},
+    {"", MC_TEXT},
+    {"INTER TIGHT", MC_TITLE},
+    {"The Inter Project Authors", MC_TEXT},
+    {"SIL Open Font License 1.1", MC_TEXT},
+    {"https://github.com/rsms/inter-tight", MC_URL},
+    {"", MC_TEXT},
+    {"VSCO-2 CE + VCSL", MC_TITLE},
+    {"Versilian Studios / CC0 1.0", MC_TEXT},
+    {"https://github.com/sgossner/VSCO-2-CE", MC_URL},
+    {"https://github.com/sgossner/VCSL", MC_URL},
+    {"", MC_TEXT},
+    {"VOICE", MC_TITLE},
+    {"Dennis H. Klatt (1980)", MC_TEXT},
+    {"https://doi.org/10.1121/1.383940", MC_URL},
+    {"Hillenbrand, Getty, Clark and Wheeler (1995)", MC_TEXT},
+    {"https://doi.org/10.1121/1.411872", MC_URL},
+};
+
+static int32_t menu_text(const char *s, int32_t y, uint16_t col, int draw)
+{
+    while (*s) {
+        char line[64];
+        uint32_t n = 0, space = 0, take, prev = 0;
+        int32_t pen = 0;                                 /* 1/16 px, as text_w adds it up */
+        while (s[n] && n < sizeof line - 1u) {
+            uint32_t c = (uint8_t)s[n];
+            line[n] = s[n];
+            line[n + 1u] = 0;
+            pen += (prev ? kern(&AF_S, prev, c) : 0) + AF_S.g[glyph(&AF_S, c)].adv;
+            prev = c;
+            if ((pen + 8) >> 4 > 226)
+                break;
+            if (s[n] == ' ')
+                space = n;
+            n++;
+        }
+        take = s[n] && space ? space : n;
+        if (!take) take = 1;                         /* progress even for an unusually wide glyph */
+        line[take] = 0;
+        if (draw && y + AF_S.h > 0 && y < MENU_DOC_H)
+            cv_text(6, y, &AF_S, line, col);
+        y += 18;
+        s += take;
+        while (*s == ' ') s++;
+    }
+    return y;
+}
+
+static int32_t menu_document(int32_t y, int draw)
+{
+    uint32_t i;
+    if (draw) {
+        char b[16];
+        uint16_t col = cpu_col(cpu_level(), T_BG);
+        cv_text(6, y + 2, &AF_L, "DUELL", vt(T_THEME, T_BG));
+        cv_text(6, y + 36, &AF_S, "MultiMorphing Bitimbral Synthesizer", T_TEXT);
+        cv_text(6, y + 54, &AF_M, "by OSCILL/R", T_TEXT);
+        cv_text(6, y + 78, &AF_M, FELUCCA_VERSION, vt(T_THEME, T_BG));
+        cv_text_r(232, y + 81, &AF_S, __DATE__, T_MID, T_BG);
+        cv_text(6, y + 100, &AF_S, "CPU", T_MID);                 /* the meter: the 1 s average, the held peak, the misses */
+        cpu_pct(b, cpum.avg);
+        cv_text(34, y + 100, &AF_S, b, col);
+        cv_text(84, y + 100, &AF_S, "PEAK", T_MID);
+        cpu_pct(b, cpum.hold);
+        cv_text(118, y + 100, &AF_S, b, T_TEXT);
+        if (cpum.miss) {
+            fmt_int(b, (int32_t)(cpum.miss > 9999u ? 9999u : cpum.miss));
+            str_cpy(b + str_len(b), " MISSED", 8);
+            cv_text_r(232, y + 100, &AF_S, b, cpu_recent() ? cpu_col(2u, T_BG) : T_MID, T_BG);
+        }
+        cv_text(6, y + 124, &AF_S, "based on Felucca (GPL-3.0)", T_TEXT);
+        cv_text(6, y + 142, &AF_S, "(C) 2026 Leo Kuroshita", T_TEXT);
+        cv_text(6, y + 160, &AF_S, "H\xFCgelton Instruments", T_TEXT);
+        cv_text(6, y + 184, &AF_S, "hugelton.github.io", T_MID);
+        cv_text(6, y + 202, &AF_S, "/Felucca", T_MID);
+        cv_text(6, y + 226, &AF_S, "hugelton.com", T_MID);
+        draw_about_qr(158, y + 168);
+    }
+    y = menu_text("CREDITS", y + 262, T_THEME, draw) + 8;
+    for (i = 0; i < NELEM(MENU_CREDITS); i++) {
+        const menu_credit_t *c = &MENU_CREDITS[i];
+        const char *text = c->text;
+        /* Display host/path once; the full source URL stays in the flash table. */
+        if (c->kind == MC_URL && str_len(text) >= 8u && !memcmp(text, "https://", 8))
+            text += 8;
+        if (!text[0]) y += 8;
+        else y = menu_text(text, y, c->kind == MC_TITLE ? T_THEME : c->kind == MC_URL ? T_MID : T_TEXT, draw);
+    }
+    y = menu_text("LICENSES + SOURCE", y + 12, T_THEME, draw);
+    y = menu_text("DRUM + own samples: GPL-3.0-only", y, T_TEXT, draw);
+    y = menu_text("Fonts and icons: their licences travel with the source and the release files.", y, T_TEXT, draw);
+    y = menu_text("NO WARRANTY", y, T_TEXT, draw);
+    y = menu_text("Full notices in source:", y + 8, T_TEXT, draw);
+    y = menu_text("github.com/hugelton/Felucca", y, T_MID, draw);
+    return y + 4;
+}
+static int32_t menu_scroll_max(void)
+{
+    int32_t h = menu_document(0, 0);
+    return h > MENU_DOC_H ? h - MENU_DOC_H : 0;
+}
+
+static void menu_dots(void);
+/* the menu's header (0..24): its icon and title, the REC mark, the tabs' dots; no keycap (the one top bar of every page) */
+static void menu_head(void)
+{
+    cv_begin(240, H_HEAD, T_BG);
+    GFX_HOOK_ALIGN(0, HEAD_MY + AF_M_CAP_Y, 0, HEAD_MY + AF_M_CAP_Y + AF_M_CAP_H, AL_V, "header icon on its title's line");
+    cv_icon_mid(8, H_HEAD / 2, 16, ui.menu >= 2 ? ICON_X_INFO : ICON_X_COG, T_THEME, T_BG);   /* (as draw_head's) */
+    GFX_HOOK_ALIGN(0, 0, 0, H_HEAD, AL_V, "header text on its middle");
+    cv_text(30, HEAD_MY, &AF_M, ui.menu == 3 ? "INFO" : ui.menu == 2 ? "ABOUT / CREDITS" : "MENU", T_TEXT);
+    if (ui.menu >= 2) {                               /* ABOUT / INFO: the REC mark at the right (no way-back keycap: SPEC 1.1a) */
+        draw_rec_mark(232 - 16, T_BG);
+    } else {                                          /* the tabs: their dots at the right, the REC mark 8 px before them */
+        draw_rec_mark(232 - (12 + (int32_t)(MTAB_COUNT - 1u) * 8) - 8 - 16, T_BG);   /* (menu_dots' left, its cell 16 wide) */
+        menu_dots();
+    }
+    cv_blit(0, Y_HEAD);
+}
+
+/* The page (1.0.5): the tabs across the top, the rows of the one shown below, the key hints at the bottom.
+ *   header   0..24  the cog and MENU, the REC mark, the tabs as dots at the right (the one shown a THEME
+ *                   pill)
+ *   tabs    29..53  a 24 px cushion per tab: its icon alone (SURF, MID); the one shown wider, with its name (ACCENT,
+ *                   INK; S, LARGE M), MT_GAP between any two. With ANIM ON the cushions grow and shrink into place
+ *                   (mt_follow), the gaps kept
+ *   rows    59..    one SURF panel (FLAT; LINE: none, a rule under the tabs), a row a label and its value, 1 px rules
+ *                   between them; the selected row THEME with INK, as the browser's. A value THEME (M) at the right,
+ *                   ON / OFF as a switch, COLOR its palette's five colours, CALIBRATION and ABOUT a chevron (OCT+
+ *                   opens them); the labels in M too (a list's rows). LARGE: 28 px rows (a tab of up to 5)
+ *   keys   224      SELECT ROW and, on a row with a value, KNOB 1 VALUE (SPEC 1.1a: no OCT / HOME keycap; OCT+ still opens
+ *                   CALIBRATION / INFO / ABOUT and clears LEARN, OCT- goes back, HOME closes, unadvertised)
+ * Drawn in two bands (the canvas holds 124 rows) split in a gap between two rows; while the tabs slide only their
+ * strip (24..58) is drawn again */
+static const uint16_t MTAB_ICON[MTAB_COUNT] = {ICON_X_EYE, ICON_X_KNOB, ICON_X_SPEAKER, ICON_X_COG};
+#define MT_Y 29                                        /* the tab bar */
+#define MT_H 24
+#define MT_IW 26                                       /* a cushion with its icon alone (the icon centred in it; 1.2, five
+                                                        * tabs: 26, up to 1.1.5 32) */
+#define MT_NX 24                                       /* the name's pen in the one shown; 10 px after it */
+#define MT_X0 6
+#define MT_X1 234
+#define MT_GAP 5                                       /* between two tabs, always (the bar centred in MT_X0..MT_X1; 1.2, five
+                                                        * tabs: 5, up to 1.1.5 8) */
+#define MT_ONE 64                                      /* mt.pos per tab */
+#define MP_Y 59                                        /* the rows' panel */
+#define MP_PAD 3
+#define MR_X 8                                         /* a row */
+#define MR_W 224
+#define MR_LX 16                                       /* its label */
+#define MR_VR 224                                      /* its value's right edge */
+#define MK_Y 224                                       /* the key hints: the footer's row 2 band (its keycaps centred on its names) */
+static int menu_large(void) { return (ui_prefs & PREF_LARGE) != 0u; }
+static uint32_t menu_tab(void) { return MI_TAB[ui.menu_sel % MI_COUNT]; }
+/* the shown tab's rows: 24 px (LARGE 28, a tab of up to 5 rows), 2 px apart (a tab of 6: 1 px, its panel then ends
+ * 6 px above the key hints as the others do; the rule between two rows is that gap row; 1.2, a tab of 7: 21 px rows
+ * 1 px apart, its panel then ends 4 px lower, LARGE too; 1.3, a tab of 8: 18 px rows 1 px apart, the same end) */
+static int32_t mr_h(void)
+{
+    uint32_t n = mtab_rows(menu_tab());
+    return n > 7u ? 18 : n > 6u ? 21 : menu_large() && n <= 5u ? 28 : 24;
+}
+static int32_t mr_gap(void) { return mtab_rows(menu_tab()) <= 5u ? 2 : 1; }
+static int32_t mr_y(uint32_t k) { return MP_Y + MP_PAD + (int32_t)k * (mr_h() + mr_gap()); }
+
+/* the tab bar's place: the tab shown at pos tab * MT_ONE; with ANIM ON it follows in halving steps, a frame each
+ * (a frame missed, as when the menu opens: it snaps, as ui_graph.c pr_follow) */
+static struct { int16_t pos; uint32_t frame; } mt;
+static void mt_follow(void)
+{
+    int32_t want = (int32_t)menu_tab() * MT_ONE, d = want - mt.pos;
+    if (ui.frame != mt.frame + 1u || (ui_prefs & PREF_ANIM_OFF) || (d < 3 && d > -3))
+        mt.pos = (int16_t)want;
+    else
+        mt.pos = (int16_t)(mt.pos + d / 2);
+    mt.frame = ui.frame;
+}
+static const aafont_t *mt_font(void) { return menu_large() ? &AF_M : &AF_S; }
+/* the tabs at the place mt.pos, MT_GAP apart, centred: each one's share of the shown look (0 .. MT_ONE), x, width */
+static void mt_layout(int32_t *a, int32_t *x, int32_t *w)
+{
+    uint32_t k;
+    int32_t tot = 0, cum = 0;
+    for (k = 0; k < MTAB_COUNT; k++) {
+        int32_t d = mt.pos - (int32_t)k * MT_ONE;
+        a[k] = MT_ONE - (d < 0 ? -d : d);
+        if (a[k] < 0) a[k] = 0;
+        w[k] = MT_IW + (MT_NX - MT_IW + text_w(mt_font(), MTAB_NAME[k]) + 10) * a[k] / MT_ONE;
+        tot += w[k];
+    }
+    cum = MT_X0 + HALF_UP(MT_X1 - MT_X0 - tot - (int32_t)(MTAB_COUNT - 1u) * MT_GAP);   /* (the bar centred) */
+    for (k = 0; k < MTAB_COUNT; k++) {                 /* the same gap between every two, sliding too */
+        x[k] = cum;
+        cum += w[k] + MT_GAP;
+    }
+}
+static void menu_tabs(void)                            /* (in screen rows: cv_oy set by the caller) */
+{
+    int32_t a[MTAB_COUNT], x[MTAB_COUNT], w[MTAB_COUNT];
+    uint32_t k;
+    mt_layout(a, x, w);
+    if (ux.style)                                      /* LINE: a rule under the tabs */
+        cv_rule(4, MP_Y - 3, 232, 1);
+    for (k = 0; k < MTAB_COUNT; k++) {
+        int on = k == (uint32_t)((mt.pos + MT_ONE / 2) / MT_ONE);   /* (half way, the shown look moves over) */
+        uint16_t bg = on ? T_ACCENT : T_SURF;
+        cv_rrect(x[k], MT_Y, w[k], MT_H, -8, bg, T_BG);
+        GFX_HOOK_ALIGN(x[k], MT_Y, x[k] + MT_IW, MT_Y + MT_H, AL_HV, "menu tab icon centred in its cushion");
+        cv_icon_in(x[k], MT_Y, MT_IW, MT_H, 16, MTAB_ICON[k], on ? T_INK : T_MID, bg);
+        if (a[k] == MT_ONE) {                          /* (settled: its name) */
+            GFX_HOOK_ALIGN(0, MT_Y, 0, MT_Y + MT_H, AL_V, "menu tab name centred up/down");
+            cv_text_on(x[k] + MT_NX, MT_Y + (menu_large() ? CAP_IN(M, MT_H) : CAP_IN(S, MT_H)), mt_font(), MTAB_NAME[k],
+                       T_INK, T_ACCENT);
+        }
+    }
+}
+/* the header's tab dots at the right, the shown tab's a THEME pill */
+static void menu_dots(void)
+{
+    uint32_t k, t = menu_tab();
+    int32_t x = 232 - (12 + (int32_t)(MTAB_COUNT - 1u) * 8);
+    for (k = 0; k < MTAB_COUNT; k++) {
+        cv_rrect(x, H_HEAD / 2 - 2, k == t ? 12 : 4, 4, -2, k == t ? T_THEME : T_DIM, T_BG);
+        x += (k == t ? 12 : 4) + 4;
+    }
+}
+
+/* a two-valued row whose values are ON and OFF: a switch (a 26 x 14 cushion, its knob at the right when ON) */
+static void menu_switch(int32_t xr, int32_t y, int32_t h, int on, int sel)
+{
+    int32_t x = xr - 26, ty = y + HALF_UP(h - 14);
+    uint16_t under = sel ? T_THEME : T_SURF;
+    uint16_t track = sel ? (on ? T_INK : ux_mix(T_THEME, T_INK, 35)) : on ? T_THEME : T_DIM;
+    uint16_t knob = sel ? (on ? T_THEME : T_INK) : on ? T_INK : T_TEXT;
+    cv_rrect(x, ty, 26, 14, -7, track, under);
+    cv_rrect(on ? x + 14 : x + 2, ty + 2, 10, 10, -5, knob, track);
+}
+/* the tab's row k (menu_items.c row `row`) */
+static void menu_row(uint32_t k, uint32_t row)
+{
+    int32_t y = mr_y(k), h = mr_h(), vy = y + CAP_IN(M, h);   /* the label and its value: M (a list's rows) */
+    int sel = row == ui.menu_sel;
+    uint16_t bg = sel ? T_THEME : T_SURF, fg = sel ? T_INK : T_TEXT, val = sel ? T_INK : T_THEME;
+    const char *v = menu_valued(row) ? menu_vname(row, menu_get(row)) : "";
+    if (sel)
+        cv_rrect(MR_X, y, MR_W, h, 6, T_THEME, T_SURF);
+    else if (k && row - 1u != ui.menu_sel)             /* a rule from the row above (none beside the selected one) */
+        cv_rect(MR_X + 6, y - 1, MR_W - 12, 1, ux.style ? T_RULE : T_LINE);
+    GFX_HOOK_ALIGN(0, y, 0, y + h, AL_V, "menu row name centred up/down");
+    cv_text_on(MR_LX, vy, &AF_M, MI_NAME[row], fg, bg);
+    if (row >= MI_VALUES) {                            /* CALIBRATION, ABOUT: OCT+ opens them */
+        GFX_HOOK_ALIGN(0, y, 0, y + h, AL_V, "menu row chevron centred up/down");
+        cv_icon_in(MR_VR - 12, y, 0, h, 12, ICON_X_RIGHT, sel ? T_INK : T_MID, bg);
+        return;
+    }
+    if (row == MI_HOLD || row == MI_TUNE) {            /* "0.4" s, "+12" ct: the value and its unit */
+        char b[8] = "0.4";
+        b[2] = (char)('0' + HOLD_MS[settings_hold % 4u] / 100u);
+        GFX_HOOK_ALIGN(0, y, 0, y + h, AL_V, "menu row value centred up/down");
+        GFX_HOOK_ALIGN(0, 0, 0, vy + AF_M.asc, AL_B, "menu row unit on its value's baseline");
+        cv_text_r(cv_text_r(MR_VR, vy + AF_M.asc - AF_S.asc, &AF_S, row == MI_TUNE ? "ct" : "s", sel ? T_INK : T_MID, bg) - 3,
+                  vy, &AF_M, row == MI_TUNE ? v : b, val, bg);
+        return;
+    }
+    if (menu_n(row) == 2u && (str_eq(v, "ON") || str_eq(v, "OFF"))) {
+        menu_switch(MR_VR, y, h, str_eq(v, "ON"), sel);
+        return;
+    }
+    GFX_HOOK_ALIGN(0, y, 0, y + h, AL_V, "menu row value centred up/down");
+    if (row != MI_COLOR) {
+        cv_text_r(MR_VR, vy, &AF_M, v, val, bg);
+        return;
+    }
+    {   /* COLOR: the palette's name and its five colours (BG SURF TEXT, part 1's and part 2's colour), live */
+        uint32_t c;
+        const uint16_t tok[5] = {T_BG, T_SURF, T_TEXT, T_PTHEME(0), T_PTHEME(1)};   /* BG SURF TEXT and each part's colour */
+        int32_t x0 = MR_VR - 74, sy = y + HALF_UP(h - 12);
+        cv_text_r(x0 - 6, vy, &AF_M, v, val, bg);
+        for (c = 0; c < 5u; c++) {
+            cv_rrect(x0 + (int32_t)c * 15, sy, 12, 12, -3, T_RAISE, bg);       /* a rim for the dark ones */
+            cv_rrect(x0 + 1 + (int32_t)c * 15, sy + 1, 10, 10, -2, tok[c], T_RAISE);
+        }
+    }
+}
+/* MENU > SYSTEM > INFO (1.2, ui.menu 3): what the old GLO > SYSTEM page showed, read only: the firmware, the USB link (the
+ * SYSTEM page's MIDI card: OFF no USB, WAIT no bus yet, BUS frames seen, ENUM being set up, MIDI in use) and the CPU load
+ * of the audio (the CPU load meter above: a 1 s average, a held peak, the missed blocks). The rows as the menu's (no
+ * tabs: from INFO_Y), the selected look on none; OCT- back to the tabs, HOME closes */
+#define INFO_Y 32
+#define INFO_N 3u
+static struct { uint8_t cpu; } info;                   /* the CPU row's value: the meter's 1 s average */
+static uint32_t info_usb(void)                         /* 0 OFF, 1 WAIT, 2 BUS, 3 ENUM, 4 MIDI */
+{
+    return !usb.up ? 0u : usb.config ? 4u : usb.setups ? 3u : usb.sof_seen ? 2u : 1u;
+}
+static uint32_t info_sig(void)
+{
+    cpu_meter_poll();
+    info.cpu = (uint8_t)(cpum.avg > 255u ? 255u : cpum.avg);
+    return cpu_sig() + info_usb() * 131u;
+}
+#define IM_Y 138
+/* INFO's second band (screen rows 132..240): where the meter's card was (now GLO > TEST), one line of words */
+static void info_meter(void)
+{
+    cv_text(8, IM_Y + 4, &AF_S, "THE CPU METER IS ON", T_MID);
+    cv_text(8, IM_Y + 22, &AF_S, "GLO > TEST", T_TEXT);
+}
+/* GLO > TEST (the CPU test page, beta): what is loaded and how hard the audio works. The multi (slot + name), per part the ENGINE
+ * and the PATCH (the stored patch's name or the factory sound's), then the CPU meter: the 1 s AVERAGE with a bar (a mark at 80 %,
+ * a tick at the held peak), PEAK HOLD, MISSED blocks, and a word for the state (OK, NEAR THE LIMIT, AT THE LIMIT, BLOCKS MISSED
+ * JUST NOW; the same flat colours as before on INFO: cpu_col). Drawn on the graph panel (cv_oy 0, panel rows). The meter reads the
+ * audio's counters only while this page is up: a gap of more than 0.5 s between two looks (another page, the screen dark) opens a
+ * fresh window. K4 RESET: cpu_meter_open and the missed count from zero (test_reset); INFO and ABOUT keep their power-on count */
+static uint32_t test_t;                                /* the page's last look (fm1_ms; 0: none yet) */
+static void test_sync(void)
+{
+    if (!test_t || fm1_ms - test_t > 500u)
+        cpu_meter_open();
+    test_t = fm1_ms ? fm1_ms : 1u;
+    cpu_meter_poll();
+}
+static void test_reset(void)                           /* K4: peak hold, missed blocks and the average window from zero */
+{
+    cpu_meter_open();
+    cpum.base = cpu_miss;
+    test_t = fm1_ms ? fm1_ms : 1u;
+}
+static uint8_t test_pick = 0xFFu;                      /* K3's multi (0..15): the last one stepped to or loaded */
+static uint32_t test_slot(void)                        /* the multi K3 shows: the pick, else the one the music came from, else the first used */
+{
+    uint32_t k;
+    if (test_pick < MU_SLOTS && project_used(test_pick))
+        return test_pick;
+    k = project_cur_slot();
+    if (k < MU_SLOTS && project_used(k))
+        return k;
+    for (k = 0; k < MU_SLOTS; k++)
+        if (project_used(k))
+            return k;
+    return MU_SLOTS;                                   /* no multi at all */
+}
+static uint32_t test_missed(void) { return cpum.miss - cpum.base; }
+static void test_multi_name(char *b)                   /* "M05 NAME", or "NO MULTI" when the music did not come from one */
+{
+    uint32_t k = project_cur_slot();
+    if (k >= MU_SLOTS) {
+        str_cpy(b, "NO MULTI", 24);
+        return;
+    }
+    mu_label(b, k);
+    str_cpy(b + str_len(b), " ", 2);
+    project_cur_name(b + str_len(b));
+}
+static uint32_t test_sig(void)                         /* what the panel shows */
+{
+    char b[24];
+    uint32_t h = 2166136261u, k;
+    test_sync();
+    h = (h ^ cpu_sig()) * 16777619u;
+    test_multi_name(b);
+    h = str_hash(h, b);
+    for (k = 0; k < 2u; k++) {
+        sound_name(&trk[k], b);
+        h = str_hash(h + trk[k].eng_req * 31u, b);
+    }
+    return h;
+}
+static void test_pct(char *d, uint32_t v) { cpu_pct(d, v); }
+static void graph_test(void)
+{
+    char b[24], v[16];
+    uint32_t lvl = cpu_level(), plv = cpum.hold >= 100u ? 2u : cpum.hold >= CPU_WARN ? 1u : 0u, k;
+    uint16_t col = cpu_col(lvl, T_SURF);
+    int32_t fill = (int32_t)(cpum.avg > 100u ? 100u : cpum.avg) * 224 / 100, tick = (int32_t)(cpum.hold > 100u ? 100u : cpum.hold) * 224 / 100, x;
+    cv_text_on(10, 3, &AF_S, "MULTI", T_MID, T_SURF);
+    test_multi_name(b);
+    cv_text_r(230, 3, &AF_S, b, project_cur_slot() < MU_SLOTS ? T_TEXT : T_DIM, T_SURF);
+    for (k = 0; k < 2u; k++) {                         /* the parts: engine at the left, the patch at the right */
+        int32_t y = 17 + 13 * (int32_t)k;
+        v[0] = (char)('1' + k);
+        v[1] = 0;
+        cv_text_on(10, y, &AF_S, v, song.sel == k ? T_ACCENT : T_DIM, T_SURF);
+        cv_text_on(22, y, &AF_S, ENGINES[trk[k].eng_req % NENGINES]->name, T_MID, T_SURF);
+        sound_name(&trk[k], b);
+        cv_text_r(230, y, &AF_S, b, T_TEXT, T_SURF);
+    }
+    cv_rect(8, 44, 224, 1, T_RAISE);
+    cv_text_on(10, 49, &AF_S, "AVERAGE 1 S", T_MID, T_SURF);
+    test_pct(v, cpum.avg);
+    cv_text_r(230, 46, &AF_M, v, col, T_SURF);
+    cv_rect(8, 68, 224, 8, T_RAISE);                   /* the track, the fill, the 80 % mark, the peak tick */
+    cv_rect(8, 68, fill, 8, col);
+    cv_rect(8 + 224 * (int32_t)CPU_WARN / 100, 76, 1, 3, T_MID);
+    cv_rect(8 + (tick > 222 ? 222 : tick), 65, 2, 14, T_TEXT);
+    x = cv_text_on(10, 85, &AF_S, "PEAK HOLD", T_MID, T_SURF);
+    test_pct(v, cpum.hold);
+    cv_text_on(x + 6, 85, &AF_S, v, cpu_col(plv, T_SURF), T_SURF);
+    fmt_int(v, (int32_t)(test_missed() > 9999u ? 9999u : test_missed()));
+    x = cv_text_r(230, 85, &AF_S, v, cpu_recent() ? cpu_col(2u, T_SURF) : T_TEXT, T_SURF);
+    cv_text_r(x - 6, 85, &AF_S, "MISSED", T_MID, T_SURF);
+    cv_text_on(10, 102, &AF_S, cpu_word(), lvl ? cpu_col(lvl, T_SURF) : T_MID, T_SURF);
+#ifdef FELUCCA_METER_EST
+    cv_text_r(230, 102, &AF_S, "EMULATOR ESTIMATE", T_DIM, T_SURF);
+#endif
+}
+static void info_rows(void)                            /* (in screen rows: cv_oy set by the caller) */
+{
+    static const char *const LBL[INFO_N] = {"FIRMWARE", "USB", "CPU"};
+    static const char *const USB_N[5] = {"OFF", "WAIT", "BUS", "ENUM", "MIDI"};
+    int32_t h = menu_large() ? 28 : 24;
+    uint32_t k;
+    char cpu[8];
+    fmt_int(cpu, info.cpu);
+    if (!ux.style)                                     /* FLAT: the rows' panel */
+        cv_rrect(4, INFO_Y, 232, (int32_t)INFO_N * (h + 2) - 2 + 2 * MP_PAD, 8, T_SURF, T_BG);
+    for (k = 0; k < INFO_N; k++) {
+        int32_t y = INFO_Y + MP_PAD + (int32_t)k * (h + 2), vy = y + CAP_IN(M, h);
+        if (k)
+            cv_rect(MR_X + 6, y - 1, MR_W - 12, 1, ux.style ? T_RULE : T_LINE);
+        GFX_HOOK_ALIGN(0, y, 0, y + h, AL_V, "info row name centred up/down");
+        cv_text_on(MR_LX, vy, &AF_M, LBL[k], T_TEXT, T_SURF);
+        GFX_HOOK_ALIGN(0, y, 0, y + h, AL_V, "info row value centred up/down");
+        if (k == 2u) {                                 /* CPU: the value and its unit, as HOLD's */
+            GFX_HOOK_ALIGN(0, 0, 0, vy + AF_M.asc, AL_B, "info row unit on its value's baseline");
+            cv_text_r(cv_text_r(MR_VR, vy + AF_M.asc - AF_S.asc, &AF_S, "%", T_MID, T_SURF) - 3, vy, &AF_M, cpu, vt(T_THEME, T_SURF), T_SURF);
+        } else {
+            cv_text_r(MR_VR, vy, &AF_M, k ? USB_N[info_usb()] : FELUCCA_VERSION, vt(T_THEME, T_SURF), T_SURF);
+        }
+    }
+}
+
+/* the rows' two bands meet at `split`: in the gap above a row (or below the last), each band at most 124 rows */
+static uint32_t menu_split(uint32_t n)
+{
+    int32_t s = mr_y(n) - 1;
+    uint32_t k = n;
+    while (s > H_HEAD + 124 && k > 1u)
+        s = mr_y(--k) - 1;
+    return (uint32_t)(s < 240 - 124 ? 240 - 124 : s);
+}
+static void draw_menu(void)
+{
+    /* SPEC 1.1a: SELECT picks the row (across the tabs), KNOB 1 the value (an action row has none: SELECT alone;
+     * no OCT+ OPEN / CLEAR hint) */
+    static const khint_t KEYS[3] = {{KC_SELECT, "ROW"}, {KC_K1, "VALUE"}, {KC_K1, "OPEN"}};
+    uint32_t pass, k, first, n, split, sig;
+    int32_t pos0 = mt.pos;
+    if (ui.menu == 1)
+        mt_follow();
+    sig = ui.menu * 7u + ui.menu_sel * 131u + settings.palette * 1009u + settings.lowcut * 7919u + settings_hold * 3511u +
+          settings_leds * 6151u + ui_prefs * 4099u + ui_style * 257u + song.rec * 65537u + song.sel * 13u +
+          ui_rec_prefs * 92821u + ui_scr * 131071u +          /* (#157: SCREEN OFF's value redraws its row) */
+          ui_prefs2 * 524287u + ui_idle * 1048573u +      /* (1.2: ANIM IDLE's value redraws its row) */
+          ui_home_view * 7340033u +    /* (1.3: HOME) */
+          (uint32_t)(song.g[G_TUNE] + 64) * 8191u + ui_home_pg * 27449u +   /* (1.2: the project's row; DUELL: HOME OPENS) */
+          (ui.menu == 2 ? ui.menu_scroll * 48611u + info_sig() * 40507u + about_step() * 6007u : 0u) + (ui.menu == 3 ? info_sig() * 2654435761u : 0u);
+    if (!ui.force && sig == ui.menu_sig) {
+        if (ui.menu == 1 && mt.pos != pos0) {          /* only the tabs slid: their strip */
+            cv_begin(240, MP_Y - H_HEAD, T_BG);
+            cv_oy = -H_HEAD;
+            menu_tabs();
+            cv_oy = 0;
+            cv_blit(0, H_HEAD);
+        }
+        return;
+    }
+    ui.menu_sig = sig;
+    if (ui.menu == 2 && !ui.menu_scroll) {             /* ABOUT's first view: the splash drawing, endless (the footer hint on it) */
+        splash_frame(about_step(), MK_Y);
+        return;
+    }
+    menu_head();
+    if (ui.menu == 3) {                                /* INFO: its rows in the first band, the second clear */
+        for (pass = 0; pass < 2u; pass++) {
+            uint32_t top_y = pass ? 132u : (uint32_t)H_HEAD;
+            cv_begin(240, pass ? 240u - 132u : 132u - H_HEAD, T_BG);
+            cv_oy = -(int32_t)top_y;
+            if (!pass)
+                info_rows();
+            else
+                info_meter();
+            cv_oy = 0;
+            cv_blit(0, top_y);
+        }
+        return;
+    }
+    if (ui.menu == 2) {
+        int32_t scroll = ui.menu_scroll, max = menu_scroll_max();
+        int32_t thumb = MENU_DOC_H * MENU_DOC_H / (max + MENU_DOC_H);
+        if (thumb < 12) thumb = 12;
+        for (pass = 0; pass < 2u; pass++) {
+            cv_begin(240, pass ? MENU_DOC_H - 124u : 124u, T_BG);
+            cv_oy = pass ? -124 : 0;
+            cv_scroll = 1;
+            menu_document(-scroll, 1);
+            cv_scroll = 0;
+            cv_rrect(235, 2, 3, MENU_DOC_H - 4, 1, T_LINE, T_BG);           /* the scroll bar */
+            cv_rrect(235, 2 + (max ? scroll * (MENU_DOC_H - 4 - thumb) / max : 0), 3, thumb, 1, T_MID, T_LINE);
+            cv_oy = 0;
+            cv_blit(0, H_HEAD + pass * 124u);
+        }
+        cv_begin(240, 240 - (H_HEAD + MENU_DOC_H), T_BG);
+        cv_key_row(8, 232, MK_Y - (H_HEAD + MENU_DOC_H), (const khint_t[2]){{KC_SELECT, "SCROLL"}, {KC_K1, "BACK"}}, 2u, 3u, T_BG);
+        cv_blit(0, H_HEAD + MENU_DOC_H);
+        return;
+    }
+    first = mtab_first(menu_tab());
+    n = mtab_rows(menu_tab());
+    split = menu_split(n);
+    for (pass = 0; pass < 2u; pass++) {
+        int32_t top_y = pass ? (int32_t)split : H_HEAD;
+        cv_begin(240, pass ? 240u - split : split - H_HEAD, T_BG);
+        cv_oy = -top_y;                               /* drawn in screen rows */
+        if (!pass)
+            menu_tabs();
+        if (!ux.style)                                /* FLAT: the rows' panel */
+            cv_rrect(4, MP_Y, 232, mr_y(n) - mr_gap() + MP_PAD - MP_Y, 8, T_SURF, T_BG);
+        for (k = 0; k < n; k++)
+            if (mr_y(k) + mr_h() > top_y && mr_y(k) - 1 < top_y + (int32_t)cv_h)
+                menu_row(k, first + k);
+        if (pass)
+            if (MI_READONLY(ui.menu_sel))                 /* INFO, ABOUT: SELECT picks the row, KNOB 1 right opens it */
+                cv_key_row(8, 232, MK_Y, (const khint_t[2]){KEYS[0], KEYS[2]}, 2u, 3u, T_BG);
+            else
+                cv_key_row(8, 232, MK_Y, KEYS, menu_valued(ui.menu_sel) ? 2u : 1u, 3u, T_BG);
+        cv_oy = 0;
+        cv_blit(0, (uint32_t)top_y);
+    }
+}
+static void enc_drop(void)                             /* knob turns nobody takes */
+{
+    uint32_t k;
+    for (k = 0; k < NE; k++)
+        panel_enc(k);
+}
+
+static void menu_close(void)
+{
+    settings_save();                                   /* palette / panel table, if changed */
+    ui.menu = 0;
+    ui.force = 1;
+    go_main();
+}
+
+/* menu (SPEC 1.1a): SELECT is the one way round it: it walks the rows continuously across the tabs (a tab's last row,
+ * then the next tab's first; stopping at the first and the last row of the whole menu, no wrap), in ABOUT it scrolls;
+ * KNOB 1..4 (any of them) change the selected row's value (menu_items.c menu_step), OCT+ / OCT- step it too (and OCT+
+ * opens CALIBRATION / INFO / ABOUT, OCT- nothing there; OCT- in INFO and ABOUT goes back to the tabs) but no hint
+ * names them. ALGORITHM and PRESETS do nothing here. HOME closes it, from them too (ui_input.c) */
+static void menu_move(int32_t s)                       /* SELECT: the next / previous row, across the tabs, clamped */
+{
+    int32_t r = (int32_t)ui.menu_sel + clamp(s, -(int32_t)MI_COUNT, (int32_t)MI_COUNT);
+    uint32_t t;
+    ui.menu_sel = (uint8_t)clamp(r, 0, (int32_t)MI_COUNT - 1);
+    t = menu_tab();
+    ui.menu_row[t] = (uint8_t)(ui.menu_sel - mtab_first(t));
+}
+static void menu_input(uint32_t oct)                  /* oct: ui_input.c oct_taps */
+{
+    int32_t s;
+    uint32_t k, up = (oct >> 1) & 1u, dn = oct & 1u;
+    panel_enc(EN_PRESET);                              /* PRESETS, ALGORITHM: nothing in the menu (SPEC 1.1a) */
+    panel_enc(EN_ALGO);
+    if (ui.menu >= 2) {                                /* ABOUT: SELECT scrolls (bounded); INFO, ABOUT: OCT- or a knob
+                                                        * turned left (KNOB 1) back to the tabs */
+        for (s = 0, k = 0; k < 4u; k++)
+            s += panel_enc(EN_K1 + k);
+        if (dn || s < 0)
+            ui.menu = 1, ui.force = 1;
+        else if (ui.menu == 2 && (s = panel_enc(EN_SELECT)) != 0)
+            ui.menu_scroll = (uint16_t)clamp((int32_t)ui.menu_scroll + clamp(s, -128, 128) * 18, 0, menu_scroll_max());
+        enc_drop();
+        return;
+    }
+    if ((s = panel_enc(EN_SELECT)) != 0)
+        menu_move(s);
+    for (s = 0, k = 0; k < 4u; k++)                    /* KNOB 1..4, any of them */
+        s += panel_enc(EN_K1 + k);
+    if (menu_valued(ui.menu_sel)) {
+        /* a step (OCT+ the next value, OCT- the previous); COLOR previews the palette, STYLE is drawn so from the next
+         * frame (FX LATCH: the latched effects are off while the menu is up) */
+        s += (int32_t)up - (int32_t)dn;
+        if (s)
+            menu_put(ui.menu_sel, menu_step(ui.menu_sel, s));
+    } else if (up || (s > 0 && MI_READONLY(ui.menu_sel))) {   /* OCT+ opens the three; a knob right too INFO and ABOUT (read only) */
+        if (ui.menu_sel == MI_PANEL) {
+            panel_setup();
+            scrn.idle = fm1_ms;                         /* (SCREEN OFF: its own loop had the input) */
+            ui.force = 1;
+        } else if (ui.menu_sel == MI_INFO) {
+            ui.menu = 3;
+            cpu_meter_open();                           /* (the CPU meter's window begins) */
+            ui.force = 1;
+        } else {                                       /* MI_ABOUT */
+            ui.menu = 2;
+            about_t0 = fm1_ms;
+            cpu_meter_open();
+            ui.menu_scroll = 0;
+            ui.force = 1;
+        }
+    }
+    enc_drop();                                        /* swallow the rest while the menu is up */
+}
