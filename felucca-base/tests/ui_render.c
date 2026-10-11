@@ -1021,8 +1021,8 @@ static void setup(int s)
     case S_CHORD_KIT: eng(ENGI_DRUM); TSEL->p[P_CHRD] = CH_DIA3; go_title("CHORD"); break;
     case S_ARP: go_title("ARP 1"); break;
     case S_VOICE: go_title("VOICE 1"); break;
-    case S_CLOCK: go_title("CLOCK"); break;
-    case S_CLOCK_EXT: go_title("CLOCK"); song.g[G_CLOCK] = 1; break;   /* DUELL: external clock, TEMPO shows EXT */          /* (1.2: HOME > MIXER > CLOCK; up to 1.1.5 GLO > GLOBAL) */
+    case S_CLOCK: go_title("TEMPO"); break;
+    case S_CLOCK_EXT: go_title("TEMPO"); song.g[G_CLOCK] = 1; break;   /* DUELL: external clock, TEMPO shows EXT */          /* (1.2: HOME > MIXER > CLOCK; up to 1.1.5 GLO > GLOBAL) */
     /* 1.2: the old SYSTEM page's items in the MENU: MIDI > MIDI IN (ROUT) on CH5-8; AUDIO > TUNE (-12 ct) selected;
      * SYSTEM > INFO (the USB state, the CPU load) */
     case S_MENU_CONTROL: ui.menu = 1; ui.menu_sel = MI_HOMEPG; ui_home_pg = HP_MIXER; break;   /* (DUELL 0.1: HOME OPENS, CONTROL's last row) */
@@ -1213,8 +1213,8 @@ static void setup(int s)
      * a favourite; a user preset; the hint after a tap */
     case S_GLO_PEEK: go_title("GLO"); pat_from[0] = 4; break;   /* (a multi loaded: its number stays out of this page's header) */
     case S_GLO_ACTIVE:
-        go_title("GLO"); trk[1].p[P_MUTE] = 1; perf_solo = 4; trk[0].p[P_LEVEL] = 90;
-        ui.hot_col = 0; ui.hot_t = 30;
+        go_title("GLO"); trk[1].p[P_MUTE] = 1; perf_solo = 1; trk[0].p[P_LEVEL] = 90;
+        ui.hot_col = 2; ui.hot_t = 30;
         break;
     case S_GLO_EXT: go_title("GLO"); song.g[G_CLOCK] = 1; trk[0].p[P_MUTE] = 1; break;
     /* DUELL step 6: the level meters (a part near its top, another past -1 dBFS: the CLIP lamp and the red zone; a peak of each frame, so the
@@ -1222,10 +1222,10 @@ static void setup(int s)
      * LAYER: part 2's channel not heard; MIDI IN = SEL), MIDI LEARN off, on, a parameter picked */
     case S_GLO_METERS: go_title("GLO"); trk[0].peak = 11000; trk[1].peak = 4000; break;
     case S_GLO_CLIP: go_title("GLO"); trk[0].peak = 21000; trk[1].peak = 33000; break;
-    case S_MIDI: go_title("CHANNELS"); break;
+    case S_MIDI: go_title("MIDI"); break;
     case S_MIDI_DUCK: go_title("SIDECHAIN"); song.sel = 1; midi_pch[0] = 0; midi_pch[1] = 4; ui_midi_p2 = 5; TSEL->p[P_DKSRC] = 11; TSEL->p[P_DKNOTE] = 36; break;
-    case S_MIDI_LAYER: go_title("CHANNELS"); duell_mode_req = DM_LAYER; break;
-    case S_MIDI_SEL: go_title("CHANNELS"); song.g[G_ROUTE] = 1; break;
+    case S_MIDI_LAYER: go_title("MIDI"); duell_mode_req = DM_LAYER; break;
+    case S_MIDI_SEL: go_title("MIDI"); song.g[G_ROUTE] = 1; break;
     case S_MIDI_LEARN_OFF: go_title("MIDI LEARN"); break;
     case S_MIDI_LEARN_ON: go_title("MIDI LEARN"); ml_toggle(); ui.msg_t = 0; break;
     case S_MIDI_LEARN_PICK: go_title("MIDI LEARN"); ml_toggle(); ml_knob(TSEL, P_E5); ui.msg_t = 0; break;
@@ -1665,7 +1665,7 @@ static void roll_frames(const char *dir)
         memset(cimg, 90, sizeof cimg);
         state(); song.playing = 0; pal(p);
         song.g[G_BPM] = 129; song.g[G_TUNE] = 19;
-        go_title("CLOCK"); page_over = &ROLL_PG;
+        go_title("TEMPO"); page_over = &ROLL_PG;
         snprintf(name, sizeof name, "%s/roll", UI_PALETTES[p].name);
         cur_name = name;
         draw(-1);
@@ -1708,7 +1708,7 @@ static void roll_cost(void)
         clock_t c0;
         state(); song.playing = 0; pal(1);
         song.g[G_BPM] = 129; song.g[G_TUNE] = 19;
-        go_title("CLOCK"); page_over = &ROLL_PG;
+        go_title("TEMPO"); page_over = &ROLL_PG;
         draw(-1);
         for (k = 0; k < 8u; k++) { ui.hot_t = 0; ui.bpm_t = 0; ui_draw(); }
         px_visited = 0; blit_px = 0;

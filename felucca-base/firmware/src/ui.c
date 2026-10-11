@@ -241,11 +241,13 @@ static struct {
         uint8_t sig;             /* a card: what its value is of (label, unit, track, engine, palette) */
     } roll[5];
     int16_t roll_bpm;            /* the BPM last drawn */
-    struct {                     /* DUELL 4b, the MORPH page's KNOB 3 / 4 twist gestures (ui_input.c morph_gesture) */
-        int8_t acc[2];           /* detents turned in this gesture, signed (a reversal starts anew) */
-        uint8_t fired[2];        /* the gesture fired: its further detents do nothing until the knob rests */
-        uint32_t t[2];           /* fm1_ms of its last detent */
+    struct {                     /* DUELL 4b, the twist gestures (ui_input.c morph_gesture): 0 MORPH ROLL, 1 UNDO, 2 GLO MUTE, 3 GLO SOLO */
+        int8_t acc[4];           /* detents turned in this gesture, signed (a reversal starts anew) */
+        uint8_t fired[4];        /* the gesture fired: its further detents do nothing until the knob rests */
+        uint32_t t[4];           /* fm1_ms of its last detent */
     } mg;
+    uint8_t tap_n;               /* TEMPO's TAP (ui_input.c tempo_tap): the taps counted (at most 4), their fm1_ms times (a rest of 2 s starts anew) */
+    uint32_t tap_t[4];
     uint8_t mset_seen[3], mset_ok, mset_dirty;   /* 4b: the MORPH settings bytes as last synced (morph_settings) */
     uint32_t mset_t;             /* .. fm1_ms of the last change not saved yet */
     uint8_t noid;                /* DUELL save flow: bit i, track i's sound is no patch (INIT SOUND, its stored sound erased):

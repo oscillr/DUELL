@@ -12,7 +12,7 @@
  * (append-only), wherever its row goes; ids 0..126 (127: none). DUELL: id 8 (BPM LOCK) is retired, never reused (SELECT is
  * no tempo any more), so the index of every setting after it is its id - 1.
  * 1.2: TUNE (22) is the project's G_TUNE (menu_items.c MI_PROJECT; DUELL 0.1: MIDI IN (21), the project's G_ROUTE, left MENU for
- * GLO > CHANNELS: its id is retired, MIDI IN is no MENU setting), the same value as a SET of global 3: MENU_SET applies them to the music in RAM, kept with the project (the autosave, PROJECT SAVE),
+ * GLO > MIDI: its id is retired, MIDI IN is no MENU setting), the same value as a SET of global 3: MENU_SET applies them to the music in RAM, kept with the project (the autosave, PROJECT SAVE),
  * not in the settings record: rc 0, nothing for settings_save to write. TUNE is a number (EDM_INT: the cents -50..50,
  * unit "ct"), the only one so far */
 enum { ED_MENU_DESC = 72, ED_MENU_SET };
@@ -27,7 +27,7 @@ static const uint8_t ED_MENU[][2] = {
     {MI_SCOPE, 18},                                    /* 1.2 (Discussion #165), a row of DISPLAY */
     {MI_PREVIEW, 19},                                  /* 1.2 (Discussion #169), a row of CONTROL */
     {MI_CHADD, 20},                                    /* 1.2 (#155), a row of CONTROL */
-                                                       /* (id 21, MIDI IN, retired in DUELL 0.1: it is GLO > CHANNELS' MIDI IN now; never reused) */
+                                                       /* (id 21, MIDI IN, retired in DUELL 0.1: it is GLO > MIDI' MIDI IN now; never reused) */
     {MI_TUNE, 22},                                     /* 1.2: the project's G_TUNE (was GLO > GLOBAL), AUDIO */
     {MI_HOME, 23},                                     /* 1.3 (Discussions #112, #134): HOME SCOPE / TRACKS, DISPLAY (DUELL: OVERVIEW SCOPE / PARTS) */
     {MI_HELP, 24},                                     /* 1.5 (Discussion #156): HELP OFF / ON, SYSTEM */

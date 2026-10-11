@@ -670,11 +670,12 @@ static void draw_menu(void)
         for (k = 0; k < n; k++)
             if (mr_y(k) + mr_h() > top_y && mr_y(k) - 1 < top_y + (int32_t)cv_h)
                 menu_row(k, first + k);
-        if (pass)
+        if (pass) {
             if (MI_READONLY(ui.menu_sel))                 /* INFO, ABOUT: SELECT picks the row, KNOB 1 right opens it */
                 cv_key_row(8, 232, MK_Y, (const khint_t[2]){KEYS[0], KEYS[2]}, 2u, 3u, T_BG);
             else
                 cv_key_row(8, 232, MK_Y, KEYS, menu_valued(ui.menu_sel) ? 2u : 1u, 3u, T_BG);
+        }
         cv_oy = 0;
         cv_blit(0, (uint32_t)top_y);
     }

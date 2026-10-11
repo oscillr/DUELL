@@ -1140,7 +1140,7 @@ static void t_jiant_rev(void)
 }
 
 #ifndef MODE_TEST_NO_MAIN
-/* DUELL step 6: the parts' MIDI channels (GLO > CHANNELS) and the level meters' data (GLO's page) */
+/* DUELL step 6: the parts' MIDI channels (GLO > MIDI) and the level meters' data (GLO's page) */
 static void t_midi_ch(void)
 {
     persist_t p;
@@ -1149,9 +1149,9 @@ static void t_midi_ch(void)
     frames(2500);
     dsp_clean(DM_STEREO);
     song.g[G_ROUTE] = 0;
-    go_title("CHANNELS");
+    go_title("MIDI");
     frames(32);
-    expect("CHANNELS: defaults, PART 1 CH 1 and PART 2 CH 2, nothing written to the settings",
+    expect("MIDI: defaults, PART 1 CH 1 and PART 2 CH 2, nothing written to the settings",
            midi_pch[0] == 0u && midi_pch[1] == 1u && !ui_midi_p1 && !ui_midi_p2);
     midi(0x90, 1, 62, 99);
     mblk(1);

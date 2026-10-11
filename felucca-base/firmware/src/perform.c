@@ -80,7 +80,7 @@ static volatile uint8_t perf_remap;   /* main: perf_map changed (seq.c: a key he
 static volatile uint32_t perf_mask;   /* main: the FX button's bit while its layer may own keys, 0 = none */
 static volatile uint32_t kb_mask;     /* main: the button bits whose hold makes keys a layer's (ui_layer.c), 0 = none */
 static volatile uint8_t kb_lock;      /* main: a layer locked open (#83, no button held): 1 keys are the layer's, 2 FX's */
-static volatile uint8_t perf_solo;    /* main: tracks soloed in the GLO layer (the others muted as by a black key) */
+static volatile uint8_t perf_solo;    /* main: parts soloed on GLO's page (KNOB 2; the others muted as by a black key; stays until toggled off) */
 static volatile uint8_t perf_kill;    /* main: every effect off (the menu, a dialog, UBOOT) */
 static volatile int8_t perf_k[4];     /* main: the knob macros, 0 = untouched: FILTER -100..100 (- LPF, + HPF),
                                        * CRUSH 0..100, THROW 0..100, DEPTH cut 0..100 (the buffer effects' level) */
@@ -275,7 +275,7 @@ static void perf_buf_select(uint32_t e)
  * Returns 1 when a stage has something to do */
 static __attribute__((noinline)) int perf_begin(uint32_t n)
 {
-    uint32_t held = perf_kill ? 0u : (perf_held | perf_latched | (perf_solo ? (~(uint32_t)perf_solo & 15u) << PF_M1 : 0u)) & perf_avail();
+    uint32_t held = ((perf_kill ? 0u : perf_held | perf_latched) | (perf_solo ? (~(uint32_t)perf_solo & 15u) << PF_M1 : 0u)) & perf_avail();   /* (a solo stays in the menu and in dialogs) */
     uint32_t q, k, ph0, bnd;
     int32_t m;
     if (!held && !pf.busy && !(perf_k[0] | perf_k[1] | perf_k[2])) {   /* idle: the clock only */

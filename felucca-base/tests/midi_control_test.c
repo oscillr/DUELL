@@ -403,9 +403,9 @@ static int learn_test(void)
     song.g[G_ROUTE] = 0; queued(0xB9, 20, 64, 1);
     bad += check("  ROUT CH1-4: CC20 on channel 10 is ignored as before", trk[0].p[P_E4] == 1);
 
-    /* the standard map: a learned CC no longer reaches it; GLO's knobs pick a track's LEVEL */
+    /* the standard map: a learned CC no longer reaches it; GLO's LEVEL knobs pick a part's LEVEL */
     go_title("GLO");
-    turn(EN_K2, 2);
+    turn(EN_K4, 2);
     ok = ui.ml.pick && ui.ml.trk == 1u && ui.ml.id == P_LEVEL;
     frames(300);
     queued(0xB0, 74, 10, 1); frame();
@@ -413,7 +413,7 @@ static int learn_test(void)
     cut = trk[0].p[P_E4];
     queued(0xB0, 74, 127, 1);
     ok &= trk[1].p[P_LEVEL] == TP[P_LEVEL].max && trk[0].p[P_E4] == cut;
-    bad += check("  GLO KNOB 2 picks T2 LEVEL; CC74 learned: T2 LEVEL, no more T1 CUT (the standard map)", ok);
+    bad += check("  GLO KNOB 4 (LEVEL 2) picks T2 LEVEL; CC74 learned: T2 LEVEL, no more T1 CUT (the standard map)", ok);
 
     /* one CC one parameter, a parameter one CC */
     go_title("EDIT 2");

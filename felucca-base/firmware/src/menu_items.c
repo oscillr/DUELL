@@ -9,7 +9,7 @@
  * LAST (1.2), then CALIBRATION (the setup screen: HARDWARE CALIBRATION), INFO (1.2) and ABOUT, the rows with no value
  * (MI_VALUES: the rows before them hold one, but LEARN CLEAR: menu_valued). 1.0.5: in four tabs (MI_TAB); 1.2: five.
  * DUELL 0.1 (owner's feedback after the first flash): MENU holds no MIDI setting any more. MIDI IN (OWN CH / SELECTED, the
- * project's G_ROUTE) and LEARN CLEAR moved to GLO's MIDI pages (CHANNELS, MIDI LEARN); the MIDI tab is gone (four tabs). HOME
+ * project's G_ROUTE) and LEARN CLEAR moved to GLO's MIDI pages (MIDI, SIDECHAIN, MIDI LEARN); the MIDI tab is gone (four tabs). HOME
  * became two rows: OVERVIEW (what HOME's last page shows under its cards: SCOPE or PARTS) and HOME OPENS (the page the HOME
  * button, power-on and leaving the menu open: MORPH, MODE, MIXER or OVERVIEW; CONTROL tab).
  * 1.2: TUNE is not a setting: it edits the project's G_TUNE, the value the project holds and saves as before (no format change;

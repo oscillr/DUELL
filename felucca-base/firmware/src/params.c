@@ -52,7 +52,7 @@ static const char *const N_ALLOC[] = {"ROT", "REUSE"};
 static const char *const N_ORDER[] = {"NOTE", "PLAY"};
 static const char *const N_CLOCK[] = {"INT", "USB", "TRS"};
 static const char *const N_MIDI_INPUT[] = {"USB", "TRS"};
-/* MIDI IN (seq.c midi_pch), GLO > CHANNELS K3: OWN CH (stored 0) = each part listens on its own channel (P1 CH, P2 CH; default 1 and 2), the others
+/* MIDI IN (seq.c midi_pch), GLO > MIDI K3: OWN CH (stored 0) = each part listens on its own channel (P1 CH, P2 CH; default 1 and 2), the others
  * are ignored / SELECTED (1) = every channel plays the part chosen with ALGORITHM (values 2..4, the former CH5-8 .. CH13-16 blocks, read as OWN CH) */
 static const char *const N_ROUTE[] = {"OWN CH", "SELECTED"};   /* (was PARTS, SEL: the same stored 0, 1) */
 static const char *const N_NOTE[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
@@ -236,7 +236,7 @@ static const param_desc_t GP[G_COUNT] = {
      * INFO's now (ui_menu.c). Kept: the ids and G_COUNT are fixed by the formats and the protocol */
     [G_MIDI] = PE("MIDI", N_MIDI_INPUT, 0),
     [G_SYNC] = PE("SYNC", N_DASH, 0),
-    /* MIDI IN's routing, edited on GLO > CHANNELS K3 (DUELL 0.1; MENU > MIDI > MIDI IN in 1.2..1.5, up to 1.1.5 GLO > SYSTEM ROUT),
+    /* MIDI IN's routing, edited on GLO > MIDI K3 (DUELL 0.1; MENU > MIDI > MIDI IN in 1.2..1.5, up to 1.1.5 GLO > SYSTEM ROUT),
      * stored with the project as before. (was "--": stored 0 = CH1-4, as MIDI IN always was) */
     [G_ROUTE] = PE("ROUT", N_ROUTE, 0),
     [G_INFO] = PD("CPU", F_INT, 0, 0, 0),
@@ -568,7 +568,7 @@ enum { SC_TRACK, SC_GLOBAL, SC_ENGINE, SC_STEP, SC_TRK,   /* SC_TRK: the TRACKS 
        SC_MORPH,         /* DUELL 4b: HOME's MORPH pages: no parameter, the morph's controls (ui_input.c morph_knob) */
        SC_MODE,          /* DUELL step 5: HOME's MODE page: the output MODE, no parameter (ui_input.c mode_knob) */
        SC_TEST,          /* DUELL 0.1-beta: GLO's TEST page (CPU test): no parameter, ui_input.c test_knob */
-       SC_MIDI };        /* DUELL step 6: GLO's MIDI pages (all MIDI settings live here): CHANNELS (KNOB 1, 2 the parts' channels, KNOB 3 MIDI IN),
+       SC_MIDI };        /* DUELL step 6: GLO's MIDI pages (all MIDI settings live here): MIDI (KNOB 1, 2 the parts' channels, KNOB 3 MIDI IN, KNOB 4 CLK),
                           * SIDECHAIN (KNOB 1, 2 the selected part's DUCK SRC and NOTE: the track's own parameters), MIDI LEARN (KNOB 1 LEARN, KNOB 2 CLEAR):
                           * ui_input.c midi_knob */
 enum { GR_NONE, GR_ADSR, GR_LFO, GR_STEPS, GR_ARP, GR_SCALE, GR_FX, GR_ROLL, GR_BROWSE, GR_SLOTS, GR_USER /* (retired: no page) */, GR_TRK,
@@ -577,9 +577,10 @@ enum { GR_NONE, GR_ADSR, GR_LFO, GR_STEPS, GR_ARP, GR_SCALE, GR_FX, GR_ROLL, GR_
        GR_ENGINE,        /* GR_ENGINE: EDIT's first page: ENGINE, SOUND, FAV, INIT (SPEC 1.2) */   /* (GR_STEPS: SEQ TOOLS' knobs; GR_FMOP..: FM6's operator pages, ui_fm6op.c) */
        GR_MORPH, GR_MORPHSET,     /* DUELL 4b: HOME's MORPH (fader, AMOUNT, ROLL, UNDO) and MORPH SET (TARGET SMART ARP PITCH) */
        GR_MODE,                   /* DUELL step 5: HOME's MODE (SPLIT / STEREO / LAYER, SPEC 5b.1) */
-       GR_GLO, GR_MIDI, GR_MLEARN,   /* DUELL step 6: GLO (the parts' LEVELs, SOLO / MUTE, TAP and the level meters), CHANNELS (GR_MIDI: channels, MIDI IN), MIDI LEARN */
+       GR_GLO, GR_MIDI, GR_MLEARN,   /* DUELL step 6: GLO (MUTE, SOLO, the parts' LEVELs and the level meters), MIDI (GR_MIDI: channels, MIDI IN, CLK), MIDI LEARN */
        GR_SCHAIN,                    /* DUELL 0.1: SIDECHAIN (the selected part's DUCK SRC / NOTE; was KNOB 3, 4 of the MIDI page) */
-       GR_TEST };                    /* DUELL 0.1-beta: GLO's TEST page (the CPU test: multi, engines, patches, CPU load; ui_menu.c graph_test) */
+       GR_TEST,                      /* DUELL 0.1-beta: GLO's TEST page (the CPU test: multi, engines, patches, CPU load; ui_menu.c graph_test) */
+       GR_TEMPO };                   /* DUELL 2026-10-12: GLO's TEMPO page (KNOB 1 TEMPO, 2 SWG, 3 TAP: ui_input.c tempo_tap) */
 
 typedef struct {
     const char *title;
@@ -632,20 +633,21 @@ static const page_t PAGES[] = {
     {"VOICE 2", FAM_EDIT, SC_TRACK, GR_NONE, {P_ALLOC, P_DETUNE, P_PAN, P_MUTE}},
     {"VOICE 3", FAM_EDIT, SC_TRACK, GR_NONE, {P_SPRD, 0xFF, 0xFF, 0xFF}},   /* #148: SPREAD */
     /* 1.2 (Discussion #153): a family's pages go round in this order, a tap of its button each (ui.c open_family) */
-    /* DUELL (SPEC 1.3, step 6): GLO's pages: the main page GLO (graph GR_GLO: the parts' LEVEL on KNOB 1, 2, SOLO / MUTE / ALL / TAP on the keys, a
-     * level meter each; it is the former hold-GLO layer, now the page a tap opens: ui_layer.c), then ALL the MIDI settings (none in MENU):
-     * CHANNELS (KNOB 1 P1 CH, 2 P2 CH, 3 MIDI IN: OWN CH / SELECTED), SIDECHAIN (KNOB 1 SC SRC, 2 SC NOTE), MIDI LEARN (KNOB 1 LEARN, 2 CLEAR)
-     * and the clock page: KNOB 1 TEMPO (inert, EXT, with an external MIDI clock), KNOB 2 SWG, KNOB 3 CLK (the clock source: INT, USB or TRS).
-     * The tempo is edited nowhere else (SELECT is the page knob; TAP is the keys') */
+    /* DUELL (SPEC 1.3, step 6; reworked 2026-10-12): GLO's pages, in this order: the main page GLO (graph GR_GLO: KNOB 1 MUTE and 2 SOLO, both
+     * two-sided (a twist left acts on part 1, right on part 2, once per twist), KNOB 3, 4 LEVEL 1, 2; between the parts' columns their level
+     * meters; the keys play notes: ui_layer.c glo_knob), then ALL the MIDI settings (none in MENU): MIDI (KNOB 1 P1 CH, 2 P2 CH, 3 MIDI IN:
+     * OWN CH / SELECTED, 4 CLK: the clock source INT, USB or TRS), SIDECHAIN (KNOB 1 SC SRC, 2 SC NOTE), MIDI LEARN (KNOB 1 LEARN, 2 CLEAR),
+     * then TEMPO (graph GR_TEMPO): KNOB 1 TEMPO (inert, EXT, with an external MIDI clock), KNOB 2 SWG, KNOB 3 TAP (a detent either way is
+     * one tap), KNOB 4 none. The tempo is edited nowhere else (SELECT is the page knob) */
     {"GLO", FAM_GLO, SC_GLOBAL, GR_GLO, {0xFF, 0xFF, 0xFF, 0xFF}},
-    {"CHANNELS", FAM_GLO, SC_MIDI, GR_MIDI, {0xFF, 0xFF, 0xFF, 0xFF}},
+    {"MIDI", FAM_GLO, SC_MIDI, GR_MIDI, {0xFF, 0xFF, 0xFF, 0xFF}},
     {"SIDECHAIN", FAM_GLO, SC_MIDI, GR_SCHAIN, {P_DKSRC, P_DKNOTE, 0xFF, 0xFF}},
     {"MIDI LEARN", FAM_GLO, SC_MIDI, GR_MLEARN, {0xFF, 0xFF, 0xFF, 0xFF}},
-    {"CLOCK", FAM_GLO, SC_GLOBAL, GR_NONE, {G_BPM, G_SWING, G_CLOCK, 0xFF}},
+    {"TEMPO", FAM_GLO, SC_GLOBAL, GR_TEMPO, {G_BPM, G_SWING, 0xFF, 0xFF}},
     {"TEST", FAM_GLO, SC_TEST, GR_TEST, {0xFF, 0xFF, 0xFF, 0xFF}},   /* the CPU test (beta): K1 MORPH, K2 ROLL, K3 LOAD MULTI, K4 RESET (ui_input.c test_knob) */
     /* SAVE's taps (1.5, #173; names and order 2026-10-11, 2026-10-12): PATCHES (one list of the sounds; SAVE's first tap), PATTERNS (Felucca's PHRASES, with DUELL's slots P1..P16), MULTI
      * (DUELL: Felucca's PROJECT, sixteen multis M01..M16: SLOT, LOAD ERASE SAVE; project.c multi.c), TOOLS.
-     * DUELL has no song mode: GLO keeps the CLOCK page (and its mixer layer), Felucca's SONG page is gone */
+     * DUELL has no song mode: GLO keeps the TEMPO page, Felucca's SONG page is gone */
     {"PATCHES", FAM_SAVE, SC_GLOBAL, GR_BROWSE, {0xFF, 0xFF, 0xFF, 0xFF}},  /* DUELL: ONE list, factory sounds, user patches, empty places: K1 PATCH, K2 TYPE, K3 FAV, K4 ERASE
                                                                              * (ui.c pl_*, ui_input.c; replaced PRESETS and USER PATCHES) */
     {"PATTERNS", FAM_SAVE, SC_GLOBAL, GR_PATS, {0xFF, 0xFF, 0xFF, 0xFF}},   /* SLOT, LOAD ERASE SAVE (ui.c pat_load; the 16 slots

@@ -12,7 +12,7 @@
 static void draw_menu(void);
 static int name_on(void);                              /* NAME (ui_name.c) */
 static uint64_t lock_held(void);                       /* parameter locks: the steps held on STEP (ui_input.c) */
-static int32_t morph_pending(uint32_t g);              /* the MORPH page's twists building up (ui_input.c, 4b) */
+static int32_t morph_pending(uint32_t g);              /* the twists building up: MORPH's ROLL, UNDO, GLO's MUTE, SOLO (ui_input.c, 4b) */
 static void name_draw(void);
 static uint32_t test_slot(void);                       /* GLO > TEST: the multi K3 shows (ui_menu.c) */
 #include "ui_help.c"                                   /* 1.5: HELP's hints (draw_foot, ui_layer.c draw_layer) */
@@ -1032,7 +1032,7 @@ static void draw_columns(void)
         draw_column(3, "RESET", "--", "", VAL(3u), -1, ICON_AUTO);
         return;
     }
-    if (cur_page()->scope == SC_MIDI) {                /* GLO's MIDI pages: CHANNELS (P1 CH, P2 CH, MIDI IN), SIDECHAIN (SC SRC, SC NOTE), MIDI LEARN (LEARN, CLEAR) */
+    if (cur_page()->scope == SC_MIDI) {                /* GLO's MIDI pages: MIDI (P1 CH, P2 CH, MIDI IN, CLK), SIDECHAIN (SC SRC, SC NOTE), MIDI LEARN (LEARN, CLEAR) */
         const track_t *t = TSEL;
         if (cur_page()->graph == GR_MLEARN) {
             char n[10] = "NONE";
@@ -1063,7 +1063,7 @@ static void draw_columns(void)
                 draw_column(k, k ? "P2 CH" : "P1 CH", val, "", sel || (lay && k) ? T_DIM : VAL(k), (int32_t)midi_ch_get(k) * 1000 / 15, ICON_MIDI);
             }
             draw_column(2, "MIDI IN", sel ? "SELECT" : "OWN CH", "", VAL(2u), -1, ICON_MIDI);
-            draw_column(3, "", "", "", T_THEME, -1, ICON_NONE);
+            draw_column(3, "CLK", GP[G_CLOCK].names[song.g[G_CLOCK] % 3], "", VAL(3u), -1, ICON_TEMPO);   /* the clock source INT / USB / TRS */
         }
         return;
     }
@@ -1281,6 +1281,15 @@ static void draw_columns(void)
         int16_t *vp;
         int32_t vv;
         const param_desc_t *d = page_desc(cur_page(), c, &vp);
+        if (cur_page()->graph == GR_TEMPO && c == 2u) { /* TAP: the tempo of the taps for 2 s after the last, else TAP (EXT clock: DIM) */
+            uint32_t n = tempo_tapping();
+            if (n >= 2u)
+                fmt_int(val, song.g[G_BPM]);
+            else
+                str_cpy(val, song.g[G_CLOCK] ? "EXT" : n ? "1" : "TAP", sizeof val);
+            draw_column(2, "TAP", val, n >= 2u ? "BPM" : "", song.g[G_CLOCK] ? T_DIM : n ? T_ACCENT : VAL(2u), -1, ICON_TEMPO);
+            continue;
+        }
         if (!d || !d->label || d->label[0] == '-') {
             draw_column(c, "", "", "", T_THEME, -1, ICON_AUTO);
             continue;

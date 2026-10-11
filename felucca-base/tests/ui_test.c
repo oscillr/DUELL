@@ -857,7 +857,7 @@ static int test_midi(void)
         uint32_t i;
         int ok = 1;
         ui.menu = 0;
-        go_title("CHANNELS");
+        go_title("MIDI");
         song.g[G_ROUTE] = 0;
         ok &= cur_page()->graph == GR_MIDI && str_eq(GP[G_ROUTE].names[0], "OWN CH") && str_eq(GP[G_ROUTE].names[1], "SELECTED");
         turn(EN_K3, 1);

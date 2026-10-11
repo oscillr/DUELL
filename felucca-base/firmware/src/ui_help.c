@@ -61,12 +61,12 @@ static const struct { const char *title, *hint; } HELP_PAGE[] = {
     {"MORPH", "[K1]A-B[K2]ROLL[K3]UNDO A|B"},           /* (4b; v2: no KEEP; SAVE held saves the patch; v3: ROLL K2, UNDO K3, AMOUNT K4 (3 hints at most: its card says it)) */
     {"MORPH SET", "[K2]SMART[K3]ARP[K4]PITCH"},
     {"MODE", "[K2]BAL[K3]XFADE[K4]SPLIT"},             /* (step 5) */
-    {"MIXER", "[K4]MUTE[ALGO]PART"},                /* (3.5: OVERVIEW after it; CLOCK is GLO's since step 2) */
-    {"GLO", "[KEYS]SOLO MUTE TAP[K1]P1 LVL[K2]P2 LVL"},          /* (step 6: GLO's main page; the keys F G SOLO, F# G# MUTE, C ALL, F TAP) */
-    {"CHANNELS", "[K1]P1 CH[K2]P2 CH[K3]MIDI IN"},
+    {"MIXER", "[K4]MUTE[ALGO]PART"},                /* (3.5: OVERVIEW after it; the clock is GLO's TEMPO page) */
+    {"GLO", "[K1]MUTE[K2]SOLO[K3]LEVELS"},         /* (GLO's main page: K1 MUTE and K2 SOLO turn left = part 1, right = part 2; K3, K4 LEVEL 1, 2; the keys play) */
+    {"MIDI", "[K1]P1 CH[K2]P2 CH[K3]MIDI IN"},       /* (K4 CLK: its card says it) */
     {"SIDECHAIN", "[K1]SC SRC[K2]SC NOTE"},
     {"MIDI LEARN", "[K1]LEARN ON / OFF[K2]CLEAR ALL"},
-    {"CLOCK", "[K1]TEMPO[K2]SWING[K3]CLOCK"},
+    {"TEMPO", "[K1]TEMPO[K2]SWING[K3]TAP"},
     {"TEST", "[K1]MORPH[K3]LOAD MULTI[K4]RESET"},    /* (the CPU test; K2 ROLL: its card says it) */
 };
 #define H_HOME "[PRESETS]SOUND[HOME]HOLD: MENU[PLAY]x2: STOP ALL"   /* (PLAY STOP pressed twice or held: STOP ALL, SPEC 1.2) */

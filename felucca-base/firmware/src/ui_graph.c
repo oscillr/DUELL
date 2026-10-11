@@ -321,6 +321,7 @@ static void panel_note(const char *a, const char *b, const char *c);
 static void panel_alert(uint32_t id, const char *a);
 static void graph_test(void);                        /* GLO > TEST (ui_menu.c: the CPU meter's code) */
 static uint32_t test_sig(void);
+static uint32_t tempo_tapping(void);                   /* TEMPO's TAP: the taps of the last 2 s (ui_input.c) */
 static void graph_chord(const track_t *t, uint16_t c)
 {
     static const uint8_t BLACK[12] = {0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0};
@@ -984,7 +985,7 @@ static uint32_t graph_signature(void)
     h ^= (uint32_t)pg->graph * 131u + TSEL->eng_req + song.sel * 7777u + ui.page * 1291u;
     if (strip_kind() == SK_TITLE)                    /* MENU > LARGE: the page's title (its engine, its number) */
         return h ^ 0x5A17u;
-    if (pg->graph == GR_NONE || pg->graph == GR_ARP) h ^= ui.frame / 2u;
+    if (pg->graph == GR_NONE || pg->graph == GR_ARP || pg->graph == GR_TEMPO) h ^= ui.frame / 2u;
     for (i = 0; i < P_COUNT; i++)
         h = (h ^ (uint32_t)t->p[i]) * 16777619u;
     h ^= (uint32_t)TSEL->preset * 7u + (uint32_t)song.g[G_SLOT] * 13u + TSEL->user * 257u + up_gen * 7919u + ui.pe * 104729u + list_mode() * 15485863u +
@@ -1000,6 +1001,8 @@ static uint32_t graph_signature(void)
     if (pg->scope == SC_MIDI)                        /* step 6: the channels, the route, the mode, MIDI LEARN's state */
         h = (h ^ ((uint32_t)midi_pch[0] | (uint32_t)midi_pch[1] << 4 | (uint32_t)(song.g[G_ROUTE] == 1) << 8 | (uint32_t)duell_mode_req << 9 |
                   (uint32_t)ui.ml.on << 11 | (uint32_t)ui.ml.pick << 12 | ml_count() << 13 | (uint32_t)ui.ml.id << 19 | (uint32_t)ui.ml.trk << 27) * 0x9E3779B1u) * 16777619u;
+    if (pg->graph == GR_TEMPO)                       /* TEMPO's TAP card: the taps counted, over for good after 2 s */
+        h = (h ^ (tempo_tapping() + 1u + (uint32_t)song.g[G_BPM] * 7u) * 2246822519u) * 16777619u;
     if (pg->graph == GR_TEST)                        /* the CPU test: multi, engines, patches, the meter (it polls the counters here) */
         h = (h ^ test_sig()) * 16777619u;
     if (pg->scope == SC_MODE)                        /* step 5: the MODE asked for */
@@ -2096,7 +2099,7 @@ static void graph_mode(void)
         str_cpy(v, "OFF", sizeof v);
     mode_line(86, "SPLIT (LAYER)", v, "BELOW = PART 1, ABOVE = 2", lay);
 }
-/* GLO > CHANNELS: the parts' channels with where each is heard, and MIDI IN (OWN CH / SELECTED) with a line in words under it */
+/* GLO > MIDI: the parts' channels with where each is heard, and MIDI IN (OWN CH / SELECTED) with a line in words under it */
 static void graph_midi(void)
 {
     uint32_t m = duell_mode_req < DM_N ? duell_mode_req : DM_SPLIT, sel = song.g[G_ROUTE] == 1, same = midi_pch[0] == midi_pch[1], k;
@@ -2116,6 +2119,8 @@ static void graph_midi(void)
         cv_text_on(12, 86, &AF_S, "SAME CHANNEL: ONLY PART 1 PLAYS", T_ACCENT, T_SURF);
     else
         cv_text_on(12, 86, &AF_S, "SET THE CHANNELS WITH P1 CH, P2 CH", T_MID, T_SURF);
+    cv_text_on(12, 104, &AF_S, "CLOCK", T_TEXT, T_SURF);   /* CLK: the clock source, its line (INT: the tempo is this unit's) */
+    cv_text_r(228, 104, &AF_S, song.g[G_CLOCK] == 1 ? "USB (MIDI CLOCK)" : song.g[G_CLOCK] == 2 ? "TRS (MIDI CLOCK)" : "INT (OWN TEMPO)", T_MID, T_SURF);
 }
 /* GLO > SIDECHAIN: the selected part's DUCK SRC and NOTE (the same two values as its DUCK 1 page) in words */
 static void graph_schain(void)

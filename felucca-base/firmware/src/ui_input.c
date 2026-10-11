@@ -41,7 +41,7 @@ static const uint8_t FAM_BTN[FAM_COUNT] = {B_HOME, B_ENV, B_LFO, B_FX, B_SCL, B_
 static uint32_t cur_fam(void) { return ui.home ? FAM_HOME : cur_page()->fam; }
 
 static int layer_set_open(void);                       /* (ui_layer.c) */
-static int glo_pg(void);                               /* (ui_layer.c: GLO's main page shown, its keys the layer's) */
+static void glo_knob(uint32_t k, int32_t s);            /* (ui_layer.c: GLO's page: KNOB 1 MUTE, 2 SOLO, 3, 4 LEVEL 1, 2) */
 /* the OCT LEDs, bit 0 OCT- lit, bit 1 OCT+ lit, OCT_BREATH OCT+ breathing (can be pressed: dark .. ~60 %,
  * hal/fm1_input.h fm1_led_breath, #119). In the dialogs and on action pages OCT- (back) is lit and OCT+ breathes
  * while it would do something; the menu: on a value row OCT- and OCT+ both breathe while that way has a value to go to,
@@ -261,7 +261,7 @@ static uint32_t step_leds(void)
  * dark; 0: the keys held and the notes playing, over the idle glow */
 static int keys_own(void)
 {
-    return (name_on() && !ui.menu) || ui.layer || glo_pg() || grid_on()
+    return (name_on() && !ui.menu) || ui.layer || grid_on()
 #if FELUCCA_SLICE
            || (!ui.menu && !name_on() && slice_page_on())
 #endif
@@ -332,10 +332,10 @@ static uint32_t key_leds(uint32_t *br)                 /* (*br: a layer's keys t
     uint32_t c;
     if (br)
         *br = 0;
-    c = name_on() && !ui.menu ? name_leds() : ui.layer || glo_pg() ? layer_leds(br) : grid_on() ? grid_leds() :
+    c = name_on() && !ui.menu ? name_leds() : ui.layer ? layer_leds(br) : grid_on() ? grid_leds() :
                  (fm1_in.notes & ~kb_layer) | play_leds() | step_leds();
 #if FELUCCA_SLICE
-    if (!ui.layer && !glo_pg() && !ui.menu && !name_on() && slice_page_on())
+    if (!ui.layer && !ui.menu && !name_on() && slice_page_on())
         c |= slice_leds();                              /* SLICES: and the keys of the selected slice */
 #endif
     return c;
@@ -775,7 +775,7 @@ static void step_edit(uint32_t slot, int32_t steps)
  * through the queue morph_poll runs, with the same messages */
 #define MORPH_DET 3                                     /* detents a twist needs: one or two are a nudge, nothing */
 #define MORPH_REST_MS 400u                              /* .. a knob at rest this long: the gesture is over */
-/* the gesture of KNOB 2 ROLL (g 0) / KNOB 3 UNDO (g 1) turned s now: -1 / +1 when it fires (once), 0 not (yet). A nudge below the
+/* the gesture of KNOB 2 ROLL (g 0) / KNOB 3 UNDO (g 1) / GLO's KNOB 1 MUTE (g 2) / KNOB 2 SOLO (g 3) turned s now: -1 / +1 when it fires (once), 0 not (yet). A nudge below the
  * detent left alone fades (the rest); a reversal starts anew; a gesture that fired swallows its further detents until
  * the knob rests, so one twist is one action however far it turns */
 static int32_t morph_gesture(uint32_t g, int32_t s)
@@ -1087,9 +1087,36 @@ static void midi_ch_put(uint32_t k, uint32_t ch)
     ui.mset_dirty = 1;
     ui.mset_t = fm1_ms;
 }
-/* GLO's MIDI pages. CHANNELS: KNOB 1, 2 P1 CH, P2 CH (1..16, clamped), KNOB 3 MIDI IN (right = SELECTED, left = OWN CH: the project's
- * G_ROUTE, stored as before). MIDI LEARN: KNOB 1 right = ON, left = OFF; KNOB 2 right = CLEAR every learned CC (SIDECHAIN's two
+/* GLO's MIDI pages. MIDI: KNOB 1, 2 P1 CH, P2 CH (1..16, clamped), KNOB 3 MIDI IN (right = SELECTED, left = OWN CH: the project's
+ * G_ROUTE, stored as before), KNOB 4 CLK (the clock source INT / USB / TRS, a detent a step, clamped; was the CLOCK page's KNOB 3). MIDI LEARN: KNOB 1 right = ON, left = OFF; KNOB 2 right = CLEAR every learned CC (SIDECHAIN's two
  * knobs are the DUCK parameters': the generic path) */
+/* TEMPO's KNOB 3 TAP (was the GLO layer's F key): each detent, either way, is one tap. The tempo of the last 4 taps (their mean interval; two taps
+ * are enough) is set at once; 2 s without a tap starts over. The internal clock only (an external clock sets the tempo) */
+#define TAP_RESET_MS 2000u
+static void tempo_tap(void)
+{
+    uint32_t n = ui.tap_n, i, span;
+    if (song.g[G_CLOCK]) {
+        ui_message("TAP: CLK IS EXT");
+        return;
+    }
+    if (n && fm1_ms - ui.tap_t[n - 1u] > TAP_RESET_MS)
+        n = 0;
+    if (n == 4u) {
+        for (i = 0; i < 3u; i++)
+            ui.tap_t[i] = ui.tap_t[i + 1u];
+        n = 3;
+    }
+    ui.tap_t[n++] = fm1_ms;
+    ui.tap_n = (uint8_t)n;
+    span = ui.tap_t[n - 1u] - ui.tap_t[0];
+    if (n >= 2u && span) {
+        song.g[G_BPM] = (int16_t)clamp((int32_t)((60000u * (n - 1u) + span / 2u) / span), GP[G_BPM].min, GP[G_BPM].max);
+        ui.bpm_t = 40;
+    }
+}
+/* the taps of the last 2 s counted (the TAP card shows them), 0 = none now */
+static uint32_t tempo_tapping(void) { return ui.tap_n && fm1_ms - ui.tap_t[ui.tap_n - 1u] <= TAP_RESET_MS ? ui.tap_n : 0u; }
 static void midi_knob(uint32_t slot, int32_t steps)
 {
     if (cur_page()->graph == GR_MLEARN) {
@@ -1101,6 +1128,15 @@ static void midi_knob(uint32_t slot, int32_t steps)
     }
     if (cur_page()->graph != GR_MIDI)
         return;
+    if (slot == 3u) {                                    /* CLK: the clock source INT / USB / TRS */
+        int16_t *cp = &song.g[G_CLOCK];
+        int16_t v = (int16_t)param_turn(&GP[G_CLOCK], *cp, steps > 0 ? 1 : -1);
+        if (v != *cp) {
+            *cp = v;
+            ui_say("CLOCK ", GP[G_CLOCK].names[v]);
+        }
+        return;
+    }
     if (slot == 2u) {
         uint32_t r = steps > 0 ? 1u : steps < 0 ? 0u : (uint32_t)song.g[G_ROUTE] == 1u;
         if (r != (uint32_t)(song.g[G_ROUTE] == 1)) {
@@ -1134,6 +1170,14 @@ static void edit_param(uint32_t slot, int32_t steps)
     }
     if (pg->scope == SC_TEST) {                           /* GLO's TEST page */
         test_knob(slot, steps);
+        return;
+    }
+    if (pg->graph == GR_GLO) {                            /* GLO's main page: MUTE, SOLO, LEVEL 1, LEVEL 2 (ui_layer.c) */
+        glo_knob(slot, steps);
+        return;
+    }
+    if (pg->graph == GR_TEMPO && slot == 2u) {            /* TEMPO's KNOB 3 TAP: a detent either way is one tap; KNOB 4 has nothing */
+        tempo_tap();
         return;
     }
     if (pg->scope == SC_MIDI && pg->id[slot & 3u] == 0xFFu) {   /* GLO's MIDI, MIDI LEARN: the channels, LEARN (KNOB 3, 4: the DUCK's own below) */
@@ -1620,13 +1664,13 @@ static void ui_input(void)
     uint32_t pressed = fm1_input_edges(0), notes = fm1_input_note_edges(), now = fm1_ticks(), id, b, k;
     uint32_t home, rec, save;
     uint32_t oct;
-    uint32_t lay, gp, combo = 0, lytap, lkeys, kq = 0;
+    uint32_t lay, combo = 0, lytap, lkeys, kq = 0;
     int32_t s, ks[4] = {0, 0, 0, 0};
     fm6_poll();                                         /* FM6: PTCH turned -> its patch */
     morph_poll();                                       /* DUELL 4b: MIDI's MORPH actions, AMOUNT / TARGET's settings */
     pc_poll();                                          /* DUELL: MIDI's PROGRAM CHANGEs (ui.c) */
     mode_settings();                                    /* DUELL step 5: the MODE and its settings byte */
-    midi_ch_sync();                                     /* DUELL step 6: GLO > CHANNELS' parts' channels and their settings bytes */
+    midi_ch_sync();                                     /* DUELL step 6: GLO > MIDI' parts' channels and their settings bytes */
     first_boot_poll();                                  /* DUELL 0.1: a new unit starts in LAYER with M01 */
 #if !FELUCCA_FM4
     for (k = 0; k < NTRK; k++)                          /* a DIGITAL sound any other way (the paths convert it */
@@ -1673,7 +1717,6 @@ static void ui_input(void)
     oct = layer_oct(pressed, oct);                      /* (a SET layer's OCT-: put back) */
     layer_masks();                                      /* seq.c: keys pressed with a layer's button are its own */
     lay = layer_held();
-    gp = glo_pg() && !ui.ly;                            /* GLO's page: its keys and KNOB 1, 2 are the layer's, nothing else changes */
     if (!layer_allowed()) {
         perf_kill = 1;                                  /* (effects off until their keys are let go) */
         perf_latched = 0;                               /* (FX LATCH: the latched ones and the macros off) */
@@ -1687,11 +1730,9 @@ static void ui_input(void)
         combo = lay && (notes || lkeys);
         kb_seen = kb_layer;
     }
-    if (lay || gp)
+    if (lay)
         lkeys |= notes & ~fm1_in.notes;                 /* (tapped and let go already) */
     notes &= ~kb_layer;
-    if (gp)
-        notes = 0;                                      /* (the keys are the page's, not the grid's or a step's) */
     if (lay) {                                          /* a layer's button held: keys, knobs and buttons are combos */
         combo |= (pressed & ~ly_bit(ui.ly) &            /* (REC + PLAY: PLAY plays and REC let go soon is still */
                   ~(ui.ly == LAYER_REC ? 1u << panel.btn[B_PLAY] : 0u)) != 0u;   /* a tap, it arms: as before) */
@@ -1715,9 +1756,6 @@ static void ui_input(void)
         for (k = 0; k < 4u; k++)
             if (panel_enc(EN_K1 + k) != 0)
                 combo = 1;                              /* (with the button let go this frame: no tap) */
-    } else if (gp) {                                    /* GLO's page: KNOB 1, 2 the parts' LEVEL (layer_knob), 3, 4 nothing */
-        for (k = 0; k < 4u; k++)
-            ks[k] = panel_enc(EN_K1 + k);
     }
     lytap = layer_gesture(now, combo);
     layer_show();
@@ -1935,7 +1973,8 @@ static void ui_input(void)
             continue;
         }
         if (ui.home || pg->scope == SC_STEP || pg->scope == SC_TRK || page_desc(pg, k, &hv) ||
-            pg->scope == SC_MORPH || pg->scope == SC_MODE || pg->scope == SC_MIDI || pg->scope == SC_TEST ||
+            pg->scope == SC_MORPH || pg->scope == SC_MODE || pg->scope == SC_MIDI || pg->scope == SC_TEST || pg->graph == GR_GLO ||
+            (pg->graph == GR_TEMPO && k == 2u) ||
             ((pg->graph == GR_MOD || pg->graph == GR_PATS) && k == 0u)
             || (pg->graph == GR_SLICES && k < 2u) || fop_page(pg->graph)) {   /* (not an empty
                                                                                                           * column) */

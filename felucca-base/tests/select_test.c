@@ -5,8 +5,8 @@
  *              (song.g[G_BPM]) never changes. On a page of a family with sub-pages it steps to the previous / next
  *              sub-page (wrapping), the one the page button pressed again goes to; with one page it stays; HOME has
  *              its own round (HOME, its pages); in the menu it moves the row (continuously across the tabs, clamped, sweep_menu); in a dialog, NAME and a layer: nothing.
- *   TEMPO      GLO page 1 (the first tap of GLO) KNOB 1 is TEMPO (G_BPM) and sets it; with an external clock (CLK USB /
- *              TRS) it is inert and shows EXT.
+ *   TEMPO      GLO's TEMPO page: KNOB 1 is TEMPO (G_BPM) and sets it; with an external clock (CLK USB / TRS, set on the MIDI page's
+ *              KNOB 4) it is inert and shows EXT; KNOB 3 TAP: a detent either way is one tap, the BPM is the mean of the last taps.
  *   no BPM LOCK  the MENU has no such row (the tempo has no lock to keep).
  * Built and run by DUELL/host_tests.sh (name: select): the UI sources against ui_test.c's stub display and knobs. */
 #define UI_TEST_NO_MAIN 1
@@ -355,20 +355,21 @@ static void sweep_layers(void)
     }
 }
 
-/* TEMPO: GLO page 1 KNOB 1 */
+/* TEMPO: the TEMPO page KNOB 1; KNOB 3 TAP */
 static void test_tempo(void)
 {
     char val[8];
     const char *unit;
     int16_t b0;
-    uint32_t c, glo1 = page_first(FAM_GLO), ck = 0, i;
+    uint32_t c, glo1 = page_first(FAM_GLO), ck = 0, i, g0;
     ui_power_on();
     for (i = 0; i < NPAGES; i++)
-        ck = PAGES[i].fam == FAM_GLO && str_eq(PAGES[i].title, "CLOCK") ? i : ck;
-    expect("GLO's first page is the main GLO page (a tap of GLO opens it), then the MIDI pages CHANNELS, SIDECHAIN, MIDI LEARN; the clock page after them: KNOB 1 is G_BPM",
-           PAGES[glo1].graph == GR_GLO && str_eq(PAGES[glo1].title, "GLO") && str_eq(PAGES[glo1 + 1u].title, "CHANNELS") &&
-           str_eq(PAGES[glo1 + 2u].title, "SIDECHAIN") && str_eq(PAGES[glo1 + 3u].title, "MIDI LEARN") && ck == glo1 + 4u &&
-           PAGES[ck].id[0] == G_BPM && PAGES[ck].scope == SC_GLOBAL && str_eq(PAGES[glo1 + 5u].title, "TEST") && PAGES[glo1 + 6u].fam != FAM_GLO);
+        ck = PAGES[i].fam == FAM_GLO && str_eq(PAGES[i].title, "TEMPO") ? i : ck;
+    expect("GLO's pages in order: GLO, MIDI, SIDECHAIN, MIDI LEARN, TEMPO (KNOB 1 is G_BPM, KNOB 2 G_SWING, KNOB 3 TAP), TEST",
+           PAGES[glo1].graph == GR_GLO && str_eq(PAGES[glo1].title, "GLO") && str_eq(PAGES[glo1 + 1u].title, "MIDI") &&
+           PAGES[glo1 + 1u].graph == GR_MIDI && str_eq(PAGES[glo1 + 2u].title, "SIDECHAIN") && str_eq(PAGES[glo1 + 3u].title, "MIDI LEARN") &&
+           ck == glo1 + 4u && PAGES[ck].id[0] == G_BPM && PAGES[ck].id[1] == G_SWING && PAGES[ck].id[2] == 0xFFu && PAGES[ck].id[3] == 0xFFu &&
+           PAGES[ck].scope == SC_GLOBAL && PAGES[ck].graph == GR_TEMPO && str_eq(PAGES[glo1 + 5u].title, "TEST") && PAGES[glo1 + 6u].fam != FAM_GLO);
     expect("the label is TEMPO", str_eq(GP[G_BPM].label, "TEMPO"));
     {
         uint32_t i, c, n = 0;
@@ -412,6 +413,46 @@ static void test_tempo(void)
     expect("INT again: numbers", str_eq(val, "100"));
     turn(EN_K1, 1);
     expect("INT again: KNOB 1 edits", song.g[G_BPM] == 101);
+    /* KNOB 3 TAP: each detent, either way, one tap; 2 s of rest start over; the tempo is the mean of the last 4 taps */
+    song.g[G_BPM] = 90; song.g[G_SWING] = 0;
+    frames(2200);
+    turn(EN_K3, 1);
+    expect("TAP: the first tap alone changes nothing", song.g[G_BPM] == 90 && ui.tap_n == 1u);
+    fm1_ms += 484; turn(EN_K3, -1);                  /* 500 ms after the first, turned the other way */
+    expect("TAP: a second tap (the other direction) 500 ms later: 120 BPM", song.g[G_BPM] == 120 && ui.tap_n == 2u);
+    fm1_ms += 484; turn(EN_K3, 1);
+    fm1_ms += 484; turn(EN_K3, 1);
+    expect("TAP: four taps 500 ms apart: still 120", song.g[G_BPM] == 120 && ui.tap_n == 4u);
+    fm1_ms += 384; turn(EN_K3, 1);                   /* 400 ms: the last four taps are 500, 500, 400 apart */
+    expect("TAP: the fifth tap, 400 ms after the fourth: the mean of the last 4 taps (3 intervals in 1400 ms = 129 BPM)", song.g[G_BPM] == 129 && ui.tap_n == 4u);
+    expect("  .. the card shows the BPM while tapping", tempo_tapping() == 4u);
+    draw_columns();
+    fm1_ms += 2100;
+    expect("  .. 2 s later the card is TAP again", tempo_tapping() == 0u);
+    b0 = song.g[G_BPM];
+    turn(EN_K3, 1);
+    expect("TAP: after the 2 s a new run starts, one tap changes nothing", song.g[G_BPM] == b0 && ui.tap_n == 1u);
+    fm1_ms += 584; turn(EN_K3, 1);
+    expect("  .. the next 600 ms later: 100 BPM", song.g[G_BPM] == 100 && ui.tap_n == 2u);
+    turn(EN_K3, 40);
+    expect("  .. a fast twist is one tap per frame, not one per detent", ui.tap_n == 3u);
+    song.g[G_BPM] = 100; frames(2200);
+    turn(EN_K4, 3); turn(EN_K4, -3);
+    expect("TEMPO KNOB 4 does nothing", song.g[G_BPM] == 100 && song.g[G_CLOCK] == 0);
+    song.g[G_CLOCK] = 1;
+    turn(EN_K3, 1); fm1_ms += 484; turn(EN_K3, 1);
+    expect("TAP with an external clock: the tempo untouched (TAP: CLK IS EXT)", song.g[G_BPM] == 100 && msg_is("TAP: CLK IS EXT"));
+    draw_columns();
+    song.g[G_CLOCK] = 0;
+    g0 = (uint32_t)song.g[G_SWING];
+    turn(EN_K2, 4);
+    expect("TEMPO KNOB 2 is SWING", (uint32_t)song.g[G_SWING] != g0);
+    /* the keys play notes on the TEMPO page (the page is not a layer) */
+    frames(48);
+    expect("TEMPO: the keys are notes (no layer, no kb_lock)", kb_lock == 0u && !ui.layer);
+    key_down(3);
+    expect("  .. a key held plays a note and is no layer key", !((kb_layer >> 3) & 1u) && kb_note[3] != KB_SILENT && gates() > 0u);
+    key_up(3);
 }
 
 /* DUELL step 6: GLO's main page (the former hold-GLO layer, now what a tap opens) and the MIDI pages */
@@ -425,43 +466,103 @@ static void test_glo_page(void)
     frames(48);
     press(B_GLO);
     frames(48);
-    expect("GLO tapped: its main page (graph GR_GLO), no layer held, the keys are the page's (kb_lock)",
-           !ui.home && ui.page == glo1 && !ui.layer && kb_lock == 1u);
-    key_down(1);                                         /* F#3: MUTE part 1 */
+    expect("GLO tapped: its main page (graph GR_GLO), no layer held, the keys are the page's (kb_lock 0)",
+           !ui.home && ui.page == glo1 && !ui.layer && kb_lock == 0u && cur_page()->graph == GR_GLO);
+    trk[0].p[P_MUTE] = trk[1].p[P_MUTE] = 0; perf_solo = 0;
+    key_down(1);                                         /* F#3 plays a note: it was MUTE part 1 */
     frames(48);
-    expect("  .. F#3 held: it plays no note (a layer key)", (kb_layer >> 1) & 1u && kb_note[1] == KB_SILENT);
+    expect("  .. F#3 held: it plays a note (no layer key)", !((kb_layer >> 1) & 1u) && kb_note[1] != KB_SILENT && gates() > 0u);
     key_up(1);
     frames(48);
-    expect("  .. F#3: MUTE part 1 (latched)", trk[0].p[P_MUTE] == 1);
-    key_down(1); frames(48); key_up(1); frames(48);
-    expect("  .. F#3 again: unmuted", trk[0].p[P_MUTE] == 0);
-    key_down(2);                                         /* G3: SOLO part 2 while held */
-    frames(48);
-    expect("  .. G3 held: SOLO part 2", perf_solo == 2u);
-    key_up(2);
-    frames(48);
-    expect("  .. G3 let go: no solo", perf_solo == 0u);
-    lvl = trk[0].p[P_LEVEL];
-    turn(EN_K1, 5);
-    expect("  .. KNOB 1: part 1's LEVEL", trk[0].p[P_LEVEL] != lvl);
-    lvl = trk[1].p[P_LEVEL];
-    turn(EN_K2, -5);
-    expect("  .. KNOB 2: part 2's LEVEL", trk[1].p[P_LEVEL] != lvl);
-    turn(EN_K3, 5); turn(EN_K4, 5);
-    expect("  .. KNOB 3, 4: nothing, the tempo untouched", song.g[G_BPM] == 117);
-    key_down(10);                                        /* D4 was MIDI LEARN: no more */
-    frames(48); key_up(10); frames(48);
-    expect("  .. D4: no MIDI LEARN here any more", !ui.ml.on);
+    key_down(2); frames(48); key_up(2); frames(48);
+    expect("  .. F#3 and G3 changed nothing (no MUTE, no SOLO on keys)", trk[0].p[P_MUTE] == 0 && trk[1].p[P_MUTE] == 0 && perf_solo == 0u);
+    key_down(7); frames(48); key_up(7); frames(48);
+    key_down(0); frames(48); key_up(0); frames(48);
+    expect("  .. F4, F3 neither: no ALL, no TAP (the tempo untouched)", song.g[G_BPM] == 117 && ui.tap_n == 0u);
+    /* KNOB 1 MUTE: a twist left (past the detent) acts on part 1, right on part 2, once per twist */
+    turn(EN_K1, -1); turn(EN_K1, -1);
+    expect("KNOB 1 MUTE: a nudge below the detent (2 detents) does nothing", trk[0].p[P_MUTE] == 0 && trk[1].p[P_MUTE] == 0);
+    frames(600);
+    turn(EN_K1, -MORPH_DET);
+    expect("  .. a twist left: part 1 muted", trk[0].p[P_MUTE] == 1 && trk[1].p[P_MUTE] == 0 && !glo_sounding(0) && glo_sounding(1));
+    turn(EN_K1, -MORPH_DET); turn(EN_K1, -MORPH_DET);
+    expect("  .. the same twist going on: still one action", trk[0].p[P_MUTE] == 1);
+    frames(600);
+    turn(EN_K1, MORPH_DET);
+    expect("  .. a twist right: part 2 muted too", trk[0].p[P_MUTE] == 1 && trk[1].p[P_MUTE] == 1);
+    frames(600);
+    turn(EN_K1, -MORPH_DET);
+    expect("  .. left again: part 1 unmuted (latched toggle)", trk[0].p[P_MUTE] == 0 && trk[1].p[P_MUTE] == 1);
+    frames(600);
+    turn(EN_K1, MORPH_DET);
+    expect("  .. right again: part 2 unmuted", trk[0].p[P_MUTE] == 0 && trk[1].p[P_MUTE] == 0);
+    /* KNOB 2 SOLO: left = part 1, right = part 2; a solo mutes the other; the same side again releases it; it stays when the page is left */
+    frames(600);
+    turn(EN_K2, -MORPH_DET);
+    expect("KNOB 2 SOLO: a twist left: part 1 soloed (perf_solo 1), part 2 not sounding", perf_solo == 1u && glo_sounding(0) && !glo_sounding(1));
+    frames(600);
+    turn(EN_K2, MORPH_DET);
+    expect("  .. a twist right: part 2 soloed too, both sound", perf_solo == 3u && glo_sounding(0) && glo_sounding(1));
+    frames(600);
+    turn(EN_K2, -MORPH_DET);
+    expect("  .. left again releases part 1: part 2 alone", perf_solo == 2u && !glo_sounding(0) && glo_sounding(1));
+    frames(600);
+    turn(EN_K2, MORPH_DET);
+    expect("  .. right again: no solo, both sound", perf_solo == 0u && glo_sounding(0) && glo_sounding(1));
+    frames(600);
+    turn(EN_K2, -MORPH_DET);
     turn(EN_SELECT, 1);
     frames(48);
-    expect("  .. SELECT right: the CHANNELS page, the keys play notes again", str_eq(cur_page()->title, "CHANNELS") && kb_lock == 0u && song.g[G_BPM] == 117);
+    expect("  .. a solo stays when the page is left", perf_solo == 1u && str_eq(cur_page()->title, "MIDI"));
+    turn(EN_SELECT, -1);
+    frames(600);
+    turn(EN_K2, -MORPH_DET);
+    expect("  .. and the page releases it", perf_solo == 0u && ui.page == glo1);
+    lvl = trk[0].p[P_LEVEL];
+    turn(EN_K3, 5);
+    expect("KNOB 3: LEVEL 1 (part 1)", trk[0].p[P_LEVEL] != lvl);
+    lvl = trk[1].p[P_LEVEL];
+    turn(EN_K4, -5);
+    expect("KNOB 4: LEVEL 2 (part 2)", trk[1].p[P_LEVEL] != lvl);
+    expect("  .. the tempo untouched, the keys still notes", song.g[G_BPM] == 117 && kb_lock == 0u);
+    draw_layer();
+    frames(48);
+    key_down(10);                                        /* D4 was MIDI LEARN: no more */
+    frames(48); key_up(10); frames(48);
+    expect("  .. D4: no MIDI LEARN here", !ui.ml.on);
+    {   /* GLO held + PLAY: RESTART (kept) */
+        btn_down(B_GLO);
+        frame();
+        song.playing = 0;
+        press(B_PLAY);
+        btn_up(B_GLO);
+        frames(48);
+        expect("  .. GLO held + PLAY still starts the transport (RESTART)", transport_req != 0u || song.playing);
+        transport_req = 0; song.playing = 0;
+        ui.page = (uint8_t)glo1; page_entered();
+    }
+    turn(EN_SELECT, 1);
+    frames(48);
+    expect("  .. SELECT right: the MIDI page, the keys play notes", str_eq(cur_page()->title, "MIDI") && kb_lock == 0u && song.g[G_BPM] == 117);
     turn(EN_K1, 4);
     turn(EN_K2, 5);
-    expect("CHANNELS KNOB 1, 2: P1 CH 5, P2 CH 7 (MIDI IN untouched: OWN CH)", midi_pch[0] == 4u && midi_pch[1] == 6u && song.g[G_ROUTE] == 0);
+    expect("MIDI KNOB 1, 2: P1 CH 5, P2 CH 7 (MIDI IN untouched: OWN CH)", midi_pch[0] == 4u && midi_pch[1] == 6u && song.g[G_ROUTE] == 0);
     turn(EN_K3, 1);
     expect("  .. KNOB 3 right: MIDI IN SELECTED", song.g[G_ROUTE] == 1);
     turn(EN_K3, -1);
     expect("  .. KNOB 3 left: MIDI IN OWN CH", song.g[G_ROUTE] == 0 && song.g[G_BPM] == 117);
+    song.g[G_CLOCK] = 0;
+    turn(EN_K4, 1);
+    expect("  .. KNOB 4 CLK right: USB", song.g[G_CLOCK] == 1 && msg_is("CLOCK USB"));
+    turn(EN_K4, 1);
+    expect("  .. right again: TRS", song.g[G_CLOCK] == 2);
+    turn(EN_K4, 3);
+    expect("  .. clamps at TRS", song.g[G_CLOCK] == 2);
+    draw_columns();
+    turn(EN_K4, -1);
+    expect("  .. left: USB", song.g[G_CLOCK] == 1);
+    turn(EN_K4, -4);
+    expect("  .. left: INT (clamped), the channels and MIDI IN untouched", song.g[G_CLOCK] == 0 && midi_pch[0] == 4u && song.g[G_ROUTE] == 0 && song.g[G_BPM] == 117);
     turn(EN_SELECT, 1);
     frames(48);
     expect("  .. SELECT right: SIDECHAIN", str_eq(cur_page()->title, "SIDECHAIN"));
@@ -494,14 +595,14 @@ static void test_glo_page(void)
     expect("  .. KNOB 2 right: CLEAR, every learned CC gone", ml_count() == 0u && msg_is("LEARN CLEARED"));
     turn(EN_SELECT, 1);
     frames(48);
-    expect("  .. SELECT right: the clock page; then the TEST page (the last), then round, the main GLO page", str_eq(cur_page()->title, "CLOCK"));
+    expect("  .. SELECT right: the TEMPO page (keys play: not locked); then the TEST page (the last), then round, the main GLO page", str_eq(cur_page()->title, "TEMPO") && kb_lock == 0u);
     turn(EN_SELECT, 1);
     frames(48);
     expect("  .. SELECT right: TEST, the last page of GLO (no parameter; keys play: not locked)", str_eq(cur_page()->title, "TEST") && cur_page()->graph == GR_TEST &&
            cur_page()->fam == FAM_GLO && kb_lock == 0u);
     turn(EN_SELECT, 1);
     frames(48);
-    expect("  .. back on GLO: its keys again", ui.page == glo1 && kb_lock == 1u && song.g[G_BPM] == 117);
+    expect("  .. back on GLO: the keys still play notes", ui.page == glo1 && kb_lock == 0u && song.g[G_BPM] == 117);
     ui.menu = 1;
     frames(48);
     expect("  .. the menu over it: the keys play", kb_lock == 0u);
