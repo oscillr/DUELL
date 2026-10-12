@@ -41,7 +41,7 @@ static const uint8_t FAM_BTN[FAM_COUNT] = {B_HOME, B_ENV, B_LFO, B_FX, B_SCL, B_
 static uint32_t cur_fam(void) { return ui.home ? FAM_HOME : cur_page()->fam; }
 
 static int layer_set_open(void);                       /* (ui_layer.c) */
-static void glo_knob(uint32_t k, int32_t s);            /* (ui_layer.c: GLO's page: KNOB 1 MUTE, 2 SOLO, 3, 4 LEVEL 1, 2) */
+static void glo_knob(uint32_t k, int32_t s);            /* (ui_layer.c: GLO's page: KNOB 1 MUTE 1, 2 MUTE 2, 3, 4 LEVEL 1, 2) */
 /* the OCT LEDs, bit 0 OCT- lit, bit 1 OCT+ lit, OCT_BREATH OCT+ breathing (can be pressed: dark .. ~60 %,
  * hal/fm1_input.h fm1_led_breath, #119). In the dialogs and on action pages OCT- (back) is lit and OCT+ breathes
  * while it would do something; the menu: on a value row OCT- and OCT+ both breathe while that way has a value to go to,
@@ -110,8 +110,8 @@ static uint32_t oct_leds(void)
     if (layer_set_open())                               /* a SET layer: OCT- puts back (UNDO), OCT+ nothing */
         return 1u;
     if (ui.menu && !ui.confirm)
-        return ui.menu >= 2u ? 1u :                    /* (INFO, ABOUT: OCT- back, lit) */
-               ui.menu_sel >= MI_VALUES ? OCT_BREATH :  /* CALIBRATION / INFO / ABOUT: OCT+ opens */
+        return ui.menu >= 2u ? 1u :                    /* (TEST, ABOUT: OCT- back, lit) */
+               ui.menu_sel >= MI_VALUES ? OCT_BREATH :  /* CALIBRATION / TEST / ABOUT: OCT+ opens */
                (menu_step(ui.menu_sel, -1) != menu_get(ui.menu_sel) ? OCT_BREATH_DN : 0u) |   /* a value: each */
                (menu_step(ui.menu_sel, 1) != menu_get(ui.menu_sel) ? OCT_BREATH : 0u);         /* way it can go */
     if (ui.confirm || act_cols())
@@ -204,8 +204,8 @@ static uint32_t midi_leds(const track_t *t)
 }
 
 /* the keys of the notes the selected track's sequencer and ARP sound now (#38), bit k = key k: where the keys
- * play that note (kb_map: the octave, TRN, QNT, an engine's own map), the lowest key that gives it (QNT SNAP
- * rounds the keys above down onto it); a note no key plays is not shown. A snapshot of the ISR's seq_notes /
+ * play that note (kb_map: the octave, TRN, OFF-SCALE SNAP, an engine's own map), the lowest key that gives it (SNAP
+ * lets the keys beside a scale note give it too); a note no key plays is not shown. A snapshot of the ISR's seq_notes /
  * arp_note (arp_ch): no state of its own, nothing to do while nothing sounds */
 static uint32_t play_leds(void)
 {
@@ -233,7 +233,7 @@ static uint32_t play_leds(void)
 
 /* Discussion #89: on SEQ > STEP (the piano roll; the DRUM grid has its own map) while stopped, the keys of the
  * notes stored in the cursor step, bit k = key k: as play_leds, where the keys play that note now (kb_map: the
- * octave, TRN, QNT), the lowest key that gives it; a note no key plays is not shown, nor a REST step's. Playing,
+ * octave, TRN, OFF-SCALE), the lowest key that gives it; a note no key plays is not shown, nor a REST step's. Playing,
  * the keys show what plays (play_leds) instead. Read from the step: no state of its own */
 static uint32_t step_leds(void)
 {
@@ -268,15 +268,14 @@ static int keys_own(void)
         ;
 }
 
-/* Discussion #127 (1.2): MENU > SCALE LEDS ON, the keys of the selected track's scale (ROOT, SCALE), bit k = key k, as
- * the keys play now: the note a key gives with TRN (QNT SNAP / SEQ: the key's own note; the others round down onto
- * the scale); QNT WHITE every white key (they walk the scale; the black ones are silent). *root: the keys of the
- * scale's root. None where the engine maps the keys itself (DRUM's GM map, the slices): 0 there, and OFF */
+/* Discussion #127 (1.2): MENU > SCALE LEDS ON, the keys of the GLOBAL scale (ROOT, SCALE; core.h), bit k = key k, as the keys play now:
+ * the note a key gives with TRN (OFF-SCALE SNAP: the keys outside the scale play a scale note, so only these are lit; PLAY: they play as they
+ * are). *root: the keys of the scale's root. None where the engine maps the keys itself (DRUM's GM map, the slices): 0 there, and OFF */
 static uint32_t scale_leds(uint32_t *root)
 {
     const track_t *t = TSEL;
     const engine_t *e = ENGINES[eng_idx(t->eng_req)];
-    uint32_t k, m = 0, r = 0, mask = scale_mask(t), note;
+    uint32_t k, m = 0, r = 0, mask = scale_mask(t);
     int32_t pc;
     *root = 0;
     if (!(ui_rec_prefs & (PREF_SCALE_LEDS >> 8)))
@@ -284,14 +283,8 @@ static uint32_t scale_leds(uint32_t *root)
     for (k = 0; k < 27u; k++) {
         if (e->keys && e->keys(t, k) >= 0)
             continue;
-        if (t->p[P_QUANT] == QN_WHITE) {
-            if ((note = kb_map(t, k)) > 127u)
-                continue;                               /* (a black key: silent) */
-            pc = (int32_t)note - t->p[P_TRANS];         /* (WHITE walks the scale before TRN) */
-        } else {
-            pc = 53 + (int32_t)k + t->p[P_TRANS];
-        }
-        pc = ((pc - t->p[P_ROOT]) % 12 + 12) % 12;
+        pc = 53 + (int32_t)k + t->p[P_TRANS];
+        pc = ((pc - root_of(t)) % 12 + 12) % 12;
         m |= ((mask >> pc) & 1u) << k;
         r |= (uint32_t)(pc == 0) << k;
     }
@@ -378,8 +371,6 @@ static void ui_leds(void)
         led_put(nl, panel.btn[FAM_BTN[fam]], 1);
     if ((k = arp_led()) != 2u && (!ui.layer || layer_btn() != B_ARP))
         led_put(nl, panel.btn[B_ARP], FAM_BTN[fam] == B_ARP ? !k : (int)k);   /* (on ARP's page: dark flashes) */
-    if (!ui.layer && (perf_latched || perf_k[0] || perf_k[1] || perf_k[2] || perf_k[3]))
-        led_put(nl, panel.btn[B_FX], 1);                /* FX LATCH: lit while an effect or a macro is on */
     if (ui.layer)                                       /* the layer's button breathes while its map is up */
         led_put(nb, panel.btn[layer_btn()], 1);
     led_put(nl, panel.btn[B_REC], song.rec != 0u && ui.layer != LAYER_REC);   /* (its layer: it breathes) */
@@ -775,10 +766,10 @@ static void step_edit(uint32_t slot, int32_t steps)
  * through the queue morph_poll runs, with the same messages */
 #define MORPH_DET 3                                     /* detents a twist needs: one or two are a nudge, nothing */
 #define MORPH_REST_MS 400u                              /* .. a knob at rest this long: the gesture is over */
-/* the gesture of KNOB 2 ROLL (g 0) / KNOB 3 UNDO (g 1) / GLO's KNOB 1 MUTE (g 2) / KNOB 2 SOLO (g 3) turned s now: -1 / +1 when it fires (once), 0 not (yet). A nudge below the
+/* the gesture of KNOB 2 ROLL (g 0) / KNOB 3 UNDO (g 1) / GLO's KNOB 1 MUTE 1 (g 2) / KNOB 2 MUTE 2 (g 3) turned s now: -1 / +1 when it fires (once), 0 not (yet). A nudge below the
  * detent left alone fades (the rest); a reversal starts anew; a gesture that fired swallows its further detents until
  * the knob rests, so one twist is one action however far it turns */
-static int32_t morph_gesture(uint32_t g, int32_t s)
+static int32_t gesture_det(uint32_t g, int32_t s, int32_t det)
 {
     uint32_t now = fm1_ms;
     if (now - ui.mg.t[g] > MORPH_REST_MS) {             /* rested: a new gesture */
@@ -790,13 +781,14 @@ static int32_t morph_gesture(uint32_t g, int32_t s)
     ui.mg.t[g] = now;
     if (ui.mg.fired[g])
         return 0;
-    ui.mg.acc[g] = (int8_t)clamp(ui.mg.acc[g] + s, -MORPH_DET, MORPH_DET);
-    if (ui.mg.acc[g] > -MORPH_DET && ui.mg.acc[g] < MORPH_DET)
+    ui.mg.acc[g] = (int8_t)clamp(ui.mg.acc[g] + s, -det, det);
+    if (ui.mg.acc[g] > -det && ui.mg.acc[g] < det)
         return 0;
     ui.mg.fired[g] = 1;
     ui.mg.acc[g] = 0;
     return s < 0 ? -1 : 1;
 }
+static int32_t morph_gesture(uint32_t g, int32_t s) { return gesture_det(g, s, MORPH_DET); }
 /* the way a gesture is going (the card shows it): -1 / +1 while it builds up, 0 at rest or once it fired */
 static int32_t morph_pending(uint32_t g)
 {
@@ -846,7 +838,7 @@ static void morph_knob(uint32_t slot, int32_t s)
         morph_act(MQ_FADER, mask, (uint32_t)clamp((int32_t)morph_fader_of(pi) + accel(EN_K1, s, 127), 0, 127), pi);
         break;
     case 1:                                             /* (v3: ROLL on KNOB 2, UNDO on 3, AMOUNT on 4) */
-        if ((d = morph_gesture(0, s)) != 0)
+        if ((d = gesture_det(0, s, 1)) != 0)           /* (one detent: a roll is instant) */
             morph_act(MQ_ROLL, mask, d > 0, pi);
         break;
     case 2:
@@ -907,6 +899,24 @@ static void morph_settings(void)
  * the last load SAVE held was (ui.c undo_swap: still the EDIT layer's OCT-) */
 static void patch_save_ask(void)
 {
+    if (!ui.home && cur_page()->graph == GR_PATS) {     /* PATTERNS (DUELL 0.2.2): the pattern slot picked, the part's pattern over it under its name (a */
+        uint32_t ps = pat_pick();                       /* factory default counts; an empty slot goes through the NAME screen) */
+        if (pat_has(ps))
+            confirm_open(CF_HOLD_PSLOT, ps);
+        else
+            name_open(NK_PATTERN, ps);
+        return;
+    }
+    if (!ui.home && cur_page()->graph == GR_SLOTS) {    /* MULTIS: the multi picked, the music over it under its name (an empty slot: NAME) */
+        uint32_t k = (uint32_t)(song.g[G_SLOT] - 1) % MU_SLOTS;
+        if (transport_busy())
+            ui_message("STOP TO SAVE");
+        else if (project_used(k))
+            confirm_open(CF_HOLD_MULTI, k);
+        else
+            name_open(NK_PROJ_SAVE, k);
+        return;
+    }
     if (transport_busy()) {                             /* (up_put refuses too: no dialog to say so later) */
         ui_message("STOP TO SAVE");
         return;
@@ -1017,7 +1027,8 @@ static void mode_settings(void)
     }
 }
 
-/* GLO > TEST (ui_menu.c graph_test): KNOB 1 MORPH and KNOB 2 ROLL are the MORPH page's (the same code: the morph fader of the part(s) the
+#if DUELL_TEST_MODE
+/* MENU > SYSTEM > TEST (ui_menu.c graph_test): KNOB 1 MORPH and KNOB 2 ROLL are the MORPH page's (the same code: the morph fader of the part(s) the
  * MORPH TARGET names; ROLL A|B with its twist gesture), KNOB 3 LOAD MULTI steps through the used multis M01..M16 (clamped at the
  * ends, empty slots skipped) and loads the one it stops on at once (no dialog; playing goes on), KNOB 4 RESET clears the peak hold, the
  * missed count and restarts the average window */
@@ -1061,6 +1072,7 @@ static void test_knob(uint32_t slot, int32_t s)
         test_t = 0;                                    /* (the meter's window starts over with the new load) */
     }
 }
+#endif
 
 /* GLO > MIDI: the parts' MIDI channels (seq.c midi_pch) <-> their settings bytes (ui.c ui_midi_p1 / ui_midi_p2: 0 = the default, part 1
  * channel 1, part 2 channel 2; else the channel 1..16). A byte changed from outside (power-on, a settings import) is read here; a change
@@ -1154,6 +1166,24 @@ static void midi_knob(uint32_t slot, int32_t steps)
     }
 }
 
+/* the SCALE page's (and the SCL quick layer's) knobs, GLOBAL (core.h): K1 SCALE, K2 ROOT, K3 OFF-SCALE SNAP / PLAY, K4 none. Edits the RAM globals;
+ * scale_sync (ui.c) keeps them in the settings. OFF-SCALE with the scale CHROMATIC is faded on its card (NO SCALE): the choice is kept for when a scale
+ * is set, and a turn says so */
+static void scale_knob(uint32_t slot, int32_t steps)
+{
+    if (slot == 0u) {
+        int32_t v = clamp((int32_t)param_turn(&TP[P_SCALE], scale_g, accel(EN_K1, steps, 0)), 0, TP[P_SCALE].max);
+        scale_g = (int16_t)v;
+    } else if (slot == 1u) {
+        root_g = (int16_t)clamp((int32_t)param_turn(&TP[P_ROOT], root_g, accel(EN_K1 + 1u, steps, TP[P_ROOT].max - TP[P_ROOT].min)), 0, 11);
+    } else if (slot == 2u && steps) {
+        offscale_g = (uint8_t)(steps > 0 ? OS_PLAY : OS_SNAP);
+        ui_say("OFF-SCALE ", N_OFFSCALE[offscale_g]);
+        if (!scale_g)
+            ui_message("NO SCALE: NO EFFECT YET");
+    }
+}
+
 static void edit_param(uint32_t slot, int32_t steps)
 {
     int16_t *vp;
@@ -1168,11 +1198,17 @@ static void edit_param(uint32_t slot, int32_t steps)
         mode_knob(slot, steps);
         return;
     }
-    if (pg->scope == SC_TEST) {                           /* GLO's TEST page */
+#if DUELL_TEST_MODE
+    if (pg->scope == SC_TEST) {                           /* MENU > SYSTEM > TEST (ui_menu.c menu_input) */
         test_knob(slot, steps);
         return;
     }
-    if (pg->graph == GR_GLO) {                            /* GLO's main page: MUTE, SOLO, LEVEL 1, LEVEL 2 (ui_layer.c) */
+#endif
+    if (pg->scope == SC_SCALE) {                          /* the GLOBAL scale (core.h) */
+        scale_knob(slot, steps);
+        return;
+    }
+    if (pg->graph == GR_GLO) {                            /* GLO's main page: MUTE 1, MUTE 2, LEVEL 1, LEVEL 2 (ui_layer.c) */
         glo_knob(slot, steps);
         return;
     }
@@ -1261,7 +1297,7 @@ static void edit_param(uint32_t slot, int32_t steps)
         return;
     v = param_turn(d, *vp, accel(EN_K1 + slot, steps, d->fmt == F_ENUM ? 0 : d->max - d->min));
     *vp = (int16_t)v;
-    if (pg->scope != SC_GLOBAL) {
+    if (pg->scope != SC_GLOBAL && vp >= TSEL->p && vp < TSEL->p + P_COUNT) {   /* (a global's: no automation or learn) */
         motion_capture(TSEL, (uint32_t)(vp - TSEL->p), *vp);
         ml_knob(TSEL, (uint32_t)(vp - TSEL->p));        /* (MIDI LEARN: picked) */
     }
@@ -1558,6 +1594,16 @@ static int layer_allowed(void);
 static uint32_t ly_bit(uint32_t l);
 static void layer_lock_input(uint32_t pressed);
 
+/* a page button went down (EDIT FX ENV LFO ARP SEQ SCL GLO: not HOME, SAVE, PLAY, REC, OCT): leaves a dialog or NAME */
+static int leave_pressed(uint32_t pressed)
+{
+    static const uint8_t LV[] = {B_EDIT, B_FX, B_ENV, B_LFO, B_ARP, B_SEQ, B_SCL, B_GLO};
+    uint32_t i, m = 0;
+    for (i = 0; i < sizeof LV; i++)
+        m |= 1u << panel.btn[LV[i]];
+    return (pressed & m) != 0u;
+}
+
 /* a page button let go (they act on release; a layer's own button: layer_gesture). 1: it acted (EDIT on STEP, USER,
  * PROJECT, AUTOMATION) instead of opening a page */
 static int page_tap(uint32_t b)
@@ -1579,10 +1625,8 @@ static int page_tap(uint32_t b)
         ev_delete();
         return 1;
     }
-    if (b == B_EDIT && !ui.home && (cur_page()->graph == GR_BROWSE || cur_page()->graph == GR_SLOTS)) {
-        name_rename();                                  /* SAVE > PATCHES / MULTIS: EDIT renames the patch / the multi */
-        return 1;
-    }
+    /* (SAVE > PATCHES / MULTIS: EDIT used to rename; it said NOT STORED / EMPTY PLACE and stayed, so the SAVE pages could not
+     * be left with EDIT. Every page button leaves them now, saving nothing.) */
     for (f = FAM_HOME + 1u; f < FAM_COUNT; f++)        /* (GLO SEQ SAVE ..: HOME is ui_input's, home_tap) */
         if (FAM_BTN[f] == b && b != B_HOME) {
             open_family(f);
@@ -1670,6 +1714,7 @@ static void ui_input(void)
     morph_poll();                                       /* DUELL 4b: MIDI's MORPH actions, AMOUNT / TARGET's settings */
     pc_poll();                                          /* DUELL: MIDI's PROGRAM CHANGEs (ui.c) */
     mode_settings();                                    /* DUELL step 5: the MODE and its settings byte */
+    scale_sync();                                       /* DUELL: the global SCALE / ROOT / OFF-SCALE <-> their settings bytes (ui.c) */
     midi_ch_sync();                                     /* DUELL step 6: GLO > MIDI' parts' channels and their settings bytes */
     first_boot_poll();                                  /* DUELL 0.1: a new unit starts in LAYER with M01 */
 #if !FELUCCA_FM4
@@ -1682,8 +1727,6 @@ static void ui_input(void)
         if (trk[k].eng_req == ENGI_DRUM)                /* autosave: hidden in DUELL): ANALOG, its first preset */
             set_engine_of(&trk[k], eng_safe(ENGI_DRUM));
 #endif
-    perf_latch_on = fx_latch & 1u;                      /* (MENU > FX LATCH; a settings load sets it too) */
-    fx_map_sync();                                      /* (the FX layer's key map: ui_layer.c, a settings load too) */
     fx_usb_fixed = (ui_prefs & PREF_USB_FIXED) != 0u;   /* (MENU > USB LEVEL: fx.c, audio.c) */
     scope_mix = (ui_prefs2 & (PREF_SCOPE_MIX >> 16)) != 0u;   /* (MENU > SCOPE: fx.c, audio.c) */
     rp_apply();                                         /* (MENU > CLICK, CLICK LEVEL, COUNT-IN: click.c, seq.c) */
@@ -1707,7 +1750,19 @@ static void ui_input(void)
     play_hold(now);
     home = btn_hold(&ui.home_t0, B_HOME, now, 1);
     rec = btn_hold(&ui.rec_t0, B_REC, now, 0);          /* (a tap; held, the REC layer: ui_layer.c) */
+    if (ui.menu && (leave_pressed(pressed) || ((pressed >> panel.btn[B_SAVE]) & 1u))) {   /* DUELL 0.2.2: a page button (or SAVE) while the MENU is */
+        if (ui.confirm == CF_ERASE_ALL)                 /* open (any tab, ABOUT, TEST, ERASE DATA's dialog): the menu closes (a changed setting is */
+            ui_message("NOTHING ERASED");               /* saved as HOME does; a dialog is cancelled, nothing erased) and the button goes on to its */
+        menu_close();                                   /* page like on any page (the same way as a dialog's, below). CALIBRATION is its own loop */
+    }
     save = btn_hold(&ui.save_t0, B_SAVE, now, !ui.menu && !ui.confirm);   /* held: SAVE OVER (patch_save_ask) */
+    if (!ui.menu && (ui.confirm || name_on()) && leave_pressed(pressed)) {   /* a page button in a dialog / NAME: cancelled (nothing */
+        if (name_on())                                  /* written, before the layers look at it, so the button goes on to its */
+            name_close();                               /* page like on any page) */
+        ui.confirm = 0;
+        ui.force = 1;
+        ui_message("NOT SAVED");
+    }
     layer_lock_input(pressed);                          /* (#83: a button closes a locked layer) */
     layer_arm(pressed, now);
     if (((pressed >> panel.btn[B_REC]) & 1u) && ui.ly == LAYER_REC)
@@ -1717,13 +1772,6 @@ static void ui_input(void)
     oct = layer_oct(pressed, oct);                      /* (a SET layer's OCT-: put back) */
     layer_masks();                                      /* seq.c: keys pressed with a layer's button are its own */
     lay = layer_held();
-    if (!layer_allowed()) {
-        perf_kill = 1;                                  /* (effects off until their keys are let go) */
-        perf_latched = 0;                               /* (FX LATCH: the latched ones and the macros off) */
-        perf_k[0] = perf_k[1] = perf_k[2] = perf_k[3] = 0;
-    }
-    else if (!kb_layer)
-        perf_kill = 0;
     {   /* a key pressed with the button: a combo (its edge, or the ISR already took it); then not the grid's or a step's */
         static uint32_t kb_seen;
         lkeys = kb_layer & ~kb_seen;
@@ -1744,12 +1792,7 @@ static void ui_input(void)
         for (k = 0; k < 4u; k++)                        /* KNOB 1..4: the layer's (ui_layer.c layer_knob) */
             if ((ks[k] = panel_enc(EN_K1 + k)) != 0)
                 combo = 1;
-        if ((s = panel_enc(EN_PRESET)) != 0 && ui.ly == LAYER_FX) {   /* (a stray turn would load another sound) */
-            fx_assign(s);                               /* FX: the white key held takes the next effect */
-            combo = 1;
-        }
-        if (ui.ly == LAYER_FX && ((pressed >> panel.btn[B_EDIT]) & 1u))
-            fx_default();                               /* .. EDIT: its default back */
+        panel_enc(EN_PRESET);                           /* (a stray turn would load another sound: dropped) */
         panel_enc(EN_ALGO);                             /* (another track: OCT- puts back the layer's track only) */
         panel_enc(EN_SELECT);                           /* (SELECT turns the page, never in a layer: nothing) */
     } else if ((kq = (uint32_t)layer_knobs_quiet()) != 0) {   /* a layer letting go: KNOB 1..4 are nobody's (#39) */
@@ -1787,9 +1830,32 @@ static void ui_input(void)
         if (ui.save_t0)
             ui.save_t0 |= 2u;
         ui.pg_down = 0;
+        if (ui.confirm == CF_ERASE_ALL) {               /* DUELL 0.2.2: MENU > SYSTEM > ERASE DATA's dialog, over the menu: OCT+ YES erases and */
+            if (oct & 2u) {                             /* restarts the unit as new; OCT- NO and any page button cancel, nothing erased */
+                int rc = erase_data_run();
+                ui.confirm = 0;
+                ui.force = 1;
+                ui_message(rc == 0 ? "ERASED, RESTARTING" : rc == 3 ? "STOP TO ERASE" : "ERASE FAILED");
+            } else if ((oct & 1u) || leave_pressed(pressed)) {
+                ui.confirm = 0;
+                ui.force = 1;
+                ui_message("NOTHING ERASED");
+            }
+            enc_drop();
+            return;
+        }
         if (!ui.home_t0)
             menu_input(oct);
         return;
+    }
+    if ((ui.confirm || name_on()) && home == BT_TAP) {  /* HOME in a dialog / NAME: cancelled, nothing written, then HOME's page */
+        if (name_on())
+            name_close();
+        ui.confirm = 0;
+        ui.force = 1;
+        ui_message("NOT SAVED");
+        home_tap();
+        home = BT_NONE;
     }
     if (name_on() && !ui.confirm) {                     /* NAME: the keys type, KNOB 1 / 2, OCT+ / OCT- (ui_name.c); */
         if (ui.save_t0)                                 /* SAVE does nothing */
@@ -1812,6 +1878,14 @@ static void ui_input(void)
             ui.force = 1;
             if (kind == CF_OVR_PROJ) {                  /* overwrite: the NAME screen writes it */
                 name_open(NK_PROJ_SAVE, ui.confirm_trk % 16u);
+            } else if (kind == CF_HOLD_PSLOT) {         /* SAVE held on PATTERNS: straight into the slot, its name kept */
+                char tag[4], pn[13];
+                pat_label(ui.confirm_trk % PS_SLOTS, tag, pn);
+                pslot_save_ui(ui.confirm_trk % PS_SLOTS, pn);
+            } else if (kind == CF_HOLD_MULTI) {         /* SAVE held on MULTIS: straight into the slot, its name kept */
+                char pn[13];
+                project_name(ui.confirm_trk % MU_SLOTS, pn);
+                project_save_as(ui.confirm_trk % MU_SLOTS, pn);
             } else if (kind == CF_ERASE_MULTI) {
                 project_erase(ui.confirm_trk % 16u);
             } else if (kind == CF_ERASE_USER) {
@@ -1886,8 +1960,7 @@ static void ui_input(void)
         case B_SEQ:
         case B_REC:                                     /* tap: above; held, its layer (ui_layer.c) */
         case B_SAVE:
-        case B_FX:                                      /* the layers' buttons: ui_layer.c (GLO's is a page button now) */
-        case B_SCL:
+        case B_SCL:                                     /* the layers' buttons: ui_layer.c (GLO's and FX's are page buttons now) */
         case B_EDIT:
         case B_HOME:
             break;
@@ -1903,7 +1976,7 @@ static void ui_input(void)
             break;
         }
         default:                                        /* page buttons (GLO SCL ENV LFO EDIT ARP): when let go */
-            if (!lay)                                   /* (with FX held: swallowed) */
+            if (!lay)                                   /* (with a layer held: swallowed) */
                 ui.pg_down |= (uint16_t)(1u << id);
             break;
         }
@@ -1974,6 +2047,7 @@ static void ui_input(void)
         }
         if (ui.home || pg->scope == SC_STEP || pg->scope == SC_TRK || page_desc(pg, k, &hv) ||
             pg->scope == SC_MORPH || pg->scope == SC_MODE || pg->scope == SC_MIDI || pg->scope == SC_TEST || pg->graph == GR_GLO ||
+            (pg->scope == SC_SCALE && k < 3u) ||            /* (SCALE: K1 SCALE, K2 ROOT, K3 OFF-SCALE; K4 is an empty column) */
             (pg->graph == GR_TEMPO && k == 2u) ||
             ((pg->graph == GR_MOD || pg->graph == GR_PATS) && k == 0u)
             || (pg->graph == GR_SLICES && k < 2u) || fop_page(pg->graph)) {   /* (not an empty

@@ -80,6 +80,8 @@ records) is unchanged. **The meaning of these ids changed** (an editor must take
 | 83..85 | LFO 2: `SYNC2` (as SYNC 91) `TRIG2` (NOTE FREE) `POL2` (BI UNI) | DRUM lane levels KICK SNARE CLAP |
 | 86..90 | `-` free (fmt INT, 0..0) | DRUM lane levels HATCL .. BELL |
 
+**DUELL 0.2.2: the universal filter (ids 45 and 46, still 127 parameters).** Ids 45..48 were the SLICER's SLCR PAT RATE DEPTH in Felucca and `-` free (fmt INT, 0..0) in DUELL up to 0.2.1. Now 45 is **`CUT`** (fmt 23 `FILT`, -64..63, default 0: 0 OFF, negative a low-pass, positive a high-pass; fmt values 0..22 are as in the table of the `fmt` values, 23 is new and an editor that does not know it can show the number) and 46 **`RES`** (fmt PCT, 0..127, default 0); 47, 48 stay `-` free. They act on the engines with no filter of their own (PHASE LOFI VOICE WHEEL GRAIN PHYS FM6 SLICE: engine bytes 2 3 5 7 8 9 12 13); on the others (ANALOG SAMPLE TRIO NOISE) they are stored and do nothing. Take the labels and ranges from `DESC`. Automation (`MOTION`) records both like any knob move. `CC` 74 / 71 are CUT / RES on those engines. A store of Felucca's layout (projects FUN10 and before, user preset records of versions 1..5) reads 45..48 as the defaults.
+
 ENV 2 and LFO 2 have no destination amounts of their own: they reach the sound only through the matrix. The matrix's
 SRC lists grew (append-only): 11 ENV2, 12 LFO2; DST: 21 RATE2 (LFO 2's rate), 22 DEPTH2 (LFO 2's depth). Automation
 (motion) records ATK2..REL2 and RATE2..FADE2 (as their ENV / LFO twins), not SYNC2 TRIG2 POL2 and not the matrix.
@@ -169,12 +171,12 @@ The chord keys (SCL > CHORD on the device, `firmware/src/chord.c`) are two track
 
 | id | label | values |
 | --- | --- | --- |
-| 81 | CHRD | enum: 0 OFF, 1 DIA3, 2 DIA7 (the triad / seventh of the track's ROOT and SCALE on the key: every tone in key), 3 MAJ, 4 MIN, 5 DOM7, 6 MAJ7, 7 MIN7, 8 SUS4, 9 POW (fixed shapes) |
+| 81 | CHRD | enum: 0 OFF, 1 DIA3, 2 DIA7 (the triad / seventh of the instrument's global SCALE and ROOT on the key: every tone in key; plain MAJ / MAJ7 while the scale is CHROMATIC), 3 MAJ, 4 MIN, 5 DOM7, 6 MAJ7, 7 MIN7, 8 SUS4, 9 POW (fixed shapes) |
 | 82 | VOIC | enum: 0 CLOSE, 1 OPEN (1-5-3), 2 INV1, 3 INV2, 4 +OCT (the root an octave down; a seventh drops its fifth) |
 
 With CHRD on, a key, a MIDI note of that track and so the arp's held notes play the chord (at most 4 notes),
 and live recording writes it into one step; MONO / LEGATO / UNISON play its root; a kit (DRUM, SLICE)
-ignores it. Both defaults are 0: nothing changes until CHRD is set. They are the track's, like ARP and SCL: a
+ignores it. Both defaults are 0: nothing changes until CHRD is set. They are the track's, like ARP: a
 sound load (a factory preset, `UP_LOAD`, an audition) keeps them, and motion never records them.
 
 The DRUM lane levels (EDIT > LANES / LANES 2 on the device, `firmware/src/eng_drum.c`) are eight track parameters at
@@ -282,6 +284,7 @@ bytes; USR3: 19,968). An upload writes over it like any other data; a record tha
 | 2 | BIPCT | 7 | SEMI | 12 | OCT |
 | 3 | TIME | 8 | ENUM | 13 | STEPS |
 | 4 | LFOHZ | 9 | BPM | | |
+| 14..22 | EQDB, EQLO, EQMID, EQHI, EQQ, DKCH, DKNOTE, DKRLS, DKHLD (DUELL's EQ and DUCK) | 23 | FILT (DUELL 0.2.2: CUT, 0 OFF, else the share of the dial and LP / HP) | | |
 
 The editor should show the value with the unit; formatting it exactly like the device does
 is not required.
@@ -500,7 +503,7 @@ grid lives in the steps themselves, so every engine has it:
   gone; BPM, SWG and CLK (ids 0..2) are HOME > CLOCK's, TUNE (id 3) and ROUT (id 14) are edited in the MENU (AUDIO >
   TUNE, MIDI > MIDI IN; also MENU settings 22 and 21, below). Their ids, ranges, names and storage (the project) are
   unchanged. `G_MIDI`, `G_SYNC`, `G_INFO` (12, 13, 15) are on no page any more (MIDI's value was never read: the
-  SYSTEM page's card showed the USB state; SYNC a placeholder; CPU a reading): the device's MENU > SYSTEM > INFO shows
+  SYSTEM page's card showed the USB state; SYNC a placeholder; CPU a reading): the device's MENU > SYSTEM > ABOUT shows (until DUELL 0.2.1 the INFO item)
   the USB state and the CPU load; `DESC` of them is unchanged.
 - **Sound loads and undo.** A load that changes a track's sound (`PRESET`, `SET` of `G_ENGSEL`, `UP_LOAD`,
   and the same on the device) changes the sound only: the engine and the parameters of the sound. It
@@ -695,9 +698,9 @@ in 1/16 of a step) after the locks tag (`4C 01 1`). Firmware without them: 64 re
 
 - **Parameters** (from `INFO` / `DESC` as always): 91 `SYNC` (enum OFF 4BAR 2BAR 1/1 1/2 1/4 1/8 8T 1/16 16T 1/32,
   default OFF: one LFO cycle per note value of the tempo, internal or the external clock's), 92 `TRIG` (NOTE FREE,
-  default NOTE: restart at PHS on a fresh phrase, or never), 93 `POL` (BI UNI, default BI: −1..+1, or 0..+1 with the
+  default FREE since DUELL 0.2.2 (it was NOTE): NOTE restarts at PHS on a fresh phrase, FREE never), 93 `POL` (BI UNI, default BI: −1..+1, or 0..+1 with the
   same depths reaching as far, one way), 94 `QNTZ` (OFF ON, default ON: every step on its start; OFF plays the
-  nudges). The defaults play as before 1.2. `SYNC` `TRIG` `POL` are the sound's (a sound load sets them; user presets
+  nudges). The defaults play as before 1.2 (except TRIG, FREE since DUELL 0.2.2). `SYNC` `TRIG` `POL` are the sound's (a sound load sets them; user presets
   store them); `QNTZ` is the track's (like LEN DIV SWING GATE: a sound load keeps it; an editor's audition must not
   send it, as for the other track-own ids). None of the four can be recorded as motion (`MOTION` 3 / 5 answer rc 1)
   and no MIDI CC sets them. 95 `SPRD` (0..127, PCT, default 0: every voice on PAN, as before): a POLY / UNISON
@@ -970,6 +973,25 @@ again (LEARN_GET) when it matters (e.g. with the settings, or after the user say
 03 62 F7` (op 0: CC74, T4, id 98: P_E0 + 2, DRUM's TONE, where P_E0 is 96 as in 1.2 .. 1.4.1) answers `F0 7D 46 4C 4F 00 10 01 4A 03 62 ...
 F7` (rc 0, 16 entries, the first CC74 on T4 id 98).
 
+## ERASE ALL (80; DUELL 0.2.2)
+
+The same erase as the device's MENU > SYSTEM > ERASE DATA, for the installer's optional "Erase my saved data after installing".
+It erases the settings (theme, scale, MIDI channels and learn map, favourites, preferences, panel table), the autosave, the patch
+store (every stored patch and factory shadow copy), the multis and the pattern slots; the user sample slots, the FM6 voice bank
+and the firmware stay. The unit then restarts by itself about 0.7 s after the reply (USB drops and comes back) and starts as a
+new unit (VIOLET, LAYER, factory multi M01). Order and power cuts: see `src/erase_data.c`; the settings go last, each object is
+erased copy by copy, so a cut leaves every object whole or empty and a unit that still boots. Not advertised in INFO (id 80 is the
+next free id; all earlier ids are unchanged); firmware without it does not answer, so a client treats a timeout as "not erased".
+
+| cmd | Request args | Reply args |
+| --- | --- | --- |
+| 80 ERASE_ALL | the nine ASCII bytes `45 52 41 53 45 20 41 4C 4C` ("ERASE ALL") and nothing else | rc |
+
+rc: 0 erased (the restart follows), 1 refused: any other payload or length (nothing touched), 3 the transport is running
+(nothing touched; the op does not stop it), 4 the flash failed (some objects may be gone, the settings are not: send it again).
+Allow up to 5 s for the reply (up to 38 sectors are erased, about 45 ms each, skipping the empty ones). Example:
+`F0 7D 46 4C 50 45 52 41 53 45 20 41 4C 4C F7`.
+
 ## Tagged device preferences v1
 
 INFO appends `0x55, 1, uiCaps` after the existing `NTRK, CHAIN_ROWS` bytes.
@@ -1036,7 +1058,7 @@ is told: no list of settings is fixed in the editor. INFO advertises `4E 01 coun
   TUNE: the project's, above). If the
   device shows the MENU page, it redraws with the new value. There is no push: an editor that wants to follow
   changes made on the device reads MENU_DESC again (for instance when its settings page opens).
-- CALIBRATION, INFO (1.2) and ABOUT have no value and are not offered. COLOR (id 0) is the same setting as `UI_SET` id 0.
+- CALIBRATION, TEST and ABOUT have no value and are not offered. (DUELL 0.2.2: the item that was INFO (1.2) is now TEST, the CPU test screen, present in developer builds only (`DUELL_TEST_MODE=1`; the release has no TEST row); its menu id stays reserved and no other id changes, so nothing in an editor moves.) COLOR (id 0) is the same setting as `UI_SET` id 0.
 - **tab** (1.0.5): the MENU shows its settings in tabs (ALGORITHM steps between them on the device). After the
   names (kind 0) or the unit (kind 1) the reply carries the item's tab: its index (0.., the device's tab order,
   left to right) and its name (≤ 12 characters). An editor that wants the device's grouping shows the items by tab,
@@ -1045,7 +1067,7 @@ is told: no list of settings is fixed in the editor. INFO advertises `4E 01 coun
   reads exactly the names and ignores what follows, so the tab changes nothing for it. Tab indexes are not ids: an
   item may move to another tab in a later firmware, and tabs may be added (1.2: MIDI, index 3, came in before SYSTEM,
   whose index went from 3 to 4); remember settings by id and show the tabs by the names the device gives.
-  A tab may hold items with no value that are not offered (this firmware: SYSTEM also holds CALIBRATION, INFO and
+  A tab may hold items with no value that are not offered (this firmware: SYSTEM also holds CALIBRATION, TEST (was INFO) and
   ABOUT).
   For a kind it does not know, an editor cannot find the tab (it does not know that kind's bytes).
 
@@ -1056,13 +1078,13 @@ before MIDI IN the first 21, 1.2 the first 23, 1.3 / 1.4 the first 24):
 | index | id | name | kind | values (min 0) | default | tab |
 | --- | --- | --- | --- | --- | --- | --- |
 | 0 | 0 | COLOR | 0 | 0..9: GREY GREEN AMBER ICE VIOLET ROSE PAPER HI-CON NIGHT MONO (the order of `UI_PALETTES`) | GREY | 0 DISPLAY |
-| 1 | 1 | STYLE | 0 | 0 FLAT, 1 LINE | FLAT | 0 DISPLAY |
-| 2 | 2 | LARGE | 0 | 0 OFF, 1 ON | OFF | 0 DISPLAY |
+| ~~1~~ | | ~~STYLE~~ | | retired in DUELL 0.2.2 (FLAT is the only look; a stored LINE is ignored). The id is never reused. | | |
+| ~~2~~ | | ~~LARGE~~ | | retired in DUELL 0.2.2 (the LARGE view was removed; a stored ON is ignored). The id is never reused. | | |
 | 3 | 3 | ANIM | 0 | 0 ON, 1 OFF, 2 IDLE (1.2: ON plus the LEDs' idle animation; firmware before: max 1) | ON | 0 DISPLAY |
 | 4 | 4 | LEDS | 0 | 0 OFF, 1 DIM LO, 2 DIM HI, 3 INV (darkest first, as the menu steps them) | DIM HI | 0 DISPLAY |
 | 5 | 5 | HOLD | 0 | 0 "0.3 s", 1 "0.4 s", 2 "0.5 s", 3 "0.6 s" | 0.4 s | 1 CONTROL |
 | 6 | 6 | KNOB ACCEL | 0 | 0 OFF, 1 ON | OFF | 1 CONTROL |
-| 7 | 7 | FX LATCH | 0 | 0 OFF, 1 ON | OFF | 1 CONTROL |
+| ~~7~~ | | ~~FX LATCH~~ | | retired in DUELL 0.2.2 (the FX hold layer was removed; a stored ON is ignored). The id is never reused. | | |
 | - | 8 | (BPM LOCK: retired in DUELL, id never reused; the indexes after it are their id - 1) | | | | |
 | 9 | 9 | SPEAKER EQ | 0 | 0 FLAT, 1 LOWCUT, 2 BASS+ | FLAT | 2 AUDIO |
 | 10 | 10 | USB LEVEL | 0 | 0 MASTER, 1 FIXED | MASTER | 2 AUDIO |
@@ -1079,8 +1101,10 @@ before MIDI IN the first 21, 1.2 the first 23, 1.3 / 1.4 the first 24):
 | (21) | 21 | MIDI IN | | **DUELL 0.1: retired, never reused, not offered** (MIDI IN is GLO > CHANNELS K3 on the device; the value is still the project's `G_ROUTE`, global 14: 0 OWN CH, 1 SELECTED, settable as a `SET` of that global) | | |
 | 22 | 22 | TUNE | 1 | -50..50, unit "ct" (1.2: the project's `G_TUNE`, global 3, cents) | 0 | 2 AUDIO |
 | 23 | 23 | HOME (DUELL 0.1: named OVERVIEW) | 0 | 0 SCOPE, 1 TRACKS (1.3; DUELL 0.1: PARTS), 2 LEVELS (1.5; DUELL 0.1: no such value, max 1) | SCOPE | 0 DISPLAY |
-| 24 | 24 | HELP | 0 | 0 OFF, 1 ON (1.5) | OFF | 4 SYSTEM |
+| ~~24~~ | | ~~HELP~~ | | retired in DUELL 0.2.2 (the on-device hints were removed for now; a stored ON is ignored). The id is never reused. | | |
 | 25 | 25 | HOME OPENS (DUELL 0.1) | 0 | 0 MORPH, 1 MODE, 2 MIXER, 3 OVERVIEW | MORPH | 1 CONTROL |
+
+**DUELL 0.2.2: ids 1 (STYLE), 2 (LARGE), 7 (FX LATCH) and 24 (HELP) are retired: `MENU_DESC` no longer lists them (the count in `4E 01 count` is 20 on this firmware, the list walks ids 0, 3..6, 9..20, 22, 23, 25 in index order) and a `MENU_SET` to one of them answers rc 1 (unknown id) and changes nothing. Their bits in the settings record stay where they were (older records import unchanged; the firmware ignores them).** Every other id keeps its meaning.
 
 DUELL 0.1: the MENU has four tabs (0 DISPLAY, 1 CONTROL, 2 AUDIO, 3 SYSTEM: the MIDI tab is gone, SYSTEM's tab index 4 became 3; a tab's index is no id), so the table's tab column holds Felucca's numbering for the rows above; the device's reply is authoritative. The list MENU_DESC walks is 24 items (index order: ids 0..7, 9..20, 22, 23, 24, 25).
 
@@ -1091,12 +1115,13 @@ level; COUNT-IN: PLAY from stop with a track armed counts in that many bars firs
 goes to the headphones / speaker, never into USB audio or a recording (README: Metronome and count-in). Applied at
 once, as on the device.
 
-RESTORE LAST (id 15, 1.2; the SYSTEM tab shows USB SERIAL and RESTORE LAST, index 11 and 15, then CALIBRATION, INFO
+RESTORE LAST (id 15, 1.2; the SYSTEM tab shows USB SERIAL and RESTORE LAST, index 11 and 15, then CALIBRATION, TEST (INFO until 0.2.2)
 and ABOUT): ON (the default)
 keeps the music as it is in an autosave while the device is stopped and idle, and brings it back at power-on; OFF
-writes no autosave and starts with the power-on sounds (README: Restore the last session).
+writes no autosave and starts with the power-on sounds (README: Restore the last session). DUELL 0.2.2: a restored
+autosave starts with no part muted.
 
-SCALE LEDS (id 16, 1.2, Discussion #127; the CONTROL tab shows HOLD, KNOB ACCEL, FX LATCH, BPM LOCK and SCALE LEDS,
+SCALE LEDS (id 16, 1.2, Discussion #127; the CONTROL tab showed HOLD, KNOB ACCEL, FX LATCH (retired in DUELL 0.2.2), BPM LOCK and SCALE LEDS,
 index 5..8 and 16): ON shows the selected track's scale on the key LEDs outside the layers (README: Key LEDs).
 Applied at once.
 
@@ -1107,7 +1132,7 @@ NEVER keeps it on. A change counts from then (a MENU_SET to 5 MIN does not turn 
 
 SCOPE (id 18, 1.2, Discussion #165; DISPLAY now shows COLOR, STYLE, LARGE, ANIM, LEDS, SCREEN OFF and SCOPE, index
 0..4, 17, 18): what HOME's oscilloscope draws. OUT (the default, as before) the sound after MASTER, so it shrinks with
-the volume; MIX the mix before MASTER (and before the FX layer, SPEAKER EQ and the limiter), drawn at the size MASTER
+the volume; MIX the mix before MASTER (and before SPEAKER EQ and the limiter), drawn at the size MASTER
 at its top would give, whatever the knob. The metronome's click is in neither. Applied at once.
 
 STEP PREVIEW (id 19, 1.2, Discussion #169) and CHORD ENTRY (id 20, 1.2, #155; CONTROL now shows HOLD, KNOB ACCEL, FX
@@ -1144,7 +1169,7 @@ not know reads as SCOPE there). Applied at once. 1.5 (#134): LEVELS (2), the row
 of T1..T4 (the GLO layer's knobs) in place of the selected track's engine's four; firmware before 1.5 reads it as SCOPE.
 
 HELP (id 24, 1.5, Discussion #156; SYSTEM now shows USB SERIAL, RESTORE LAST and HELP, index 11, 15, 24, then
-CALIBRATION, INFO and ABOUT): ON shows a short hint (key caps and a few words) in the footer for about 2 s when a page
+CALIBRATION, TEST and ABOUT): ON shows a short hint (key caps and a few words) in the footer for about 2 s when a page
 opens, and a second footer row under a quick layer's map. OFF (the default) shows none. A bit of the settings record
 (MENU's 1.2 flags byte, bit 3; older firmware keeps it and ignores it). Applied at once.
 

@@ -223,6 +223,15 @@ static int autosave_test(void)
     as_run(300000u);
     bad += check("autosave: RESTORE LAST OFF: none restored, none written", ok && !as.writes && as_erases == b0);
     ui_prefs &= (uint8_t)~PREF_RESTORE_OFF;
+    {   /* mute is cleared by a restore: the autosave holds a muted part 1 (the owner's report), power-on is audible */
+        as_power_on();
+        autosave_boot(1);
+        trk[0].p[P_MUTE] = 1;
+        as_run(11000u);
+        as_power_on();
+        ok = autosave_boot(1) == 1 && trk[0].p[P_MUTE] == 0 && trk[1].p[P_MUTE] == 0;
+        bad += check("autosave: a muted part 1 in the autosave: restored UNMUTED at power-on", ok);
+    }
     {   /* a damaged copy: the other one (A/B); both damaged: none */
         st_hdr_t h;
         int cur, other;
@@ -327,7 +336,7 @@ int main(void)
         bad += check("the retired font weight is refused without a write", ed_ui_set(bold, sizeof bold) == 2);
     }
     {   /* MENU_SET (editor_menu.c): the same settings record, the same deferral, retry and idempotence */
-        const uint8_t leds_off[] = {4, 0, 64}, large_on[] = {2, 1, 64}, hold_06[] = {5, 3, 64}, eq_bass[] = {9, 2, 64};
+        const uint8_t leds_off[] = {4, 0, 64}, accel_on[] = {6, 1, 64}, hold_06[] = {5, 3, 64}, eq_bass[] = {9, 2, 64};
         persist_t q;
         reset();
         settings_init();
@@ -340,14 +349,14 @@ int main(void)
         bad += check("STOP commits the MENU setting (LEDS OFF in the settings record)",
                      !persist_pending && erases == 1 && st_load(OBJ_SETTINGS, &q, sizeof q) == (int)sizeof q &&
                      leds_from_stored(q.zoom) == LEDS_OFF);
-        ed_repn = 0; ed_menu_handle(ED_MENU_SET, large_on, 3);
-        ok = ed_rep[0] == 0 && (ui_prefs & PREF_LARGE);
+        ed_repn = 0; ed_menu_handle(ED_MENU_SET, accel_on, 3);
+        ok = ed_rep[0] == 0 && (ui_prefs & PREF_ACCEL);
         ed_repn = 0; ed_menu_handle(ED_MENU_SET, hold_06, 3);
         ok &= ed_rep[0] == 0 && settings_hold == 3u;
         ed_repn = 0; ed_menu_handle(ED_MENU_SET, eq_bass, 3);
         ok &= ed_rep[0] == 0 && st_load(OBJ_SETTINGS, &q, sizeof q) == (int)sizeof q && q.lowcut == 2u &&
-              hold_from_stored(q.bold) == 3u && (q.favorites.factory[15][30] & PREF_LARGE) && leds_from_stored(q.zoom) == LEDS_OFF;
-        bad += check("MENU_SET stopped: rc 0, saved at once (LARGE, HOLD, SPEAKER EQ), the others kept", ok);
+              hold_from_stored(q.bold) == 3u && (q.favorites.factory[15][30] & PREF_ACCEL) && leds_from_stored(q.zoom) == LEDS_OFF;
+        bad += check("MENU_SET stopped: rc 0, saved at once (KNOB ACCEL, HOLD, SPEAKER EQ), the others kept", ok);
         before = erases;
         ed_repn = 0; ed_menu_handle(ED_MENU_SET, hold_06, 3);
         bad += check("repeating an unchanged MENU_SET: rc 0, no erase", ed_rep[0] == 0 && erases == before);

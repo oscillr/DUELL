@@ -3,12 +3,12 @@
 **MultiMorphing Bitimbral Synthesizer**<br>
 **by OSCILL/R**
 
-> **Public beta: the browser emulator is available now. The firmware package for the FM-1 follows after more hardware testing.**
-> Try it here: **<https://oscillr.github.io/DUELL/emu/>** (source: <https://github.com/oscillr/DUELL>). No firmware download is offered yet.
+> **Public beta: the first firmware beta for the FM-1 (DUELL 0.2.4 beta) and the browser emulator are available now.**
+> Try the emulator: **<https://oscillr.github.io/DUELL/emu/>**. Firmware package and installer: see the [releases page](https://github.com/oscillr/DUELL/releases) and [docs/INSTALL.md](docs/INSTALL.md) (source: <https://github.com/oscillr/DUELL>).
 
 **Two synths in one small box.** DUELL is free, open-source firmware for the M-VAVE FM-1. It turns the FM-1 into a bitimbral instrument: two complete parts, three ways to play them together, and a morph that glides between two versions of every sound.
 
-> **Status: DUELL 0.1 beta.** DUELL is developed and tested in a browser emulator. The firmware has been flashed to and run on **one real FM-1 by its author, and it works**. The way back to the official firmware has **not** been tested yet, broader hardware testing is pending, and **no firmware download is offered yet**. Do not flash anything yet; there are no public flashing instructions. Read [Status and safety](#status-and-safety) and [docs/RECOVERY.md](docs/RECOVERY.md).
+> **Status: DUELL 0.2.4 beta.** DUELL is developed and tested in a browser emulator. The firmware has been flashed to and run on **one real FM-1, the author's, and it works**. The way back to the official firmware (V15) has worked on that unit about three times; it has not been tried on others. Broader hardware testing is pending. Flash at your own risk. Read [Status and safety](#status-and-safety) and [docs/RECOVERY.md](docs/RECOVERY.md).
 
 <p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/logo/duell-logo-white.png"><img src="docs/logo/duell-logo-black.png" alt="DUELL" width="420"></picture></p>
 
@@ -32,9 +32,13 @@ Glide between two versions of the same patch with one fader.
 - Up to 48 stored patches (copies of factory sounds count), always guaranteed to fit.
 - 16 **MULTI** slots: both parts, effects, arps, patterns, mode and morph settings in one slot.
 - 16 named, overwritable **PATTERN** slots.
+- **Hold SAVE saves over the patch you are editing** (SAVE OVER <name>?, OCT+ yes). A short press of SAVE opens the page that fits: PATTERNS from the sequencer, otherwise MULTIS in LAYER and PATCHES in SPLIT and STEREO.
 
 ### Modulation
 2 envelopes, 2 LFOs and an 8-slot mod matrix.
+
+### Filter
+Every engine has a filter.
 
 ### Effects
 New in DUELL: a ducker with sidechain from external MIDI, EQ per part, a ping-pong delay and the reverbs SHIM and RESO (from JIANT). Still there from Felucca: distortion, insert, chorus, delay and the hall, room and spring reverbs.
@@ -74,7 +78,7 @@ Building a device image is described in [felucca-base/BUILDING.md](felucca-base/
 
 ## Status and safety
 
-- **DUELL 0.1 beta.** Developed emulator-first. The firmware has been flashed and run on **one** real FM-1 by the author (it works). The **return to the official firmware has not been tested yet**, broader testing is pending, and no firmware download is offered yet. The FM-1 has a single-bank layout with no known rollback. **Do not flash** a unit you cannot afford to lose; no flashing instructions are public yet. See [docs/RECOVERY.md](docs/RECOVERY.md) for what is known and unknown.
+- **DUELL 0.2.4 beta.** Developed emulator-first. The firmware has been flashed and run on **one** real FM-1 by the author (it works). The **return to the official firmware worked about three times, on the author's unit**, and has not been tried on others; broader testing is pending. The FM-1 has a single-bank layout with no known rollback. **Do not flash** a unit you cannot afford to lose. See [docs/RECOVERY.md](docs/RECOVERY.md) for what is known and unknown.
 - An optional dual-core mode is planned. It will be **off by default** and is untested.
 - A web editor adapted to DUELL is planned. Felucca's editor pages are still in `felucca-base/web/` and have not been adapted.
 - **No warranty.** DUELL is licensed under the GPL-3.0, which includes its disclaimer of warranty. You install it at your own risk. DUELL is not affiliated with M-VAVE.
@@ -85,12 +89,12 @@ Building a device image is described in [felucca-base/BUILDING.md](felucca-base/
 | I want to... | Read |
 |---|---|
 | Try DUELL now | [Browser emulator](https://oscillr.github.io/DUELL/emu/) |
-| Install the beta (later: the firmware is not released yet) | [docs/INSTALL.md](docs/INSTALL.md), [installer page](https://oscillr.github.io/DUELL/install/) (says "firmware not yet released"; source: `felucca-base/web/install/index.html`) |
+| Install the beta | [docs/INSTALL.md](docs/INSTALL.md), [installer page](https://oscillr.github.io/DUELL/install/) (source: `felucca-base/web/install/index.html`) |
 | Play it | [docs/QUICKSTART.md](docs/QUICKSTART.md) |
 | Fix a problem | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) |
 | Recover from a failed flash | [docs/RECOVERY.md](docs/RECOVERY.md) |
 | Know what is broken or untested | [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md) |
-| Help test (emulator first) | [docs/TESTING.md](docs/TESTING.md), then open an issue with the [bug report form](https://github.com/oscillr/DUELL/issues/new/choose) |
+| Help test (emulator or FM-1) | [docs/TESTING.md](docs/TESTING.md), then open an issue with the [bug report form](https://github.com/oscillr/DUELL/issues/new/choose) |
 | See what changed | [CHANGELOG.md](CHANGELOG.md) |
 | Read the full design | [SPEC.md](SPEC.md) |
 

@@ -207,3 +207,36 @@ static int st_save_to(uint32_t obj, const void *src, uint32_t len, int to)
 }
 
 static int st_save(uint32_t obj, const void *src, uint32_t len) { return st_save_to(obj, src, len, -1); }
+
+/* DUELL 0.2.2, MENU > SYSTEM > ERASE DATA (erase_data.c): an object gone, both copies. The copy that is NOT the current one
+ * first, then the current one, so a power cut between the two leaves the old object whole (never the older copy
+ * coming back in its place); a cut inside an erase leaves a sector with no valid commit record, which reads as empty (or as
+ * the other, still whole, copy). A sector that is blank already is not erased again (no wear, no 40 ms of silence).
+ * 0 done, else the failing driver code; an unknown or retired object: -1, nothing touched */
+static int st_blank(uint32_t off)
+{
+    uint32_t i, j;
+    for (i = 0; i < ST_SECTOR; i += 256u) {
+        if (st_read(off + i, st_buf, 256u))
+            return 0;
+        for (j = 0; j < 256u; j++)
+            if (st_buf[j] != 0xFFu)
+                return 0;
+    }
+    return 1;
+}
+static int st_wipe(uint32_t obj)
+{
+    st_hdr_t h;
+    uint32_t k;
+    int cur, rc;
+    if (obj >= OBJ_COUNT || OBJ_RETIRED(obj))
+        return -1;
+    cur = st_current(obj, &h);                         /* (-1: neither copy is valid: A then B) */
+    for (k = 0; k < 2u; k++) {
+        uint32_t off = st_sector(obj, cur == 0 ? 1u - k : k);
+        if (!st_blank(off) && (rc = st_erase(off)) != 0)
+            return rc;
+    }
+    return 0;
+}

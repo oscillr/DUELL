@@ -241,7 +241,7 @@ SOUNDS = [
         "MOD1": ("AT", "CUT", dep(25)),
         "LEVEL": 88,
     }),
-    dict(engine="ANALOG", idx=10, name="EMBER GLOW", cat="PAD", bseed=52771, recipe="3.2 Prophet-style warm pad", p={
+    dict(engine="ANALOG", idx=10, name="EMBER GLOW", cat="PAD", bseed=48246, recipe="3.2 Prophet-style warm pad", p={
         # saws on A and B, 5-12 ct apart [S architecture, G cents] -> 9 ct
         "WAVE": "SAW", "DTN": 9, "MIX": pct(50),
         # 4-pole LP, cutoff 40-70, resonance 10-25, key tracking half [G] -> 55, 18, KTR 127 (the engine's ~42 %)
@@ -322,7 +322,7 @@ SOUNDS = [
         "INSERT": "SOFT", "INS A": 40, "INS B": 127, "INS C": 112, "INS MIX": 127,
         "LEVEL": 93
     }),
-    dict(engine="ANALOG", idx=15, name="GLASS SHARDS", cat="OTHER", bseed=37691, recipe="5.2 Metallic glitch arp", p={
+    dict(engine="ANALOG", idx=15, name="GLASS SHARDS", cat="OTHER", bseed=17703, recipe="5.2 Metallic glitch arp", p={
         # short square tones [G]
         "WAVE": "SQR", "DTN": 0, "MIX": 0,
         # high-resonance band-pass [G] -> BP, RES 90, CUT 70
@@ -362,10 +362,12 @@ SOUNDS = [
         "LEVEL": 117,
     }),
     dict(engine="FM6", idx=1, name="HORN SOLO", cat="LEAD", bseed=24199, mono=True, recipe="2.6 FM lead", p={
-        # the BRASS SECT patch (F4): carriers with modulators of 1:1 / 2:1 ratio, moderate feedback [G]
-        "SLOT": "F4", "FB": -1, "MEG": 20,
-        # modulator envelope slow decay, level follows velocity [G]: ENV 2 on MLVL, A 40 ms, D 400 ms, S 60 %
-        "MLVL": -4, "ENV2 FLT": dep(25), "E2ATK": ms(40), "E2DEC": ms(400), "E2SUS": pct(80), "E2REL": ms(150),
+        # the BRASS SECT patch (F4) on ALG 16: one carrier (OP 1) fed by three modulator branches, the classic FM brass layout.
+        # (Its own algorithm, 5, has three carriers detuned 2 steps apart: they beat once in ~5 s, the level dropped 15 dB and
+        # back, the "weird" solo.) Modulator index follows the envelope: the patch's own attack swells the note in, ENV 2 on MLVL
+        # opens with it (A 117 ms) and settles at 87 %, darker at low velocity (VMOD) [G; Plugin Boutique "80s Brass" idea]
+        "SLOT": "F4", "ALG": 16, "FB": -1, "MEG": 20,
+        "MLVL": -1, "ENV2 FLT": dep(31), "E2ATK": ms(117), "E2DEC": ms(717), "E2SUS": pct(87), "E2REL": ms(150),
         "VMOD": 3,
         # light vibrato, delayed (5 Hz, +-19 ct, 400 ms), pressure deepens it; portamento 60 ms [G]
         "LFO2 WAVE": "TRI", "LFO2 RATE": hz(5), "LFO2 FADE": ms(400), "LFO2 PIT": 1,
@@ -373,8 +375,8 @@ SOUNDS = [
         "GLMODE": "TIME", "GLIDE": gl(60),
         # chorus + delay [G]
         "CHO": pct(28), "DLY": pct(22), "REV": pct(15),
-        "DIST": pct(20),
-        "LEVEL": 114,
+        "DIST": pct(7),
+        "LEVEL": 117,
     }),
     dict(engine="FM6", idx=2, name="GLASS HALL", cat="PAD", bseed=53248, recipe="3.6 Glass / FM pad", p={
         # the SOFT PAD patch (F5): carrier ratio 1 with long slow attacks, a modulator at a higher ratio, low index [S Yamaha FM
@@ -385,8 +387,8 @@ SOUNDS = [
         "LFO2 WAVE": "TRI", "LFO2 RATE": hz(0.3), "LFO2 FLT": dep(12),
         # shimmer reverb, chorus [G]
         "CHO": pct(55), "REV": pct(55),
-        # chord keys instead of an arp: a major-seventh stack opened up (1-5-7-3), the glassy Lydian scale
-        "SCALE": "LYD", "CHRD": "MAJ7", "VOIC": "OPEN",
+        # chord keys instead of an arp: a major-seventh stack opened up (1-5-7-3)
+        "CHRD": "MAJ7", "VOIC": "OPEN",
         "MOD1": ("AT", "CUT", dep(25)),
         # SOFT insert as a limiter (2026-10-12): flattens the crest so LEVEL can raise the weighted loudness under the -3 dBFS peak cap
         "INSERT": "SOFT", "INS A": 100, "INS B": 127, "INS C": 112, "INS MIX": 127,
@@ -463,7 +465,7 @@ SOUNDS = [
     # PHYS facts (eng_phys.c): the model's own decay is the note (SUS 127, REL damps the key-off); FLT (ENV 2 FLT, matrix CUT)
     # moves BRIT, SHP moves STRC; ACC = strike accent at full velocity (velocity scales it); EXC = the exciter itself.
     # WOOD BASS (PHYS, was idx 0) deleted 2026-10-12 (owner); idx must stay contiguous, so PAN WHISTLE .. TABLA TALK moved down by one
-    dict(engine="PHYS", idx=0, name="PAN WHISTLE", cat="LEAD", bseed=51584, mono=True, recipe="blown tube (4.4 MODAL, BOW)", p={
+    dict(engine="PHYS", idx=0, name="PAN WHISTLE", cat="LEAD", bseed=17213, mono=True, recipe="blown tube (4.4 MODAL, BOW)", p={
         # a blown pipe: the modal bank with harmonic partials (STRC 34), sustained by random hits (BOW) with a breath of the
         # exciter (EXC) [S eng_phys.c]
         "MODEL": "MODAL", "STRC": 34, "BRIT": 62, "DAMP": 100, "POS": 14, "ACC": 110, "BOW": 110, "EXC": 40,
@@ -479,7 +481,7 @@ SOUNDS = [
         "INSERT": "SOFT", "INS A": 80, "INS B": 127, "INS C": 112, "INS MIX": 127,
         "LEVEL": 99,
     }),
-    dict(engine="PHYS", idx=1, name="SINGING BOWL", cat="PAD", bseed=16699, recipe="3.7 Dark drone / bowed metal", p={
+    dict(engine="PHYS", idx=1, name="SINGING BOWL", cat="PAD", bseed=31716, recipe="3.7 Dark drone / bowed metal", p={
         # a bowed bowl: MODAL, inharmonic (STRC 98: 1 : 3.57 : 7.65), long ring, sustained by the bow [S eng_phys.c]
         "MODEL": "MODAL", "STRC": 92, "BRIT": 66, "DAMP": 92, "POS": 10, "ACC": 80, "BOW": 100, "EXC": 0,
         "ATK": ms(150), "SUS": 127, "REL": ms(1800),
@@ -487,21 +489,20 @@ SOUNDS = [
         "ENV2 FLT": dep(20), "E2ATK": ms(300), "E2DEC": ms(2500), "E2SUS": pct(70), "E2REL": ms(1500),
         "LFO2 WAVE": "TRI", "LFO2 RATE": hz(0.15), "LFO2 FLT": dep(18),
         "CHO": pct(30), "REV": pct(60), "DLY": pct(15),
-        # chord keys instead of an arp: bowls ring in open fifths (power chord) on a pentatonic scale (3 voices: PHYS' limit)
-        "SCALE": "PEN", "CHRD": "POW", "VOIC": "OPEN",
+        # chord keys instead of an arp: bowls ring in open fifths (power chord) (3 voices: PHYS' limit)
+        "CHRD": "POW", "VOIC": "OPEN",
         "MOD1": ("AT", "BOW", dep(15)),
-        "LEVEL": 121,
+        "LEVEL": 127,
     }),
     dict(engine="PHYS", idx=2, name="GHOST HARP", cat="PLUCK", bseed=64964, recipe="4.6 String pluck / harp (SYMP)", p={
         # SYMP: a plucked string with three sympathetic strings (resonant strings of a harp via the model, not the reverb)
         # [S eng_phys.c]: CHRD 8, SYMP 70, a touch of the curved bridge
-        "MODEL": "SYMP", "E2": 8, "BRIT": 66, "DAMP": 104, "E5": 70, "ACC": 90, "E7": 30,
+        "MODEL": "SYMP", "E2": 8, "BRIT": 67, "DAMP": 104, "E5": 70, "ACC": 90, "E7": 30,
         "ENV2 FLT": dep(25), "E2ATK": 0, "E2DEC": ms(300), "E2SUS": 0, "E2REL": ms(200),
         "ATK": 0, "SUS": 127, "REL": ms(250),
         "CHO": pct(20), "REV": pct(40),
         "MOD1": ("AT", "CUT", dep(20)), "MOD2": ("VEL", "CUT", dep(25)),
-        
-        "LEVEL": 111,
+        "LEVEL": 112,   # 0.2 dB over the trim (BRIT 67 with it): the universal filter (0.2.2) took the CUT routes off PHYS' BRIT; the body read -21.8 and the golden render's DC -430 at 110 (limit 400)
     }),
     dict(engine="PHYS", idx=3, name="NYLON GUT", cat="PLUCK", bseed=33009, recipe="4.6 String pluck (Karplus-Strong)", p={
         # one gut string: STRNG, STRC below the dispersion (a soft, slightly buzzy bridge), pluck position 1/3 [S: a pluck at
@@ -515,26 +516,28 @@ SOUNDS = [
         "MOD1": ("AT", "CUT", dep(20)), "MOD2": ("VEL", "CUT", dep(25)),
         "LEVEL": 116,
     }),
-    dict(engine="PHYS", idx=4, name="ROSEWOOD", cat="KEYS", bseed=61627, recipe="4.4 Marimba / kalimba (modal)", p={
-        # a tuned bar: STRC 116 = 1 : 4 : 9 (a marimba's), dark strike, short ring, mallet in the EXC [S eng_phys.c]
-        "MODEL": "MODAL", "STRC": 116, "BRIT": 70, "DAMP": 70, "POS": 24, "ACC": 110, "BOW": 0, "EXC": 30,
-        "ENV2 FLT": dep(30), "E2ATK": 0, "E2DEC": ms(220), "E2SUS": 0, "E2REL": ms(100),
+    dict(engine="PHYS", idx=4, name="ROSEWOOD", cat="KEYS", bseed=55371, recipe="4.4 Marimba / kalimba (modal)", p={
+        # a rosewood marimba bar: STRC 116 = 1 : 4 : 9 (a tuned bar's), a dark hard-mallet strike with a woody knock (EXC), a
+        # short ring (DAMP low: the bar dies in a few hundred ms), dry, no motion at all [S eng_phys.c; the factory MARIMBA preset's
+        # DAMP 40 / BRIT 38 as the starting point]
+        "MODEL": "MODAL", "STRC": 116, "BRIT": 47, "DAMP": 57, "POS": 24, "ACC": 100, "BOW": 0, "EXC": 47,
+        "ENV2 FLT": dep(30), "E2ATK": 0, "E2DEC": ms(171), "E2SUS": 0, "E2REL": ms(60),
         "ATK": 0, "SUS": 127, "REL": ms(70),
-        "REV": pct(25), "DLY": pct(14),
+        "REV": pct(11),
         "MOD1": ("AT", "CUT", dep(20)), "MOD2": ("VEL", "CUT", dep(25)),
         "LEVEL": 125,
     }),
-    dict(engine="PHYS", idx=5, name="MOTOR VIBES", cat="KEYS", bseed=1751, recipe="4.7 Vibraphone", p={
-        # a tuned metal bar, partials near 1 : 4 (STRC 110), long ring, soft mallet [G]
-        "MODEL": "MODAL", "STRC": 110, "BRIT": 60, "DAMP": 127, "POS": 18, "ACC": 80, "BOW": 0, "EXC": 12,
-        "ENV2 FLT": dep(25), "E2ATK": 0, "E2DEC": ms(700), "E2SUS": 0, "E2REL": ms(400),
+    dict(engine="PHYS", idx=5, name="MOTOR VIBES", cat="KEYS", bseed=43809, recipe="4.7 Vibraphone", p={
+        # a tuned metal bar, partials near 1 : 3.9 (STRC 110), a bright soft-mallet strike and a long ring (DAMP 127), the motor's
+        # tremolo on the amplitude [G]
+        "MODEL": "MODAL", "STRC": 110, "BRIT": 77, "DAMP": 127, "POS": 18, "ACC": 80, "BOW": 0, "EXC": 7,
+        "ENV2 FLT": dep(25), "E2ATK": 0, "E2DEC": ms(1700), "E2SUS": 0, "E2REL": ms(400),
         "ATK": 0, "SUS": 127, "REL": ms(400),
         # the motor: tremolo 3-7 Hz, depth 20-50 % [G] -> LFO 2 on AMP; reverb light-medium; LF-shelf cut (high sound)
-        "LFO2 WAVE": "SIN", "LFO2 RATE": hz(5.5), "MOD3": ("LFO2", "AMP", dep(18)),
+        "LFO2 WAVE": "SIN", "LFO2 RATE": hz(5.5), "MOD3": ("LFO2", "AMP", dep(27)),
         "REV": pct(30), "DLY": pct(14), "EQLG": -4,
         "MOD1": ("AT", "CUT", dep(20)), "MOD2": ("VEL", "CUT", dep(25)),
-        "DIST": pct(15),
-        "LEVEL": 126,
+        "LEVEL": 124,
     }),
     dict(engine="PHYS", idx=6, name="RAIN CHIMES", cat="FX", bseed=53988, recipe="5.4 Sci-fi bell cluster (MODAL)", p={
         # the bell tree: MODAL stretched 1 : 2.83 : 5.48 : 8.90 (a chime's), bright, long ring [S eng_phys.c]
@@ -548,7 +551,7 @@ SOUNDS = [
         "MOD1": ("AT", "CUT", dep(25)),
         "LEVEL": 103,
     }),
-    dict(engine="PHYS", idx=7, name="TABLA TALK", cat="OTHER", bseed=31072, recipe="hand drum (MEMB)", p={
+    dict(engine="PHYS", idx=7, name="TABLA TALK", cat="OTHER", bseed=27571, recipe="hand drum (MEMB)", p={
         # MEMB: a loaded head (HARM 112: harmonic overtones, tabla-like), struck off-centre, a small pitch drop [S eng_phys.c]
         "MODEL": "MEMB", "E2": 112, "BRIT": 76, "DAMP": 56, "POS": 44, "ACC": 100, "E7": 14, "EXC": 24,
         "ENV2 FLT": dep(15), "E2ATK": 0, "E2DEC": ms(150), "E2SUS": 0, "E2REL": ms(80),
@@ -556,7 +559,7 @@ SOUNDS = [
         "REV": pct(15),
         # pressure = more pitch drop (BEND), velocity = brightness
         "MOD1": ("AT", "E7", dep(20)), "MOD2": ("VEL", "CUT", dep(25)),
-        "LEVEL": 116,
+        "LEVEL": 111,
     }),
     # ====================================================================================================== WHEEL (batch A)
     # WHEEL facts (eng_wheel.c): an organ gate (ATK 0, SUS 127, short REL), no filter: the timbre is the drawbars; SHP = brightness
@@ -592,8 +595,8 @@ SOUNDS = [
         "ENV2 SHP": dep(25), "E2ATK": ms(1200), "E2DEC": ms(2000), "E2SUS": pct(60), "E2REL": ms(1200),
         "LFO2 WAVE": "TRI", "LFO2 RATE": hz(0.25), "LFO2 SHP": dep(18),
         "CHO": pct(40), "REV": pct(55),
-        # chord keys instead of an arp: the chapel's diatonic triad in the major scale
-        "SCALE": "MAJ", "CHRD": "DIA3", "VOIC": "CLOSE",
+        # chord keys instead of an arp: the chapel's diatonic triad (the instrument's scale; MAJ triad when it is CHROMATIC)
+        "CHRD": "DIA3", "VOIC": "CLOSE",
         "MOD1": ("AT", "SHP", dep(25)),
         "LEVEL": 102,
     }),
@@ -686,8 +689,8 @@ SOUNDS = [
         "ATK": ms(900), "DEC": ms(1500), "SUS": pct(92), "REL": ms(1500),
         "ENV2 FLT": dep(20), "E2ATK": ms(1200), "E2DEC": ms(2000), "E2SUS": pct(60), "E2REL": ms(1200),
         "CHO": pct(45), "REV": pct(55), "SPRD": pct(35),
-        # chord keys instead of an arp: diatonic triad opened up, in the minor scale
-        "SCALE": "MIN", "CHRD": "DIA3", "VOIC": "OPEN",
+        # chord keys instead of an arp: diatonic triad opened up (the instrument's scale)
+        "CHRD": "DIA3", "VOIC": "OPEN",
         "MOD1": ("AT", "CUT", dep(25)),
         "LEVEL": 96,
     }),
@@ -772,8 +775,8 @@ SOUNDS = [
         "ENV2 FLT": dep(20), "E2ATK": ms(1100), "E2DEC": ms(2000), "E2SUS": pct(60), "E2REL": ms(1200),
         "LFO2 WAVE": "TRI", "LFO2 RATE": hz(0.35), "LFO2 FLT": dep(15),
         "CHO": pct(55), "REV": pct(33), "SPRD": pct(30),
-        # chord keys instead of an arp: diatonic sevenths in the Dorian mode
-        "SCALE": "DOR", "CHRD": "DIA7", "VOIC": "CLOSE",
+        # chord keys instead of an arp: diatonic sevenths (the instrument's scale)
+        "CHRD": "DIA7", "VOIC": "CLOSE",
         "MOD1": ("AT", "CUT", dep(25)),
         # SOFT insert as a limiter (2026-10-12): flattens the crest so LEVEL can raise the weighted loudness under the -3 dBFS peak cap
         "INSERT": "SOFT", "INS A": 70, "INS B": 127, "INS C": 112, "INS MIX": 127,
@@ -799,7 +802,7 @@ SOUNDS = [
         # velocity to the bend is the clav's expression [G]; light chorus
         "CHO": pct(12), "REV": pct(12),
         "MOD1": ("AT", "CUT", dep(20)), "MOD2": ("VEL", "CUT", dep(30)),
-        "LEVEL": 103,
+        "LEVEL": 105,
     }),
     dict(engine="PHASE", idx=5, name="CRYSTAL CAVE", cat="FX", bseed=37002, recipe="5.4 Sci-fi bell cluster + BELL preset", p={
         # the resonant triangle and resonant trapezoid ring-modulated (second line 53 ct off): inharmonic glassy tones [G]
@@ -848,7 +851,7 @@ SOUNDS = [
         "LFO2 WAVE": "TRI", "LFO2 RATE": hz(0.3), "LFO2 FLT": dep(18),
         "CHO": pct(50), "REV": pct(55), "SPRD": pct(30),
         # chord keys instead of an arp: minor sevenths in the natural minor
-        "SCALE": "MIN", "CHRD": "MIN7", "VOIC": "OPEN",
+        "CHRD": "MIN7", "VOIC": "OPEN",
         "MOD1": ("AT", "CUT", dep(25)),
         "LEVEL": 101,
     }),
@@ -899,7 +902,7 @@ SOUNDS = [
     # adds to it already: no VEL route); BRTH = breath noise (the top fades the voicing: whisper); Q = bandwidth (and level); RAND = a random
     # vowel per note. FLT (ENV 2 FLT, the matrix CUT) moves BOTH vowels along the A..U axis (it is "wow", not a cutoff); SHP = BUZZ.
     # Morph: BRTH is capped at 100, TALK is logarithmic: no cliff to tag.
-    dict(engine="VOICE", idx=0, name="BULLFROG", cat="BASS", bseed=20371, mono=True, recipe="1.4 slap / wow bass (formant) + WOW BASS preset", p={
+    dict(engine="VOICE", idx=0, name="BULLFROG", cat="BASS", bseed=51174, mono=True, recipe="1.4 slap / wow bass (formant) + WOW BASS preset", p={
         # an "oh" opening to "ah" (TALK 62) with a strong buzz: the wow bass [Felucca WOW BASS: BUZZ 100 / Q 80 -> 96 / 78]
         "VOWL": 95, "VOWL2": 6, "TALK": 62, "SHIFT": 0, "BUZZ": 96, "BRTH": 0, "Q": 78, "RAND": 0,
         # each note throws the vowels 18 steps toward U and lets them fall back (ENV 2 on FLT): the croak
@@ -910,7 +913,7 @@ SOUNDS = [
         "MOD1": ("AT", "SHP", dep(25)),
         "LEVEL": 91,
     }),
-    dict(engine="VOICE", idx=1, name="CROONER", cat="LEAD", bseed=2805, mono=True, recipe="2.7 Formant / vocal lead + VOX LEAD preset", p={
+    dict(engine="VOICE", idx=1, name="CROONER", cat="LEAD", bseed=41697, mono=True, recipe="2.7 Formant / vocal lead + VOX LEAD preset", p={
         # an "eh" closing toward "ah" at each note start (TALK 44), a slightly raised formant set (SHIFT 2), breath 9 [Felucca VOX LEAD]
         "VOWL": 22, "VOWL2": 0, "TALK": 44, "SHIFT": 2, "BUZZ": 88, "BRTH": 9, "Q": 70, "RAND": 0,
         "ENV2 FLT": dep(8), "E2ATK": 0, "E2DEC": ms(300), "E2SUS": 0, "E2REL": ms(100),
@@ -930,12 +933,12 @@ SOUNDS = [
         # vibrato 5 Hz with a long delay [G: depth 5-12 ct; the smallest step is 19 ct]
         "LFO2 WAVE": "TRI", "LFO2 RATE": hz(5), "LFO2 FADE": ms(900), "LFO2 PIT": 1,
         "CHO": pct(45), "REV": pct(70), "SPRD": pct(40),
-        # chord keys instead of an arp: a diatonic triad (3 of the 4 voices) opened up, in the major scale
-        "SCALE": "MAJ", "CHRD": "DIA3", "VOIC": "OPEN",
+        # chord keys instead of an arp: a diatonic triad (3 of the 4 voices) opened up (the instrument's scale)
+        "CHRD": "DIA3", "VOIC": "OPEN",
         "MOD1": ("AT", "SHP", dep(30)),
         "LEVEL": 86,
     }),
-    dict(engine="VOICE", idx=3, name="DOO WOP", cat="PLUCK", bseed=30009, recipe="4.4 Marimba / kalimba (a vocal pluck) + 5.5 arp", p={
+    dict(engine="VOICE", idx=3, name="DOO WOP", cat="PLUCK", bseed=8057, recipe="4.4 Marimba / kalimba (a vocal pluck) + 5.5 arp", p={
         # a short "oh" snapping to "ah" (TALK 88), narrow bandwidth (Q 92) so it rings like a bottle [G]
         "VOWL": 95, "VOWL2": 0, "TALK": 88, "SHIFT": 0, "BUZZ": 70, "BRTH": 12, "Q": 92, "RAND": 0,
         "ATK": 0, "DEC": ms(220), "SUS": 0, "REL": ms(150),
@@ -959,14 +962,14 @@ SOUNDS = [
         "INSERT": "SOFT", "INS A": 70, "INS B": 127, "INS C": 112, "INS MIX": 127,
         "LEVEL": 90
     }),
-    dict(engine="VOICE", idx=5, name="BEATBOX", cat="OTHER", bseed=13965, recipe="vocal percussion (breath + random vowel)", p={
+    dict(engine="VOICE", idx=5, name="BEATBOX", cat="OTHER", bseed=31759, recipe="vocal percussion (breath + random vowel)", p={
         # a whispered burst (BRTH 100) with a random vowel per note (RAND 70 %), narrow bands (Q 110), cut short [G]
         "VOWL": 0, "VOWL2": 127, "TALK": 100, "SHIFT": 0, "BUZZ": 30, "BRTH": 100, "Q": 110, "RAND": pct(70),
         "ATK": 0, "DEC": ms(130), "SUS": 0, "REL": ms(80),
         "ENV2 FLT": dep(25), "E2ATK": 0, "E2DEC": ms(110), "E2SUS": 0, "E2REL": ms(50),
         "REV": pct(15),
         "MOD1": ("AT", "SHP", dep(25)),
-        "LEVEL": 116,
+        "LEVEL": 119,
     }),
 
     # ====================================================================================================== NOISE (batch C)
@@ -1000,7 +1003,7 @@ SOUNDS = [
         "ENV2 FLT": dep(15), "E2ATK": ms(1500), "E2DEC": ms(2000), "E2SUS": pct(60), "E2REL": ms(1200),
         "LFO2 WAVE": "TRI", "LFO2 RATE": hz(0.17), "LFO2 FLT": dep(10),
         "CHO": pct(40), "REV": pct(65), "SPRD": pct(40),
-        "SCALE": "DOR", "CHRD": "DIA3", "VOIC": "OPEN",
+        "CHRD": "DIA3", "VOIC": "OPEN",
         "MOD1": ("AT", "CUT", dep(20)),
         "LEVEL": 100,
     }),
@@ -1035,21 +1038,25 @@ SOUNDS = [
         "MOD1": ("AT", "CUT", dep(20)), "MOD2": ("VEL", "CUT", dep(25)),
         "LEVEL": 117,
     }),
-    dict(engine="NOISE", idx=6, name="OPEN SIZZLE", cat="PERC", bseed=25614, recipe="noise percussion (open hat: as TIZZ HAT, 350 ms)", p={
-        "MODE": "ANLG", "COLR": 0, "FREQ": 112, "RES": 60, "TRK": 0, "DENS": 0, "DRFT": 0, "CRSH": 0,
-        "ATK": 0, "DEC": ms(350), "SUS": 0, "REL": ms(120),
-        "ENV2 FLT": dep(12), "E2ATK": 0, "E2DEC": ms(250), "E2SUS": 0, "E2REL": ms(80),
-        "REV": pct(14), "EQLG": -6,
+    dict(engine="NOISE", idx=6, name="OPEN SIZZLE", cat="PERC", bseed=25614, recipe="noise percussion (open hat: as TIZZ HAT, but ~500 ms, bright all through)", p={
+        # an open hat: white noise, the filter wide open and kept there (no closing envelope: the sizzle stays bright to its
+        # end), a long decay with a short release when the key goes (the choke)
+        "MODE": "ANLG", "COLR": 0, "FREQ": 117, "RES": 41, "TRK": 0, "DENS": 0, "DRFT": 0, "CRSH": 0,
+        "ATK": 0, "DEC": ms(717), "SUS": 0, "REL": ms(117),
+        "ENV2 FLT": 0, "E2ATK": 0, "E2DEC": ms(250), "E2SUS": 127, "E2REL": ms(80),
+        "REV": pct(17), "EQLG": -6,
         "MOD1": ("AT", "CUT", dep(20)), "MOD2": ("VEL", "CUT", dep(25)),
         "LEVEL": 117,
     }),
-    dict(engine="NOISE", idx=7, name="STATIC SNARE", cat="PERC", bseed=31599, recipe="noise percussion (snare: noise burst with a closing filter)", p={
-        "MODE": "ANLG", "COLR": 18, "FREQ": 92, "RES": 34, "TRK": 0, "DENS": 0, "DRFT": 0, "CRSH": 0,
-        "ATK": 0, "DEC": ms(170), "SUS": 0, "REL": ms(90),
-        "ENV2 FLT": dep(40), "E2ATK": 0, "E2DEC": ms(110), "E2SUS": 0, "E2REL": ms(60),
+    dict(engine="NOISE", idx=7, name="STATIC SNARE", cat="PERC", bseed=58051, recipe="noise percussion (snare: noise burst with a closing filter + a ringing low band for the body)", p={
+        # an analog snare: noise through a resonant band-pass; the filter envelope throws it open at the hit (the crack) and
+        # drops it in ~60 ms onto the low resonance (the shell's body); short decay
+        "MODE": "ANLG", "COLR": 0, "FREQ": 61, "RES": 71, "TRK": 0, "DENS": 0, "DRFT": 0, "CRSH": 0,
+        "ATK": 0, "DEC": ms(171), "SUS": 0, "REL": ms(60),
+        "ENV2 FLT": dep(71), "E2ATK": 0, "E2DEC": ms(57), "E2SUS": 0, "E2REL": ms(40),
         "REV": pct(18),
         "MOD1": ("AT", "CUT", dep(20)), "MOD2": ("VEL", "CUT", dep(25)),
-        "LEVEL": 118,
+        "LEVEL": 114,
     }),
     dict(engine="NOISE", idx=8, name="GEIGER", cat="OTHER", bseed=56918, recipe="5.3 texture (DUST: impulses through a ringing band-pass)", p={
         # ~60 clicks a second through a resonant band-pass; pressure raises the density
@@ -1082,7 +1089,7 @@ SOUNDS = [
         "ENV2 FLT": dep(15), "E2ATK": ms(1500), "E2DEC": ms(2500), "E2SUS": pct(60), "E2REL": ms(1500),
         "LFO2 WAVE": "TRI", "LFO2 RATE": hz(0.07), "LFO2 SHP": dep(25),
         "CHO": pct(35), "REV": pct(75), "STEREO SPRD": pct(35),
-        "SCALE": "DOR", "CHRD": "MIN7", "VOIC": "OPEN",
+        "CHRD": "MIN7", "VOIC": "OPEN",
         "MOD1": ("AT", "CUT", dep(25)),
         "LEVEL": 101,
     }),
@@ -1092,7 +1099,7 @@ SOUNDS = [
         "ENV2 FLT": dep(15), "E2ATK": ms(1200), "E2DEC": ms(2000), "E2SUS": pct(60), "E2REL": ms(1200),
         "LFO2 WAVE": "TRI", "LFO2 RATE": hz(0.13), "LFO2 SHP": dep(30),
         "CHO": pct(45), "REV": pct(70), "STEREO SPRD": pct(40),
-        "SCALE": "MIN", "CHRD": "DIA3", "VOIC": "CLOSE",
+        "CHRD": "DIA3", "VOIC": "CLOSE",
         "MOD1": ("AT", "CUT", dep(25)),
         "LEVEL": 95,
     }),
@@ -1136,7 +1143,7 @@ SOUNDS = [
         "CHO": pct(18), "DLY": pct(22), "REV": pct(28),
         "LEVEL": 97,
     }),
-    dict(engine="GRAIN", idx=6, name="TAR PIT", cat="BASS", bseed=53812, mono=True, recipe="1.3 sub-ish bass from sax grains an octave down, dark TONE", p={
+    dict(engine="GRAIN", idx=6, name="TAR PIT", cat="BASS", bseed=64371, mono=True, recipe="1.3 sub-ish bass from sax grains an octave down, dark TONE", p={
         "SRC": 3, "POS": 20, "SIZE": 100, "DENS": 110, "PTCH": -12, "E6": 11, "RAND": 6, "TONE": 58,
         "ATK": ms(5), "SUS": 127, "REL": ms(90),
         "ENV2 FLT": dep(25), "E2ATK": 0, "E2DEC": ms(250), "E2SUS": pct(30), "E2REL": ms(80),
@@ -1188,8 +1195,10 @@ SOUNDS = [
     }),
     dict(engine="SAMPLE", idx=4, name="SILVER FLUTE", cat="LEAD", bseed=34351, mono=True, recipe="2.1 mono lead (sampled flute, breath attack)", p={
         "SET": 2, "TUNE": 0, "BITS": 0, "LOOP": "ON", "CUT": 118, "DRV": 0,
-        "ATK": ms(45), "SUS": 127, "REL": ms(180), "GLMODE": "TIME", "GLIDE": gl(40),
-        "ENV2 FLT": dep(12), "E2ATK": ms(30), "E2DEC": ms(300), "E2SUS": pct(70), "E2REL": ms(100),
+        # a quick breath: the sample's own chiff is the attack (ATK 17 ms, was 45; ENV 2 opens with it), the arp is off
+        "ATK": ms(17), "SUS": 127, "REL": ms(180), "GLMODE": "TIME", "GLIDE": gl(40),
+        "ARP MODE": "OFF",
+        "ENV2 FLT": dep(12), "E2ATK": ms(17), "E2DEC": ms(300), "E2SUS": pct(70), "E2REL": ms(100),
         "LFO2 WAVE": "TRI", "LFO2 RATE": hz(5), "LFO2 FADE": ms(500), "LFO2 PIT": 1,
         "MOD1": ("AT", "DEP2", dep(100)), "MOD2": ("VEL", "CUT", dep(15)),
         "DLY": pct(20), "REV": pct(30), "EQLG": -3,
@@ -1203,7 +1212,7 @@ SOUNDS = [
         "ATK": ms(600), "SUS": 127, "REL": ms(1800),
         "ENV2 FLT": dep(25), "E2ATK": ms(800), "E2DEC": ms(2000), "E2SUS": pct(55), "E2REL": ms(1500),
         "CHO": pct(35), "REV": pct(55), "SPRD": pct(30),
-        "SCALE": "MIN", "CHRD": "POW", "VOIC": "OPEN",
+        "CHRD": "POW", "VOIC": "OPEN",
         "MOD1": ("AT", "CUT", dep(25)),
         "LEVEL": 88,
     }),
@@ -1247,13 +1256,15 @@ SOUNDS = [
         "MOD1": ("AT", "CUT", dep(20)),
         "LEVEL": 127,
     }),
-    dict(engine="SLICE", idx=2, name="WOOFER", cat="PERC", bseed=10686, recipe="808-style boom: the break's kick played an octave down", p={
-        # audit: C3 = slice 0, the kick
-        "SRC": "BREAK", "DIV": "16", "START": 12, "PTCH": -12, "MODE": "ONE", "E6": 0, "DCAY": 92, "TONE": 54,
-        "ATK": 0, "SUS": 127, "REL": ms(80), "DIST": pct(15),
+    dict(engine="SLICE", idx=2, name="WOOFER", cat="PERC", bseed=54997, recipe="kick: the break's lone kick (step 7, no hat under it) a fifth down, dark and tight", p={
+        "DIST": 7,
+        # audit: C3 = slice 0 of the DIV, so START 19 plays slice 7 of 16: the kick on step 7 alone (slice 0 holds the kick WITH the
+        # closed hat on the one, which is what made the old WOOFER sound odd)
+        "SRC": "BREAK", "DIV": "16", "START": 19, "PTCH": -5, "MODE": "ONE", "E6": 0, "DCAY": 91, "TONE": 71,
+        "ATK": 0, "SUS": 127, "REL": ms(60),
         "EQHG": -4, "EQHF": -8,
         "MOD1": ("AT", "CUT", dep(25)), "MOD2": ("VEL", "CUT", dep(15)),
-        "LEVEL": 111,
+        "LEVEL": 118,
     }),
     dict(engine="SLICE", idx=3, name="BACKSPIN", cat="FX", bseed=40304, recipe="5.1 riser idea: a reversed half-beat of the break, filter opening", p={
         "DIST": 7,   # own DIST (2026-10-12): SMART now rolls a DIST of 0 upward, and the first step costs ~2 dB; a base of 7 keeps End B in the window
@@ -1264,7 +1275,7 @@ SOUNDS = [
         "MOD1": ("AT", "CUT", dep(25)),
         "LEVEL": 114,
     }),
-    dict(engine="SLICE", idx=4, name="MACHINE GUN", cat="OTHER", bseed=51030, recipe="glitch stutter: a 32nd of the break looped while the key is held", p={
+    dict(engine="SLICE", idx=4, name="SNARE BUZZ", cat="OTHER", bseed=51030, recipe="glitch stutter: a 32nd of the break looped while the key is held", p={
         "DIST": 7,   # own DIST (2026-10-12): SMART now rolls a DIST of 0 upward, and the first step costs ~2 dB; a base of 7 keeps End B in the window
         # audit: C3 = slice 8 of 32 (the snare's start)
         "SRC": "BREAK", "DIV": "32", "START": 20, "PTCH": 0, "MODE": "LOOP", "E6": 0, "DCAY": 127, "TONE": 100,
@@ -1284,3 +1295,10 @@ SOUNDS = [
         "LEVEL": 105,
     }),
 ]
+
+# DUELL 0.2.2 (owner): the LFOs run FREE on every factory sound, both of them, set explicitly (not left to the default,
+# params.c P_LTRIG / P_L2TRIG). A FADE restarts with each fresh phrase all the same (voice.c trk_note_on); only the PHASE is
+# no longer put back at the key press. A sound that wants the key trigger sets "LFO TRIG": "NOTE" itself.
+for _s in SOUNDS:
+    _s["p"].setdefault("LFO TRIG", "FREE")
+    _s["p"].setdefault("LFO2 TRIG", "FREE")

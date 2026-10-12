@@ -38,7 +38,7 @@ static int motion_param(uint32_t id)
     return id < P_COUNT && (id <= P_REL || (id >= P_ED_FLT && id <= P_LD_AMP && id != P_EQLG) ||
         (id >= P_DIST && id <= P_REV) || id == P_GLIDE || id == P_PAN ||
         id == P_DETUNE || id == P_SPRD || (id >= P_ITYPE && id <= P_IMIX) || (id >= P_E2ATK && id <= P_L2FADE) ||
-        (id >= P_E2FLT && id <= P_L2SHP) || id >= P_E0);   /* (DUELL: ENV 2 and LFO 2's RATE WAVE PHS FADE and DEST depths as their twins; not their SYNC TRIG POL) */   /* (not the chord keys, nor
+        (id >= P_E2FLT && id <= P_L2SHP) || id == P_FREEA || id == P_FREEB || id >= P_E0);   /* (DUELL: ENV 2 and LFO 2's RATE WAVE PHS FADE and DEST depths as their twins; not their SYNC TRIG POL) */   /* (not the chord keys, nor
                                         * 1.2's LFO SYNC TRIG POL and QUANTIZE, nor 1.5's filter TYPE and ENV SYNC:
                                         * settings; not the matrix; SPREAD (#148: continuous, as PAN), 1.5's INSERT (TYPE
                                         * too: a lock switches it for a step, fx.c track_insert fades over), E0..E7.

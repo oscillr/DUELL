@@ -467,4 +467,5 @@ static const engine_t ENG_GRAIN = {
     .poly = GR_POLY,
     .block = grain_block,
     .mem = sizeof(gr_part_t),
+    .ufilt = 1,                 /* DUELL 0.2.2: no filter of its own: the universal filter (voice.c uf_run, P_FREEA CUT / P_FREEB RES) */
 };

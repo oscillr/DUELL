@@ -158,8 +158,8 @@ static int track_v3_ok(const proj_trk_t *n, const proj_trk_v3_t *o, uint32_t t)
     int ok = n->engine == o->engine && n->preset == o->preset && steps_same(n->step, o->step);
     for (k = 0; k <= P_DETUNE; k++)
         ok &= n->p[k] == (param_retired(k) ? TP[k].def : oldv3(t, k));   /* up to the SLICER: the same ids (DUELL's: defaults) */
-    for (k = P_FREEA; k <= P_FREED; k++)        /* the SLICER's values: the ids are free (DUELL); the import keeps them as stored, */
-        ok &= n->p[k] == oldv3(t, k) && param_fit(&TP[k], n->p[k]) == 0;   /* the load (project.c's param_fit) brings them to 0 */
+    for (k = P_FREEA; k <= P_FREED; k++)        /* the SLICER's values: the ids are DUELL's universal filter's CUT, RES and two free ones (0.2.2): */
+        ok &= n->p[k] == TP[k].def;             /* a store of Felucca's layout takes their defaults (core.h param_retired): CUT OFF */
     for (k = P_M1SRC; k <= P_M4AMT; k++)
         ok &= n->p[k] == TP[k].def && TP[k].def == 0;
     for (k = 0; k < 8u; k++)

@@ -3,8 +3,8 @@
 # Nothing generated is committed. The workflow builds the site from the committed sources with
 # felucca-base/web/make_site.py. The two build products that need the firmware toolchain or Emscripten
 # are NOT built here; they are taken from the newest release (pre-releases count, drafts do not), if it has them:
-#   duell-*.fwsc            the firmware package  -> /install/
-#   duell-emulator*.zip     the emulator (the contents of felucca-base/build/emu, zipped) -> /emu/
+#   duell-*.fwsc            the firmware package, any version in the name (duell-0.2.1-beta.fwsc) -> /install/ (+ duell-latest.fwsc, duell-version.json)
+#   duell-emulator*.zip     the emulator, any version in the name (duell-emulator-0.2.1-beta.zip) (the contents of felucca-base/build/emu, zipped) -> /emu/
 # An emulator-only release is fine: without the .fwsc the installer page shows "DUELL firmware is not yet released"
 # (and its flow stays hidden); without the emulator zip /emu/ says the emulator is not attached. Neither fails the job.
 name: Pages
@@ -51,18 +51,20 @@ jobs:
           else
             echo "no release yet"
           fi
-          for z in dl/duell-emulator*.zip; do
-            [ -f "$z" ] && unzip -q -o "$z" -d dl/emu
-          done
+          z=$(ls dl/duell-emulator*.zip 2>/dev/null | sort -V | tail -n 1 || true)   # any version; the highest wins
+          if [ -n "$z" ]; then unzip -q -o "$z" -d dl/emu; fi
           true
           ls -la dl dl/emu
 
       - name: Build the site
         run: |
           args=""
-          if ls dl/duell-*.fwsc >/dev/null 2>&1; then args="$args --pkg $(ls dl/duell-*.fwsc | head -n 1)"; fi
+          # any version in the name (duell-0.2.1-beta.fwsc); if a release carries several, the highest version wins.
+          # make_site.py reads the version from the file name and writes duell-latest.fwsc and duell-version.json.
+          pkg=$(ls dl/duell-[0-9]*.fwsc 2>/dev/null | sort -V | tail -n 1 || true)
+          if [ -n "$pkg" ]; then args="$args --pkg $pkg"; fi
           if [ -f dl/emu/index.html ]; then args="$args --emu dl/emu"; fi
-          # no --pkg: make_site.py would fall back to build/duell-0.1-beta.fwsc, which does not exist in a fresh checkout
+          # no --pkg: make_site.py looks for build/duell-*-beta.fwsc, which does not exist in a fresh checkout
           python3 felucca-base/web/make_site.py $args site
 
       - uses: actions/configure-pages@v5

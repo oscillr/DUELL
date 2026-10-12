@@ -185,6 +185,18 @@ int main(void)
               !memcmp(mph[pi].fh[1][mph[pi].top[1]], fendb[pi], NFM) && mph[pi].fader == 0u;
     ck("  End B of each part: the same seed and the same values (FM6 bytes too); the fader at A", ok);
 
+    /* the scale is the instrument's (core.h): a multi's stored per-part SCALE / QNT (ids reserved, format unchanged) is read and ignored on load,
+     * and a load never touches the global SCALE, ROOT, OFF-SCALE */
+    trk[0].p[P_SCALE] = 9; trk[1].p[P_SCALE] = 4; trk[0].p[P_QUANT] = 2;
+    scale_g = 7; root_g = 5; offscale_g = OS_PLAY;
+    project_save_as(15, "SCALE TST");
+    trk[0].p[P_SCALE] = trk[1].p[P_SCALE] = trk[0].p[P_QUANT] = 0;
+    scale_g = 3; root_g = 2; offscale_g = OS_SNAP;
+    project_load(15);
+    ck("a multi with a stored per-part SCALE / QNT loads without them; the global scale, root and OFF-SCALE are as they were",
+       trk[0].p[P_SCALE] == 0 && trk[1].p[P_SCALE] == 0 && trk[0].p[P_QUANT] == 0 && scale_g == 3 && root_g == 2 && offscale_g == OS_SNAP);
+    scale_g = 0; root_g = 0;
+
     /* 2: sixteen slots, each its own; a rewrite keeps the pair partner */
     for (k = 0; k < MU_SLOTS; k++) {
         char nm2[8] = "MULTI  ";   /* ("MULTI A" ..) */
@@ -304,7 +316,7 @@ int main(void)
 
     /* 5: the factory multis M01..M04 (build/gen/duell_multis.h): in ROM, shown while the slot is empty in flash */
     {
-        static const char *const FN[4] = {"VESPER CLUB", "SHARD STAB", "MODEM DRIFT", "ELASTIC LOW"};
+        static const char *const FN[4] = {"EERIE SIGNAL", "WIRED SNAIL", "DEAD BUFFER", "ACID ETHER"};
         static const uint8_t FE[4][2] = {{5, 7}, {0, 0}, {8, 11}, {0, 0}};   /* VOICE WHEEL; ANALOG; GRAIN NOISE; ANALOG */
         static const uint8_t FK[4][2] = {{2, 3}, {13, 15}, {2, 9}, {3, 0}};
         static const char *const SN[4][2] = {{"VESPERS", "JAZZ CLUB"}, {"SFORZANDO", "GLASS SHARDS"}, {"STRETCH", "MODEM"},
@@ -316,7 +328,7 @@ int main(void)
         ok = 1;
         for (k = 0; k < 4u; k++)
             ok &= project_used(k) && project_factory(k) && str_eq(mu_names[k], FN[k]);
-        ck("empty flash: M01..M04 are the factory multis (VESPER CLUB, SHARD STAB, MODEM DRIFT, ELASTIC LOW), M05 empty",
+        ck("empty flash: M01..M04 are the factory multis (EERIE SIGNAL, WIRED SNAIL, DEAD BUFFER, ACID ETHER), M05 empty",
            ok && !project_used(4) && !project_factory(4));
         ok = 1;
         for (k = 0; k < 4u; k++) {                    /* each part's engine + factory index names the intended sound */
@@ -349,8 +361,8 @@ int main(void)
         press(B_OCTUP);
         power_cycle();
         project_load(1);
-        ck("ERASE of the overwrite restores SHARD STAB (after a power cycle too); it loads again", project_factory(1) &&
-           str_eq(mu_names[1], "SHARD STAB") && trk[0].preset == 13u && song.g[G_BPM] != 151);
+        ck("ERASE of the overwrite restores WIRED SNAIL (after a power cycle too); it loads again", project_factory(1) &&
+           str_eq(mu_names[1], "WIRED SNAIL") && trk[0].preset == 13u && song.g[G_BPM] != 151);
         n = project_rename(3, "ELASTIC 2");
         power_cycle();
         ck("rename of the factory M04 stores it under the new name; the music of the record is the factory one", n == 0u &&
@@ -390,21 +402,24 @@ int main(void)
         project_load(14);
         ck("  TEST 3 HEAVY: SHIM reverb, PING-PONG on, FLANGER inserts on both parts", song.g[G_RTYPE] == 3 && song.g[G_PINGPONG] == 1 &&
            trk[0].p[P_ITYPE] == 7 && trk[1].p[P_ITYPE] == 7);
-        /* the TEST page */
-        go_title("TEST");
-        ck("GLO > TEST: the page (GR_TEST), no parameter on its knobs", cur_page()->graph == GR_TEST && cur_page()->id[0] == 0xFFu);
+        /* the TEST screen: MENU > SYSTEM > TEST (K1 right on the item opens it), not a page of GLO */
+        ui.menu = 1; ui.menu_sel = MI_TEST; frames(16);
+        turn(EN_K1, 1);
+        ck("MENU > SYSTEM > TEST: opened with K1 right; the TEST screen (GR_TEST), no parameter on its knobs", ui.menu == 3u && TEST_PAGE.graph == GR_TEST &&
+           TEST_PAGE.id[0] == 0xFFu && str_eq(TEST_PAGE.title, "TEST"));
+        frames(16);
         test_pick = 0xFFu;
         project_cur_slot();
         proj_cur = PROJ_NO_SLOT;
         turn(EN_K3, 1);
-        ck("K3 LOAD MULTI right: the next used multi (from none: M02 after the first used M01) is loaded at once, 'LOADED M02 SHARD STAB'",
-           proj_cur == 1u && msg_is("LOADED M02 SHARD STAB") && trk[0].preset == 13u && trk[1].eng_req == 0u && !ui.confirm);
+        ck("K3 LOAD MULTI right: the next used multi (from none: M02 after the first used M01) is loaded at once, 'LOADED M02 WIRED SNAIL'",
+           proj_cur == 1u && msg_is("LOADED M02 WIRED SNAIL") && trk[0].preset == 13u && trk[1].eng_req == 0u && !ui.confirm);
         frame();
         frames(48);
         test_multi_name(b);
-        ck("  the panel's multi line follows (M02 SHARD STAB)", str_eq(b, "M02 SHARD STAB"));
+        ck("  the panel's multi line follows (M02 WIRED SNAIL)", str_eq(b, "M02 WIRED SNAIL"));
         turn(EN_K3, 2);
-        ck("  2 detents right: M03 skipped through, M04 (stepping), loaded: M04 ELASTIC LOW", proj_cur == 3u && msg_is("LOADED M04 ELASTIC LOW"));
+        ck("  2 detents right: M03 skipped through, M04 (stepping), loaded: M04 ACID ETHER", proj_cur == 3u && msg_is("LOADED M04 ACID ETHER"));
         turn(EN_K3, 1);
         ck("  one more right: empty M05..M12 skipped, M13 TEST 1 BASE (WHEEL JAZZ CLUB + ANALOG SILK CHORUS)", proj_cur == 12u &&
            trk[0].eng_req == 7u && trk[1].eng_req == 0u && str_eq(ds_name(trk[0].eng_req, trk[0].preset), "JAZZ CLUB") &&
@@ -434,7 +449,7 @@ int main(void)
         cpum.base = 0u;
         ck("(a state to reset: 7 missed blocks, peak hold 91 %)", test_missed() == 7u && cpum.hold == 91u);
         turn(EN_K4, 1);
-        ck("K4 RESET: 'RESET'; the peak hold, the missed count and the average window are cleared (the power-on count of INFO stays)",
+        ck("K4 RESET: 'RESET'; the peak hold, the missed count and the average window are cleared (the power-on count of ABOUT stays)",
            msg_is("RESET") && test_missed() == 0u && cpum.hold < 91u && cpu_pk == 0u && cpu_miss == 7u && cpum.n0 == cpu_n && !cpu_recent());
         cpu_miss = 9u;
         frames(1200);
@@ -444,7 +459,7 @@ int main(void)
         ck("  K4 turned left resets too", msg_is("RESET") && test_missed() == 0u);
         /* K1 MORPH, K2 ROLL: the MORPH page's */
         project_load(12);
-        go_title("TEST");
+        ck("  (still on the TEST screen after a load)", ui.menu == 3u);
         morph_set_target(0);
         song.sel = 0;
         turn(EN_K1, 20);
@@ -458,7 +473,9 @@ int main(void)
         frames(600);
         turn(EN_K2, MORPH_DET);
         ck("  right: ROLLED B", msg_is("ROLLED B"));
-        ck("  the TEST page is still shown (K1..K4 never leave it)", !strcmp(cur_page()->title, "TEST"));
+        ck("  the TEST screen is still shown (K1..K4 never leave it, K1 left included)", ui.menu == 3u);
+        press(B_OCTDN);
+        ck("  OCT-: back to the menu tabs, TEST the row", ui.menu == 1u && ui.menu_sel == MI_TEST);
         /* ABOUT's first view is the splash animation: endless, frozen by ANIM OFF, gone once SELECT scrolls */
         ui.menu = 2; ui.menu_scroll = 0; about_t0 = fm1_ms;
         frames(32);
@@ -491,7 +508,7 @@ int main(void)
         m01_mode = duell_mode_req;
         m01_bal = (uint32_t)(uint8_t)mix_bal;
         memcpy(g_copy, song.g, sizeof g_copy);
-        ck("M01 is the factory VESPER CLUB (read through the factory path)", str_eq(mu_names[0], "VESPER CLUB") && project_factory(0));
+        ck("M01 is the factory EERIE SIGNAL (read through the factory path)", str_eq(mu_names[0], "EERIE SIGNAL") && project_factory(0));
 
         for (sector = 0; sector < 3u; sector++) {     /* 0 erased flash, 1 garbage (stock firmware's data), 2 zeros */
             memset(nor, 0xFF, sizeof nor);
@@ -567,7 +584,8 @@ int main(void)
                 break;
         }
 
-        /* an older or other valid settings blob keeps its theme and mode */
+        /* an older or other valid settings blob keeps its theme, mode, scale and root; the unit starts as it was left: the autosave is restored
+         * (RESTORE LAST ON, bit 128 clear), not M01; DUELL 0.2.2: a part muted in the autosave starts audible */
         memset(nor, 0xFF, sizeof nor);
         power_cycle();
         memset(&pb, 0, sizeof pb);
@@ -575,20 +593,67 @@ int main(void)
         pb.palette = palette_to_stored(4u);
         pb.favorites.factory[15][9] = DM_STEREO;
         pb.favorites.factory[15][26] = 1u;
-        ck("an older DUELL settings record (theme 4, STEREO, 0.1 beta's HOME view) is stored", st_save(OBJ_SETTINGS, &pb, sizeof pb) == 0);
+        pb.favorites.factory[15][3] = 0x80u | 5u;          /* the global scale (format flag + scale 5) and root 7 */
+        pb.favorites.factory[15][4] = 7u;
+        pb.favorites.factory[15][30] &= (uint8_t)~128u;    /* RESTORE LAST ON (bit 7 clear, as every older blob) */
+        ck("an older DUELL settings record (theme 4, STEREO, 0.1 beta's HOME view, a scale) is stored", st_save(OBJ_SETTINGS, &pb, sizeof pb) == 0);
+        {
+            uint32_t pass;
+            power_cycle();                                 /* an autosave from an earlier session: part 1 MUTED, tempo 77 */
+            host_tracks_init();
+            trk[0].p[P_MUTE] = 1;
+            song.g[G_BPM] = 77;
+            project_capture(&proj_scratch);
+            proj_wire_gen++;
+            ck("  an autosave with a muted part 1 and tempo 77 is on the flash",
+               proj_pack(&proj_wire, &proj_scratch) && st_save(OBJ_AUTOSAVE, &proj_wire, sizeof proj_wire) == 0);
+            for (pass = 0; pass < 2u; pass++) {            /* 0: RESTORE LAST ON (the older blob), 1: OFF (bit 128 set) */
+                power_cycle();
+                memset(&settings, 0, sizeof settings);
+                first_boot_pending = 0;
+                if (pass) {
+                    pb.favorites.factory[15][30] |= 128u;
+                    ck("  RESTORE LAST OFF stored (a settings blob)", st_save(OBJ_SETTINGS, &pb, sizeof pb) == 0);
+                    power_cycle();
+                    memset(&settings, 0, sizeof settings);
+                }
+                persist_boot();
+                settings_init();
+                ck(pass ? "  OFF is read from the blob (editor id 15 value 1)" : "  the older blob reads RESTORE LAST ON (editor id 15 value 0)",
+                   menu_get(MI_RESTORE) == pass && !!(ui_prefs & PREF_RESTORE_OFF) == (int)pass);
+                if (autosave_boot(1))
+                    first_boot_pending = 0;
+                frames(300);
+                if (!pass) {
+                    ck("  power-on restores the autosave as left (tempo 77, no M01, not a first start)", first_boot_pending == 0u && song.g[G_BPM] == 77 &&
+                       proj_cur == PROJ_NO_SLOT && !str_eq(proj_name, "EERIE SIGNAL"));
+                    ck("  .. the muted part 1 starts audible (MUTE cleared at power-on)", !trk[0].p[P_MUTE] && !trk[1].p[P_MUTE]);
+                    ck("  .. the theme (4), MODE (STEREO), scale 5 and root 7 stay as stored", settings.palette == palette_from_stored(pb.palette) &&
+                       duell_mode_req == DM_STEREO && (ui_scale_set & 0xCFu) == (0x80u | 5u) && ui_root_set == 7u);
+                } else {
+                    ck("  RESTORE LAST OFF: the autosave is not restored, and it is not a first start either (no M01)", first_boot_pending == 0u &&
+                       song.g[G_BPM] != 77 && !str_eq(proj_name, "EERIE SIGNAL") && proj_cur == PROJ_NO_SLOT);
+                }
+            }
+        }
+        /* a multi that holds a muted part: a LOAD keeps the stored mute (the GLO page shows MUTED) */
+        memset(nor, 0xFF, sizeof nor);
         power_cycle();
         memset(&settings, 0, sizeof settings);
-        first_boot_pending = 0;
         persist_boot();
         settings_init();
-        if (autosave_boot(1))
-            first_boot_pending = 0;
-        frames(200);
-        ck("  it is not a first start: no M01, the default sounds stay", first_boot_pending == 0u && (trk[0].eng_req != m01[0].eng_req || trk[0].preset != m01[0].preset) &&
-           !str_eq(proj_name, "VESPER CLUB") && proj_cur == PROJ_NO_SLOT);
-        ck("  the theme (4) and MODE (STEREO) are kept, not forced", settings.palette == palette_from_stored(pb.palette) && duell_mode_req == DM_STEREO);
-        ck("  an old HOME view byte (1) still reads: OVERVIEW shows PARTS, HOME OPENS = MORPH", menu_get(MI_HOME) == 1u && menu_get(MI_HOMEPG) == 0u);
-        memset(nor, 0xFF, sizeof nor);                /* the shorter record of the first DUELL builds (no user_hi) */
+        project_load(0);
+        trk[1].p[P_MUTE] = 1;
+        ck("  (M01 overwritten with part 2 muted)", project_save(0) == 0 && !project_factory(0));
+        project_load(0);
+        ck("  a LOAD of that multi keeps its stored mute (part 2 MUTED on the GLO page)", trk[1].p[P_MUTE] == 1 && !trk[0].p[P_MUTE]);
+        /* the shorter record of the first DUELL builds (no user_hi) still reads as valid */
+        memset(nor, 0xFF, sizeof nor);
+        power_cycle();
+        memset(&pb, 0, sizeof pb);
+        settings_export(&pb);
+        pb.palette = palette_to_stored(4u);
+        pb.favorites.factory[15][26] = 1u;
         ck("  the shorter older record (without the patches' favourites 32..127) is stored", st_save(OBJ_SETTINGS, &pb, (uint32_t)(sizeof pb - sizeof pb.favorites.user_hi)) == 0);
         power_cycle();
         memset(&settings, 0, sizeof settings);
@@ -596,8 +661,8 @@ int main(void)
         persist_boot();
         settings_init();
         frames(100);
-        ck("  and it counts as valid too: theme 4, STEREO", first_boot_pending == 0u && settings.palette == palette_from_stored(pb.palette) &&
-           duell_mode_req == DM_STEREO);
+        ck("  and it counts as valid too: theme 4, an old HOME view byte (1) still reads PARTS, HOME OPENS = MORPH",
+           first_boot_pending == 0u && settings.palette == palette_from_stored(pb.palette) && menu_get(MI_HOME) == 1u && menu_get(MI_HOMEPG) == 0u);
     }
 
     printf(bad ? "multi: FAILED (%d)\n" : "multi: all ok\n", bad);

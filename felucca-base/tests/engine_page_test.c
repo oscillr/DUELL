@@ -84,8 +84,8 @@ static void test_open_and_order(void)
         expect("SELECT right: ENGINE again", on_engine_page());
     }
     {   /* the order spelled out for two engines (ANALOG: FILTER; FM6: OPERATOR pages) */
-        static const char *const A[] = {"ENGINE", "EDIT 1", "EDIT 2", "FILTER", "VOICE 1", "VOICE 2", "VOICE 3"};
-        static const char *const F[] = {"ENGINE", "EDIT 1", "EDIT 2", "OPERATOR 1", "OP ENV", "OPERATOR 2", "VOICE 1", "VOICE 2", "VOICE 3"};
+        static const char *const A[] = {"ENGINE", "EDIT 1", "EDIT 2", "FILTER", "VOICE 1/3", "VOICE 2/3", "VOICE 3/3"};
+        static const char *const F[] = {"ENGINE", "EDIT 1", "EDIT 2", "FILTER", "OP TUNE", "OP ENV", "OP MODE", "VOICE 1/3", "VOICE 2/3", "VOICE 3/3"};
         const char *got[16];
         uint32_t n, k, ok = 1;
         fresh(0);

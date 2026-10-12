@@ -685,11 +685,86 @@ static void test_pan_lfo(void)
     check("LFO 1 sine -> PAN -64: sweeps both ways too (inverted phase)", c < -80 && d > 80);
 }
 
+
+/* PART 2's LFO -> PAN in each output mode (the owner's report: LAYER, LFO 1 -> PAN did nothing): STEREO and LAYER mix the parts
+ * alike and swing both channels; SPLIT keeps part 2 hard right. Then every class of destination (per-block PAN, DIST, a send,
+ * an engine parameter, and per-voice CUT) changes part 2's sound in LAYER */
+static void part2_run(uint32_t mode, int32_t src, int32_t dst, int32_t amt, int32_t *lo, int32_t *hi, double *rms, int32_t *rec)
+{
+    track_t *t = &trk[1];
+    uint32_t b, i, k = 0;
+    int64_t sq = 0;
+    fresh(0, 0);
+    duell_mode_force(mode);
+    trk[0].p[P_LEVEL] = 0;                         /* (part 1 silent: only part 2 is measured) */
+    t->p[P_PAN] = 0;
+    t->p[P_LRATE] = t->p[P_L2RATE] = 60;
+    t->p[P_LFADE] = t->p[P_L2FADE] = 0;
+    t->p[P_LTRIG] = 1;                             /* FREE: the held note does not restart it */
+    t->p[P_SUS] = 127;
+    t->p[P_CHOR] = t->p[P_DLY] = t->p[P_REV] = 0;
+    if (src)
+        slot(t, 0, src, dst, amt);
+    trk_note_on(t, 60, 100);
+    *lo = 1000;
+    *hi = -1000;
+    for (b = 0; b < 4u * FS / CTL; b++) {
+        int64_t l = 0, r = 0;
+        mix_block(out_buf, CTL);
+        for (i = 0; i < CTL; i++) {
+            l += out_buf[2u * i] < 0 ? -out_buf[2u * i] : out_buf[2u * i];
+            r += out_buf[2u * i + 1u] < 0 ? -out_buf[2u * i + 1u] : out_buf[2u * i + 1u];
+            sq += (int64_t)out_buf[2u * i] * out_buf[2u * i];
+            if (rec && k < 200000u)
+                rec[k++] = out_buf[2u * i];
+        }
+        if (b > FS / CTL / 4u && l + r > 1000) {
+            int32_t bal = (int32_t)((r - l) * 100 / (l + r));
+            *lo = bal < *lo ? bal : *lo;
+            *hi = bal > *hi ? bal : *hi;
+        }
+    }
+    *rms = sqrt((double)sq);
+    duell_mode_force(DM_STEREO);
+}
+
+static void test_part2_modes(void)
+{
+    static int32_t ref[200000], cur[200000];
+    int32_t lo, hi, lo2, hi2;
+    double r;
+    uint32_t k, ok;
+    static const int32_t DST[5] = {MD_PAN, MD_DIST, MD_CHO, MD_E1, MD_CUT};
+    part2_run(DM_LAYER, MS_LFO, MD_PAN, 63, &lo, &hi, &r, 0);
+    printf("mod: LAYER part 2 LFO1 -> PAN +63: balance %d..%d\n", lo, hi);
+    check("LAYER: part 2's LFO 1 -> PAN +63 swings the stereo balance left and right", lo < -80 && hi > 80);
+    part2_run(DM_STEREO, MS_LFO, MD_PAN, 63, &lo2, &hi2, &r, 0);
+    check("  .. STEREO the same numbers", lo2 == lo && hi2 == hi);
+    part2_run(DM_LAYER, MS_LFO2, MD_PAN, -64, &lo, &hi, &r, 0);
+    check("LAYER: part 2's LFO 2 -> PAN -64 swings both ways too", lo < -80 && hi > 80);
+    part2_run(DM_SPLIT, MS_LFO, MD_PAN, 63, &lo, &hi, &r, 0);
+    check("SPLIT: part 2 stays hard right (PAN and its modulation are not heard, by design)", lo == 100 && hi == 100);
+    for (k = 0, ok = 1; k < 5u; k++) {             /* every destination class: part 2's sound changes in LAYER */
+        double d = 0, e = 0;
+        uint32_t i;
+        part2_run(DM_LAYER, 0, 0, 0, &lo, &hi, &r, ref);
+        part2_run(DM_LAYER, MS_LFO, DST[k], 63, &lo, &hi, &r, cur);
+        for (i = 0; i < 200000u; i++) {
+            d += (double)(cur[i] - ref[i]) * (cur[i] - ref[i]);
+            e += (double)ref[i] * ref[i];
+        }
+        printf("mod: LAYER part 2 LFO1 -> dest %d: change %.1f %%\n", DST[k], 100.0 * sqrt(d / (e + 1)));
+        ok &= d > 0.005 * e;
+    }
+    check("LAYER: LFO 1 -> PAN, DIST, CHO, an engine parameter and CUT all change part 2's sound (>= 7 %)", ok);
+}
+
 int main(int argc, char **argv)
 {
     test_off();
     test_math();
     test_pan_lfo();
+    test_part2_modes();
     test_midi();
     test_cost();
     if (argc > 1)

@@ -3,12 +3,13 @@
 # Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
 """Build Felucca: the app, the update loader and an installable .fwsc package.
 
-  tools/build.py [--release X.Y[-suffix]]
+  tools/build.py [--release]
 
 Outputs in build/: felucca.bin (app), loader/ota.bin (update loader),
-felucca.fwsc (package). A release build (--release X.Y[-suffix]) writes duell-X.Y[-suffix].fwsc and a folder
-release-X.Y[-suffix]/ with the package, the app, SHA256SUMS, the sample attribution and the licence files; the device
-shows "DUELL X.Y suffix" (--release 0.1-beta: "DUELL 0.1 beta", duell-0.1-beta.fwsc, identity FM-1_901).
+felucca.fwsc (package). A release build (--release; the version is always the VERSION file) writes duell-<VERSION>-beta.fwsc
+and a folder release-<VERSION>-beta/ with the package, the app, SHA256SUMS, the sample attribution and the licence files; the device
+shows the version of the VERSION file at the DUELL root ("DUELL 0.2.1 beta"); the package is duell-<VERSION>-beta.fwsc
+(identity FM-1_901). Every build also writes duell-latest.fwsc (the same bytes) and duell-version.json {"version": "0.2.1"}.
 See BUILDING.md for the toolchain and the SDK.
 
 The JieLi toolchain is Linux x86-64 only. JIELI_TOOLCHAIN points at it; on
@@ -16,6 +17,7 @@ macOS (or with JIELI_DOCKER=1) each tool runs in a linux/amd64 container.
 """
 import argparse
 import hashlib
+import json
 import os
 import platform
 import re
@@ -51,7 +53,15 @@ SDK_SHA256 = {
 }
 
 PRODUCT = "FM-1_900"                # package identity; release builds are FM-1_9XY
-VERSION = None                      # FELUCCA_VERSION for release builds (default: firmware/src/felucca.c)
+VERSION = None                      # unused: the version string comes from build/gen/duell_version.h (the VERSION file)
+
+
+def read_version():
+    """the single source of truth: DUELL/VERSION (0.MINOR.BUILD)"""
+    v = (SRC.parent / "VERSION").read_text().strip()
+    if not re.fullmatch(r"0\.\d+\.\d+", v):
+        raise SystemExit(f"build: {SRC.parent / 'VERSION'} must hold 0.MINOR.BUILD, found {v!r}")
+    return v
 
 
 def toolchain():
@@ -97,7 +107,8 @@ def generate():
     for old in ("felucca_font.h", "felucca_icons.h"):     # headers of the bitmap font and icon atlas
         (GEN / old).unlink(missing_ok=True)
     tools = SRC / "tools"
-    cmds = [[tools / "gen_aa_font.py", GEN / "ui_fonts.h", "--preset", "inter-tight"],
+    cmds = [[tools / "gen_version.py", GEN / "duell_version.h"],   # the VERSION file -> DUELL_VERSION, DUELL_VERSION_STR
+            [tools / "gen_aa_font.py", GEN / "ui_fonts.h", "--preset", "inter-tight"],
             [tools / "gen_aa_icons.py", GEN / "ui_icons.h"],
             [tools / "gen_aa_keycaps.py", GEN / "ui_keycaps.h"],
             [tools / "gen_ui_palettes.py", GEN / "ui_palettes.h"],
@@ -106,7 +117,7 @@ def generate():
             [tools / "gen_fm6_patches.py", GEN / "felucca_fm6.h"],
             [tools / "gen_samples.py", GEN / "felucca_samples.h"],
             [tools / "gen_duell_sounds.py", GEN / "duell_sounds.h"],   # DUELL factory sounds (tools/duell_sounds.py)
-            [tools / "gen_duell_multis.py", GEN / "duell_multis.h"]]  # DUELL factory multis M01..M04 (tools/factory_multis)
+            [tools / "gen_duell_multis.py", GEN / "duell_multis.h"]]  # DUELL factory multis M01..M04 (tools/factory_multis); M13..M16 too with DUELL_TEST_MODE=1 (env, as the -D below)
     procs = [subprocess.Popen([sys.executable, *map(str, c)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                               text=True) for c in cmds]
     failed = []
@@ -194,16 +205,14 @@ def build_app():
     flags = [*CFLAGS, "-Ifirmware/hal", "-Ifirmware/src", "-Ibuild/gen"]
     for flag in ("FELUCCA_FLASH", "FELUCCA_OTA", "FELUCCA_OTA_DRYRUN", "FELUCCA_OTA_RAMONLY", "FELUCCA_CDC",
                  "FELUCCA_UART", "FELUCCA_UAC", "FELUCCA_UAC_TONE", "FELUCCA_UAC_48K", "FELUCCA_ICONS", "FELUCCA_SLICE", "FELUCCA_FM4",
-                 "FELUCCA_CDC_DEFAULT"):
-        v = os.environ.get(flag)    # unset: the default in firmware/src/felucca.c
+                 "FELUCCA_CDC_DEFAULT", "DUELL_TEST_MODE"):
+        v = os.environ.get(flag)    # unset: the default in firmware/src/felucca.c (DUELL_TEST_MODE: core.h, 0 = release: no TEST screen, no M13..M16)
         if v in ("0", "1"):
             flags.append(f"-D{flag}={v}")
     v = os.environ.get("FELUCCA_USB_LAYOUT")   # firmware/src/usb.c: how the USB composite presents itself (#67), 0..3
     if v in ("0", "1", "2", "3"):
         flags.append(f"-DFELUCCA_USB_LAYOUT={v}")
     flags.append(f'-DFELUCCA_ID="{PRODUCT}"')
-    if VERSION:
-        flags.append(f'-DFELUCCA_VERSION="{VERSION}"')
     # felucca.c goes to LLVM IR without the optimizer, the main-loop functions (UI, stores, editor) are
     # marked minsize (tools/size_fns.py), then the IR is compiled at -Os. FELUCCA_SIZE=0: -Os everywhere
     size = os.environ.get("FELUCCA_SIZE") != "0"
@@ -337,19 +346,17 @@ def mmio_check():
 
 
 def main():
-    global PRODUCT, VERSION
+    global PRODUCT
     ap = argparse.ArgumentParser()
-    ap.add_argument("--release", metavar="X.Y", help="release build: identity FM-1_9XY, version string \"DUELL X.Y suffix\" (0.1-beta: \"DUELL 0.1 beta\", file duell-0.1-beta.fwsc)")
+    ap.add_argument("--release", nargs="?", const="", metavar="X.Y", help="release build: a folder release-<VERSION>-beta/ too. The version is always the VERSION file; an X.Y given here is ignored")
     ap.add_argument("--sdk", type=Path, help="JieLi AC79 SDK checkout (default: $AC79_SDK)")
     a = ap.parse_args()
-    name = "felucca.fwsc"
-    if a.release:                   # one digit each: the identity has room for two (X.Y.Z and X.Y.Z.W keep X.Y's)
-        m = re.fullmatch(r"(\d)\.(\d)(?:\.\d){0,2}(-[A-Za-z0-9]+)?", a.release)
-        if not m:
-            raise SystemExit(f"--release {a.release}: use X.Y, X.Y.Z, X.Y.Z.W or X.Y-suffix, one digit each")
-        PRODUCT = "FM-1_9" + m[1] + m[2]
-        VERSION = "DUELL " + a.release.lower().replace("-", " ")   # the name shown on the device: 0.1-beta -> "DUELL 0.1 beta"
-        name = f"duell-{a.release.lower()}.fwsc"                  # duell-0.1-beta.fwsc (the installer also accepts felucca-0.1-beta.fwsc)
+    ver = read_version()
+    tag = f"{ver}-beta"
+    if a.release:
+        print(f"note: --release {a.release} ignored; the version is {ver} (the VERSION file)")
+    name = f"duell-{tag}.fwsc"                  # the package of the VERSION file, release or not
+    PRODUCT = "FM-1_901"                        # package identity (one digit each: the identity has room for two)
     fm1pkg_make.SDK = a.sdk
     for rel, sha in SDK_SHA256.items():          # fail early without the SDK
         if hashlib.sha256(fm1pkg_make.sdk_file(rel)).hexdigest() != sha:
@@ -373,6 +380,8 @@ def main():
         raise SystemExit("build: checks failed")
     pkg = fm1pkg_make.ufw(fm1pkg_make.flash_image(img, fm1pkg_make.KEY), ota, PRODUCT)
     (OUT / name).write_bytes(pkg)
+    (OUT / "duell-latest.fwsc").write_bytes(pkg)                      # stable name for the installer page
+    (OUT / "duell-version.json").write_text(json.dumps({"version": ver}) + "\n")
     att = SRC / "assets" / "samples-cc0" / "ATTRIBUTION.txt"
     if att.exists():
         shutil.copy(att, OUT / "ATTRIBUTION.txt")
@@ -380,10 +389,10 @@ def main():
     print(f"loader   {LDR / 'ota.bin'}  {len(ota)} B")
     print(f"package  {OUT / name}  {len(pkg)} B, identity {PRODUCT}")
     if a.release:                   # what a release carries: the package, the app and every licence they need
-        rel = OUT / f"release-{a.release.lower()}"
+        rel = OUT / f"release-{tag}"
         shutil.rmtree(rel, ignore_errors=True)
         (rel / "LICENSES").mkdir(parents=True)
-        app = f"duell-{a.release.lower()}-app.bin"
+        app = f"duell-{tag}-app.bin"
         (rel / name).write_bytes(pkg)
         (rel / app).write_bytes(img)
         (rel / "SHA256SUMS").write_text("".join(f"{hashlib.sha256(b).hexdigest()}  {n}\n"

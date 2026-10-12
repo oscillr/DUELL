@@ -67,11 +67,7 @@ static void fresh(uint32_t e, uint32_t pi)        /* the boot state (no FX tails
     memset(rev_comb, 0, sizeof rev_comb);
     memset(rev_ap, 0, sizeof rev_ap);
     memset(&fx, 0, sizeof fx);
-    memset(&pf, 0, sizeof pf);
     memset(ins, 0, sizeof ins);
-    for (k = 0; k < NTRK; k++)
-        pf.mg[k] = 32768;
-    perf_held = perf_latched = 0;
     lim_env = LIM_T;
     dc_l = dc_r = dce_l = dce_r = 0;
     vage = 0;
@@ -408,9 +404,9 @@ static void test_stored(void)
         track_t *t = &trk[0];
         for (p = 0; p < NPAGES; p++) {
             if (str_eq(PAGES[p].title, "FX")) ps = p;
-            if (str_eq(PAGES[p].title, "INSERT 1")) pi = p;
-            if (str_eq(PAGES[p].title, "INSERT 2")) pi2 = p;
-            if (str_eq(PAGES[p].title, "EQ 1")) pd = p;
+            if (str_eq(PAGES[p].title, "INSERT 1/2")) pi = p;
+            if (str_eq(PAGES[p].title, "INSERT 2/2")) pi2 = p;
+            if (str_eq(PAGES[p].title, "EQ 1/2")) pd = p;
         }
         ok = pi == ps + 1u && pi2 == pi + 1u && pd == pi2 + 1u && PAGES[pi].fam == FAM_FX && PAGES[pi].id[0] == P_ITYPE &&
              PAGES[pi2].id[0] == P_IMIX;

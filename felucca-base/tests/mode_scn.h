@@ -4,7 +4,7 @@
  * hash with the one the sources before step 5 gave (MODE_STEREO_HASH, made by building this file against them).
  * Two parts: part 1 ANALOG with SPREAD 100 (POLY), a PAN, DIST, the matrix's LFO -> PAN; part 2 PHASE with the INSERT
  * (CHORUS, MIX 100) and its PAN the other way; both with every send up; HALL, BASS+ (MENU > SPEAKER), the delay with
- * feedback; then the FX layer: THROW, FLANGER, PHASER held for a while. Chords on both, released, the tails. Must run
+ * feedback. Chords on both, released, the tails. Must run
  * from the process's own power-on state (the first render of the process) */
 static uint32_t scn_eng(const char *n)
 {
@@ -32,6 +32,7 @@ static uint64_t mode_stereo_scenario(void)
     trk[0].p[P_SPRD] = 100;
     trk[0].p[P_PAN] = -30;
     trk[0].p[P_DIST] = 40;
+    trk[0].p[P_LTRIG] = 0;                        /* NOTE: the scenario's hash predates the FREE default (0.2.2) and stays the same */
     trk[0].p[P_M1SRC] = MS_LFO;
     trk[0].p[P_M1DST] = MD_PAN;
     trk[0].p[P_M1AMT] = 50;
@@ -56,19 +57,11 @@ static uint64_t mode_stereo_scenario(void)
             for (i = 0; i < 3u; i++)
                 trk_note_on(&trk[1], C2[i], 110);
         }
-        if (b == nb / 3u) {                       /* the FX layer: THROW, FLANGER, PHASER */
-            perf_k[2] = 70;
-            perf_held = PF_BIT(PF_FLG) | PF_BIT(PF_PHS);
-        }
         if (b == nb / 2u) {
             for (i = 0; i < 4u; i++)
                 trk_note_off(&trk[0], C1[i]);
             for (i = 0; i < 3u; i++)
                 trk_note_off(&trk[1], C2[i]);
-        }
-        if (b == 2u * nb / 3u) {
-            perf_k[2] = 0;
-            perf_held = 0;
         }
         mix_block(o, CTL);
         for (i = 0; i < 2u * CTL; i++) {

@@ -48,7 +48,6 @@ typedef struct { uint16_t off; uint8_t w; const char *label; } kc_t;
 #define GFX_HOOK_INK(ink, bg) ((void)0)            /* a text, icon or keycap label's ink and what it is drawn on */
 #endif
 #ifndef GFX_HOOK_RULE
-#define GFX_HOOK_RULE(x, y, w, h) ((void)0)        /* a divider drawn on the screen (ui_draw.c lcd_rule): no box may touch it */
 #endif
 /* the alignment check (tests/ui_render.c): GFX_HOOK_ALIGN declares that the next item(s) drawn (a text, an icon, a
  * keycap, a cushion) are meant to sit centred in the box x0..x1, y0..y1 (canvas drawing coordinates, x1 y1 past it)
@@ -94,15 +93,9 @@ static struct {
     uint16_t pacc[2], pfill[2];  /* both parts' ACCENT and the brief's A -> B colour at their MORPH fader (pfill: the MORPH bar) */
     uint8_t fader[2], layer, pal;   /* what part_theme blends by: the parts' MORPH faders 0..127, MODE LAYER, the palette */
     uint8_t part, bw;            /* the part the theme follows; MONO (black and white: part 2 is an outline, cv_part) */
-    uint8_t style;               /* MENU > STYLE (ui.c style_apply): ST_FLAT, ST_LINE */
     uint32_t gen;                /* bumped by palette_set (the text ramps follow) */
 } ux;
-/* STYLE: FLAT, the filled SURF cards and panels; LINE, no SURF (it is BG) and 1 px T_RULE dividers between the
- * areas instead (ui_draw.c draw_frame). (1.0.2: PIXEL, LINE un-antialiased, retired; a saved PIXEL reads as LINE.)
- * Selections, accents, keys and gauges keep their fills in every style */
-#define ST_FLAT 0u
-#define ST_LINE 1u
-#define T_RULE ux.dim            /* LINE: the dividers (DIM: visible on NIGHT, GREY, MONO and PAPER, quieter than labels) */
+/* The look is FLAT only (DUELL 0.2.2: the LINE style, black areas divided by 1 px rules, was removed) */
 #define T_BG ux.bg               /* background */
 #define T_SURF ux.surf           /* dialogs, menu rows, mixer strips */
 #define T_TEXT ux.text           /* primary text */
@@ -177,7 +170,7 @@ static void part_theme(uint32_t part)
     /* panel, borders and elevated surface are per part like the background (LAYER: the mix of both) */
     {
         uint16_t sf = ux.layer ? ux_mix(p->surf[0], p->surf[1], 50) : p->surf[part];
-        ux.surf = ux.style ? ux.bg : sf;
+        ux.surf = sf;
         ux.line = ux.layer ? ux_mix(p->line[0], p->line[1], 50) : p->line[part];
         ux.raise = ux.layer ? ux_mix(p->raise[0], p->raise[1], 50) : p->raise[part];
     }
@@ -309,13 +302,6 @@ static void cv_rect(int32_t x, int32_t y, int32_t w, int32_t h, uint16_t c)
             cv_px[(uint32_t)y * cv_w + (uint32_t)i] = sc;
 }
 
-/* a divider (LINE): a 1 px T_RULE line on the canvas, a cell edge for the host lint */
-static void cv_rule(int32_t x, int32_t y, int32_t w, int32_t h)
-{
-    GFX_HOOK_CELL(x, y + cv_oy, x + w, y + h + cv_oy);
-    cv_rect(x, y, w, h, T_RULE);
-}
-
 /* a 1 px outline */
 static void cv_frame(int32_t x, int32_t y, int32_t w, int32_t h, uint16_t c)
 {
@@ -372,7 +358,6 @@ static void cv_rrect(int32_t x, int32_t y, int32_t w, int32_t h, int32_t r, uint
     int32_t i, j;
     GFX_HOOK_CELL(x, y + cv_oy, x + w, y + h + cv_oy);   /* (the lint: what is drawn on it stays inside it) */
     if (r < 0) r = -r;                           /* (-r: rounded in every style: a keycap-like cushion) */
-    else if (ux.style == ST_LINE) r = 0;         /* LINE: square cursors, selections and fills (FLAT: rounded) */
     if (r > w / 2) r = w / 2;
     if (r > h / 2) r = h / 2;
     if (r < 1) {

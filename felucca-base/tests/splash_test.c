@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 /* DUELL: the power-on splash, the VIOLET default, the version name and the CPU load meter's window maths.
  *   VIOLET     a fresh unit's theme is VIOLET (UI_DEFAULT_INDEX = 0, the first palette)
- *   VERSION    the shown version is "DUELL 0.1 beta" (felucca.c, the build passes the same)
+ *   VERSION    the shown version is "DUELL <VERSION> beta" (the VERSION file -> build/gen/duell_version.h)
  *   SPLASH     begun at once, it lasts SPLASH_MS (1.2 s) and then the UI is drawn again; any button, key or knob ends it and is
  *              used up by that (the page does not change); a MIDI note does not end it and sounds; ANIM OFF: one still frame
  *   METER      cpu_meter_poll: the 1 s average and the held peak from the audio ISR's counters, the hold falling after
@@ -36,7 +36,7 @@ int main(void)
     setvbuf(stdout, NULL, _IONBF, 0);
     expect("the default theme is VIOLET", UI_DEFAULT_INDEX == 0u && !strcmp(UI_PALETTES[UI_DEFAULT_INDEX].name, "VIOLET"));
     expect("a fresh unit (settings blank) starts in VIOLET", (settings.magic = 0, settings_init(), settings.palette == UI_DEFAULT_INDEX));
-    expect("the version is DUELL 0.1 beta", !strcmp(FELUCCA_VERSION, "DUELL 0.1 beta"));
+    expect("the version is DUELL " DUELL_VERSION " beta (the VERSION file)", !strcmp(FELUCCA_VERSION, "DUELL " DUELL_VERSION " beta") && !strcmp(FELUCCA_VERSION, DUELL_VERSION_STR));
 
     ui_power_on();
     frames(200);

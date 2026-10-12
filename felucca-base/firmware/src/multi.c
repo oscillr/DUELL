@@ -33,8 +33,8 @@
  *   An older or a newer np loads by count as a user preset does (params_by_count; motion ids moved, proj_motion_ids); a
  *   newer version or np > P_COUNT does not load: the slot lists as empty ("--"), a LOAD says EMPTY SLOT / DAMAGED.
  *
- * Factory multis (build/gen/duell_multis.h, tools/gen_duell_multis.py from tools/factory_multis/M01..M04.bin and M13..M16.bin): M01 VESPER CLUB,
- * M02 SHARD STAB, M03 MODEM DRIFT, M04 ELASTIC LOW are in the firmware image (ROM), not in flash. While a slot's stored record is
+ * Factory multis (build/gen/duell_multis.h, tools/gen_duell_multis.py from tools/factory_multis/M01..M04.bin and M13..M16.bin): M01 EERIE SIGNAL,
+ * M02 WIRED SNAIL, M03 DEAD BUFFER, M04 ACID ETHER are in the firmware image (ROM), not in flash. While a slot's stored record is
  * empty (first boot, a flash erase, ERASE of a saved overwrite) it shows and loads the factory multi (mu_fact bit); SAVE
  * over it stores an ordinary record that wins from then on and survives firmware updates (the ROM copy is only the default);
  * ERASE of such a slot restores the factory multi ("ALREADY FACTORY" when it is not overwritten); a rename of an unchanged
@@ -88,6 +88,7 @@ static uint32_t df_of(uint32_t k)                 /* the factory multi of slot k
             return i;
     return DF_N;
 }
+_Static_assert(DF_TEST_MULTIS == DUELL_TEST_MODE, "duell_multis.h was generated with another DUELL_TEST_MODE: run tools/gen_duell_multis.py (tools/build.py) with the same switch");
 _Static_assert(DF_N <= MU_SLOTS, "factory multis: slots below MU_SLOTS");
 static uint16_t mu_fact;                          /* bit k: M(k + 1) is empty in flash and shows its factory multi */
 

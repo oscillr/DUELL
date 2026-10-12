@@ -229,4 +229,5 @@ static const engine_t ENG_FORMANT = {
     .render = formant_render,
     .knob = {P_E0, P_E4, P_E5, P_E2},
     .poly = 4,
+    .ufilt = 1,                 /* DUELL 0.2.2: no filter of its own: the universal filter (voice.c uf_run, P_FREEA CUT / P_FREEB RES) */
 };

@@ -24,7 +24,7 @@ static volatile uint32_t audio_halves, audio_max_us;
 static volatile uint32_t t5_nested_ticks;              /* TIMER4 ticks TIMER5 spent nested in this ISR (main.c) */
 static uint32_t audio_cpu_rem;                         /* keep the fractional IIR step: no low-load bias */
 
-/* DUELL CPU load meter (MENU > SYSTEM > INFO, ABOUT: ui_menu.c cpu_meter): what the audio ISR keeps per I2S half, three adds and
+/* DUELL CPU load meter (MENU > SYSTEM > TEST, ABOUT: ui_menu.c cpu_meter): what the audio ISR keeps per I2S half, three adds and
  * a compare, no division. cpu_sum/cpu_n: the sum of the halves' render times (us) and how many; cpu_pk: the longest half
  * (us, the UI reads and clears it); cpu_miss: halves that took longer than the half's time (HALF_FRAMES / FS) or that the DMA
  * overtook, counted since power-on. The time is fm1_ticks() across the half minus TIMER5's nested ticks (the key scan),

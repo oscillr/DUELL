@@ -44,13 +44,8 @@ click_render 30
 mod_begin 158
 mod_voice 30
 mod_end 7
-perf_begin 28
-perf_mute 21
-perf_pre 27
-perf_block 814
-perf_master 31
-perf_flanger 368
-perf_phaser 448
+uf_run 65
+uf_voice 11
 rev_room 218
 rev_spring 126
 rev_hall 1995

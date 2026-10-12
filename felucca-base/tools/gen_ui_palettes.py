@@ -38,8 +38,8 @@ from pathlib import Path
 def H(s): return tuple(int(s[i:i + 2], 16) for i in (1, 3, 5))
 # Contrast pass: dark themes have a deep ground, near-white text, panels a visible step lighter, strong borders; light themes have strong text and borders
 THEMES = [
-    ("VIOLET", "#130620", "#200619", None, "#1F1038", "#31195C", "#FBF7FF", "#D6BBF0", "#7A4CC0",
-     ("#AC4DFF", "#9046E0", "#FF3D9C", "#C42879"), 0, ("#2C0E27", "#40163A", "#B04C9A")),
+    ("VIOLET", "#080108", "#0C020E", None, "#0A0414", "#201040", "#FFFFFF", "#F0E0FF", "#9A3FE0",
+     ("#DC38FF", "#BC30F0", "#FF1F8E", "#E00B78"), 0, ("#12051A", "#300E3E", "#CC3490")),
     ("ORANGE", "#130904", "#180A04", None, "#241610", "#38241A", "#FFF8F0", "#CDBBA9", "#7A5640",
      ("#FF6A1A", "#E04A12", "#FF9A1F", "#D9690C"), 0),
     ("MINT", "#BDF2D8", "#C2F1EA", None, "#FFFFFF", "#E2F6EC", "#0E2A24", "#3F5F57", "#8FCDB6",
@@ -53,6 +53,8 @@ THEMES = [
     ("HI-CON", "#141619", "#151923", "#171A21", "#1D2026", "#272B33", "#F5F7FA", "#A7AFBC", "#3B414D",
      ("#FF2638", "#B80024", "#176BFF", "#1238B8"), 1),
 ]
+# Appended AFTER the legacy rows (GREY, MONO): saved theme ids are indices, so existing ids keep their theme. (None now.)
+THEMES_EXTRA = []
 # name, bg, surf, text, theme, accent, theme2 (8-bit RGB; stored as RGB565). theme2: DUELL's part 2 colour (SPEC 5a)
 LEGACY = [
     ("GREY",   (14, 14, 14),    (36, 36, 36),    (204, 204, 204), (232, 232, 232), (255, 255, 255), (150, 150, 150)),
@@ -233,7 +235,7 @@ def main():
     ap.add_argument("--report", action="store_true")
     a = ap.parse_args()
     fails = []
-    rows = [build_theme(t) for t in THEMES] + [build_legacy(p) for p in LEGACY if p[0] in ("GREY", BW)]
+    rows = [build_theme(t) for t in THEMES] + [build_legacy(p) for p in LEGACY if p[0] in ("GREY", BW)] + [build_theme(t) for t in THEMES_EXTRA]
     assert len(rows) <= 63
     for d in rows:
         name = d["name"]

@@ -53,9 +53,9 @@ static int lfo(void)
     double worst = 0;
     ui_power_on();
     t = &trk[0];
-    bad += check("LFO 2 defaults: SYNC OFF, TRIG NOTE, POL BI (as before 1.2); QUANTIZE ON",
-                 !TP[P_LSYNC].def && !TP[P_LTRIG].def && !TP[P_LPOL].def && TP[P_SQNT].def == 1 && !t->p[P_LSYNC] &&
-                 !t->p[P_LTRIG] && !t->p[P_LPOL] && t->p[P_SQNT] == 1);
+    bad += check("LFO 2 defaults: SYNC OFF, TRIG FREE (0.2.2; was NOTE), POL BI; QUANTIZE ON",
+                 !TP[P_LSYNC].def && TP[P_LTRIG].def == 1 && !TP[P_LPOL].def && TP[P_SQNT].def == 1 && !t->p[P_LSYNC] &&
+                 t->p[P_LTRIG] == 1 && !t->p[P_LPOL] && t->p[P_SQNT] == 1);
     for (i = 0; i < 128u; i += 7u) {                 /* SYNC OFF: RATE's table, the value as before */
         uint32_t ph = 0x12345678u;
         t->p[P_LRATE] = (int16_t)i;
@@ -104,6 +104,7 @@ static int lfo(void)
     }
     t->p[P_LSYNC] = 0;
     /* TRIG: NOTE restarts at PHS on a fresh phrase, FREE never */
+    t->p[P_LTRIG] = 0;
     t->p[P_LPHASE] = 32;
     t->lfo_ph = 0x55555555u;
     trk_note_on(t, 60, 100);

@@ -1804,10 +1804,10 @@ function makeMockDevice(opt = {}) {
     D("RATE2", F.LFOHZ, 0, 127, 60), E("WAVE2", ["SIN", "TRI", "SAW", "SQR", "S&H"], 0), D("PHS2", F.INT, 0, 127, 0), D("FADE2", F.TIME, 0, 127, 0));   /* LFO 2 (77..80) */
   TP.push(E("CHRD", ["OFF", "DIA3", "DIA7", "MAJ", "MIN", "DOM7", "MAJ7", "MIN7", "SUS4", "POW"], 0),   /* the chord keys 81, 82 */
     E("VOIC", ["CLOSE", "OPEN", "INV1", "INV2", "+OCT"], 0));
-  TP.push(E("SYNC2", ["OFF", "4BAR", "2BAR", "1/1", "1/2", "1/4", "1/8", "8T", "1/16", "16T", "1/32"], 0), E("TRIG2", ["NOTE", "FREE"], 0),
+  TP.push(E("SYNC2", ["OFF", "4BAR", "2BAR", "1/1", "1/2", "1/4", "1/8", "8T", "1/16", "16T", "1/32"], 0), E("TRIG2", ["NOTE", "FREE"], 1),
     E("POL2", ["BI", "UNI"], 0), FREE(), FREE(), FREE(), FREE(), FREE());   /* DUELL: LFO 2's SYNC TRIG POL (83..85), free 86..90 (were the DRUM lanes) */
   TP.push(E("SYNC", ["OFF", "4BAR", "2BAR", "1/1", "1/2", "1/4", "1/8", "8T", "1/16", "16T", "1/32"], 0),   /* 1.2: LFO 2 (91..93) */
-    E("TRIG", ["NOTE", "FREE"], 0), E("POL", ["BI", "UNI"], 0), E("QNTZ", ["OFF", "ON"], 1),   /* and QUANTIZE (94) */
+    E("TRIG", ["NOTE", "FREE"], 1), E("POL", ["BI", "UNI"], 0), E("QNTZ", ["OFF", "ON"], 1),   /* and QUANTIZE (94) */
     D("SPRD", F.PCT, 0, 127, 0),   /* SPREAD (95, #148) */
     E("INSRT", ["OFF", "SOFT", "HARD", "FOLD", "FUZZ", "CRUSH", "PHASR", "FLANG", "CHOR"], 0),   /* 1.5: the INSERT (96..100) */
     D("INS A", F.PCT, 0, 127, 64), D("INS B", F.PCT, 0, 127, 96), D("INS C", F.PCT, 0, 127, 96), D("MIX", F.PCT, 0, 127, 127),
@@ -2858,7 +2858,8 @@ const LAYOUT = (pe0) => [
     ["OP LVL", 0, [65, 70, 75, 80]]] }] : []),
   { t: "VOICE", pages: [["LEVEL", 0, [0]], ["VOICE", 0, [37, 38, 41, 42]], ["VOICE 2", 0, [43, 44, 39, 40]]] },
   { t: "FX", pages: [["FX", 0, [33, 34, 35, 36]], ["SLICER", 0, [45, 46, 47, 48]], ["DLY", 1, [4, 5, 6, 7]], ["REVERB", 1, [24, 8, 9]], ["CHORUS", 1, [10, 11]]] },   /* G_RTYPE 24: ROOM / SPRING / HALL */
-  { t: "SCL", pages: [["SCL", 0, [25, 26, 27, 28]], ...(pe0 >= 83 ? [["CHORD", 0, P_CHORD]] : [])] },   /* CHRD VOIC 81, 82 */
+  { t: "SCL", pages: [["TRN", 0, [28]], ...(pe0 >= 83 ? [["CHORD", 0, P_CHORD]] : [])] },   /* CHRD VOIC 81, 82. ROOT SCL QNT (25..27) are reserved ids only (the scale is the
+                                                    instrument's, set on the device: SCL page 1, global), so they are not offered here */
   { t: "ARP", pages: [["ARP", 0, [17, 18, 19, 20]], ["ARP 2", 0, [21, 22, 23, 24]]] },
   { t: "SEQ PATTERN", tab: "seqgroups", pages: [["PATTERN", 0, [29, 30, 31, 32]]] },
   /* 1.2: as the device shows them: HOME > CLOCK (BPM SWG; CLK not here), MENU > AUDIO TUNE, MENU > MIDI > MIDI IN (G_ROUTE) */

@@ -186,37 +186,21 @@ static void t_gesture(void)
     uint32_t i;
     fresh();
     morph_page();
-    turn(EN_K2, -1);
-    turn(EN_K2, -1);
-    frame();
-    expect("a nudge (2 detents) building up: the ROLL card shows <A, nothing rolled", card_is(1, "ROLL", "<A") && rolls(0, 0) == 1u);
-    settle();
-    frame();
-    expect("  .. left alone it fades (A|B again)", card_is(1, "ROLL", "A|B"));
-    turn(EN_K2, -1);
-    expect("a nudge, a rest, a nudge: never a roll", rolls(0, 0) == 1u);
-    settle();
-    turn(EN_K2, -2);
-    turn(EN_K2, 2);
-    turn(EN_K2, -2);
-    expect("back and forth below the detent (-2 +2 -2): never a roll", rolls(0, 0) == 1u && rolls(0, 1) == 2u);
-    settle();
     turn(EN_K3, -2);
     turn(EN_K3, 2);
-    expect("KNOB 3 the same: no UNDO below the detent", rolls(0, 1) == 2u && !msg_is("NO UNDO B") && !msg_is("UNDO B") && !msg_is("UNDO A"));
+    expect("KNOB 3: no UNDO below the detent", rolls(0, 1) == 2u && !msg_is("NO UNDO B") && !msg_is("UNDO B") && !msg_is("UNDO A"));
     settle();
-    turn(EN_K2, -40);
-    expect("one fast twist of 40 detents: exactly one roll", rolls(0, 0) == 2u);
+    turn(EN_K2, -1);
+    expect("KNOB 2 ROLL: ONE detent left rolls A at once", rolls(0, 0) == 2u && rolls(0, 1) == 2u && msg_is("ROLLED A"));
     for (i = 0; i < 20u; i++)
         turn(EN_K2, -1);
-    expect("turning on without a rest (20 more detents): still one", rolls(0, 0) == 2u);
+    expect("  .. turning on without a rest (20 more detents): still one", rolls(0, 0) == 2u);
     settle();
-    for (i = 0; i < 3u; i++)
-        turn(EN_K2, -1);
-    expect("after a rest, three single detents in a row: one more", rolls(0, 0) == 3u);
+    turn(EN_K2, -40);
+    expect("one fast twist of 40 detents after a rest: exactly one more roll", rolls(0, 0) == 3u);
     settle();
-    turn(EN_K2, -1); turn(EN_K2, -1); turn(EN_K2, 3);
-    expect("a reversal counts anew: -2 then +3 rolls B, not A", rolls(0, 1) == 3u && rolls(0, 0) == 3u);
+    turn(EN_K2, 1);
+    expect("ONE detent right rolls B at once", rolls(0, 1) == 3u && rolls(0, 0) == 3u && msg_is("ROLLED B"));
 }
 
 /* ---------------------------------------------------------------- FAR END --- */

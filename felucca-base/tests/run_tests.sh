@@ -77,11 +77,6 @@
 #                   responses around the cutoff, RES, bounded at the corners), ENV SYNC (OFF bit for bit, the note values
 #                   on the knob, attack / decay / release times at 60 / 120 / 173 BPM and on the external clock), the cost;
 #                   demos in build/sound15_demo/ (analog_bp, analog_hp, env_sync).
-# PERFORM (tests/perform_test.c): the FX hold layer (src/perform.c): 1/16 starts, stereo buffer effects, the
-#                   too-long REPEAT, the SLICER's free ids, silent layer keys, idle bit-identical, cost; build/perform_demo/;
-#                   OCT UP / DN (the harmonizer): pitch, stereo, clicks, the shimmer bounded, cost; FLANGER / PHASER (1.2): no DC,
-#                   bounded, the sweep in time with the tempo, clean release, stacked with REPEAT / LPF / HPF, cost; the key
-#                   map (any effect or none on any key, a key remapped while held, FX LATCH); build/fx_demo/.
 # REVERB (tests/reverb_test.c): REVERB TYPE (src/fx.c): ROOM bit for bit as before, SPRING's decay against SIZE,
 #                   its chirp (group delay rising with frequency), stability at the corners, level, a model change
 #                   without a click, its cost against ROOM (+30 % at most); demos in build/fx_demo/. 1.2's HALL: SPRING
@@ -246,7 +241,7 @@ if [ -f build/gen/felucca_tables.h ]; then
     run "settings: PER1..PER4 migration, palette ids and preference preservation" "$OUT/settings_test"
     $CC -w -Ibuild/gen -Ifirmware/src -o "$OUT/ui_test" tests/ui_test.c -lm
     run "UI: sounds keep steps, undo, recording, MIDI overflow, pending saves, panel recovery, drum grid, song chain, GREY gray, MONO neutral" "$OUT/ui_test"
-    FV=$(sed -n 's/^#define FELUCCA_VERSION "\([^"]*\)".*/\1/p' firmware/src/felucca.c)   # (the splash, ABOUT: the real version)
+    FV=$(sed -n 's/^#define DUELL_VERSION_STR "\(.*\)"/\1/p' build/gen/duell_version.h)   # (the splash, ABOUT: the real version)
     $CC -O1 -w "-DFELUCCA_VERSION=\"$FV\"" -Ibuild/gen -Ifirmware/src -Itests -o "$OUT/ui_render" tests/ui_render.c -lm
     mkdir -p build/ui_new/ppm build/ui_slot
     run "UI renders: layout lint (every screen and palette, every page, engine and column value), GREY gray, MONO neutral, alignment by ink (1 px fails), draw cost" \
@@ -291,9 +286,7 @@ if [ -f build/gen/felucca_tables.h ]; then
         "$OUT/sound15_test" build/sound15_demo
     $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/swing_test" tests/swing_test.c -lm
     run "SWING: track + global at most 100, sequencer step lengths, the SWG display" "$OUT/swing_test"
-    $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/perform_test" tests/perform_test.c -lm
-    mkdir -p build/perform_demo build/fx_demo
-    run "FX layer effects: on the 1/16, stereo, too-long REPEAT, the SLICER's free ids, silent keys, idle bit-identical, clicks, OCT UP / DN, FLANGER, PHASER, the key map, cost, demos" "$OUT/perform_test" build/perform_demo build/fx_demo
+    mkdir -p build/fx_demo
     $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/reverb_test" tests/reverb_test.c -lm
     mkdir -p build/reverb_demo
     run "REVERB TYPE: ROOM / SPRING bit-identical, SPRING and HALL decay / stability / level, HALL silence / stereo / ringing, model changes, cost, demos" "$OUT/reverb_test" build/fx_demo build/reverb_demo

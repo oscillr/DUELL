@@ -213,9 +213,20 @@ int main(void)
     ck("  LOAD over part 2's own steps: the REPLACE? dialog first", ui.confirm == CF_LOAD_PAT);
     press(B_OCTUP);
     ck("  OCT+: loaded", !ui.confirm && same_pattern(&trk[1], &ref));
-    hold(B_SAVE);                                    /* (SAVE held is SAVE OVER now, no undo: its dialog, OCT- cancels) */
-    ck("  SAVE held: the SAVE OVER dialog (no undo of the load any more); OCT- leaves the pattern loaded",
-       ui.confirm == CF_SAVE_OVER && (press(B_OCTDN), !ui.confirm) && same_pattern(&trk[1], &ref));
+    hold(B_SAVE);                                    /* (SAVE held on PATTERNS: the quick overwrite of the slot picked, DUELL 0.2.2) */
+    ck("  SAVE held on PATTERNS: the SAVE OVER <name>? dialog for the slot picked; OCT- leaves the pattern as it was",
+       ui.confirm == CF_HOLD_PSLOT && (press(B_OCTDN), !ui.confirm && !name_on()) && same_pattern(&trk[1], &ref));
+    trk[1].step[1].note[0] ^= 1u;                    /* a new edit, then the quick overwrite */
+    hold(B_SAVE);
+    press(B_OCTUP);
+    ck("  OCT+: saved straight into the slot, no NAME screen, the name kept (ACID DUB)",
+       !ui.confirm && !name_on() && msg_is("SAVED P03") && ps_load_trk(&trk[0], 2) == 0 && same_pattern(&trk[0], &trk[1]));
+    {
+        char nm[13];
+        ps_name(2, nm);
+        ck("  the stored name is still ACID DUB", str_eq(nm, "ACID DUB"));
+    }
+    /* (no PATTERNS slot is ever empty: all sixteen show a factory default, so the NAME-screen branch is for MULTIS) */
 
     /* 3: sixteen slots, each its own */
     for (k = 0; k < PS_SLOTS; k++) {

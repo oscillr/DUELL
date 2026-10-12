@@ -32,7 +32,7 @@ typedef struct {
 } ds_sound_t;
 #define DSF_MONO 1u              /* (informative: the generator wrote VOICE LEG) */
 #define DSF_ARP 2u               /* sets the arp (a pair in P_AMODE .. P_AORDER) */
-#define DSF_KEYS 4u              /* sets the chord keys / scale (a pair in P_SCALE, P_CHRD, P_VOIC): lent like the arp (ui.c ds_keys) */
+#define DSF_KEYS 4u              /* sets the chord keys (a pair in P_CHRD, P_VOIC; never a scale: it is the instrument's, core.h): lent like the arp (ui.c ds_keys) */
 #include "duell_sounds.h"
 _Static_assert(DS_NENG >= NENGINES && DS_N <= 255u, "duell_sounds.h: DS_ENG_AT covers every engine, DS_LIST bytes");
 
@@ -49,14 +49,14 @@ static uint32_t ds_cat_of(uint32_t e, uint32_t k)
     return s ? s->cat : 0u;      /* (none: the caller's default) */
 }
 static int ds_arp_id(uint32_t id) { return id >= P_AMODE && id <= P_AORDER; }
-static int ds_key_id(uint32_t id) { return id == P_SCALE || id == P_CHRD || id == P_VOIC; }
+static int ds_key_id(uint32_t id) { return id == P_CHRD || id == P_VOIC; }
 /* sound s's pairs into p (kind: 1 the arp's pairs only, 2 the scale / chord keys' only, 0 every other one) */
 static void ds_put(const ds_sound_t *s, int16_t *p, int kind)
 {
     uint32_t i;
     for (i = 0; i < s->np; i++) {
         const ds_pair_t *q = &DS_PAIR[s->at + i];
-        if (q->id < P_COUNT && (ds_arp_id(q->id) ? 1 : ds_key_id(q->id) ? 2 : 0) == kind)
+        if (q->id < P_COUNT && q->id != P_SCALE && (ds_arp_id(q->id) ? 1 : ds_key_id(q->id) ? 2 : 0) == kind)
             p[q->id] = q->v;
     }
 }

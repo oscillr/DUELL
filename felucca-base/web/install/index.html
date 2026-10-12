@@ -10,7 +10,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>DUELL 0.1 beta installer</title>
+<title>DUELL installer</title>
 <style>
   :root { --bg: #fff; --fg: #000; --dim: #666; --line: #ccc; --warn: #b00020; }
   @media (prefers-color-scheme: dark) { :root { --bg: #000; --fg: #fff; --dim: #999; --line: #444; --warn: #ff6b81; } }
@@ -33,52 +33,75 @@
   pre { color: var(--dim); font-size: 12px; white-space: pre-wrap; }
   a { color: inherit; }
   code { font-size: 14px; }
+  /* banner and the three action cards */
+  #banner { position: sticky; top: 0; z-index: 10; padding: 12px 16px; font-weight: 700; border-bottom: 3px solid; }
+  #banner[data-kind="return"] { background: #ffb347; color: #000; border-color: #b35f00; }
+  #banner[data-kind="install"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+  #banner[data-kind="backup"] { background: var(--bg); color: var(--fg); border-color: var(--fg); border-top: 3px solid var(--fg); }
+  .card { border: 1px solid var(--line); padding: 14px 16px 6px; margin: 12px 0; }
+  .card.install { border: 3px solid var(--fg); }
+  .card.return { border: 3px solid #e08a00; }
+  .card.return h2 { color: #b35f00; }
+  @media (prefers-color-scheme: dark) { .card.return { border-color: #ffb347; } .card.return h2 { color: #ffb347; } }
+  .card .bar { width: 100%; height: 8px; margin: 8px 0; }
+  .card .status { min-height: 1.6em; margin: 4px 0; font-weight: 700; }
+  .card .result { min-height: 1.2em; margin: 4px 0 8px; }
+  .card .lock { color: var(--dim); font-size: 13px; min-height: 1.2em; margin: 0 0 8px; }
+  .retwarn { border: 2px solid #e08a00; padding: 8px 12px; margin: 8px 0 12px; font-weight: 700; }
 </style>
 </head>
 <body>
+<div id="banner" role="alert" hidden></div>
 <main>
   <h1>DUELL</h1>
   <p class="tag">MultiMorphing Bitimbral Synthesizer<br>by OSCILL/R</p>
-  <p><b>0.1 beta installer</b> for the M-VAVE FM-1.</p>
+  <p><b><span class="ver">DUELL beta</span> installer</b> for the M-VAVE FM-1.</p>
 
   <div class="box" id="notreleased">
     <p><b>DUELL firmware is not yet released. Use the browser emulator while the hardware tests finish.</b></p>
     <p><a href="../emu/">Open the emulator</a> · <a href="https://github.com/oscillr/DUELL">Source code</a></p>
   </div>
-  <div id="flow" hidden>
 
   <div class="box">
-    <p><b>This is a beta.</b> DUELL was developed in a browser emulator and has been run on one real FM-1 by its author; the way back to the official firmware has not been tested.
+    <p><b>This is a beta.</b> DUELL was developed in a browser emulator and has been run on one real FM-1 by its author; the way back to the official firmware worked about three times, on the author's unit, and has not been tried on others.
     Installing is at your own risk. If something goes wrong there is no known way to roll back, and the only
-    sure way back is the official firmware (step 6 below). Read the <a href="https://github.com/oscillr/DUELL/blob/main/docs/RECOVERY.md">recovery notes</a> first.
+    sure way back is the official firmware (the last card below, "Go back to the official firmware"). Read the <a href="https://github.com/oscillr/DUELL/blob/main/docs/RECOVERY.md">recovery notes</a> first.
     DUELL is not affiliated with M-VAVE.</p>
   </div>
 
   <p class="small" id="browser"></p>
 
+  <div class="needpkg" hidden>
   <section>
     <h2><span class="n">1</span>Flash checklist</h2>
     <p>Tick each box. The Install button stays off until all four are ticked.</p>
     <label><input type="checkbox" class="chk"> I use a <b>data</b> USB cable (some cables only charge), plugged <b>straight into the computer</b>, no hub or dock.</label>
     <label><input type="checkbox" class="chk"> I know I must <b>not unplug, close this tab or let the computer sleep</b> while it writes.</label>
     <label><input type="checkbox" class="chk"> I have <b>backed up</b> what I care about (step 2), or I accept losing it.</label>
-    <label><input type="checkbox" class="chk"> I understand this is a <b>beta that has been tried on only one unit</b>, that the way back is untested, and I install it at my own risk.</label>
+    <label><input type="checkbox" class="chk"> I understand this is a <b>beta that has been tried on only one unit</b>, that the way back has been tried on only one unit, and I install it at my own risk.</label>
     <p class="small">Afterwards: unplug the FM-1 and plug it in again before you use it.</p>
   </section>
+  </div>
 
   <section>
     <h2><span class="n">2</span>Back up (recommended)</h2>
-    <p>Saves a file with your current sounds, settings and user samples to this computer. It needs a firmware that supports
-    backups (Felucca or DUELL). The official M-VAVE firmware cannot be backed up from this page.</p>
-    <p class="small"><b>Known gap:</b> in this beta the backup does <b>not</b> include MULTIs or the PATTERN slots. Restoring a backup is done in the editor (the editor in the source tree), which has not been adapted to DUELL yet, so restoring is untested.</p>
-    <p><button id="backup" disabled>Save a backup file</button></p>
+    <div class="card backup" id="card-backup">
+      <h2>BACK UP</h2>
+      <p>Reads the unit and saves a file with your current sounds, settings and user samples to this computer. Nothing is written to the FM-1. It needs a firmware that supports
+      backups (Felucca or DUELL). The official M-VAVE firmware cannot be backed up from this page.</p>
+      <p class="small"><b>Known gap:</b> in this beta the backup does <b>not</b> include MULTIs or the PATTERN slots. Restoring a backup is done in the editor (the editor in the source tree), which has not been adapted to DUELL yet, so restoring is untested.</p>
+      <p><button id="backup" disabled>Save a backup file</button></p>
+      <p class="lock" id="lock-backup"></p>
+      <progress class="bar" id="bar-backup" max="100" value="0" hidden></progress>
+      <p class="status" id="status-backup"></p>
+      <p class="result" id="result-backup"></p>
+    </div>
   </section>
 
+  <div class="needpkg" hidden>
   <section>
-    <h2><span class="n">3</span>The DUELL file</h2>
+    <h2><span class="n">3</span>The DUELL build</h2>
     <p id="pkgstate">Looking for the build ...</p>
-    <p class="small">Expected file name (what <code>tools/build.py --release 0.1-beta</code> makes): <code>duell-0.1-beta.fwsc</code> (the older name <code>felucca-0.1-beta.fwsc</code> is still found), placed next to this page. Or choose a file yourself:</p>
-    <p><input id="pkgfile" type="file" accept=".fwsc"></p>
     <p class="small" id="pkginfo"></p>
   </section>
 
@@ -89,29 +112,47 @@
 
   <section>
     <h2><span class="n">5</span>Install</h2>
-    <p><button id="go" disabled>Install DUELL 0.1 beta</button></p>
-    <progress id="bar" max="100" value="0"></progress>
-    <p id="status"></p>
-    <p class="small">If it stops: replug the cable and press Install again. The FM-1 stays in update mode until the write is finished, and the page resumes it. When it says Done, unplug the FM-1, plug it in again, and check the version under HOME (hold) &gt; ABOUT.</p>
+    <div class="card install" id="card-install">
+      <h2>INSTALL DUELL</h2>
+      <p class="small">The page checks what your FM-1 runs now and sets the box below for you. You can always tick or untick it yourself.</p>
+      <p class="small"><b id="erase-detect"></b> <button id="detect" type="button" disabled>Check the unit</button></p>
+      <label><input type="checkbox" id="erase-after"> <b id="erase-label">Erase my saved data after installing (start from scratch)</b></label>
+      <p class="small" id="erase-smart"></p>
+      <p class="small" id="erase-help">Erases your settings (theme, scale, MIDI channels, favourites), the autosave, your patches, your multis and your patterns. Your user samples are NOT erased. The factory sounds, multis and patterns come back. This cannot be undone: back up first (step 2). Left off, your saved data stays and the unit comes back as you left it.</p>
+      <p class="small" id="erase-lock"></p>
+      <p><button id="go" disabled>Install <span class="ver">DUELL beta</span></button></p>
+      <p class="lock" id="lock-install"></p>
+      <progress class="bar" id="bar-install" max="100" value="0" hidden></progress>
+      <p class="status" id="status-install"></p>
+      <p class="result" id="result-install"></p>
+      <p class="small">If it stops: replug the cable and press Install again. The FM-1 stays in update mode until the write is finished, and the page resumes it. When it says Done, unplug the FM-1, plug it in again, and check the version under HOME (hold) &gt; ABOUT.</p>
+    </div>
   </section>
+  </div>
 
   <section>
-    <h2><span class="n">6</span>Return to the official firmware</h2>
-    <p>Download the official FM-1 firmware (<code>FM-1.fwsc</code>, V15) yourself from M-VAVE's download page:
-    <a href="https://www.m-vave.com/download" target="_blank" rel="noopener">m-vave.com/download</a>. This project does not host or redistribute M-VAVE's files.
-    Select the unmodified file here; the page checks it in your browser (it is never uploaded) and only accepts V15.</p>
-    <p><label>Official FM-1.fwsc<br><input id="stock-file" type="file" accept=".fwsc"></label></p>
-    <p><button id="stock-go" disabled>Back up and return to official V15</button></p>
-    <p class="small">DUELL music and sounds cannot be opened by the official firmware.</p>
-    <p class="small"><label><input id="stock-recovery" type="checkbox"> Resume an interrupted return: I already saved a complete backup to this computer</label></p>
-    <p class="small" id="stockstate"></p>
+    <h2>Go back to the official firmware</h2>
+    <div class="card return" id="card-return">
+      <h2>RETURN TO OFFICIAL FIRMWARE</h2>
+      <p class="retwarn">This writes the official M-VAVE firmware back. DUELL will be removed. Keep the cable connected until DONE.</p>
+      <p>Download the official FM-1 firmware (<code>FM-1.fwsc</code>, V15) yourself from M-VAVE's download page:
+      <a href="https://www.m-vave.com/download" target="_blank" rel="noopener">m-vave.com/download</a>. This project does not host or redistribute M-VAVE's files.
+      Select the unmodified file here; the page checks it in your browser (it is never uploaded) and only accepts V15.</p>
+      <p><label>Official FM-1.fwsc<br><input id="stock-file" type="file" accept=".fwsc"></label></p>
+      <p><button id="stock-go" disabled>Back up and return to official V15</button></p>
+      <p class="lock" id="lock-return"></p>
+      <progress class="bar" id="bar-return" max="100" value="0" hidden></progress>
+      <p class="status" id="status-return"></p>
+      <p class="result" id="result-return"></p>
+      <p class="small">DUELL music and sounds cannot be opened by the official firmware.</p>
+      <p class="small"><label><input id="stock-recovery" type="checkbox"> Resume an interrupted return: I already saved a complete backup to this computer</label></p>
+      <p class="small" id="stockstate"></p>
+    </div>
   </section>
-
-  </div>
 
   <p class="small" style="margin-top:32px"><a href="https://github.com/oscillr/DUELL/blob/main/docs/RECOVERY.md">Recovery</a> · <a href="https://github.com/oscillr/DUELL/blob/main/docs/TROUBLESHOOTING.md">Troubleshooting</a> · <a href="https://github.com/oscillr/DUELL/blob/main/docs/INSTALL.md">Install guide</a> · <a href="https://github.com/oscillr/DUELL/blob/main/docs/KNOWN_ISSUES.md">Known issues</a></p>
   <pre id="log"></pre>
-  <p class="small">DUELL is free software under the GPL-3.0, with <b>no warranty</b>. It is a fork of Felucca by Leo Kuroshita (@kurogedelic), Hügelton Instruments, with the SHIM and RESO reverbs from JIANT.
+  <p class="small"><span class="ver">DUELL beta</span> installer. DUELL is free software under the GPL-3.0, with <b>no warranty</b>. It is a fork of Felucca by Leo Kuroshita (@kurogedelic), Hügelton Instruments, with the SHIM and RESO reverbs from JIANT.
     The package also holds three JieLi AC79 SDK files (uboot.boot, cfg_tool.bin, eq_cfg_hw.bin; JieLi Technology, Apache-2.0).
     <a href="./LICENSES/">Licence texts</a> · <a href="https://github.com/oscillr/DUELL/blob/main/felucca-base/LICENSING.md">LICENSING.md</a> · <a href="https://github.com/oscillr/DUELL/blob/main/LICENSE">GPL-3.0</a> · <a href="https://github.com/oscillr/DUELL">Source code</a>.<br>
     M-VAVE and FM-1 are trademarks of their respective owners. DUELL is independent and not affiliated with, endorsed by or supported by them.</p>
@@ -119,26 +160,72 @@
 <script type="module">
 import { productOf, logicalImage, sha256hex, validateStockPackage } from "../fm1pkg.js";
 import { Updater } from "../fm1ota.js";
-import { BackupConnection, captureBackup } from "../fm1backup.js";
+import { BackupConnection, captureBackup, eraseAllData } from "../fm1backup.js";
+import { uiState, TEXT, ERASE, eraseOutcome, SMART, detectUnit, eraseDecision } from "../installer_state.js";
 
 const $ = (id) => document.getElementById(id);
-const PKG_URLS = ["./duell-0.1-beta.fwsc", "./felucca-0.1-beta.fwsc"];   // tools/build.py --release 0.1-beta writes the first; the old name is still accepted
-const VERSION = "DUELL 0.1 beta";
+// the version comes from duell-version.json next to this page (make_site.py / tools/build.py write it from the VERSION file)
+const PKG_URLS = ["./duell-latest.fwsc", "./duell-0.1-beta.fwsc", "./felucca-0.1-beta.fwsc"];   // newest first; the versioned name is added when the version is known
+let VERSION = "DUELL beta";                                                                       // fallback text when duell-version.json is missing
+const showVersion = (v) => {
+  VERSION = `DUELL ${v} beta`;
+  document.querySelectorAll(".ver").forEach((e) => { e.textContent = VERSION; });
+  document.querySelectorAll(".verfile").forEach((e) => { e.textContent = v; });
+  document.title = `${VERSION} installer`;
+  PKG_URLS.splice(1, 0, `./duell-${v}-beta.fwsc`);
+};
+const versionReady = (async () => {
+  try {
+    const r = await fetch("./duell-version.json", { cache: "no-store" });
+    const v = r.ok ? String((await r.json()).version || "") : "";
+    if (/^\d+\.\d+(\.\d+)?$/.test(v)) showVersion(v);
+  } catch { /* no version file: the fallback text stays */ }
+})();
 const log = (t) => { $("log").textContent += t + "\n"; };
-const say = (t) => { $("status").textContent = t; };
+// every card has its own status line (progress while running) and result line (the outcome; failures stay here)
+const say = (card, t) => { $("status-" + card).textContent = t; };
+const result = (card, t, bad = false) => { const e = $("result-" + card); e.textContent = t; e.classList.toggle("warn", bad); };
 
-let image = null, product = null, stock = null, writing = false, ready = false;
+// busy: null | "backup" | "install" | "return". Only one action can run; everything else is locked meanwhile.
+let image = null, product = null, stock = null, busy = null, ready = false;
+// what the unit runs (installer_state.js detectUnit), null until the page really talked to it; touched: the user clicked the erase box
+let detected = null, touched = false, probing = false, midiAccess = null;
 const checks = [...document.querySelectorAll(".chk")];
+const BTN = { backup: "backup", install: "go", return: "stock-go" };
 
-function refresh() {
-  const ok = checks.every((c) => c.checked);
-  $("go").disabled = writing || !image || !ok || !ready;
-  $("backup").disabled = writing || !ready;
-  $("stock-go").disabled = writing || !stock || !ready;
-  $("pkgfile").disabled = writing; $("stock-file").disabled = writing; $("stock-recovery").disabled = writing;
+function showErase() {
+  const d = eraseDecision({ detected, touched, current: $("erase-after").checked });
+  if (!busy) $("erase-after").checked = d.checked;      // never while an action runs; a touched box keeps the user's choice
+  $("erase-detect").textContent = d.line;
+  $("erase-smart").textContent = d.help;
 }
+function refresh() {
+  const u = uiState({ busy, ready, hasImage: !!image, checksOk: checks.every((c) => c.checked), hasStock: !!stock });
+  for (const a of Object.keys(BTN)) {
+    $(BTN[a]).disabled = !u.buttons[a].enabled;
+    $("lock-" + a).textContent = u.buttons[a].note;
+    $("bar-" + a).hidden = !u.bars[a];
+    if (!u.bars[a]) $("bar-" + a).value = 0;
+  }
+  const b = $("banner");
+  b.hidden = !u.banner;
+  if (u.banner) { b.dataset.kind = u.banner.kind; b.textContent = u.banner.text; }
+  for (const id of ["stock-file", "stock-recovery"]) $(id).disabled = u.inputsLocked;
+  $("erase-after").disabled = u.eraseBox.disabled;
+  $("erase-lock").textContent = u.eraseBox.note || (probing ? SMART.checking : "");
+  if (probing) for (const a of Object.keys(BTN)) $(BTN[a]).disabled = true;      // the check uses the unit's MIDI ports: nothing else starts meanwhile
+  $("detect").disabled = !ready || !!busy || probing;
+  showErase();
+  checks.forEach((c) => { c.disabled = u.inputsLocked; });
+}
+// start an action: clears every card's status and result (so the other cards show nothing while this one runs), locks the rest
+function begin(card) {
+  for (const c of Object.keys(BTN)) { say(c, ""); result(c, ""); }
+  busy = card; refresh();
+}
+function end(card) { say(card, ""); busy = null; refresh(); }
 checks.forEach((c) => c.addEventListener("change", refresh));
-window.addEventListener("beforeunload", (e) => { if (writing) { e.preventDefault(); e.returnValue = "Writing. Do not close the page."; } });
+window.addEventListener("beforeunload", (e) => { if (busy) { e.preventDefault(); e.returnValue = "Writing. Do not close the page."; } });
 
 if (!navigator.requestMIDIAccess) {
   $("browser").textContent = "This browser cannot talk to the FM-1. Open this page in Chrome or Edge on a computer.";
@@ -153,7 +240,7 @@ async function acceptPackage(bytes, source) {
     if (!new TextDecoder("latin1").decode(bytes).includes("FELUCCA-LOADER-1"))
       throw new Error("no Felucca update loader in this file (never install a package made from an official file)");
     image = logicalImage(bytes); product = id;
-    $("flow").hidden = false; $("notreleased").hidden = true;   // a package exists: show the installer
+    document.querySelectorAll(".needpkg").forEach((e) => { e.hidden = false; }); $("notreleased").hidden = true;   // a package exists: show the install card
     const sha = await sha256hex(bytes);
     $("pkgstate").textContent = `Ready: ${source}`;
     $("pkginfo").textContent = `${VERSION} · identity ${id} · ${bytes.length} bytes · SHA-256 ${sha}. Compare it with the SHA256SUMS file of the release.`;
@@ -165,6 +252,7 @@ async function acceptPackage(bytes, source) {
   refresh();
 }
 (async () => {
+  await versionReady;
   try {
     let r = null, url = "";
     for (url of PKG_URLS) {
@@ -175,49 +263,127 @@ async function acceptPackage(bytes, source) {
     if (!r) throw new Error("not found");
     await acceptPackage(new Uint8Array(await r.arrayBuffer()), url);
   } catch {
-    // no package next to this page: the notice stays, the flow stays hidden
+    // no package next to this page: the notice stays, the install card stays hidden
     $("pkgstate").innerHTML = "<b>Build not yet attached.</b> No DUELL firmware file is published with this page yet, so there is nothing to install.";
     refresh();
   }
 })();
-$("pkgfile").addEventListener("change", async () => {
-  const f = $("pkgfile").files[0]; if (!f) return;
-  await acceptPackage(new Uint8Array(await f.arrayBuffer()), f.name + " (from your computer)");
-});
 
-// ---- install (same flow as Felucca's installer)
-const STEPS = { start: "Starting", verify: "Verifying", loader: "Switching to update mode", write: "Writing. Do not unplug", reboot: "Restarting", done: "Done. Unplug, plug in again, and check the version" };
+// ---- shared messages
+const STEPS = { start: "Starting", verify: "Verifying", loader: "Switching to update mode", reboot: "Restarting" };
 const ERR = {
   nomidi: "This browser cannot do it. Open the page in Chrome or Edge.",
   denied: "MIDI (SysEx) access was not allowed. Allow MIDI in the site settings (address bar) and try again.",
   notfound: "FM-1 not found. Check that the cable is a data cable, plugged straight into the computer, and close other programs that use MIDI.",
   model: "The connected device is not an FM-1.",
-  lost: "The USB connection was lost. Replug and press Install again.",
-  stopped: "Stopped. Replug the USB cable and press Install again.",
-  noloader: "The FM-1 in update mode was not found. Replug the USB cable and press Install again (it stays in update mode until it is finished).",
+  lost: "The USB connection was lost. Replug and press the same button again. Do not unplug while it says it is writing.",
+  stopped: "Stopped. Replug the USB cable and press the same button again.",
+  noloader: "The FM-1 in update mode was not found. Replug the USB cable and press the same button again (it stays in update mode until it is finished).",
   noreturn: "The FM-1 did not come back. Switch it off and on again.",
   mismatch: "Written, but the FM-1 reports another version: ",
 };
-const fail = (e) => { say(e && e.code && ERR[e.code] ? ERR[e.code] + (e.detail || "") : "Error: " + (e && e.message)); log(String(e && e.stack || e)); };
-const progress = (total) => (k, a) => {
-  log(`${k} ${a ?? ""}`);
-  if (STEPS[k]) say(STEPS[k]);
-  if (k === "verify") $("bar").value = (a / total) * 100;
-  if (k === "write") $("bar").value = ((74 + a) / total) * 100;
-  if (k === "done") $("bar").value = 100;
+// a failure stays in the card that failed
+const fail = (card, e) => { result(card, e && e.code && ERR[e.code] ? ERR[e.code] + (e.detail || "") : "Error: " + (e && e.message), true); log(String(e && e.stack || e)); };
+const progress = (card, total) => (k, a) => {
+  log(`${card} ${k} ${a ?? ""}`);
+  if (STEPS[k]) say(card, STEPS[k]);
+  if (k === "write") say(card, TEXT.writing[card]);
+  if (k === "verify") $("bar-" + card).value = (a / total) * 100;
+  if (k === "write") $("bar-" + card).value = ((74 + a) / total) * 100;
+  if (k === "done") $("bar-" + card).value = 100;
 };
+
+// ---- what does the unit run now? (decides the erase box's default; installer_state.js has the texts and the rule)
+// Asks the running unit for INFO (editor protocol, read-only, writes nothing). It never asks for MIDI permission on its own: at load it
+// only goes ahead when Chrome already allowed MIDI with SysEx for this page (earlier visit); otherwise the "Check the unit" button
+// asks (the same prompt the other buttons show). No answer, other firmware, or update mode all count as "not DUELL".
+const infoString = (a) => { const z = a.indexOf(0); return z < 0 ? "" : String.fromCharCode(...a.slice(0, z)); };
+async function probeUnit(midi) {
+  const outs = [...midi.outputs.values()];
+  let talked = false;
+  for (const input of midi.inputs.values()) {
+    if (input.state === "disconnected" || !/fm-1|felucca|ota|composite|sinco|usb-midi/i.test(input.name || "")) continue;   // never probe other gear
+    const output = outs.find((o) => o.name === input.name && o.state !== "disconnected");
+    if (!output) continue;
+    try { await input.open(); await output.open(); } catch { continue; }
+    const link = new BackupConnection(input, output);
+    try { const v = infoString(await link.request([1, []], { timeout: 1500 })); talked = true; if (detectUnit(v).kind === "duell") return v; }
+    catch { /* no answer on this port */ }
+    finally { link.close(); }
+  }
+  return talked ? "" : null;      // "": a unit answered but is not DUELL; null: nothing answered
+}
+async function checkUnit(midi) {
+  if (busy || probing) return;
+  probing = true; refresh();
+  try {
+    const v = await probeUnit(midi);
+    // nothing answered: the unit may still be there (official firmware, update mode), so this is "not DUELL (or no answer)", not "unknown"
+    detected = detectUnit(v);
+  } catch { detected = detectUnit(null); }
+  finally { probing = false; refresh(); }
+}
+function watchUnit(midi) {
+  midiAccess = midi;
+  midi.onstatechange = (e) => {
+    const p = e.port;
+    if (busy || probing || !p) return;
+    if (p.state === "disconnected") { detected = null; refresh(); }                        // unplugged: the old answer is stale
+    else if (p.state === "connected" && p.connection === "closed") setTimeout(() => checkUnit(midi), 1500);   // a unit appeared (our own opens report "open": ignored)
+  };
+}
+$("erase-after").addEventListener("change", () => { touched = true; showErase(); });      // only a click fires this, not the page's own changes
+$("detect").addEventListener("click", async () => {
+  if (busy || probing) return;
+  try { if (!midiAccess) watchUnit(await navigator.requestMIDIAccess({ sysex: true })); } catch { result("install", ERR.denied, true); return; }
+  await checkUnit(midiAccess);
+});
+(async () => {       // a silent check at load, only when MIDI was allowed before
+  try {
+    if (!ready || !navigator.permissions) return;
+    const st = await navigator.permissions.query({ name: "midi", sysex: true });
+    if (st.state !== "granted") return;
+    watchUnit(await navigator.requestMIDIAccess({ sysex: true }));
+    await checkUnit(midiAccess);
+  } catch { /* stays "not checked yet" */ }
+})();
+
+// ---- install (same flow as Felucca's installer)
+// The optional erase (the box in the INSTALL card; ticked or not by what the unit runs, see eraseDecision): after the install finished and the unit restarted into DUELL,
+// connect to it and send ERASE_ALL (fm1backup.js; the unit checks the token and refuses while it plays). Anything but the unit's
+// rc 0 is reported as "installed, data NOT erased, use MENU > SYSTEM > ERASE DATA": never "erased" unless the unit said so.
+async function eraseAfterInstall(midi) {
+  say("install", ERASE.status);
+  $("bar-install").value = 100;
+  try {
+    const up = new Updater(midi, log);
+    const device = await up.waitFor((id) => id.model === "FM-1", 30000);   // the restarted DUELL
+    if (!device) return eraseOutcome(null, "notfound");
+    const input = device.link.input, output = device.link.output;
+    device.link.close();
+    const link = new BackupConnection(input, output);
+    try { return eraseOutcome(await eraseAllData((r, o) => link.request(r, o))); }
+    finally { link.close(); }
+  } catch (e) { log(String(e && e.stack || e)); return eraseOutcome(null, e); }
+}
 $("go").addEventListener("click", async () => {
-  if (writing || !image) return;
-  writing = true; refresh();
+  if (busy || !image) return;
+  const wantErase = $("erase-after").checked;       // read once, before anything locks
+  begin("install");
   try {
     let midi;
-    try { midi = await navigator.requestMIDIAccess({ sysex: true }); } catch { say(ERR.denied); return; }
-    const up = new Updater(midi, log), step = progress(74 + 1167);
+    try { midi = await navigator.requestMIDIAccess({ sysex: true }); } catch { result("install", ERR.denied, true); return; }
+    const up = new Updater(midi, log), step = progress("install", 74 + 1167);
     const ota = await up.find((id) => /^ota-/i.test(id.model));
-    if (ota) { ota.link.close(); say((await up.resume(image, step, product)) ? STEPS.done : ERR.stopped); }
-    else await up.install(image, product, step);
-  } catch (e) { fail(e); }
-  finally { writing = false; refresh(); }
+    let installed = false;
+    if (ota) {
+      ota.link.close();
+      if (await up.resume(image, step, product)) installed = true; else result("install", ERR.stopped, true);
+    } else { await up.install(image, product, step); installed = true; }
+    if (installed && !wantErase) result("install", TEXT.done.install);
+    else if (installed) { const o = await eraseAfterInstall(midi); result("install", o.text, o.bad); }
+  } catch (e) { fail("install", e); }
+  finally { end("install"); }
 });
 
 // ---- backup
@@ -237,28 +403,30 @@ function archiveInfo(a) {
     ext[4] === 0x4d && ext[5] === 1 && ext[8] === 0x42 && ext[9] === 1 && (ext[10] & 1);
   return { version, supported };
 }
-async function doBackup(up) {
+// card = the card that shows the progress ("backup", or "return" when the return makes its backup first)
+async function doBackup(up, card) {
   const device = await up.find((id) => id.model === "FM-1");
-  if (!device) { say(ERR.notfound); return false; }
+  if (!device) { result(card, ERR.notfound, true); return false; }
   const input = device.link.input, output = device.link.output; device.link.close();
   const link = new BackupConnection(input, output);
   try {
     const info = archiveInfo(await link.request([1, []]));
-    if (!info.supported) { say("This firmware cannot make a complete backup (the official firmware, or an old build). Nothing was saved."); return false; }
+    if (!detected) { detected = detectUnit(info.version); refresh(); }      // the backup just talked to the unit: reuse its answer
+    if (!info.supported) { result(card, "This firmware cannot make a complete backup (the official firmware, or an old build). Nothing was saved.", card === "backup"); return false; }
     const archive = await captureBackup((r, o) => link.request(r, o), info.version,
-      (d, t) => say(`Saving backup ${Math.round(d / Math.max(1, t) * 100)}%`));
-    saveArchive(archive); say("Backup saved to your downloads. MULTIs and PATTERN slots are not in it."); return true;
+      (d, t) => { const pc = d / Math.max(1, t) * 100; say(card, `Saving backup ${Math.round(pc)}%`); if (card === "backup") $("bar-backup").value = pc; });
+    saveArchive(archive); result(card, "Backup saved to your downloads. MULTIs and PATTERN slots are not in it."); return true;
   } finally { link.close(); }
 }
 $("backup").addEventListener("click", async () => {
-  if (writing) return;
-  writing = true; refresh();
+  if (busy) return;
+  begin("backup");
   try {
     let midi;
-    try { midi = await navigator.requestMIDIAccess({ sysex: true }); } catch { say(ERR.denied); return; }
-    await doBackup(new Updater(midi, log));
-  } catch (e) { fail(e); }
-  finally { writing = false; refresh(); }
+    try { midi = await navigator.requestMIDIAccess({ sysex: true }); } catch { result("backup", ERR.denied, true); return; }
+    await doBackup(new Updater(midi, log), "backup");
+  } catch (e) { fail("backup", e); }
+  finally { end("backup"); }
 });
 
 // ---- return to the official V15 (Felucca's flow, unchanged in method)
@@ -272,25 +440,29 @@ $("stock-file").addEventListener("change", async () => {
   refresh();
 });
 $("stock-go").addEventListener("click", async () => {
-  if (!stock || writing) return;
-  const selected = stock; writing = true; refresh();
+  if (!stock || busy) return;
+  const selected = stock;
+  begin("return");
   try {
     let midi;
-    try { midi = await navigator.requestMIDIAccess({ sysex: true }); } catch { say(ERR.denied); return; }
-    const up = new Updater(midi, log), step = progress(74 + 1167);
+    try { midi = await navigator.requestMIDIAccess({ sysex: true }); } catch { result("return", ERR.denied, true); return; }
+    const up = new Updater(midi, log), step = progress("return", 74 + 1167);
     const loader = await up.find((id) => id.model === "ota-FM-1");
     if (loader) {
       loader.link.close();
-      if (!$("stock-recovery").checked) { say("The FM-1 is in update mode, so no backup can be made now. Tick \"Resume an interrupted return\" only if you already saved a backup."); return; }
+      if (!$("stock-recovery").checked) { result("return", "The FM-1 is in update mode, so no backup can be made now. Tick \"Resume an interrupted return\" only if you already saved a backup.", true); return; }
       if (!confirm("Return to official V15? DUELL music cannot be opened by the official firmware.")) return;
-      say((await up.resume(selected.image, step, selected.product)) ? STEPS.done : ERR.stopped);
+      if (await up.resume(selected.image, step, selected.product)) result("return", TEXT.done.return); else result("return", ERR.stopped, true);
     } else {
-      if (!(await doBackup(up))) { if (!confirm("No backup was made. Return to official V15 anyway?")) return; }
+      say("return", "Backing up before the return (nothing is written yet)");
+      if (!(await doBackup(up, "return"))) { if (!confirm("No backup was made. Return to official V15 anyway?")) return; }
       else if (!confirm("The backup file was downloaded. Has it been saved on this computer? Continue to return to official V15.")) return;
+      result("return", "");
       await up.install(selected.image, selected.product, step);
+      result("return", TEXT.done.return);
     }
-  } catch (e) { fail(e); }
-  finally { writing = false; refresh(); }
+  } catch (e) { fail("return", e); }
+  finally { end("return"); }
 });
 refresh();
 </script>

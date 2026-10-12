@@ -180,7 +180,7 @@ static int preferences(void)
         host_wire[n - 30] == 0 &&                        /* (no bank since 1.0.3) */
         host_wire[n - 29] == 0x53 && host_wire[n - 28] == 1 && host_wire[n - 27] == 3 &&
         host_wire[n - 26] == 0x50 && host_wire[n - 25] == 1 && host_wire[n - 24] == 3 &&   /* FM6 v2: no bank, preset patches */
-        host_wire[n - 23] == 0x4E && host_wire[n - 22] == 1 && host_wire[n - 21] == 24 &&   /* MENU settings: 24 items (1.5; DUELL: BPM LOCK retired) */
+        host_wire[n - 23] == 0x4E && host_wire[n - 22] == 1 && host_wire[n - 21] == 20 &&   /* MENU settings: 20 items (DUELL 0.2.2: STYLE, LARGE, FX LATCH, HELP retired too) */
         host_wire[n - 20] == 0x52 && host_wire[n - 19] == 1 && host_wire[n - 18] == 4 &&   /* RATCH */
         host_wire[n - 17] == 0x4C && host_wire[n - 16] == 1 && host_wire[n - 15] == 1 &&   /* 1.1 parameter locks */
         host_wire[n - 14] == 0x41 && host_wire[n - 13] == 1 && host_wire[n - 12] == 0 && host_wire[n - 11] == 1 &&   /* 1.2: 128 */
@@ -810,9 +810,9 @@ static uint32_t menu_set(uint32_t id, int32_t v)            /* -> rc; host_wire[
 }
 static int menu_protocol(void)
 {
-    static const char *const WANT[24][2] = {
-        {"COLOR", 0}, {"STYLE", "FLAT,LINE"}, {"LARGE", "OFF,ON"}, {"ANIM", "ON,OFF,IDLE"}, {"LEDS", "OFF,DIM LO,DIM HI,INV"},
-        {"HOLD", "0.3 s,0.4 s,0.5 s,0.6 s"}, {"KNOB ACCEL", "OFF,ON"}, {"FX LATCH", "OFF,ON"},
+    static const char *const WANT[20][2] = {
+        {"COLOR", 0}, {"ANIM", "ON,OFF,IDLE"}, {"LEDS", "OFF,DIM LO,DIM HI,INV"},
+        {"HOLD", "0.3 s,0.4 s,0.5 s,0.6 s"}, {"KNOB ACCEL", "OFF,ON"},
         {"SPEAKER EQ", "FLAT,LOWCUT,BASS+"}, {"USB LEVEL", "MASTER,FIXED"}, {"USB SERIAL", "ON,OFF"},
         {"CLICK", "OFF,REC,ON"}, {"CLICK LEVEL", "LOW,MID,HIGH"}, {"COUNT-IN", "OFF,1 BAR,2 BARS"},   /* (1.1: appended) */
         {"RESTORE LAST", "ON,OFF"}, {"SCALE LEDS", "OFF,ON"},                                        /* (1.2) */
@@ -820,11 +820,10 @@ static int menu_protocol(void)
         {"SCOPE", "OUT,MIX"}, {"STEP PREVIEW", "OFF,ON"}, {"CHORD ENTRY", "HOLD,ADD"},                  /* (1.2) */
         {"TUNE", 0},   /* (1.2: the project's TUNE, a number; DUELL 0.1: MIDI IN, id 21, left MENU for GLO > CHANNELS) */
         {"OVERVIEW", "SCOPE,PARTS"},                                                           /* (1.3 HOME; DUELL 0.1: OVERVIEW, no LEVELS) */
-        {"HELP", "OFF,ON"},                                                                          /* (1.5) */
         {"HOME OPENS", "MORPH,MODE,MIXER,OVERVIEW"}};                                                /* (DUELL 0.1, id 25) */
-    static const uint8_t ID[24] = {0, 1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 22, 23, 24, 25};   /* (8, BPM LOCK, and 21, MIDI IN: retired) */
-    static const int32_t DEF[24] = {-1, 0, 0, 0, 2, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};   /* (COLOR: the default palette) */
-    static const uint8_t TAB[24] = {0, 0, 0, 0, 0, 1, 1, 1, 2, 2, 3, 2, 2, 2, 3, 1, 0, 0, 1, 1, 2, 0, 3, 1};   /* DISPLAY CONTROL AUDIO
+    static const uint8_t ID[20] = {0, 3, 4, 5, 6, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 22, 23, 25};   /* (1 STYLE, 2 LARGE, 7 FX LATCH, 8 BPM LOCK, 21 MIDI IN, 24 HELP: retired) */
+    static const int32_t DEF[20] = {-1, 0, 2, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};   /* (COLOR: the default palette) */
+    static const uint8_t TAB[20] = {0, 0, 0, 1, 1, 2, 2, 3, 2, 2, 2, 3, 1, 0, 0, 1, 1, 2, 0, 1};   /* DISPLAY CONTROL AUDIO
                                                                                                          * SYSTEM (DUELL 0.1: no MIDI tab) */
     static const char *const TABN[4] = {"DISPLAY", "CONTROL", "AUDIO", "SYSTEM"};
     int bad = 0, ok = 1;
@@ -835,11 +834,11 @@ static int menu_protocol(void)
     FILE *jf = json ? fopen(json, "w") : 0;
     reset();
     if (jf) fprintf(jf, "[");
-    for (i = 0; i < 24u; i++) {
+    for (i = 0; i < 20u; i++) {
         n = menu_desc(i, &it);
         joined[0] = 0;
         for (k = 0; k < it.nnames; k++) { if (k) strcat(joined, ","); strcat(joined, it.names[k]); }
-        ok &= i == 20u ? n > 10u && it.index == i && it.id == ID[i] && it.kind == 1 && it.min == -50 && it.max == 50 &&
+        ok &= i == 17u ? n > 10u && it.index == i && it.id == ID[i] && it.kind == 1 && it.min == -50 && it.max == 50 &&
                          !it.nnames && !strcmp(it.unit, "ct") && !strcmp(it.name, "TUNE")     /* (a number: cents) */
                        : n > 10u && it.index == i && it.id == ID[i] && it.kind == 0 && it.min == 0 && !it.unit[0] &&
                          it.max + 1 == (int32_t)it.nnames && !strcmp(it.name, WANT[i][0]) &&
@@ -857,24 +856,24 @@ static int menu_protocol(void)
         }
     }
     if (jf) { fprintf(jf, "]\n"); fclose(jf); }
-    bad += check("MENU_DESC: 24 items (1.0.4's 11 in the menu's order, BPM LOCK (id 8) retired in DUELL, then 1.1's CLICK, CLICK LEVEL, COUNT-IN, 1.2's RESTORE LAST, SCALE LEDS, SCREEN OFF, 1.2's SCOPE, STEP PREVIEW, CHORD ENTRY, MIDI IN, TUNE, 1.3's HOME, 1.5's HELP), ids 0..24 but 8, names, defaults; TUNE a number -50..50 ct", ok);
+    bad += check("MENU_DESC: 20 items (STYLE (1), LARGE (2), FX LATCH (7) and HELP (24) retired in DUELL 0.2.2; was 24: 1.0.4's 11 in the menu's order, BPM LOCK (id 8) retired in DUELL, then 1.1's CLICK, CLICK LEVEL, COUNT-IN, 1.2's RESTORE LAST, SCALE LEDS, SCREEN OFF, 1.2's SCOPE, STEP PREVIEW, CHORD ENTRY, MIDI IN, TUNE, 1.3's HOME, 1.5's HELP), ids 0..25 but 1 2 7 8 21 24, names, defaults; TUNE a number -50..50 ct", ok);
     bad += check("MENU_DESC (1.0.5): after the names (TUNE: the unit) each item's tab, index and name (DISPLAY CONTROL AUDIO SYSTEM)", ok);
     {   /* an older editor reads the names and stops: the tab is past them, nothing it reads moved */
-        uint32_t m = menu_desc(4, &it), p = 14, q;
+        uint32_t m = menu_desc(2, &it), p = 14, q;   /* (LEDS, a DISPLAY row) */
         for (q = 0; q < 1u + it.nnames; q++) { while (host_wire[p]) p++; p++; }   /* name, the names */
         ok = m > 10u && host_wire[p] == 0 && !strcmp((const char *)host_wire + p + 1, "DISPLAY") &&
              p + 1u + 8u == m + 6u - 1u;
         bad += check("MENU_DESC: the tab comes after every byte of the 1.0.4 reply (older editors ignore it)", ok);
     }
     ok = 1;
-    for (i = 0; i < 24u; i++) {
+    for (i = 0; i < 20u; i++) {
         menu_desc(i, &it);
-        ok &= strcmp(it.name, "CALIBRATION") && strcmp(it.name, "ABOUT") && strcmp(it.name, "INFO");
+        ok &= strcmp(it.name, "CALIBRATION") && strcmp(it.name, "ABOUT") && strcmp(it.name, "TEST");
     }
-    n = menu_desc(24, &it);
-    ok &= n == 2u && it.index == 24 && it.id == 127;
+    n = menu_desc(20, &it);
+    ok &= n == 2u && it.index == 20 && it.id == 127;
     n = menu_desc(127, &it);
-    bad += check("MENU_DESC: no CALIBRATION / INFO / ABOUT; an index past the list answers index, 127 (no item)",
+    bad += check("MENU_DESC: no CALIBRATION / TEST / ABOUT; an index past the list answers index, 127 (no item)",
                  ok && n == 2u && it.index == 127 && it.id == 127);
     {
         uint8_t a[3] = {0, 0, 0};
@@ -888,13 +887,12 @@ static int menu_protocol(void)
     ui.force = 0;
     ok = menu_set(0, 2) == 3 && host_wire[6] == 0 && ed_rv(host_wire + 7) == 2 && settings.palette == 2u &&
          T_BG == UI_PALETTES[2].bg[ux.part] && ui.force;
-    ok &= menu_set(1, 1) == 3 && ui_style == ST_LINE;
-    ok &= menu_set(2, 1) == 3 && (ui_prefs & PREF_LARGE);
+    ok &= menu_set(1, 1) == 1 && menu_set(2, 1) == 1 && menu_set(24, 1) == 1 && ui_prefs == 0u && ui_prefs2 == 0u;   /* (STYLE 1, LARGE 2, HELP 24: retired in DUELL 0.2.2, unknown ids: rc 1, nothing set) */
     ok &= menu_set(3, 1) == 3 && (ui_prefs & PREF_ANIM_OFF);
     ok &= menu_set(4, 0) == 3 && settings_leds == LEDS_OFF && menu_set(4, 1) == 3 && settings_leds == LEDS_DIM_LO;
     ok &= menu_set(5, 3) == 3 && settings_hold == 3u;
     ok &= menu_set(6, 1) == 3 && (ui_prefs & PREF_ACCEL);
-    ok &= menu_set(7, 1) == 3 && (ui_prefs & PREF_LATCH);
+    ok &= menu_set(7, 1) == 1 && !(ui_prefs & 1u);   /* (FX LATCH, id 7: retired in DUELL 0.2.2, an unknown id: rc 1, its bit stays clear) */
     ok &= menu_set(8, 1) == 1 && !(ui_prefs & 16u);   /* (BPM LOCK, id 8: retired, an unknown id: rc 1) */
     ok &= menu_set(9, 2) == 3 && settings.lowcut == 2u && fx_lowcut == 2u;
     ok &= menu_set(10, 1) == 3 && (ui_prefs & PREF_USB_FIXED) && fx_usb_fixed;
@@ -910,16 +908,15 @@ static int menu_protocol(void)
     ok &= menu_set(21, 1) == 1 && song.g[G_ROUTE] == 0 &&       /* (MIDI IN, id 21: retired, an unknown id) */  menu_set(22, -13) == 0 && song.g[G_TUNE] == -13;   /* (1.2: the
                                                          * project's, rc 0: in the music, no settings record) */
     ok &= menu_set(23, 1) == 3 && ui_home_view == HV_TRACKS && ui_prefs2 == 7u && ui_scr == 1u;   /* (1.3: its own byte) */
-    ok &= menu_set(24, 1) == 3 && ui_prefs2 == 15u && help_on();                                  /* (1.5: HELP, bit 3) */
-    ok &= menu_set(25, 2) == 3 && ui_home_pg == HP_MIXER && ui_prefs2 == 15u;                      /* (DUELL 0.1: HOME OPENS, its own byte) */
-    for (i = 0; i < 24u; i++) {                         /* MENU_DESC reads them back */
-        static const int32_t SET[24] = {2, 1, 1, 1, 1, 3, 1, 1, 2, 1, 0, 2, 0, 2, 1, 1, 2, 1, 1, 1, -13, 1, 1, 2};
+    ok &= menu_set(25, 2) == 3 && ui_home_pg == HP_MIXER && ui_prefs2 == 7u;                      /* (DUELL 0.1: HOME OPENS, its own byte) */
+    for (i = 0; i < 20u; i++) {                         /* MENU_DESC reads them back */
+        static const int32_t SET[20] = {2, 1, 1, 3, 1, 2, 1, 0, 2, 0, 2, 1, 1, 2, 1, 1, 1, -13, 1, 2};
         menu_desc(i, &it);
         ok &= it.value == SET[i];
     }
     bad += check("MENU_SET: every setting applied as the menu does (palette, EQ, USB LEVEL, CLICK, COUNT-IN at once, RESTORE LAST, SCALE LEDS, SCREEN OFF, SCOPE, STEP PREVIEW, CHORD ENTRY, HOME), read back", ok);
-    ok = menu_set(3, 0) == 3 && !(ui_prefs & PREF_ANIM_OFF) && (ui_prefs & PREF_LARGE) && menu_set(10, 0) == 3 &&
-         !fx_usb_fixed && menu_set(1, 0) == 3 && ui_style == ST_FLAT;
+    ok = menu_set(3, 0) == 3 && !(ui_prefs & PREF_ANIM_OFF) && (ui_prefs & PREF_ACCEL) && menu_set(10, 0) == 3 &&
+         !fx_usb_fixed;
     bad += check("MENU_SET: a flag back to its default leaves the other flags", ok);
 
     /* clamping: the reply carries the device's value */
@@ -927,7 +924,7 @@ static int menu_protocol(void)
     ok &= menu_set(0, -5) == 3 && ed_rv(host_wire + 7) == 0 && settings.palette == 0u;
     ok &= menu_set(4, 99) == 3 && ed_rv(host_wire + 7) == 3 && settings_leds == LEDS_INV;
     ok &= menu_set(5, 8191) == 3 && ed_rv(host_wire + 7) == 3 && settings_hold == 3u;
-    ok &= menu_set(2, 7) == 3 && ed_rv(host_wire + 7) == 1 && (ui_prefs & PREF_LARGE);
+    ok &= menu_set(6, 7) == 3 && ed_rv(host_wire + 7) == 1 && (ui_prefs & PREF_ACCEL);
     ok &= menu_set(14, 9) == 3 && ed_rv(host_wire + 7) == 2 && cin_bars == 2u;
     ok &= menu_set(12, -1) == 3 && ed_rv(host_wire + 7) == 0 && click_mode == CLICK_OFF;
     ok &= menu_set(25, 99) == 3 && ed_rv(host_wire + 7) == 3 && ui_home_pg == HP_OVERVIEW;
@@ -950,7 +947,7 @@ static int menu_protocol(void)
 
     /* the MENU page shown: the editor's change redraws it */
     ui.menu = 1; ui.force = 0;
-    menu_set(7, 0);
+    menu_set(6, 0);
     bad += check("MENU_SET while the MENU page is shown: the page redraws (ui.force)", ui.force && ui.menu == 1);
     ui.menu = 0;
 

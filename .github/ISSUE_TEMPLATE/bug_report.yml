@@ -13,7 +13,7 @@ body:
     id: version
     attributes:
       label: Firmware version
-      description: Hold HOME and open ABOUT, or the emulator page footer. For example "DUELL 0.1 beta" or the build you made.
+      description: Hold HOME and open ABOUT, or the emulator page footer. For example "DUELL 0.2.1 beta".
     validations:
       required: true
   - type: dropdown

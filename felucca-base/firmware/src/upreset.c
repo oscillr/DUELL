@@ -168,6 +168,15 @@ static void up_migrate(up_rec_t *r)
 
 static void up_pat_norm(uint8_t *note, uint8_t *flags);
 
+/* the sparse store's default of parameter id for engine eng: params.c's, except the two LFO TRIGs. DUELL 0.2.2 made FREE
+ * their default (params.c), but a record leaves out what equals the default, and every record stored before left NOTE out:
+ * so the store keeps NOTE (0) as its own default for them, an old patch still loads as NOTE and a new FREE one stores its
+ * pair (2 bytes each; PT_WORST counts every parameter off its default anyway) */
+static int32_t up_def(uint32_t eng, uint32_t id)
+{
+    return id == P_LTRIG || id == P_L2TRIG ? 0 : param_desc_of(eng, id)->def;
+}
+
 /* the record's values in today's P_* order (mapped by count, see above); def = the defaults */
 static void up_params(const up_rec_t *r, int16_t *out, const int16_t *def)
 {
@@ -276,13 +285,15 @@ static int up_parse(const uint8_t *a, uint32_t na, up_rec_t *r, uint32_t *slot)
 #ifndef UP_HOST
 static void up_values(const up_rec_t *r, int16_t *v)   /* mapped and clamped for its engine */
 {
-    int16_t def[P_COUNT];
+    int16_t def[P_COUNT], tdef[P_COUNT];
     uint32_t i;
-    for (i = 0; i < P_COUNT; i++)
-        def[i] = param_desc_of(r->engine, i)->def;
+    for (i = 0; i < P_COUNT; i++) {
+        def[i] = (int16_t)up_def(r->engine, i);          /* (what a value the record lacks is: NOTE for the LFO TRIGs, up_def) */
+        tdef[i] = param_desc_of(r->engine, i)->def;
+    }
     up_params(r, v, def);
-    if (!up_duell(r))                                   /* Felucca's layout: no old value on a DUELL parameter */
-        params_retire(v, def);
+    if (!up_duell(r))                                   /* Felucca's layout: no old value on a DUELL parameter (today's defaults) */
+        params_retire(v, tdef);
     if (r->ver == 1u && ENGINES[r->engine] == &ENG_PHYS)   /* (before 1.0: MODEL 2 was DUST) */
         phys_legacy(&v[P_E0]);
     for (i = 0; i < P_COUNT; i++)
@@ -467,9 +478,9 @@ static int up_used(uint32_t k) { return pt_raw(k) != 0; }
  * SEQUENCER pattern, so loading it brings them back (up_load: the lend rule of the factory sounds, ui.c ds_arp). The record's last
  * part, flag PTF_AK: u16 content length, then
  *   u8 g       groups present: AK_ARP 1 (the arp's eight values P_AMODE .. P_AORDER: stored when the arp is ON, or for a shadow
- *              of a factory sound that sets an arp, so that an arp the player switched off stays off), AK_KEYS 2 (P_SCALE P_CHRD
- *              P_VOIC; stored when any is not its default, likewise for a shadow of a sound that sets keys; ROOT stays the
- *              player's), AK_SEQ 4 (the sequencer pattern; stored when the arp mode is SEQ, as the pattern is then the arp's)
+ *              of a factory sound that sets an arp, so that an arp the player switched off stays off), AK_KEYS 2 (P_CHRD
+ *              P_VOIC; stored when any is not its default, likewise for a shadow of a sound that sets keys; the SCALE slot, ordinal 8,
+ *              is retired: read and discarded, never written), AK_SEQ 4 (the sequencer pattern; stored when the arp mode is SEQ, as the pattern is then the arp's)
  *   u8 np      then np x (u8 parameter id, u8 value + 64): the values of the present groups that differ from the defaults
  *              (the groups' other values are the defaults); AK_SEQ's ids are LEN DIV SWING GATE QUANTIZE (LEN at most 16).
  *              With g bit 8 (AK_BM, from 3 values on: shorter) there is no np: a u16 bitmap (bit = the value's ordinal: the arp's
@@ -489,6 +500,9 @@ static int up_used(uint32_t k) { return pt_raw(k) != 0; }
 #define PS_STEP_N 9u                             /* patslot.c PS_STEP */
 static void ps_pack_step(const step_t *s, uint8_t *b);   /* (patslot.c) */
 static int ps_unpack_step(const uint8_t *b, step_t *s);
+/* the keys' three ordinals 8..10. P_SCALE (ordinal 8) is RETIRED (owner 2026-10-12: the scale is the instrument's, core.h): a record that holds one
+ * still reads (the parse stays as it was) and the value is DISCARDED; ak_build never writes it */
+static const uint8_t AK_KEYID[3] = {P_SCALE, P_CHRD, P_VOIC};
 static const uint8_t AK_SEQID[5] = {P_SLEN, P_SDIV, P_SSWING, P_SGATE, P_SQNT};
 /* the worst record: AK_WORST is a block with all sixteen values and all sixteen steps (u16 length, g, bitmap, values, step map,
  * steps); PT_W_SEQ a record that carries it with an FM6 patch, End B, a shadow marker and every other value off its default
@@ -503,7 +517,7 @@ static const uint8_t AK_SEQID[5] = {P_SLEN, P_SDIV, P_SSWING, P_SGATE, P_SQNT};
 _Static_assert(PT_K >= 1u && PT_MAX <= UP_SLOTS && AK_WORST <= AK_MAX, "the store's limit: PT_MAX records of the worst size fit, in slots 0..UP_SLOTS-1");
 static uint32_t ak_id(uint32_t o)                /* the ordinal o (0..15) -> its parameter id */
 {
-    return o < 8u ? P_AMODE + o : o < 11u ? DS_KEYID[o - 8u] : AK_SEQID[o - 11u];
+    return o < 8u ? P_AMODE + o : o < 11u ? AK_KEYID[o - 8u] : AK_SEQID[o - 11u];
 }
 static uint32_t ak_grp(uint32_t id)              /* the group an id belongs to (0: none) */
 {
@@ -511,7 +525,7 @@ static uint32_t ak_grp(uint32_t id)              /* the group an id belongs to (
     if (id >= P_AMODE && id <= P_AORDER)
         return AK_ARP;
     for (i = 0; i < 3u; i++)
-        if (id == DS_KEYID[i])
+        if (id == AK_KEYID[i])
             return AK_KEYS;
     for (i = 0; i < 5u; i++)
         if (id == AK_SEQID[i])
@@ -520,7 +534,7 @@ static uint32_t ak_grp(uint32_t id)              /* the group an id belongs to (
 }
 typedef struct {
     uint8_t g;
-    int16_t arp[8], key[3], seq[5];              /* P_AMODE.., DS_KEYID, AK_SEQID order */
+    int16_t arp[8], key[3], seq[5];              /* P_AMODE.., AK_KEYID, AK_SEQID order */
     step_t st[AK_NS];
 } ak_t;
 static int16_t *ak_slot(ak_t *a, uint32_t id)
@@ -529,7 +543,7 @@ static int16_t *ak_slot(ak_t *a, uint32_t id)
     if (id >= P_AMODE && id <= P_AORDER)
         return &a->arp[id - P_AMODE];
     for (i = 0; i < 3u; i++)
-        if (id == DS_KEYID[i])
+        if (id == AK_KEYID[i])
             return &a->key[i];
     for (i = 0; i < 5u; i++)
         if (id == AK_SEQID[i])
@@ -566,7 +580,7 @@ static int ak_dec(const uint8_t *c, uint32_t n, uint32_t eng, ak_t *a)
         for (i = 0; i < 8u; i++)
             a->arp[i] = param_desc_of(eng, P_AMODE + i)->def;
         for (i = 0; i < 3u; i++)
-            a->key[i] = param_desc_of(eng, DS_KEYID[i])->def;
+            a->key[i] = param_desc_of(eng, AK_KEYID[i])->def;
         for (i = 0; i < 5u; i++)
             a->seq[i] = param_desc_of(eng, AK_SEQID[i])->def;
         for (at = 3u, i = 0; i < 16u; i++)
@@ -588,7 +602,7 @@ static int ak_dec(const uint8_t *c, uint32_t n, uint32_t eng, ak_t *a)
     for (i = 0; i < 8u; i++)
         a->arp[i] = param_desc_of(eng, P_AMODE + i)->def;
     for (i = 0; i < 3u; i++)
-        a->key[i] = param_desc_of(eng, DS_KEYID[i])->def;
+        a->key[i] = param_desc_of(eng, AK_KEYID[i])->def;
     for (i = 0; i < 5u; i++)
         a->seq[i] = param_desc_of(eng, AK_SEQID[i])->def;
     for (i = 0; i < np; i++, at += 2u) {
@@ -624,8 +638,8 @@ static uint32_t ak_build(const track_t *t, uint8_t *o, const ds_sound_t *fs)
     int32_t v;
     if (motion_base_value(t, P_AMODE) || (fs && (fs->flags & DSF_ARP)))
         g |= AK_ARP;
-    for (i = 0; i < 3u; i++)
-        if (motion_base_value(t, DS_KEYID[i]) != param_desc_of(eng, DS_KEYID[i])->def)
+    for (i = 1; i < 3u; i++)                     /* (CHRD, VOIC: never the scale) */
+        if (motion_base_value(t, AK_KEYID[i]) != param_desc_of(eng, AK_KEYID[i])->def)
             g |= AK_KEYS;
     if (fs && (fs->flags & DSF_KEYS))
         g |= AK_KEYS;
@@ -638,7 +652,7 @@ static uint32_t ak_build(const track_t *t, uint8_t *o, const ds_sound_t *fs)
         uint32_t bm = 0, j;
         for (j = 0; j < 16u; j++) {
             i = ak_id(j);
-            if (!(ak_grp(i) & g))
+            if (!(ak_grp(i) & g) || i == P_SCALE)
                 continue;
             v = motion_base_value(t, i);
             if (i == P_SLEN && v > 16)
@@ -715,7 +729,7 @@ static up_rec_t *up_rec(uint32_t k)
     r->np = P_COUNT;
     memcpy(r->name, p + 7, 12);
     for (i = 0; i < P_COUNT; i++)
-        up_set_value(r, i, param_desc_of(r->engine, i)->def);
+        up_set_value(r, i, (int16_t)up_def(r->engine, i));
     if (p[4] & PTF_BM) {                             /* the bitmap form: a value per set bit, in id order */
         const uint8_t *bv = p + pr + PT_BMB;
         uint32_t j = 0;
@@ -742,9 +756,9 @@ static up_rec_t *up_rec(uint32_t k)
             for (i = 0; i < 8u; i++)
                 if (a.g & AK_ARP)
                     up_set_value(r, P_AMODE + i, a.arp[i]);
-            for (i = 0; i < 3u; i++)
+            for (i = 1; i < 3u; i++)                 /* (an old record's SCALE, key[0]: discarded) */
                 if (a.g & AK_KEYS)
-                    up_set_value(r, DS_KEYID[i], a.key[i]);
+                    up_set_value(r, AK_KEYID[i], a.key[i]);
             if (a.g & AK_SEQ) {
                 for (i = 0; i < 5u; i++)
                     up_set_value(r, AK_SEQID[i], a.seq[i]);
@@ -778,8 +792,8 @@ static uint32_t pt_encode(uint32_t k, uint32_t rev, const up_rec_t *r, const uin
     if (r->ver >= 4u && r->np <= UP_SH_AT && (r->packed[UP_SH_AT] || r->packed[UP_SH_AT + 1u]))
         f |= PTF_SH;
     for (i = 0; i < P_COUNT; i++) {                  /* the values off their defaults (not the AK block's: it carries them) */
-        int32_t v = i < r->np ? up_value(r, i) : param_desc_of(r->engine, i)->def;
-        if (v != param_desc_of(r->engine, i)->def && !(ak_grp(i) & gm)) {
+        int32_t v = i < r->np ? up_value(r, i) : up_def(r->engine, i);
+        if (v != up_def(r->engine, i) && !(ak_grp(i) & gm)) {
             did[n] = (uint8_t)i;
             dv[n++] = (uint8_t)(v + 64);
         }
@@ -1128,6 +1142,9 @@ static int up_store_trk(track_t *t, uint32_t k, const char *name, uint32_t cat)
     up_set_name(&r, k, name);
     for (i = 0; i < P_COUNT; i++)
         up_set_value(&r, i, motion_base_value(t, i));
+    up_set_value(&r, P_SCALE, param_desc_of(t->eng_req, P_SCALE)->def);   /* no patch holds a scale or a QNT (core.h: the scale is the */
+    up_set_value(&r, P_ROOT, param_desc_of(t->eng_req, P_ROOT)->def);     /* instrument's); their ids stay reserved at their defaults */
+    up_set_value(&r, P_QUANT, param_desc_of(t->eng_req, P_QUANT)->def);
     up_pat_from(&r, t->step);
     up_set_cat(&r, cat ? cat : track_cat(t));
     if (up_mblk)
@@ -1249,7 +1266,7 @@ static int up_load(uint32_t k)
     if (r->engine == ENGI_DIGITAL) {                    /* a DIGITAL sound (kept as it was stored): FM6 */
         int16_t p[P_COUNT], ops[FM4_NOPS];
         for (i = 0; i < P_COUNT; i++)
-            p[i] = param_kept(i) ? t->p[i] : v[i];
+            p[i] = param_kept_on(t, i) ? t->p[i] : v[i];
         fm4_apply(t, p, up_fm4_ops(r, ops));
     } else
 #endif
@@ -1257,7 +1274,7 @@ static int up_load(uint32_t k)
         fm1_irq_off();                                  /* the audio ISR must not see half a sound */
         t->eng_req = r->engine;
         for (i = 0; i < P_COUNT; i++)
-            if (!param_kept(i))
+            if (!param_kept_on(t, i))
                 t->p[i] = v[i];
         t->preset = 0;
         fm1_irq_on();
@@ -1276,7 +1293,7 @@ static int up_load(uint32_t k)
             ak_t a;
             int has = ak_get(k, &a);
             ds_arp(t, s, has && (a.g & AK_ARP) ? a.arp : 0);   /* (a lent arp back: ui.c) */
-            ds_keys(t, s, has && (a.g & AK_KEYS) ? a.key : 0); /* (and the chord keys / scale: ui.c) */
+            ds_keys(t, s, has && (a.g & AK_KEYS) ? a.key + 1 : 0); /* (and the chord keys: ui.c; an old record's SCALE, key[0], is dropped) */
             ds_seq_back(t);
             if (has && (a.g & AK_SEQ))
                 ds_seq_lend(t, &a);

@@ -33,9 +33,6 @@ static void fresh(uint32_t e)
     memset(rev_comb, 0, sizeof rev_comb);
     memset(rev_ap, 0, sizeof rev_ap);
     memset(&fx, 0, sizeof fx);
-    memset(&pf, 0, sizeof pf);
-    for (k = 0; k < NTRK; k++)
-        pf.mg[k] = 32768;
     vage = 0;
     rng_state = 0x1234567u;
     memset(trk, 0, sizeof trk);

@@ -2,36 +2,85 @@
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
 /* The few libc routines the compiler may call implicitly (struct copies,
  * zeroing). Freestanding: no other libc. */
-void *memset(void *d, int c, unsigned n)
-{
-    unsigned char *p = d;
-    while (n--)
-        *p++ = (unsigned char)c;
-    return d;
-}
+#include "memfast.h"                    /* word-at a-time loops: a clear or a copy was 2-3 instructions a byte */
+void *memset(void *d, int c, unsigned n) { return mf_memset(d, c, n); }
+void *memcpy(void *d, const void *s, unsigned n) { return mf_memcpy(d, s, n); }
 
-void *memcpy(void *d, const void *s, unsigned n)
+/* 64-bit division (the EQ coefficients, fx.c: 7 divisions a band, 21 a part, every time a value of the EQ moves): the firmware links no
+ * compiler runtime. The first version shifted and subtracted 64 times (about 1050 pi32 instructions a division, 44 k for both parts'
+ * EQs at once, in the audio interrupt). Now Hacker's Delight divlu / udivdi3: the pi32 divides 32 by 32 in hardware, so a 64-bit
+ * division is two or three of those and a few multiplications (about 100 instructions), the same exact quotient (tests/loadcost_test.c
+ * checks it against the compiler's on a few million operands). */
+static inline unsigned div_nlz32(uint32_t x)
 {
-    unsigned char *p = d;
-    const unsigned char *q = s;
-    while (n--)
-        *p++ = *q++;
-    return d;
+    unsigned n = 32;
+    uint32_t y;
+    y = x >> 16; if (y) { n -= 16; x = y; }
+    y = x >> 8;  if (y) { n -= 8;  x = y; }
+    y = x >> 4;  if (y) { n -= 4;  x = y; }
+    y = x >> 2;  if (y) { n -= 2;  x = y; }
+    y = x >> 1;  if (y) return n - 2;
+    return n - x;
 }
-
-/* 64-bit division (the EQ coefficients, fx.c): the firmware links no compiler runtime. Shift and subtract. */
+/* (u1:u0) / v for u1 < v (the quotient fits 32 bits), by 16-bit digits */
+static uint32_t div_divlu(uint32_t u1, uint32_t u0, uint32_t v)
+{
+    const uint32_t b = 65536u;
+    uint32_t un1, un0, vn1, vn0, q1, q0, un32, un21, un10, rhat;
+    unsigned s = div_nlz32(v);
+    v <<= s;
+    vn1 = v >> 16;
+    vn0 = v & 0xFFFFu;
+    un32 = s ? (u1 << s) | (u0 >> (32u - s)) : u1;
+    un10 = u0 << s;
+    un1 = un10 >> 16;
+    un0 = un10 & 0xFFFFu;
+    q1 = un32 / vn1;
+    rhat = un32 - q1 * vn1;
+    while (q1 >= b || q1 * vn0 > b * rhat + un1) {
+        q1--;
+        rhat += vn1;
+        if (rhat >= b)
+            break;
+    }
+    un21 = un32 * b + un1 - q1 * v;
+    q0 = un21 / vn1;
+    rhat = un21 - q0 * vn1;
+    while (q0 >= b || q0 * vn0 > b * rhat + un0) {
+        q0--;
+        rhat += vn1;
+        if (rhat >= b)
+            break;
+    }
+    return q1 * b + q0;
+}
 unsigned long long __udivdi3(unsigned long long n, unsigned long long d)
 {
-    unsigned long long q = 0, r = 0;
-    int i;
+    uint32_t dh = (uint32_t)(d >> 32), nh = (uint32_t)(n >> 32);
     if (!d)
         return 0;
-    for (i = 63; i >= 0; i--) {
-        r = (r << 1) | ((n >> i) & 1u);
-        if (r >= d)
-            r -= d, q |= 1ull << i;
+    if (!dh) {
+        uint32_t dl = (uint32_t)d;
+        if (!nh)
+            return (uint32_t)n / dl;
+        if (nh < dl)
+            return div_divlu(nh, (uint32_t)n, dl);
+        {
+            uint32_t q1 = nh / dl, k = nh - q1 * dl;
+            return (unsigned long long)q1 << 32 | div_divlu(k, (uint32_t)n, dl);
+        }
+    } else {
+        unsigned s = div_nlz32(dh);
+        uint32_t v1 = (uint32_t)((d << s) >> 32);
+        unsigned long long u1 = n >> 1, q0;
+        q0 = (unsigned long long)div_divlu((uint32_t)(u1 >> 32), (uint32_t)u1, v1);
+        q0 = (q0 << s) >> 31;
+        if (q0)
+            q0--;
+        if (n - q0 * d >= d)
+            q0++;
+        return q0;
     }
-    return q;
 }
 
 long long __divdi3(long long n, long long d)

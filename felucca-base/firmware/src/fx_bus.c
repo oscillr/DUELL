@@ -224,14 +224,15 @@ static __attribute__((noinline)) void BUS_FN(rev_reso)(const int32_t *rev_in, in
 {
     uint32_t i, k, per[4], mask, s, k0 = BUS_SPLITB, k1 = (BUS_SPLITB || dm_split) ? k0 + 1u : (uint32_t)NTRK;
     const track_t *t = &trk[k0];
-    int32_t sz = song.g[G_RSIZE], dk = 32767 - song.g[G_RDAMP] * 200, note[4], deg = 0, nn;
+    int32_t rt, sz = song.g[G_RSIZE], dk = 32767 - song.g[G_RDAMP] * 200, note[4], deg = 0, nn;
     int32_t fb = sz <= 100 ? 26000 + sz * 52 : clamp(31200 + (sz - 100) * 58, 0, 32740);   /* 0.79 .. 0.9992 */
     for (k = k0; k < k1; k++)
         if (ENGINES[eng_idx(trk[k].eng_req)] != &ENG_DRUM) { t = &trk[k]; break; }
     mask = scale_mask(t) & 0xFFFu;
+    rt = root_of(t);                                    /* (the global ROOT, core.h) */
     if (!mask) mask = 0xFFFu;
-    for (nn = 48 + t->p[P_ROOT], k = 0, s = 0; k < 4u && s < 48u; s++, nn++)   /* the I, III, V, VII from C3 up */
-        if ((mask >> (uint32_t)((nn - t->p[P_ROOT] + 120) % 12)) & 1u) {
+    for (nn = 48 + rt, k = 0, s = 0; k < 4u && s < 48u; s++, nn++)   /* the I, III, V, VII from C3 up */
+        if ((mask >> (uint32_t)((nn - rt + 120) % 12)) & 1u) {
             if (deg % 2 == 0)
                 note[k++] = nn;
             deg++;
@@ -274,17 +275,13 @@ static inline void BUS_FN(rev_run)(uint32_t ty, const int32_t *rev_in, int32_t *
 static void BUS_FN(rev_clear)(void)
 {
     uint32_t i;
-    for (i = 0; i < sizeof BUS_COMB / 2u; i++)
-        BUS_COMB[i] = 0;
-    for (i = 0; i < sizeof BUS_U.ap / 2u; i++)          /* (int16: 997 of them, an odd count the int32 view misses one of) */
-        BUS_U.ap[i] = 0;
-    for (i = 0; i < 4u; i++)
+    memset(BUS_COMB, 0, sizeof BUS_COMB);               /* (memset: libc.c a word at a time; element loops here cost ~50 k instructions */
+    memset(&BUS_U, 0, sizeof BUS_U);                    /* a bus in the audio interrupt: ap (int16: 997 of them, an odd count the int32 view */
+    for (i = 0; i < 4u; i++)                            /* misses one of) and sp, the union's both views) */
         BUS_FX.comb_lp[i] = BUS_FX.rs_lp[i] = 0;
     BUS_FX.sh_hp = BUS_FX.sh_he = 0;
-    for (i = 0; i < SH_LEN; i++)                        /* SHIM's line and its return */
-        BUS_SHIM.buf[i] = 0;
-    for (i = 0; i < CTL; i++)
-        BUS_SHIM.fb[i] = 0;
+    memset(BUS_SHIM.buf, 0, sizeof BUS_SHIM.buf);       /* SHIM's line and its return */
+    memset(BUS_SHIM.fb, 0, sizeof BUS_SHIM.fb);
     for (i = 0; i < HL_NL; i++)
         BUS_HL.lp[i] = BUS_HL.le[i] = 0;
     BUS_FX.sp_lp = BUS_FX.sp_hp = BUS_FX.sp_he = 0;

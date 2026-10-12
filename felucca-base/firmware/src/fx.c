@@ -306,7 +306,26 @@ static uint32_t div_samples(uint32_t div)
     return div < 6u ? quarter / DIV_DEN[div] : div < 10u ? quarter << (div - 5u) : quarter * DIV48[(div - 10u) % 7u] / 48u;
 }
 
-#include "perform.c"                                 /* the FX hold layer's effects (the master) */
+/* what the per-part INSERT (FLANGER, PHASER below) shares: the PHASER's stage count and its coefficient table, the sweep's
+ * triangle and the wet mix (they came from the FX hold layer, removed in 0.2.2) */
+#define PH_ST 4u                                     /* PHASER: all-pass stages (two notches, the classic pedal's) */
+/* the stages' coefficient a (Q14) for a break of 150 Hz * 2^(5 i / 32): a = (g - 1) / (g + 1), g = tan(pi f / fs) */
+static const int16_t PH_A[33] = {
+    -16038, -15998, -15955, -15906, -15853, -15793, -15727, -15653, -15572, -15481, -15381, -15270, -15147, -15012,
+    -14862, -14696, -14514, -14313, -14092, -13849, -13582, -13290, -12970, -12621, -12240, -11825, -11375, -10886,
+    -10356, -9784, -9166, -8500, -7783,
+};
+/* a triangle of the sweep's place q, 0 .. 65534 (Q16) */
+static inline uint32_t pf_tri(uint32_t q)
+{
+    uint32_t t = q >> 16;
+    return t < 32768u ? t << 1 : (65535u - t) << 1;
+}
+/* x towards y by w (Q15, 32768 = y) */
+static inline int32_t pf_mix(int32_t x, int32_t y, int32_t w)
+{
+    return w == 32768 ? y : x + mulq16(y - x, (uint32_t)w << 1);
+}
 #include "click.c"                                   /* the metronome's click (after the master: audio.c) */
 
 static uint32_t delay_samples(void)
@@ -475,7 +494,7 @@ static __attribute__((noinline)) void dly_side_mix(int32_t *l, int32_t *r, uint3
  *   CRUSH                BITS (1 .. 16, of a voice's full scale), RATE (a held sample, 689 Hz .. 44.1 kHz, INS_HOLD:
  *                        aliasing as the old samplers), LPF (two one-pole low-passes at F_CUTOFF after them, #177);
  *   PHASR                RATE (F_LFOHZ), DEPTH (the sweep around ~850 Hz: 0 still .. the whole 150 Hz .. 4.8 kHz),
- *                        FDBK (0 .. 0.7): the FX layer's four all-pass stages (perform.c PH_A), mono, per track;
+ *                        FDBK (0 .. 0.7): four all-pass stages (PH_A above), mono, per track;
  *   FLANG CHOR           RATE, DEPTH, FDBK: a 256-sample line per track (5.8 ms); FLANG swept 0.25 .. 5 ms (the FX
  *                        layer's squared triangle), feedback 0 .. 0.85; CHOR a sine around 3.2 ms (+-2.3 ms at DEPTH
  *                        127), feedback 0 .. 0.4. A DC blocker on the swept copy (a clipped loud input is lopsided).
@@ -609,7 +628,7 @@ static __attribute__((noinline)) void ins_swept(ins_t *s, const track_t *t, int3
             if (chorus) {
                 d = (uint32_t)((140 << 16) + ((osc_sine(s->ph) * (int32_t)dep * 50) >> 5));   /* 3.2 +- 2.3 ms */
             } else {
-                uint32_t tr = pf_tri(s->ph), sw = (tr * tr) >> 16;   /* longer near the short end (perform.c) */
+                uint32_t tr = pf_tri(s->ph), sw = (tr * tr) >> 16;   /* longer near the short end */
                 d = (11u << 16) + 209u * (((sw >> 1) * dq) >> 15);  /* 0.25 .. 5 ms */
             }
             r0 = (int32_t)(s->wp - (d >> 16)) & (int32_t)(IL_LEN - 1u);
@@ -808,13 +827,12 @@ static int32_t send_c[CTL], send_d[CTL], send_r[CTL], wet[CTL], mix_l[CTL], mix_
  *   - its PAN and SPREAD (and the matrix's and the morph's PAN) not heard: the dry part at full on its side, as a centred
  *     part has it on each side in STEREO (mix_part; mix_spread never runs: spread_on 0, the voices all into b);
  *   - its sends into its own bus (A: part 1, B: part 2; split_buses), each bus's return to its own side only, folded to
- *     mono (HALL's stereo difference left out: the return's mid, as a side of STEREO gets it); the FX layer's THROW of the
- *     left channel into A, of the right into B (perform.c perf_pre_split);
+ *     mono (HALL's stereo difference left out: the return's mid, as a side of STEREO gets it);
  *   - the master without anything shared between the channels (master_out_split: BASS+ and the limiter per channel).
- * The DIST, the INSERT, the EQ, the FX layer's mutes and master effects are mono per part / per channel already.
+ * The DIST, the INSERT and the EQ are mono per part / per channel already.
  * A change between SPLIT and STEREO / LAYER: the output fades out (DM_STEP a sample, ~22 ms), the delay line is cleared
  * in DM_CHUNK pieces over the next blocks (silent: ~6 ms), then the chorus and reverb lines, the limiters and BASS+, the
- * FX layer's per-channel lines (dm_lines_clear), the old notes' tails stop (silent: seq.c mode_apply let every note go at the request), the mix switches and
+ * the master's lines (dm_lines_clear), the old notes' tails stop (silent: seq.c mode_apply let every note go at the request), the mix switches and
  * fades in (~22 ms): ~50 ms in all, no click, no stale echo or tail of the old mode on a new side. STEREO <-> LAYER mix
  * alike: no fade, the tails ring on. Steady state: STEREO and LAYER run exactly the code they ran before (bit for bit:
  * regress, the goldens), SPLIT its own; the switch costs one compare a block */
@@ -833,9 +851,8 @@ static int32_t sa_c[CTL], sa_d[CTL], sa_r[CTL];   /* SPLIT: part 1's sends (bus 
  * SPLIT and STEREO / LAYER (dm_switch, after the delay line's chunks; duell_mode_force, all of it) */
 static __attribute__((noinline)) void dm_lines_clear(void)
 {
-    uint32_t i;
-    for (i = 0; i < CHO_LEN; i++)
-        cho_buf[i] = cho_buf_b[i] = 0;
+    memset(cho_buf, 0, sizeof cho_buf);
+    memset(cho_buf_b, 0, sizeof cho_buf_b);
     rev_clear();
     rev_clear_b();
     fx.dly_lp = fx_b.dly_lp = 0;
@@ -845,24 +862,6 @@ static __attribute__((noinline)) void dm_lines_clear(void)
     lim_env = lim_env_r = LIM_T;                        /* the limiters and BASS+ from rest (they held the old mix's */
     memset(&sb, 0, sizeof sb);                          /* levels; at the silent point nothing to glide from) */
     memset(&sb_r, 0, sizeof sb_r);
-    /* the FX layer's per-channel lines and states (they hold the old mix: a part's sound on the other side): FLANGER's
-     * line, PHASER's stages, the filters, CRUSH's held samples; a buffer effect held records anew (perform.c) */
-    memset(fl_buf, 0, sizeof fl_buf);
-    pf.fn = 0;
-    memset(pf.px, 0, sizeof pf.px);
-    memset(pf.py, 0, sizeof pf.py);
-    pf.pfb[0] = pf.pfb[1] = 0;
-    memset(pf.lz, 0, sizeof pf.lz);
-    memset(pf.hz, 0, sizeof pf.hz);
-    pf.chl = pf.chr = 0;
-    if (pf.mode != BM_NONE) {
-        if (pf.src != PF_N)
-            perf_buf_start(pf.src);
-        else {                                          /* (fading out: gone at once, the buffer back) */
-            pf.w = 0;
-            perf_buf_done();
-        }
-    }
 }
 
 /* the mode now, at once (no fade, no note let go): power-on, the tests. A change between SPLIT and the others clears the
@@ -920,8 +919,7 @@ static __attribute__((noinline)) void dm_step(void)
     dm_switch();
 }
 
-/* the dip's ramp over the block (mix_l, mix_r and the returns, before the master; with the FX layer at work after it:
- * perf_master) */
+/* the dip's ramp over the block (mix_l, mix_r and the returns, before the master) */
 static __attribute__((noinline)) void dm_ramp(uint32_t n)
 {
     uint32_t i;
@@ -972,7 +970,7 @@ static __attribute__((noinline)) void split_buses(uint32_t n)
     }
 }
 
-/* the end of a SPLIT block: the master level, then master_out_split (the FX layer's, perf_master, alike) */
+/* the end of a SPLIT block: the master level, then master_out_split */
 static __attribute__((noinline)) void split_master(int32_t *out, uint32_t n, int32_t mg)
 {
     uint32_t i;
@@ -989,8 +987,7 @@ static __attribute__((noinline)) void split_master(int32_t *out, uint32_t n, int
  * voice_start; UNISON's detuned voices alternate), at PAN -/+ SPRD / 2 (SPRD 127: hard left and right), with the pan
  * law PAN has (the far side down, the near one as it is). track_render gives every voice (b, as always) and the left
  * ones (spread_buf); here d = left - right, the side signal, so for a pair of pans L = b (gla + glb) / 2 + d (gla - glb)
- * / 2 (R alike): the mono sum is b's, the level of a centre pan less by SPRD / 256 at most. b goes through DIST and the
- * FX layer's mute key as always; d gets the mute's ramp (perf_mute_sd) and passes DIST by (the spread of a distorted chord is its voices' clean difference). The sends
+ * / 2 (R alike): the mono sum is b's, the level of a centre pan less by SPRD / 256 at most. b goes through DIST as always; d passes DIST by (the spread of a distorted chord is its voices' clean difference). The sends
  * take b, mono, as before. SPRD 0, MONO or LEGATO: mix_part's own loop, bit for bit as before. The cost: a block's
  * clear and sum of spread_buf, the side and a wider mix loop, per part; per voice none (it picks its buffer) */
 static void duck_run(track_t *t, int32_t *b, int32_t *d, uint32_t n);
@@ -1028,8 +1025,6 @@ static __attribute__((noinline)) void mix_spread(track_t *t, int32_t *b, uint32_
         track_eq(t, b, n, 0u);
         track_eq(t, d, n, 1u);
     }
-    if ((pf.mute >> (t - trk)) & 1u)
-        perf_mute_sd((uint32_t)(t - trk), b, d, n);
     if (duck_st[(uint32_t)(t - trk) % NTRK].ph)
         duck_run(t, b, d, n);                           /* the DUCK (DUELL): the sum and the side alike */
     for (i = 0; i < n; i++) {
@@ -1251,8 +1246,6 @@ static void mix_part(track_t *t, uint32_t n)
             track_insert(t, b, n);                      /* the INSERT (1.5): off, nothing */
         if (EQ_ON(t))
             track_eq(t, b, n, 0u);                      /* the EQ (DUELL): all bands at 0 dB, nothing */
-        if ((pf.mute >> (t - trk)) & 1u)
-            perf_mute((uint32_t)(t - trk), b, n);       /* perform.c: a black key in the FX layer */
         if (duck_st[(uint32_t)(t - trk) % NTRK].ph)
             duck_run(t, b, 0, n);                       /* the DUCK (DUELL): before the level, pan and the sends */
     }
@@ -1289,7 +1282,7 @@ static void mix_part(track_t *t, uint32_t n)
 
 /* the HOME oscilloscope (ui_graph.c graph_scope): every other sample of the left channel. MENU > DISPLAY > SCOPE (1.2,
  * Discussion #165): OUT (0, the default) what goes out, after MASTER (audio.c audio_block, before the click); MIX the
- * mix before MASTER (and before the FX layer, SPEAKER EQ and the limiter), at the level MASTER at its top gives, so its
+ * mix before MASTER (and before SPEAKER EQ and the limiter), at the level MASTER at its top gives, so its
  * size does not follow the volume. The click is in neither */
 #define SCOPE_N 512u
 static int16_t scope_buf[SCOPE_N];
@@ -1323,46 +1316,15 @@ static __attribute__((noinline)) void meter_scan(uint32_t n)
     meter_bus[1] = b;
 }
 
-/* the master with the FX layer's effects between its level and master_out (perform.c) */
-static __attribute__((noinline)) void perf_master(int32_t *out, uint32_t n)
-{
-    uint32_t i;
-    int32_t mg = fx_usb_fixed ? MASTER_FULL : (int32_t)song.master_q12;   /* (USB LEVEL FIXED: MASTER after) */
-    for (i = 0; i < n; i++) {
-        mix_l[i] = (((mix_l[i] + wet[i]) >> 2) * mg) >> 10;
-        mix_r[i] = (((mix_r[i] + wet[i]) >> 2) * mg) >> 10;
-    }
-    perf_block(mix_l, mix_r, n);
-    if (dm_g != DM_ONE || dm_dir)
-        dm_ramp(n);                                     /* (the MODE's dip after the FX layer: its buffer too) */
-    if (dm_split) {                                     /* (SPLIT: nothing shared between the channels) */
-        for (i = 0; i < n; i++) {
-            int32_t l = mix_l[i], r = mix_r[i];
-            master_out_split(&l, &r);
-            out[2u * i] = l;
-            out[2u * i + 1u] = r;
-        }
-        return;
-    }
-    for (i = 0; i < n; i++) {
-        int32_t l = mix_l[i], r = mix_r[i];
-        master_out(&l, &r);
-        out[2u * i] = l;
-        out[2u * i + 1u] = r;
-    }
-}
-
 static void mix_block(int32_t *out, uint32_t n)
 {
     uint32_t i;
-    int perf;
     int32_t mg = fx_usb_fixed ? MASTER_FULL : (int32_t)song.master_q12;   /* (USB LEVEL FIXED: MASTER after) */
     for (i = 0; i < n; i++)
         send_c[i] = send_d[i] = send_r[i] = mix_l[i] = mix_r[i] = 0;
     events_block(n);
     if (dm_cur != duell_mode || dm_g != DM_ONE || dm_clr)
         dm_step();                                      /* DUELL step 5: the MODE changing (the dip) */
-    perf = perf_begin(n);                               /* the FX hold layer at work (perform.c) */
     for (i = 0; i < NLIVE; i++) {                      /* (DUELL: tracks 3..4 do not render) */
         int mo = morph_begin(&trk[i], 1);               /* DUELL MORPH: the fader's values into t->p (morph.c) */
         mix_part(&trk[i], n);
@@ -1375,12 +1337,8 @@ static void mix_block(int32_t *out, uint32_t n)
         for (i = 0; i < n; i++)
             wet[i] = 0;
     } else if (dm_split) {
-        if (perf)
-            perf_pre_split(mix_l, mix_r, sa_d, sa_r, send_d, send_r, n);
         split_buses(n);
     } else {
-        if (perf)
-            perf_pre(mix_l, mix_r, send_d, send_r, n);
         fx_buses(send_c, send_d, send_r, wet, n);
         if (hl.side)
             rev_side_mix(mix_l, mix_r, n);              /* HALL: stereo */
@@ -1394,10 +1352,6 @@ static void mix_block(int32_t *out, uint32_t n)
     }
     if (scope_mix)
         scope_take_mix(n);
-    if (perf) {
-        perf_master(out, n);                            /* (the dip: there, after the FX layer) */
-        return;
-    }
     if (dm_g != DM_ONE || dm_dir)
         dm_ramp(n);
     if (dm_split) {

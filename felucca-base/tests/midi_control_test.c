@@ -202,6 +202,156 @@ static int arp_ext_stop_test(void)
     bad += check("internal clock: the ARP keeps stepping after STOP", trk[0].arp_note && trk[0].arp_note != 72 && trk[0].nheld == 1u);
     return bad;
 }
+/* ARP on an external clock (owner report, Akai Force): the held notes follow the keys at once, whatever the clock does; only the STEPPING
+ * waits for pulses. Stale notes never survive a release; Start / Stop / Continue create no notes; a clock that runs without a Start steps
+ * the arp; the CLK status says EXT or NO CLOCK. */
+static void key_src(uint32_t src, uint32_t on, uint32_t note)   /* a note from the external keyboard on USB (1) or TRS (2), channel 1 */
+{
+    if (src == 2u) { um_byte(on ? 0x90u : 0x80u); um_byte(note); um_byte(on ? 100u : 0u); events_block(CTL); }
+    else queued(on ? 0x90u : 0x80u, note, on ? 100u : 0u, 1);
+}
+static uint32_t ext_gates(const track_t *t)
+{
+    uint32_t i, n = 0;
+    for (i = 0; i < NVOICE; i++) n += t->v[i].active && t->v[i].gate;
+    return n;
+}
+static void arp_ext_setup(uint32_t src, uint32_t mode)
+{
+    midi_test_reset(); song.g[G_CLOCK] = (int16_t)src; events_block(CTL);
+    trk[0].p[P_AMODE] = (int16_t)mode; trk[0].p[P_ARATE] = 2; trk[0].p[P_AGATE] = 64; trk[0].p[P_AOCT] = 1;
+    memset(trk[0].step, 0, sizeof trk[0].step);
+    events_block(CTL);
+}
+/* runs n pulses; returns how many blocks had an arp note sounding */
+static uint32_t pulses(uint32_t src, uint32_t *ms, uint32_t n)
+{
+    uint32_t i, on = 0;
+    for (i = 0; i < n; i++) { *ms += 21u; clock_packet(src, 0xF8, *ms); on += trk[0].arp_note != 0 || ext_gates(&trk[0]) != 0; }
+    return on;
+}
+static int arp_ext_clock_test(void)
+{
+    int bad = 0, cs;
+    static const uint8_t MODES[] = {1, 2, 3, 4, 14, 15};            /* UP DOWN UPDN RND CHORD SEQ */
+    static const char *const MN[] = {"UP", "DOWN", "UPDOWN", "RANDOM", "CHORD", "SEQ"};
+    for (cs = 1; cs <= 2; cs++)
+        for (uint32_t m = 0; m < 6u; m++) {
+            char w[120]; uint32_t ms = 100, blocks, seen = 0, i; int ok;
+            const char *cn = cs == 1 ? "USB" : "TRS";
+            /* (i) no clock yet: notes on and off from the external keyboard, then Start and pulses: nothing is held, nothing plays */
+            arp_ext_setup((uint32_t)cs, MODES[m]);
+            key_src((uint32_t)cs, 1, 60); key_src((uint32_t)cs, 0, 60); key_src((uint32_t)cs, 1, 64); key_src((uint32_t)cs, 0, 64);
+            idle_ms(200);
+            ok = !trk[0].nheld && !trk[0].arp_note && !ext_gates(&trk[0]);
+            clock_packet((uint32_t)cs, 0xFA, ms);
+            blocks = pulses((uint32_t)cs, &ms, 96);
+            sprintf(w, "CLK=%s ARP %s: notes pressed and released before Start leave nothing held: Start and 96 pulses play nothing", cn, MN[m]);
+            bad += check(w, ok && !trk[0].nheld && !blocks);
+            if (MODES[m] == 15) continue;                        /* (SEQ with an empty pattern: rests) */
+            /* (ii) a held note, pulses running: the arp plays; released: it ends within the gate */
+            key_src((uint32_t)cs, 1, 60); key_src((uint32_t)cs, 1, 64);
+            blocks = pulses((uint32_t)cs, &ms, 48);
+            ok = trk[0].nheld == 2u && blocks > 0u;
+            key_src((uint32_t)cs, 0, 60); key_src((uint32_t)cs, 0, 64);
+            blocks = pulses((uint32_t)cs, &ms, 12);
+            sprintf(w, "CLK=%s ARP %s: plays the held notes with the clock, ends cleanly on release", cn, MN[m]);
+            bad += check(w, ok && !trk[0].nheld && !trk[0].arp_note && !ext_gates(&trk[0]));
+            /* (iii) Stop with a note held ends the arp note; Start again plays it again; release: silence */
+            key_src((uint32_t)cs, 1, 60); pulses((uint32_t)cs, &ms, 12);
+            clock_packet((uint32_t)cs, 0xFC, ms);
+            ok = trk[0].nheld == 1u && !trk[0].arp_note && !ext_gates(&trk[0]);
+            blocks = pulses((uint32_t)cs, &ms, 24);
+            ok &= !blocks;                                           /* (a Stop: the pulses that still come do not step the arp) */
+            clock_packet((uint32_t)cs, 0xFA, ms);
+            blocks = pulses((uint32_t)cs, &ms, 24);
+            ok &= blocks > 0u && trk[0].nheld == 1u;
+            key_src((uint32_t)cs, 0, 60); pulses((uint32_t)cs, &ms, 12);
+            sprintf(w, "CLK=%s ARP %s: Stop with a note held is silent, Start plays it again, release ends it", cn, MN[m]);
+            bad += check(w, ok && !trk[0].nheld && !trk[0].arp_note && !ext_gates(&trk[0]));
+            /* a note pressed and released while the clock is silent must not play when it starts */
+            arp_ext_setup((uint32_t)cs, MODES[m]); ms = 100;
+            key_src((uint32_t)cs, 1, 67); idle_ms(300); key_src((uint32_t)cs, 0, 67); idle_ms(100);
+            clock_packet((uint32_t)cs, 0xFA, ms);
+            for (i = 0; i < 4; i++) seen += pulses((uint32_t)cs, &ms, 24);
+            sprintf(w, "CLK=%s ARP %s: a stale note (pressed, released with no clock) does not play on Start", cn, MN[m]);
+            bad += check(w, !seen && !trk[0].nheld);
+        }
+    /* a clock that runs without a Start steps the arp (and the status says so); a Stop makes it wait again */
+    {
+        uint32_t ms = 100, blocks;
+        arp_ext_setup(1, 1);
+        key_src(1, 1, 60); key_src(1, 1, 64);
+        idle_ms(300);
+        bad += check("CLK=USB, a key pressed, no clock: the arp waits (its first note gate ends in real time), the status is NO CLOCK",
+                     !trk[0].arp_note && !ext_gates(&trk[0]) && clock_state() == 2u);
+        blocks = pulses(1, &ms, 48);
+        bad += check("pulses without a Start step the arp from the held keys; the transport stays stopped; the status is EXT",
+                     blocks > 0u && !song.playing && clock_state() == 1u);
+        clock_packet(1, 0xFC, ms);
+        blocks = pulses(1, &ms, 24);
+        bad += check("a Stop ends it; pulses after it do not step the arp (the held notes stay)", !blocks && trk[0].nheld == 2u);
+        key_src(1, 0, 60); key_src(1, 0, 64);
+        bad += check("released while waiting: nothing held", !trk[0].nheld);
+        fm1_ms = ms; idle_ms(1500);
+        bad += check("the clock stops arriving: NO CLOCK again after 1 s", clock_state() == 2u);
+    }
+    /* the status line: INT none, USB / TRS EXT while pulses arrive, NO CLOCK after 1 s, back to none on INT */
+    {
+        uint32_t ms = 100;
+        arp_ext_setup(0, 1);
+        bad += check("CLK=INT: no status", clock_state() == 0 && !clock_why());
+        song.g[G_CLOCK] = 1; events_block(CTL);
+        bad += check("CLK=USB, nothing arrived: NO CLOCK", clock_state() == 2u && str_eq(clock_why(), "NO CLK"));
+        pulses(1, &ms, 4);
+        bad += check("CLK=USB, pulses arrive: EXT, the source shown", clock_state() == 1u && str_eq(clock_why(), "USB"));
+        pulses(2, &ms, 4);
+        bad += check("pulses of the other source do not count", clock_state() == 1u);
+        fm1_ms = ms; idle_ms(1200);
+        bad += check("no pulse for 1 s: NO CLOCK", clock_state() == 2u);
+        song.g[G_CLOCK] = 2; events_block(CTL);
+        bad += check("CLK=TRS: NO CLOCK until its pulses arrive", clock_state() == 2u && str_eq(clock_why(), "NO CLK"));
+        pulses(2, &ms, 4);
+        bad += check("CLK=TRS, pulses arrive: EXT (TRS)", clock_state() == 1u && str_eq(clock_why(), "TRS"));
+        song.g[G_CLOCK] = 0; events_block(CTL);
+        bad += check("back to INT: no status", clock_state() == 0 && !clock_why());
+    }
+    /* CLK switched INT <-> USB with notes held and released in between: the bookkeeping follows the keys */
+    {
+        uint32_t ms = 100, blocks;
+        arp_ext_setup(0, 1);
+        key_src(1, 1, 60);
+        for (uint32_t i = 0; i < 4000 && !trk[0].arp_note; i++) events_block(CTL);
+        bad += check("INT: a held key arps", trk[0].nheld == 1u && trk[0].arp_note);
+        song.g[G_CLOCK] = 1; events_block(CTL);
+        bad += check("switched to USB with the key held: still held, the arp note ended", trk[0].nheld == 1u && !trk[0].arp_note);
+        key_src(1, 0, 60);
+        key_src(1, 1, 64); key_src(1, 0, 64);
+        song.g[G_CLOCK] = 0; events_block(CTL);
+        bad += check("released on USB, back to INT: nothing held", !trk[0].nheld);
+        idle_ms(300);
+        song.g[G_CLOCK] = 1; events_block(CTL);
+        clock_packet(1, 0xFA, ms);
+        blocks = pulses(1, &ms, 48);
+        bad += check("INT / USB switches leave no stale notes: USB Start plays nothing", !blocks && !trk[0].arp_note);
+    }
+    /* the stored steps of a multi are the user's content: an external Start plays them (INT PLAY does the same); the ARP itself stays silent */
+    {
+        uint32_t ms = 100, i, started = 0, arp_on = 0; uint8_t last = 0;
+        midi_test_reset(); project_load(0); events_block(CTL);
+        song.g[G_CLOCK] = 1; events_block(CTL);
+        clock_packet(1, 0xFA, ms);
+        for (i = 0; i < 96u; i++) {
+            ms += 21u; clock_packet(1, 0xF8, ms);
+            if (trk[1].seq_n && trk[1].seq_notes[0] != last) started++;
+            last = trk[1].seq_n ? trk[1].seq_notes[0] : 0;
+            arp_on += trk[0].arp_note != 0 || trk[1].arp_note != 0;
+        }
+        bad += check("M01 on USB Start, no keys: the stored steps of part 2 play (16 notes in 96 pulses), the ARPs play nothing",
+                     started == 16u && !arp_on && !trk[0].nheld && !trk[1].nheld);
+    }
+    return bad;
+}
 /* USB-MIDI back-pressure: full 64-byte bulk packets (16 events) faster than the audio ISR drains the ring are
  * left in the endpoint (NAK) instead of overflowing it, which would panic every sounding note */
 static int usb_burst_test(void)
@@ -307,22 +457,30 @@ static int cc_map_test(void)
     bad += check("CC10 PAN: 0 left, 64 centre, 127 right", ok);
     queued(0xB0, 74, 127, 1); queued(0xB0, 71, 0, 1);
     bad += check("CC74 / CC71 on ANALOG: CUT / RES", trk[0].p[P_E4] == 127 && trk[0].p[P_E5] == 0);
-    queued(0xB1, 74, 64, 1); queued(0xB1, 74, 127, 1);
-    bad += check("CC74 on FM6 (channel 2): MLVL, bipolar (127: +63)", trk[1].p[P_E2] == 63);
-    memcpy(before, trk[1].p, sizeof before); queued(0xB1, 71, 99, 1);
-    bad += check("CC71 on FM6 (no resonance): ignored", !memcmp(before, trk[1].p, sizeof before));
+    queued(0xB1, 74, 64, 1);
+    ok = trk[1].p[P_FREEA] == 0;
+    queued(0xB1, 74, 127, 1);
+    bad += check("CC74 on FM6 (channel 2, no filter of its own): the universal filter's CUT, bipolar (64: OFF, 127: +63)",
+                 ok && trk[1].p[P_FREEA] == 63 && trk[1].p[P_E2] == 0);
+    queued(0xB1, 71, 99, 1);
+    bad += check("CC71 on FM6: the universal filter's RES (0..127)", trk[1].p[P_FREEB] == 99);
+    queued(0xB0, 74, 20, 1); queued(0xB0, 71, 20, 1);
+    bad += check("  ANALOG (a filter of its own): CC74 / CC71 leave the universal ids alone", trk[0].p[P_FREEA] == 0 && trk[0].p[P_FREEB] == 0);
+    queued(0xB0, 74, 127, 1); queued(0xB0, 71, 0, 1);
     for (e = 0, ok = 1; e < NENGINES; e++) {   /* the table names a continuous EDIT value of every engine */
         uint32_t m = MIDI_CC_ENG[e], k;
         for (k = 0; k < 2u; k++) {
             uint32_t n = (m >> (k ? 0 : 4)) & 15u;
             const param_desc_t *d = n ? &ENGINES[e]->edit[n - 1u] : 0;
-            ok &= n <= 8u && (!d || (d->fmt != F_ENUM && d->max - d->min >= 24));
+            ok &= (n <= 8u && (!d || (d->fmt != F_ENUM && d->max - d->min >= 24))) || (n == 15u && ENGINES[e]->ufilt);
         }
+        ok &= !ENGINES[e]->ufilt || m == 0xFFu;       /* (an engine with the universal filter: CUT, RES both) */
     }
-    bad += check("every engine's CC74 / CC71 target is a continuous EDIT value (or none)", ok);
-    trk[2].eng_req = trk[2].engine = 7u;               /* WHEEL: no brightness, no resonance */
-    memcpy(before, trk[2].p, sizeof before); queued(0xB2, 74, 3, 1); queued(0xB2, 71, 3, 1);
-    bad += check("CC74 / CC71 on WHEEL: ignored", !memcmp(before, trk[2].p, sizeof before));
+    bad += check("every engine's CC74 / CC71 target is a continuous EDIT value (or none), or the universal filter's (engines with ufilt)", ok);
+    trk[1].eng_req = trk[1].engine = 7u;               /* WHEEL: no filter of its own: the universal one */
+    queued(0xB1, 74, 3, 1); queued(0xB1, 71, 4, 1);
+    bad += check("CC74 / CC71 on WHEEL: CUT -61 (3 - 64), RES 4", trk[1].p[P_FREEA] == -61 && trk[1].p[P_FREEB] == 4);
+    trk[1].eng_req = trk[1].engine = ENGI_FM6;
     memcpy(before, trk[0].p, sizeof before);
     queued(0xB0, 121, 0, 1);
     bad += check("CC121 resets no mapped parameter (RP-015)", !memcmp(before, trk[0].p, sizeof before));
@@ -345,7 +503,7 @@ static int cc_map_test(void)
     bad += check("armed and playing: CC74 records a motion event of CUT on the selected track", motion.count == 1u &&
                  motion.event[0].param == P_E4 && motion.event[0].value == 20 && (motion.event[0].place >> 6) == 0u);
     queued(0xB1, 74, 20, 1);
-    bad += check("  another track (channel 2, not selected): not recorded", motion.count == 1u && trk[1].p[P_E2] != 0);
+    bad += check("  another track (channel 2, not selected): not recorded", motion.count == 1u && trk[1].p[P_FREEA] == -44);
     seq_stop(); events_block(CTL);
     bad += check("  stopped: the patch's own CUT comes back", trk[0].p[P_E4] == cut0);
     song.rec = 0;
@@ -414,6 +572,16 @@ static int learn_test(void)
     queued(0xB0, 74, 127, 1);
     ok &= trk[1].p[P_LEVEL] == TP[P_LEVEL].max && trk[0].p[P_E4] == cut;
     bad += check("  GLO KNOB 4 (LEVEL 2) picks T2 LEVEL; CC74 learned: T2 LEVEL, no more T1 CUT (the standard map)", ok);
+    ml_off(); ui.ml.on = 1;
+    frames(300);
+    turn(EN_K2, 2);                                     /* (a nudge: nothing fires, nothing picked) */
+    frames(600);
+    turn(EN_K2, MORPH_DET);
+    ok = ui.ml.pick && ui.ml.trk == 1u && ui.ml.id == P_MUTE;
+    frames(600);
+    turn(EN_K2, -MORPH_DET);
+    trk[1].p[P_MUTE] = 0;
+    bad += check("  GLO KNOB 2 (MUTE 2) picks T2 MUTE", ok);
 
     /* one CC one parameter, a parameter one CC */
     go_title("EDIT 2");
@@ -581,6 +749,6 @@ static int stop_all_test(void)
 int main(void)
 {
     int bad = controls_test() + sustain_test() + ownership_test() + clock_test(1) + clock_test(2) + clock_arp_and_boundaries() +
-              arp_ext_stop_test() + usb_burst_test() + route_test() + cc_map_test() + learn_test() + stop_all_test();
+              arp_ext_stop_test() + arp_ext_clock_test() + usb_burst_test() + route_test() + cc_map_test() + learn_test() + stop_all_test();
     printf("%s\n", bad ? "MIDI CONTROL/CLOCK TEST FAILED" : "MIDI control/clock integration tests passed"); return bad != 0;
 }

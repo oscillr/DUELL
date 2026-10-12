@@ -1720,5 +1720,9 @@ editorIcons();
 samplesMatch();
 await packages();
 await updater();
+try {   // installer state machine + page wiring (own file, runs as its own node process)
+  const out = execFileSync(process.execPath, [fileURLToPath(new URL("./test_installer_state.mjs", import.meta.url))], { encoding: "utf8" });
+  ok(/passed/.test(out), "installer state tests (test_installer_state.mjs)");
+} catch (e) { console.log(String(e.stdout || e)); ok(false, "installer state tests (test_installer_state.mjs)"); }
 console.log(failed ? `WEB TESTS FAILED (${failed})` : "web tests passed");
 process.exit(failed ? 1 : 0);

@@ -338,4 +338,5 @@ static const engine_t ENG_WHEEL = {
     .render = wheel_render,
     .knob = {P_E0, P_E4, P_E6, P_E7},
     .block = wheel_block,
+    .ufilt = 1,                 /* DUELL 0.2.2: no filter of its own: the universal filter (voice.c uf_run, P_FREEA CUT / P_FREEB RES) */
 };

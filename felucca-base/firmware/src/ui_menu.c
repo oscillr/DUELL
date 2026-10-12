@@ -4,15 +4,15 @@
  * walks the rows across the tabs, SPEC 1.1a; no scrolling), the rows in menu_items.c (the settings, shared with the editor's
  * MENU_DESC / MENU_SET; 1.2: TUNE and MIDI IN, the project's). No BACK row: HOME closes it (ui_input.c). The two-valued
  * rows are bits of ui_prefs (MENU_FLAGS). SELECT scrolls from ABOUT through all credits (OCT- back to the tabs).
- * ui.menu: 1 the tabs, 2 ABOUT (information and credits), 3 INFO (1.2: the device's state, the old SYSTEM page's USB and
- * CPU readings). */
+ * ui.menu: 1 the tabs, 2 ABOUT (information and credits: the firmware, the USB link and the CPU readings, which INFO showed before
+ * DUELL 0.2.2), 3 TEST (DUELL 0.2.2: the CPU test screen, MENU > SYSTEM > TEST; it was GLO's TEST page, then the INFO item). */
 /* ------------------------------------------------------------ menu --- */
 /* (the rows, their values and names, usb_serial_apply: menu_items.c) */
 
 
-/* DUELL CPU LOAD METER (GLO > TEST: the full card, graph_test below; MENU > SYSTEM > INFO keeps a CPU row, ABOUT a line). The audio ISR (audio.c) adds each I2S half's
+/* DUELL CPU LOAD METER (MENU > SYSTEM > TEST: the full card, graph_test below; ABOUT keeps a line). The audio ISR (audio.c) adds each I2S half's
  * render time to cpu_sum / cpu_n, keeps the longest in cpu_pk and counts the halves that missed their time (cpu_miss); this
- * reads them once a second, only while TEST, INFO or ABOUT is shown (cpu_meter_poll from their signature), so nothing runs for it
+ * reads them once a second, only while TEST or ABOUT is shown (cpu_meter_poll from their signature), so nothing runs for it
  * otherwise. AVERAGE = the sum / (halves x the half's time) of the last second; PEAK = the longest half of the last second,
  * held (the highest of the last CPU_HOLD_MS, then it falls to the latest); MISSED = halves over their time or overtaken
  * by the DMA since power-on. Colours (fixed, flat): below 80 % the theme, 80 % and up amber (NEAR LIMIT), 95 % and up or a
@@ -26,10 +26,10 @@
 static struct {
     uint16_t avg, peak, hold;                          /* % (peak and hold up to 999) */
     uint32_t miss, miss_t, t, hold_t, n0, sum0;        /* the misses seen, when the last one was seen, window start, ... */
-    uint32_t base;                                     /* TEST's RESET: the misses counted from here (INFO and ABOUT: since power-on) */
+    uint32_t base;                                     /* TEST's RESET: the misses counted from here (ABOUT: since power-on) */
     uint8_t seen;                                      /* a miss was ever seen (miss_t valid) */
 } cpum;
-static void cpu_meter_open(void)                       /* INFO / ABOUT opened: a fresh window (the IIR load until it is over) */
+static void cpu_meter_open(void)                       /* TEST / ABOUT opened: a fresh window (the IIR load until it is over) */
 {
     cpum.n0 = cpu_n;
     cpum.sum0 = cpu_sum;
@@ -197,6 +197,12 @@ static int32_t menu_text(const char *s, int32_t y, uint16_t col, int draw)
     return y;
 }
 
+/* ABOUT's USB line (what INFO's USB row showed: the old SYSTEM page's MIDI card; OFF no USB, WAIT no bus yet, BUS frames seen, ENUM being set
+ * up, MIDI in use). The CPU line is the meter above */
+static uint32_t info_usb(void)                         /* 0 OFF, 1 WAIT, 2 BUS, 3 ENUM, 4 MIDI */
+{
+    return !usb.up ? 0u : usb.config ? 4u : usb.setups ? 3u : usb.sof_seen ? 2u : 1u;
+}
 static int32_t menu_document(int32_t y, int draw)
 {
     uint32_t i;
@@ -219,15 +225,17 @@ static int32_t menu_document(int32_t y, int draw)
             str_cpy(b + str_len(b), " MISSED", 8);
             cv_text_r(232, y + 100, &AF_S, b, cpu_recent() ? cpu_col(2u, T_BG) : T_MID, T_BG);
         }
-        cv_text(6, y + 124, &AF_S, "based on Felucca (GPL-3.0)", T_TEXT);
-        cv_text(6, y + 142, &AF_S, "(C) 2026 Leo Kuroshita", T_TEXT);
-        cv_text(6, y + 160, &AF_S, "H\xFCgelton Instruments", T_TEXT);
-        cv_text(6, y + 184, &AF_S, "hugelton.github.io", T_MID);
-        cv_text(6, y + 202, &AF_S, "/Felucca", T_MID);
-        cv_text(6, y + 226, &AF_S, "hugelton.com", T_MID);
-        draw_about_qr(158, y + 168);
+        cv_text(6, y + 118, &AF_S, "USB", T_MID);                /* the link (INFO's USB row): OFF, WAIT, BUS, ENUM or MIDI */
+        cv_text(34, y + 118, &AF_S, (const char *const[5]){"OFF", "WAIT", "BUS", "ENUM", "MIDI"}[info_usb()], vt(T_THEME, T_BG));
+        cv_text(6, y + 142, &AF_S, "based on Felucca (GPL-3.0)", T_TEXT);
+        cv_text(6, y + 160, &AF_S, "(C) 2026 Leo Kuroshita", T_TEXT);
+        cv_text(6, y + 178, &AF_S, "H\xFCgelton Instruments", T_TEXT);
+        cv_text(6, y + 202, &AF_S, "hugelton.github.io", T_MID);
+        cv_text(6, y + 220, &AF_S, "/Felucca", T_MID);
+        cv_text(6, y + 244, &AF_S, "hugelton.com", T_MID);
+        draw_about_qr(158, y + 186);
     }
-    y = menu_text("CREDITS", y + 262, T_THEME, draw) + 8;
+    y = menu_text("CREDITS", y + 280, T_THEME, draw) + 8;
     for (i = 0; i < NELEM(MENU_CREDITS); i++) {
         const menu_credit_t *c = &MENU_CREDITS[i];
         const char *text = c->text;
@@ -257,10 +265,15 @@ static void menu_head(void)
 {
     cv_begin(240, H_HEAD, T_BG);
     GFX_HOOK_ALIGN(0, HEAD_MY + AF_M_CAP_Y, 0, HEAD_MY + AF_M_CAP_Y + AF_M_CAP_H, AL_V, "header icon on its title's line");
-    cv_icon_mid(8, H_HEAD / 2, 16, ui.menu >= 2 ? ICON_X_INFO : ICON_X_COG, T_THEME, T_BG);   /* (as draw_head's) */
+    cv_icon_mid(8, H_HEAD / 2, 16, ui.menu == 2 ? ICON_X_INFO : ICON_X_COG, T_THEME, T_BG);   /* (as draw_head's) */
     GFX_HOOK_ALIGN(0, 0, 0, H_HEAD, AL_V, "header text on its middle");
-    cv_text(30, HEAD_MY, &AF_M, ui.menu == 3 ? "INFO" : ui.menu == 2 ? "ABOUT / CREDITS" : "MENU", T_TEXT);
-    if (ui.menu >= 2) {                               /* ABOUT / INFO: the REC mark at the right (no way-back keycap: SPEC 1.1a) */
+    {   /* the title in the top middle: centred on x 120 between the cog and the REC mark / the dots */
+        const char *t = ui.menu == 2 ? "ABOUT / CREDITS" : "MENU";
+        int32_t x = 120 - HALF_UP(text_w(&AF_M, t));
+        GFX_HOOK_ALIGN(0, 0, 0, H_HEAD, AL_V, "header text on its middle");
+        cv_text(x < 30 ? 30 : x, HEAD_MY, &AF_M, t, T_TEXT);
+    }
+    if (ui.menu == 2) {                               /* ABOUT: the REC mark at the right (no way-back keycap: SPEC 1.1a) */
         draw_rec_mark(232 - 16, T_BG);
     } else {                                          /* the tabs: their dots at the right, the REC mark 8 px before them */
         draw_rec_mark(232 - (12 + (int32_t)(MTAB_COUNT - 1u) * 8) - 8 - 16, T_BG);   /* (menu_dots' left, its cell 16 wide) */
@@ -273,14 +286,14 @@ static void menu_head(void)
  *   header   0..24  the cog and MENU, the REC mark, the tabs as dots at the right (the one shown a THEME
  *                   pill)
  *   tabs    29..53  a 24 px cushion per tab: its icon alone (SURF, MID); the one shown wider, with its name (ACCENT,
- *                   INK; S, LARGE M), MT_GAP between any two. With ANIM ON the cushions grow and shrink into place
+ *                   INK; S), MT_GAP between any two. With ANIM ON the cushions grow and shrink into place
  *                   (mt_follow), the gaps kept
- *   rows    59..    one SURF panel (FLAT; LINE: none, a rule under the tabs), a row a label and its value, 1 px rules
+ *   rows    59..    one SURF panel, a row a label and its value, 1 px rules
  *                   between them; the selected row THEME with INK, as the browser's. A value THEME (M) at the right,
  *                   ON / OFF as a switch, COLOR its palette's five colours, CALIBRATION and ABOUT a chevron (OCT+
- *                   opens them); the labels in M too (a list's rows). LARGE: 28 px rows (a tab of up to 5)
+ *                   opens them); the labels in M too (a list's rows)
  *   keys   224      SELECT ROW and, on a row with a value, KNOB 1 VALUE (SPEC 1.1a: no OCT / HOME keycap; OCT+ still opens
- *                   CALIBRATION / INFO / ABOUT and clears LEARN, OCT- goes back, HOME closes, unadvertised)
+ *                   CALIBRATION / TEST / ABOUT and clears LEARN, OCT- goes back, HOME closes, unadvertised)
  * Drawn in two bands (the canvas holds 124 rows) split in a gap between two rows; while the tabs slide only their
  * strip (24..58) is drawn again */
 static const uint16_t MTAB_ICON[MTAB_COUNT] = {ICON_X_EYE, ICON_X_KNOB, ICON_X_SPEAKER, ICON_X_COG};
@@ -301,15 +314,14 @@ static const uint16_t MTAB_ICON[MTAB_COUNT] = {ICON_X_EYE, ICON_X_KNOB, ICON_X_S
 #define MR_LX 16                                       /* its label */
 #define MR_VR 224                                      /* its value's right edge */
 #define MK_Y 224                                       /* the key hints: the footer's row 2 band (its keycaps centred on its names) */
-static int menu_large(void) { return (ui_prefs & PREF_LARGE) != 0u; }
 static uint32_t menu_tab(void) { return MI_TAB[ui.menu_sel % MI_COUNT]; }
-/* the shown tab's rows: 24 px (LARGE 28, a tab of up to 5 rows), 2 px apart (a tab of 6: 1 px, its panel then ends
+/* the shown tab's rows: 24 px, 2 px apart (a tab of 6: 1 px, its panel then ends
  * 6 px above the key hints as the others do; the rule between two rows is that gap row; 1.2, a tab of 7: 21 px rows
- * 1 px apart, its panel then ends 4 px lower, LARGE too; 1.3, a tab of 8: 18 px rows 1 px apart, the same end) */
+ * 1 px apart, its panel then ends 4 px lower; 1.3, a tab of 8: 18 px rows 1 px apart, the same end) */
 static int32_t mr_h(void)
 {
     uint32_t n = mtab_rows(menu_tab());
-    return n > 7u ? 18 : n > 6u ? 21 : menu_large() && n <= 5u ? 28 : 24;
+    return n > 7u ? 18 : n > 6u ? 21 : 24;
 }
 static int32_t mr_gap(void) { return mtab_rows(menu_tab()) <= 5u ? 2 : 1; }
 static int32_t mr_y(uint32_t k) { return MP_Y + MP_PAD + (int32_t)k * (mr_h() + mr_gap()); }
@@ -326,7 +338,6 @@ static void mt_follow(void)
         mt.pos = (int16_t)(mt.pos + d / 2);
     mt.frame = ui.frame;
 }
-static const aafont_t *mt_font(void) { return menu_large() ? &AF_M : &AF_S; }
 /* the tabs at the place mt.pos, MT_GAP apart, centred: each one's share of the shown look (0 .. MT_ONE), x, width */
 static void mt_layout(int32_t *a, int32_t *x, int32_t *w)
 {
@@ -336,7 +347,7 @@ static void mt_layout(int32_t *a, int32_t *x, int32_t *w)
         int32_t d = mt.pos - (int32_t)k * MT_ONE;
         a[k] = MT_ONE - (d < 0 ? -d : d);
         if (a[k] < 0) a[k] = 0;
-        w[k] = MT_IW + (MT_NX - MT_IW + text_w(mt_font(), MTAB_NAME[k]) + 10) * a[k] / MT_ONE;
+        w[k] = MT_IW + (MT_NX - MT_IW + text_w(&AF_S, MTAB_NAME[k]) + 10) * a[k] / MT_ONE;
         tot += w[k];
     }
     cum = MT_X0 + HALF_UP(MT_X1 - MT_X0 - tot - (int32_t)(MTAB_COUNT - 1u) * MT_GAP);   /* (the bar centred) */
@@ -350,8 +361,6 @@ static void menu_tabs(void)                            /* (in screen rows: cv_oy
     int32_t a[MTAB_COUNT], x[MTAB_COUNT], w[MTAB_COUNT];
     uint32_t k;
     mt_layout(a, x, w);
-    if (ux.style)                                      /* LINE: a rule under the tabs */
-        cv_rule(4, MP_Y - 3, 232, 1);
     for (k = 0; k < MTAB_COUNT; k++) {
         int on = k == (uint32_t)((mt.pos + MT_ONE / 2) / MT_ONE);   /* (half way, the shown look moves over) */
         uint16_t bg = on ? T_ACCENT : T_SURF;
@@ -360,7 +369,7 @@ static void menu_tabs(void)                            /* (in screen rows: cv_oy
         cv_icon_in(x[k], MT_Y, MT_IW, MT_H, 16, MTAB_ICON[k], on ? T_INK : T_MID, bg);
         if (a[k] == MT_ONE) {                          /* (settled: its name) */
             GFX_HOOK_ALIGN(0, MT_Y, 0, MT_Y + MT_H, AL_V, "menu tab name centred up/down");
-            cv_text_on(x[k] + MT_NX, MT_Y + (menu_large() ? CAP_IN(M, MT_H) : CAP_IN(S, MT_H)), mt_font(), MTAB_NAME[k],
+            cv_text_on(x[k] + MT_NX, MT_Y + CAP_IN(S, MT_H), &AF_S, MTAB_NAME[k],
                        T_INK, T_ACCENT);
         }
     }
@@ -396,7 +405,7 @@ static void menu_row(uint32_t k, uint32_t row)
     if (sel)
         cv_rrect(MR_X, y, MR_W, h, 6, T_THEME, T_SURF);
     else if (k && row - 1u != ui.menu_sel)             /* a rule from the row above (none beside the selected one) */
-        cv_rect(MR_X + 6, y - 1, MR_W - 12, 1, ux.style ? T_RULE : T_LINE);
+        cv_rect(MR_X + 6, y - 1, MR_W - 12, 1, T_LINE);
     GFX_HOOK_ALIGN(0, y, 0, y + h, AL_V, "menu row name centred up/down");
     cv_text_on(MR_LX, vy, &AF_M, MI_NAME[row], fg, bg);
     if (row >= MI_VALUES) {                            /* CALIBRATION, ABOUT: OCT+ opens them */
@@ -433,36 +442,18 @@ static void menu_row(uint32_t k, uint32_t row)
         }
     }
 }
-/* MENU > SYSTEM > INFO (1.2, ui.menu 3): what the old GLO > SYSTEM page showed, read only: the firmware, the USB link (the
- * SYSTEM page's MIDI card: OFF no USB, WAIT no bus yet, BUS frames seen, ENUM being set up, MIDI in use) and the CPU load
- * of the audio (the CPU load meter above: a 1 s average, a held peak, the missed blocks). The rows as the menu's (no
- * tabs: from INFO_Y), the selected look on none; OCT- back to the tabs, HOME closes */
-#define INFO_Y 32
-#define INFO_N 3u
-static struct { uint8_t cpu; } info;                   /* the CPU row's value: the meter's 1 s average */
-static uint32_t info_usb(void)                         /* 0 OFF, 1 WAIT, 2 BUS, 3 ENUM, 4 MIDI */
-{
-    return !usb.up ? 0u : usb.config ? 4u : usb.setups ? 3u : usb.sof_seen ? 2u : 1u;
-}
-static uint32_t info_sig(void)
+static uint32_t about_sig(void)
 {
     cpu_meter_poll();
-    info.cpu = (uint8_t)(cpum.avg > 255u ? 255u : cpum.avg);
     return cpu_sig() + info_usb() * 131u;
 }
-#define IM_Y 138
-/* INFO's second band (screen rows 132..240): where the meter's card was (now GLO > TEST), one line of words */
-static void info_meter(void)
-{
-    cv_text(8, IM_Y + 4, &AF_S, "THE CPU METER IS ON", T_MID);
-    cv_text(8, IM_Y + 22, &AF_S, "GLO > TEST", T_TEXT);
-}
-/* GLO > TEST (the CPU test page, beta): what is loaded and how hard the audio works. The multi (slot + name), per part the ENGINE
+#if DUELL_TEST_MODE                                    /* the CPU test screen is a developer build (DUELL_TEST_MODE); the release leaves it out down to #endif (TEST screen) */
+/* MENU > SYSTEM > TEST (the CPU test screen, beta; ui.menu 3, drawn as the page TEST_PAGE, params.c): what is loaded and how hard the audio works. The multi (slot + name), per part the ENGINE
  * and the PATCH (the stored patch's name or the factory sound's), then the CPU meter: the 1 s AVERAGE with a bar (a mark at 80 %,
  * a tick at the held peak), PEAK HOLD, MISSED blocks, and a word for the state (OK, NEAR THE LIMIT, AT THE LIMIT, BLOCKS MISSED
- * JUST NOW; the same flat colours as before on INFO: cpu_col). Drawn on the graph panel (cv_oy 0, panel rows). The meter reads the
+ * JUST NOW; the same flat colours as before: cpu_col). Drawn on the graph panel (cv_oy 0, panel rows). The meter reads the
  * audio's counters only while this page is up: a gap of more than 0.5 s between two looks (another page, the screen dark) opens a
- * fresh window. K4 RESET: cpu_meter_open and the missed count from zero (test_reset); INFO and ABOUT keep their power-on count */
+ * fresh window. K4 RESET: cpu_meter_open and the missed count from zero (test_reset); ABOUT keeps its power-on count */
 static uint32_t test_t;                                /* the page's last look (fm1_ms; 0: none yet) */
 static void test_sync(void)
 {
@@ -555,31 +546,33 @@ static void graph_test(void)
     cv_text_r(230, 102, &AF_S, "EMULATOR ESTIMATE", T_DIM, T_SURF);
 #endif
 }
-static void info_rows(void)                            /* (in screen rows: cv_oy set by the caller) */
+/* The TEST screen (ui.menu 3): the page TEST_PAGE drawn by the page code (header with its name TEST in the top middle, the K1..K4 cards, the
+ * panel graph_test, the footer), page_over making it the current page; HOME / LAYER state is put aside while it draws */
+static void draw_test_screen(void)
 {
-    static const char *const LBL[INFO_N] = {"FIRMWARE", "USB", "CPU"};
-    static const char *const USB_N[5] = {"OFF", "WAIT", "BUS", "ENUM", "MIDI"};
-    int32_t h = menu_large() ? 28 : 24;
-    uint32_t k;
-    char cpu[8];
-    fmt_int(cpu, info.cpu);
-    if (!ux.style)                                     /* FLAT: the rows' panel */
-        cv_rrect(4, INFO_Y, 232, (int32_t)INFO_N * (h + 2) - 2 + 2 * MP_PAD, 8, T_SURF, T_BG);
-    for (k = 0; k < INFO_N; k++) {
-        int32_t y = INFO_Y + MP_PAD + (int32_t)k * (h + 2), vy = y + CAP_IN(M, h);
-        if (k)
-            cv_rect(MR_X + 6, y - 1, MR_W - 12, 1, ux.style ? T_RULE : T_LINE);
-        GFX_HOOK_ALIGN(0, y, 0, y + h, AL_V, "info row name centred up/down");
-        cv_text_on(MR_LX, vy, &AF_M, LBL[k], T_TEXT, T_SURF);
-        GFX_HOOK_ALIGN(0, y, 0, y + h, AL_V, "info row value centred up/down");
-        if (k == 2u) {                                 /* CPU: the value and its unit, as HOLD's */
-            GFX_HOOK_ALIGN(0, 0, 0, vy + AF_M.asc, AL_B, "info row unit on its value's baseline");
-            cv_text_r(cv_text_r(MR_VR, vy + AF_M.asc - AF_S.asc, &AF_S, "%", T_MID, T_SURF) - 3, vy, &AF_M, cpu, vt(T_THEME, T_SURF), T_SURF);
-        } else {
-            cv_text_r(MR_VR, vy, &AF_M, k ? USB_N[info_usb()] : FELUCCA_VERSION, vt(T_THEME, T_SURF), T_SURF);
-        }
+    uint8_t home = ui.home, layer = ui.layer;
+    ui.home = 0;
+    ui.layer = 0;
+    page_over = &TEST_PAGE;
+    if (ui.force)
+        draw_frame();
+    draw_head();
+    draw_columns();
+    draw_graph();
+    if (ui.msg_t && !--ui.msg_t && ui.msg2[0]) {
+        str_cpy(ui.msg, ui.msg2, sizeof ui.msg);
+        ui.msg2[0] = 0;
+        ui.msg_t = 60;
     }
+    if (ui.hot_t)
+        ui.hot_t--;
+    draw_foot();
+    page_over = 0;
+    ui.home = home;
+    ui.layer = layer;
 }
+static void edit_param(uint32_t slot, int32_t steps);   /* ui_input.c: the TEST screen's knobs */
+#endif                                                 /* (TEST screen) */
 
 /* the rows' two bands meet at `split`: in the gap above a row (or below the last), each band at most 124 rows */
 static uint32_t menu_split(uint32_t n)
@@ -597,15 +590,21 @@ static void draw_menu(void)
     static const khint_t KEYS[3] = {{KC_SELECT, "ROW"}, {KC_K1, "VALUE"}, {KC_K1, "OPEN"}};
     uint32_t pass, k, first, n, split, sig;
     int32_t pos0 = mt.pos;
+#if DUELL_TEST_MODE
+    if (ui.menu == 3) {                                /* TEST: the page code draws it, whole each frame (it checks its own signatures) */
+        draw_test_screen();
+        return;
+    }
+#endif
     if (ui.menu == 1)
         mt_follow();
     sig = ui.menu * 7u + ui.menu_sel * 131u + settings.palette * 1009u + settings.lowcut * 7919u + settings_hold * 3511u +
-          settings_leds * 6151u + ui_prefs * 4099u + ui_style * 257u + song.rec * 65537u + song.sel * 13u +
+          settings_leds * 6151u + ui_prefs * 4099u + song.rec * 65537u + song.sel * 13u +
           ui_rec_prefs * 92821u + ui_scr * 131071u +          /* (#157: SCREEN OFF's value redraws its row) */
           ui_prefs2 * 524287u + ui_idle * 1048573u +      /* (1.2: ANIM IDLE's value redraws its row) */
           ui_home_view * 7340033u +    /* (1.3: HOME) */
           (uint32_t)(song.g[G_TUNE] + 64) * 8191u + ui_home_pg * 27449u +   /* (1.2: the project's row; DUELL: HOME OPENS) */
-          (ui.menu == 2 ? ui.menu_scroll * 48611u + info_sig() * 40507u + about_step() * 6007u : 0u) + (ui.menu == 3 ? info_sig() * 2654435761u : 0u);
+          (ui.menu == 2 ? ui.menu_scroll * 48611u + about_sig() * 40507u + about_step() * 6007u : 0u);
     if (!ui.force && sig == ui.menu_sig) {
         if (ui.menu == 1 && mt.pos != pos0) {          /* only the tabs slid: their strip */
             cv_begin(240, MP_Y - H_HEAD, T_BG);
@@ -622,20 +621,6 @@ static void draw_menu(void)
         return;
     }
     menu_head();
-    if (ui.menu == 3) {                                /* INFO: its rows in the first band, the second clear */
-        for (pass = 0; pass < 2u; pass++) {
-            uint32_t top_y = pass ? 132u : (uint32_t)H_HEAD;
-            cv_begin(240, pass ? 240u - 132u : 132u - H_HEAD, T_BG);
-            cv_oy = -(int32_t)top_y;
-            if (!pass)
-                info_rows();
-            else
-                info_meter();
-            cv_oy = 0;
-            cv_blit(0, top_y);
-        }
-        return;
-    }
     if (ui.menu == 2) {
         int32_t scroll = ui.menu_scroll, max = menu_scroll_max();
         int32_t thumb = MENU_DOC_H * MENU_DOC_H / (max + MENU_DOC_H);
@@ -665,13 +650,12 @@ static void draw_menu(void)
         cv_oy = -top_y;                               /* drawn in screen rows */
         if (!pass)
             menu_tabs();
-        if (!ux.style)                                /* FLAT: the rows' panel */
-            cv_rrect(4, MP_Y, 232, mr_y(n) - mr_gap() + MP_PAD - MP_Y, 8, T_SURF, T_BG);
+        cv_rrect(4, MP_Y, 232, mr_y(n) - mr_gap() + MP_PAD - MP_Y, 8, T_SURF, T_BG);
         for (k = 0; k < n; k++)
             if (mr_y(k) + mr_h() > top_y && mr_y(k) - 1 < top_y + (int32_t)cv_h)
                 menu_row(k, first + k);
         if (pass) {
-            if (MI_READONLY(ui.menu_sel))                 /* INFO, ABOUT: SELECT picks the row, KNOB 1 right opens it */
+            if (MI_READONLY(ui.menu_sel))                 /* TEST, ABOUT: SELECT picks the row, KNOB 1 right opens it */
                 cv_key_row(8, 232, MK_Y, (const khint_t[2]){KEYS[0], KEYS[2]}, 2u, 3u, T_BG);
             else
                 cv_key_row(8, 232, MK_Y, KEYS, menu_valued(ui.menu_sel) ? 2u : 1u, 3u, T_BG);
@@ -689,6 +673,8 @@ static void enc_drop(void)                             /* knob turns nobody take
 
 static void menu_close(void)
 {
+    if (ui.confirm == CF_ERASE_ALL)                    /* (HOME in the ERASE DATA dialog: cancelled, nothing erased) */
+        ui.confirm = 0;
     settings_save();                                   /* palette / panel table, if changed */
     ui.menu = 0;
     ui.force = 1;
@@ -698,7 +684,7 @@ static void menu_close(void)
 /* menu (SPEC 1.1a): SELECT is the one way round it: it walks the rows continuously across the tabs (a tab's last row,
  * then the next tab's first; stopping at the first and the last row of the whole menu, no wrap), in ABOUT it scrolls;
  * KNOB 1..4 (any of them) change the selected row's value (menu_items.c menu_step), OCT+ / OCT- step it too (and OCT+
- * opens CALIBRATION / INFO / ABOUT, OCT- nothing there; OCT- in INFO and ABOUT goes back to the tabs) but no hint
+ * opens CALIBRATION / TEST / ABOUT, OCT- nothing there; OCT- in TEST and ABOUT goes back to the tabs) but no hint
  * names them. ALGORITHM and PRESETS do nothing here. HOME closes it, from them too (ui_input.c) */
 static void menu_move(int32_t s)                       /* SELECT: the next / previous row, across the tabs, clamped */
 {
@@ -714,13 +700,38 @@ static void menu_input(uint32_t oct)                  /* oct: ui_input.c oct_tap
     uint32_t k, up = (oct >> 1) & 1u, dn = oct & 1u;
     panel_enc(EN_PRESET);                              /* PRESETS, ALGORITHM: nothing in the menu (SPEC 1.1a) */
     panel_enc(EN_ALGO);
-    if (ui.menu >= 2) {                                /* ABOUT: SELECT scrolls (bounded); INFO, ABOUT: OCT- or a knob
+#if DUELL_TEST_MODE
+    if (ui.menu == 3) {                                /* TEST: KNOB 1..4 are its own (K1 MORPH both ways: not a way back); OCT- goes back to the
+                                                        * tabs, HOME and a page button close the menu; SELECT and OCT+ do nothing here */
+        uint8_t home = ui.home, layer = ui.layer;
+        if (dn) {
+            ui.menu = 1, ui.force = 1;
+            enc_drop();
+            return;
+        }
+        ui.home = 0;
+        ui.layer = 0;
+        page_over = &TEST_PAGE;
+        for (k = 0; k < 4u; k++)
+            if ((s = panel_enc(EN_K1 + k)) != 0) {
+                ui.hot_col = (uint8_t)k;
+                ui.hot_t = 40;
+                edit_param(k, s);
+            }
+        page_over = 0;
+        ui.home = home;
+        ui.layer = layer;
+        enc_drop();
+        return;
+    }
+#endif
+    if (ui.menu == 2) {                                /* ABOUT: SELECT scrolls (bounded); OCT- or a knob
                                                         * turned left (KNOB 1) back to the tabs */
         for (s = 0, k = 0; k < 4u; k++)
             s += panel_enc(EN_K1 + k);
         if (dn || s < 0)
             ui.menu = 1, ui.force = 1;
-        else if (ui.menu == 2 && (s = panel_enc(EN_SELECT)) != 0)
+        else if ((s = panel_enc(EN_SELECT)) != 0)
             ui.menu_scroll = (uint16_t)clamp((int32_t)ui.menu_scroll + clamp(s, -128, 128) * 18, 0, menu_scroll_max());
         enc_drop();
         return;
@@ -730,20 +741,35 @@ static void menu_input(uint32_t oct)                  /* oct: ui_input.c oct_tap
     for (s = 0, k = 0; k < 4u; k++)                    /* KNOB 1..4, any of them */
         s += panel_enc(EN_K1 + k);
     if (menu_valued(ui.menu_sel)) {
-        /* a step (OCT+ the next value, OCT- the previous); COLOR previews the palette, STYLE is drawn so from the next
-         * frame (FX LATCH: the latched effects are off while the menu is up) */
+        /* a step (OCT+ the next value, OCT- the previous); COLOR previews the palette */
         s += (int32_t)up - (int32_t)dn;
-        if (s)
+        if (s) {
+            uint32_t was = menu_get(ui.menu_sel);
             menu_put(ui.menu_sel, menu_step(ui.menu_sel, s));
-    } else if (up || (s > 0 && MI_READONLY(ui.menu_sel))) {   /* OCT+ opens the three; a knob right too INFO and ABOUT (read only) */
+            if (menu_get(ui.menu_sel) != was && !MI_PROJECT(ui.menu_sel)) {   /* DUELL 0.2.2: a changed setting is saved now, not when the */
+                if (menu_n(ui.menu_sel) == 2u)                                /* menu is left: a two-value switch at once, any other once the */
+                    settings_save();                                          /* knob has rested ~2 s (the AMOUNT knob's debounce, ui_input.c */
+                else {                                                        /* morph_settings); while playing the write waits (settings_poll) */
+                    ui.mset_dirty = 1;
+                    ui.mset_t = fm1_ms;
+                }
+            }
+        }
+    } else if (up || (s > 0 && MI_READONLY(ui.menu_sel))) {   /* OCT+ opens the three; a knob right too TEST and ABOUT */
         if (ui.menu_sel == MI_PANEL) {
             panel_setup();
             scrn.idle = fm1_ms;                         /* (SCREEN OFF: its own loop had the input) */
             ui.force = 1;
-        } else if (ui.menu_sel == MI_INFO) {
+        } else if (ui.menu_sel == MI_ERASE) {           /* DUELL 0.2.2: the dialog over the menu (ui_input.c: OCT+ YES, OCT- NO) */
+            ui.confirm = CF_ERASE_ALL;
+            ui.confirm_trk = 0;
+            ui.force = 1;
+#if DUELL_TEST_MODE
+        } else if (ui.menu_sel == MI_TEST) {
             ui.menu = 3;
             cpu_meter_open();                           /* (the CPU meter's window begins) */
             ui.force = 1;
+#endif
         } else {                                       /* MI_ABOUT */
             ui.menu = 2;
             about_t0 = fm1_ms;

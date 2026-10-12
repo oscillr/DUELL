@@ -154,6 +154,17 @@ export async function restoreBackup(request, file, onProgress = () => {}) {
   return archive;
 }
 
+// ERASE_ALL (DUELL 0.2.2, EDITOR_PROTOCOL.md "ERASE ALL"): the same erase as MENU > SYSTEM > ERASE DATA on the unit. The unit
+// refuses it unless the payload is exactly these nine bytes ("ERASE ALL"), and while it plays. Resolves with the unit's rc
+// (0 erased: the unit restarts by itself ~0.7 s later; 1 refused; 3 playing; 4 flash failed). A unit without the op does not
+// answer: the request times out and rejects.
+export const ERASE_CMD = 80;
+export const ERASE_TOKEN = Array.from("ERASE ALL", (c) => c.charCodeAt(0));
+export async function eraseAllData(request) {
+  const a = await request([ERASE_CMD, ERASE_TOKEN], { timeout: 20000, retries: 0 });
+  return a[0];
+}
+
 // Installer connection: no editor page or watcher owns this input simultaneously.
 export class BackupConnection {
   constructor(input, output) {

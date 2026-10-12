@@ -108,6 +108,20 @@ static void worst_part(track_t *t, uint32_t idx)
     fm6_patch[(uint32_t)(t - trk) % NTRK][6] = (uint8_t)(idx % 99u);
 }
 
+/* how many of the two LFO TRIGs a stored record holds (pairs, or the bitmap form's set bits); pr: the values' start (pt_layout) */
+static uint32_t trig_stored(const uint8_t *raw, uint32_t pr)
+{
+    uint32_t j, n = 0;
+    if (raw[4] & PTF_BM) {
+        n += raw[pr + P_LTRIG / 8u] >> (P_LTRIG % 8u) & 1u;
+        n += raw[pr + P_L2TRIG / 8u] >> (P_L2TRIG % 8u) & 1u;
+    } else {
+        for (j = 0; j < raw[19]; j++)
+            n += raw[pr + 2u * j] == P_LTRIG || raw[pr + 2u * j] == P_L2TRIG;
+    }
+    return n;
+}
+
 int main(void)
 {
     uint32_t k, n, i, ok, total, occ, e, kk, rec0;
@@ -254,9 +268,17 @@ int main(void)
             up_load(a_slot);
             same = 1;
             for (i = 0; i < 16u; i++)
-                same &= t->p[IDS[i]] == want[i];
-            ck("  load: every arp / keys / sequencer value as saved (mode SEQ, rate, octaves, gate, swing, prob, hold, order, SCALE CHRD VOIC, LEN DIV SWING GATE QUANTIZE)", same && t->p[P_ATGT] == 3);
+                if (IDS[i] != P_SCALE)
+                    same &= t->p[IDS[i]] == want[i];
+            ck("  load: every arp / keys / sequencer value as saved (mode SEQ, rate, octaves, gate, swing, prob, hold, order, CHRD VOIC, LEN DIV SWING GATE QUANTIZE)", same && t->p[P_ATGT] == 3);
             ck("  ROOT stays the player's", t->p[P_ROOT] == 5);
+            {   /* no patch stores or applies a scale (core.h: the scale is the instrument's) */
+                ak_t a;
+                int has = ak_get(a_slot, &a);
+                ck("  the record holds no SCALE (the part's SCALE 2 was not stored), the load applied none, the global scale is untouched",
+                   has && (a.g & AK_KEYS) && a.key[0] == TP[P_SCALE].def && up_value(up_rec(a_slot), P_SCALE) == TP[P_SCALE].def &&
+                   t->p[P_SCALE] == mark[8] && scale_g == 0 && root_g == 0 && offscale_g == OS_SNAP);
+            }
             same = 1;
             for (i = 0; i < 16u; i++)
                 same &= !memcmp(&t->step[i], &st0[i], sizeof(step_t));
@@ -351,6 +373,33 @@ int main(void)
         up_put(43u, 0);
         up_put(a_slot, 0); up_put(b_slot, 0); up_put(42u, 0);
         up_shmk[0] = up_shmk[1] = 0;
+    }
+
+    /* 1c: an OLD record that holds a SCALE (ordinal 8 of its AK block) is read and the scale discarded; CHRD still applies */
+    {
+        static const uint8_t blk[7] = {5, 0, 2 | 8, 0x00, 0x03, 64 + 5, 64 + 4};   /* g KEYS|BM, bitmap bits 8 (SCALE) 9 (CHRD), values 5, 4 */
+        track_t *t = &trk[0];
+        up_rec_t r;
+        uint32_t rc;
+        ak_t a;
+        set_engine_of(t, 0u);
+        apply_preset_to(t, 3u);
+        r = *up_rec(60u);                                    /* (an unused slot: all zero) */
+        memset(&r, 0, sizeof r);
+        r.used = UP_USED; r.ver = UP_VER; r.engine = 0; r.np = P_COUNT;
+        memcpy(r.name, "OLD KEYS", 9);
+        for (i = 0; i < P_COUNT; i++) up_set_value(&r, i, param_desc_of(0, i)->def);
+        up_ak_in = blk;
+        rc = (uint32_t)up_put(44u, &r);
+        up_ak_in = 0;
+        scale_g = 3; root_g = 2;
+        t->p[P_SCALE] = 0; t->p[P_CHRD] = 0;
+        ck("an old record with a SCALE in its keys block still reads (the parse as it was)", rc == 0u && ak_get(44u, &a) && a.key[0] == 5 && a.key[1] == 4);
+        up_load(44u);
+        ck("  loading it: CHRD applies, the SCALE is discarded (the part's and the global scale unchanged)",
+           t->p[P_CHRD] == 4 && t->p[P_SCALE] == 0 && scale_g == 3 && root_g == 2);
+        scale_g = 0; root_g = 0;
+        up_put(44u, 0);
     }
 
     /* 2: the limit (PT_MAX worst-case records always fit) */
@@ -507,7 +556,7 @@ int main(void)
        str_eq(PAGES[ui.page + 3u].title, "TOOLS"));
     (void)pl_cursor(&total);
     (void)preset_pos(&occ);
-    ck("ONE list: the sounds first, then exactly the PT_MAX free places as empty ones", total == occ + PT_MAX && occ == ds_list_n() && pl_empties() == PT_MAX &&
+    ck("ONE list: the sounds first, then three empty places (FREE says all PT_MAX)", total == occ + 3u && occ == ds_list_n() && pl_empties() == 3u &&
        up_free_places() == PT_MAX);
     for (i = 0; i < 200u && !ui.pe; i++)
         turn(EN_K1, 1);
@@ -530,9 +579,9 @@ int main(void)
     nm.len = nm.cur = 7;
     press(B_OCTUP);
     ck("  OCT+: SAVED; a patch of its own, the part plays it, one place less empty", msg_is("SAVED") && up_count() == 1u && up_plain_count() == 1u &&
-       user_of(TSEL) < UP_SLOTS && pl_empties() == PT_MAX - 1u && up_free_places() == PT_MAX - 1u);
+       user_of(TSEL) < UP_SLOTS && pl_empties() == 3u && up_free_places() == PT_MAX - 1u);
     k = user_of(TSEL);
-    ck("  the cursor follows the patch (after the factory sounds); TYPE ALL lists one empty place less", !ui.pe && pl_cursor(&total) == occ && total == occ + 1u + PT_MAX - 1u);
+    ck("  the cursor follows the patch (after the factory sounds); TYPE ALL lists one empty place less", !ui.pe && pl_cursor(&total) == occ && total == occ + 1u + 3u);
     {
         uint32_t eng0 = TSEL->eng_req;
         for (i = 0; i < 40u && list_mode() <= CAT_N; i++)
@@ -562,7 +611,7 @@ int main(void)
     ck("hold SAVE on a factory sound: SAVE OVER <name>?", ui.confirm == CF_SAVE_OVER);
     press(B_OCTUP);
     ck("  OCT+: its copy shadows it in its place (the list is as long, FAV kept)", msg_is("SAVED") && up_count() == 2u && up_plain_count() == 1u &&
-       pl_cursor(&total) < occ && total == occ + 1u + PT_MAX - 2u && up_free_places() == PT_MAX - 2u && preset_favorite());
+       pl_cursor(&total) < occ && total == occ + 1u + 3u && up_free_places() == PT_MAX - 2u && preset_favorite());
     kk = user_of(TSEL);
     turn(EN_K4, 1);
     ck("K4 ERASE on the copy: the dialog RESTORE FACTORY?", ui.confirm == CF_ERASE_USER && up_shadow(kk, &e) < NENGINES);
@@ -580,6 +629,88 @@ int main(void)
     ck("K4 ERASE on a patch of its own: ERASE PATCH? then it is emptied", ui.confirm == CF_ERASE_USER);
     press(B_OCTUP);
     ck("  OCT+: erased, its place empty, the cursor on the first empty place", !up_used(k) && up_count() == 0u && ui.pe == 1u);
+
+
+    {   /* owner bug 2026-10-12: SAVE, then EDIT (or any page button) must leave, saving nothing, from every SAVE page, a dialog and NAME */
+        static const struct { uint8_t b; uint8_t fam; } LV[] = {{B_EDIT, FAM_EDIT}, {B_FX, FAM_FX}, {B_ENV, FAM_ENV}, {B_LFO, FAM_LFO},
+            {B_ARP, FAM_ARP}, {B_SEQ, FAM_SEQ}, {B_SCL, FAM_SCL}, {B_GLO, FAM_GLO}, {B_HOME, FAM_TRK}};
+        static uint8_t img[sizeof nor];
+        uint32_t s, j, good = 0, tried = 0;
+        for (s = 0; s < 7u; s++)
+            for (j = 0; j < sizeof LV / sizeof LV[0]; j++) {
+                int left, where_ok;
+                ui.confirm = 0;
+                if (name_on()) name_close();
+                frames(400);
+                go_main();
+                press(B_SAVE);
+                if (s == 1u || s == 5u || s == 6u) {           /* PATCHES: s 1 an empty place, 5 a dialog, 6 NAME */
+                    (void)preset_pos(&occ);
+                    if (s == 1u || s == 6u) preset_go(occ + 0u + (up_count() ? 1u : 0u)), (void)0;
+                    if (s == 6u) { ui.pe = 1; hold(B_SAVE); }
+                    if (s == 5u) { preset_go(1u); hold(B_SAVE); }
+                } else if (s == 2u) {
+                    press(B_SAVE);
+                } else if (s == 3u) {
+                    press(B_SAVE); press(B_SAVE);
+                } else if (s == 4u) {
+                    press(B_SAVE); press(B_SAVE); press(B_SAVE);
+                }
+                where_ok = s == 5u ? ui.confirm != 0 : s == 6u ? name_on() : 1;
+                memcpy(img, nor, sizeof img);
+                frames(400);
+                press(LV[j].b);
+                frames(100);
+                left = !ui.confirm && !name_on() && (LV[j].fam == FAM_TRK ? (!ui.home && cur_page()->fam == FAM_TRK) || ui.home :
+                       cur_page()->fam == LV[j].fam);
+                tried++;
+                if (where_ok && left && !memcmp(img, nor, sizeof img))
+                    good++;
+                else
+                    printf("   state %u button %u: dialog/name %d left %d fam %d\n", (unsigned)s, (unsigned)LV[j].b, where_ok, left, (int)cur_page()->fam);
+            }
+        ck("SAVE pages (PATCHES, empty place, PATTERNS, MULTIS, TOOLS), a dialog, NAME: EDIT FX ENV LFO ARP SEQ SCL GLO HOME all leave, flash unchanged",
+           good == tried);
+    }
+
+    /* 1c: LFO TRIG (DUELL 0.2.2): FREE is the default, but the sparse store keeps NOTE as its own default for the two ids (upreset.c
+     * up_def): a NOTE patch has no TRIG pair, exactly as every patch stored before; a FREE patch stores one; both load as stored */
+    {
+        track_t *t = &trk[0];
+        uint32_t len_note, len_free, pr, a, b, c, d, e, j, pairs = 0;
+        const uint8_t *raw;
+        set_engine_of(t, 0u);
+        apply_preset_to(t, 3u);
+        ck("TRIG: a factory sound loads with both LFOs FREE (the default)", t->p[P_LTRIG] == 1 && t->p[P_L2TRIG] == 1);
+        t->p[P_LTRIG] = t->p[P_L2TRIG] = 0;
+        ck("TRIG: a NOTE patch stores", up_store_trk(t, 50u, "LFO NOTE", 0) == 0);
+        len_note = pt_rd16(pt_raw(50u));
+        raw = pt_raw(50u);
+        pt_layout(raw, &a, &b, &c, &d, &e);
+        pr = c;
+        pairs = trig_stored(raw, pr);
+        ck("  its record holds no TRIG value (the same bytes as a patch stored before 0.2.2)", pairs == 0u);
+        t->p[P_LTRIG] = t->p[P_L2TRIG] = 1;
+        ck("TRIG: a FREE patch stores", up_store_trk(t, 51u, "LFO FREE", 0) == 0);
+        len_free = pt_rd16(pt_raw(51u));
+        raw = pt_raw(51u);
+        pt_layout(raw, &a, &b, &c, &d, &e);
+        ck("  its record holds both TRIG values (a pair each, or two values of the bitmap form)", trig_stored(raw, c) == 2u && len_free > len_note);
+        power_cycle();
+        t = &trk[0];
+        set_engine_of(t, 0u);
+        t->p[P_LTRIG] = t->p[P_L2TRIG] = 1;
+        up_load(50u);
+        ck("  after a power cycle the NOTE patch loads NOTE / NOTE (an old patch does not change)", t->p[P_LTRIG] == 0 && t->p[P_L2TRIG] == 0);
+        up_load(51u);
+        ck("  and the FREE patch loads FREE / FREE", t->p[P_LTRIG] == 1 && t->p[P_L2TRIG] == 1);
+        {
+            const up_rec_t *r = up_rec(50u);
+            ck("  the decoded NOTE record reads NOTE (up_rec)", up_value(r, P_LTRIG) == 0 && up_value(r, P_L2TRIG) == 0);
+        }
+        up_put(50u, 0);
+        up_put(51u, 0);
+    }
 
     printf(bad ? "patch: FAILED (%d)\n" : "patch: all ok\n", bad);
     return bad ? 1 : 0;

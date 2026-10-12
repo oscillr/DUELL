@@ -82,13 +82,15 @@ Multi-engine synthesizer firmware for the M-VAVE FM-1. Please report what you fi
   from every earlier version load. The PRESETS knob changes the sound from every page that is not a list.
   Turn the FM-1 off and on and the music is as you left it (MENU > RESTORE LAST, an autosave of its own,
   written only when stopped and idle)
-- **Screen:** flat UI with Inter Tight and Fukiai icons, FLAT or LINE style, 10 palettes including
+- **Hold SAVE saves over the patch you are editing** (SAVE OVER <name>?, OCT+ yes); on PATTERNS and MULTIS it saves over the
+  slot picked. A short press of SAVE opens PATTERNS from the sequencer, otherwise MULTIS in LAYER and PATCHES in SPLIT and STEREO
+- **Screen:** flat UI with Inter Tight and Fukiai icons, 10 palettes including
   grayscale, black and white, high contrast and NIGHT; type in sizes by role (what you read in the larger size,
-  labels and hints in the smaller); MENU > LARGE for tall knob cards with larger labels and values; the menu in
-  five tabs. The header shows the track and the **project slot of its pattern** ("1 A", "1 A*" once edited), the
+  labels and hints in the smaller); the menu in
+  four tabs. The header shows the track and the **project slot of its pattern** ("1 A", "1 A*" once edited), the
   play state and the tempo. HOME shows the oscilloscope or, with MENU > HOME TRACKS, **the four tracks** with their
   steps playing (LEVELS: with the four tracks' levels on the knobs); the screen can go dark when the panel is left
-  alone (MENU > SCREEN OFF); MENU > HELP shows a short hint when a page or a layer opens
+  alone (MENU > SCREEN OFF)
 - **LEDs:** idle buttons and keys glow dim so the panel can be found in the dark (MENU > LEDS: OFF,
   DIM LO, DIM HI or INV, the official firmware's look); PLAY turns green while playing; the keys show
   the notes the sequencer and MIDI IN play, and on SEQ > STEP (stopped) the notes of the step under the cursor;
@@ -127,8 +129,6 @@ Multi-engine synthesizer firmware for the M-VAVE FM-1. Please report what you fi
   right ties the steps after it on, left takes them back. It stops before the next note ("NOTE AHEAD").
 - **Per-step velocity** (Discussion #173): SEQ → AUTOMATION, **+ ADD VEL** (OCT+: SHOW) lists every note step's
   velocity, KNOB 4 sets it (1–127). Steps entered by hand play 96, steps recorded live keep how hard you played.
-- **HELP** (Discussion #156; MENU > SYSTEM > HELP, OFF by default): ON shows a short hint, key caps and a few words, in
-  the footer for about 2 s when a page opens, and under a quick layer's map while it shows.
 - **SAVE reaches PRESETS on its second tap** (#173): SAVE's pages go USER, PRESETS, PHRASES, PROJECT, TOOLS. The quick
   save (SAVE, OCT+, OCT+) is unchanged.
 - **The FX layer's map alternates light and dark columns** (#173), so neighbouring effects are told apart at a glance.
@@ -176,7 +176,7 @@ where marked here:
 - **The pages moved** (Discussion #153): see Controls below. In short: SEQ is STEP and AUTOMATION; **SEQ held is SEQ
   TOOLS on every page** (it no longer opens SONG); PHRASES is on SAVE; HOME goes round HOME
   and MIXER; GLO opens CLOCK (TEMPO, swing, clock source) then SONG; TUNE is MENU > AUDIO, MIDI IN (ROUT) is MENU > MIDI, and the USB state
-  and CPU load are MENU > SYSTEM > INFO. REC held is the REC layer as before.
+  and CPU load are MENU > SYSTEM > ABOUT and TEST. REC held is the REC layer as before.
 - **SONG has a lane per track**: older songs load with all four tracks on each row's slot and play as before; its
   knobs are KNOB 1 SECTION, 2 TRACK, 3 PAT, 4 REPS, and on SONG the white keys A3 B3 C4 D4 set the slot.
 - **A fresh start uses the HALL reverb** (up to 1.1.5: ROOM). Saved projects keep their reverb TYPE.
@@ -214,22 +214,18 @@ The pages by button:
 
 ## Menu
 
-Hold **HOME** for the menu, in five tabs: **DISPLAY** (COLOR, STYLE, LARGE, ANIM, LEDS, SCREEN OFF, SCOPE, HOME),
+Hold **HOME** for the menu, in four tabs: **DISPLAY** (COLOR, ANIM, LEDS, SCREEN OFF, SCOPE, HOME),
 **CONTROL** (HOLD, KNOB ACCEL, FX LATCH, SCALE LEDS, STEP PREVIEW, CHORD ENTRY), **AUDIO** (SPEAKER EQ,
-USB LEVEL, CLICK, CLICK LEVEL, COUNT-IN, TUNE), **MIDI** (MIDI IN, LEARN CLEAR) and **SYSTEM** (USB SERIAL,
-RESTORE LAST, HELP, HARDWARE CALIBRATION, INFO, ABOUT).
+USB LEVEL, CLICK, CLICK LEVEL, COUNT-IN, TUNE) and **SYSTEM** (USB SERIAL,
+RESTORE LAST, HARDWARE CALIBRATION, TEST, ABOUT, ERASE DATA).
 ALGORITHM moves between the tabs and PRESETS through the rows of one; any of KNOB 1–4, or OCT+ / OCT−,
-changes the value (OCT+ opens HARDWARE CALIBRATION, INFO and ABOUT); press HOME to close the menu. Every new
+changes the value (OCT+ opens HARDWARE CALIBRATION, TEST and ABOUT); press HOME to close the menu. Every new
 setting defaults to the earlier behaviour. The web editor's Settings tab reads and changes them too, saved the same
 way as from the menu, in the same tabs.
 
 - **COLOR:** the palette. GREY (grayscale, called MONO up to 1.0.1), GREEN, AMBER, ICE, VIOLET, ROSE,
   PAPER (light), HI-CON (high contrast), NIGHT (the 0.9 look: true black, green-tinted text) and MONO
   (black and white)
-- **STYLE:** FLAT (filled cards) or LINE (areas divided by thin lines)
-- **LARGE:** OFF or ON: on HOME and the value pages the four knob cards grow tall, marked K1–K4, with
-  larger labels and values about twice the size; the graph below becomes a strip. Lists, the piano roll,
-  the drum grid and the quick layers keep their layout with larger labels
 - **ANIM:** ON, OFF or IDLE. OFF shows every change at once, without rolling digits, a gliding piano roll or
   the LED sweep at power-on. IDLE is ON plus a gentle LED animation after a minute without input: a soft light drifts
   over the keys and the buttons breathe; any key, button or knob ends it and does what it always does. It never runs
@@ -276,9 +272,7 @@ way as from the menu, in the same tabs.
   RESTORED), kept in an autosave apart from the four projects; it is written when the music changed, the
   transport is stopped and nothing has been touched for 10 s, at most once a minute. OFF starts with the
   power-on sounds
-- **HELP:** OFF (default) or ON: a short hint in the footer for about 2 s when a page opens, and under a quick
-  layer's map while it shows
-- **HARDWARE CALIBRATION**, **INFO** (the version, the USB link and the CPU load) and **ABOUT**
+- **HARDWARE CALIBRATION**, **TEST** (the CPU test, developer builds only: `DUELL_TEST_MODE=1`) and **ABOUT** (the version, the USB link and the CPU load)
 
 ## Engines
 
@@ -329,21 +323,19 @@ default up to 1.1.5), **SPRING**, **SHIM** (ROOM with an octave-up shimmer fed b
 
 ## Scale keyboard
 
-On the **SCL** page, set **QNT** to WHITE to play the selected scale using only the
-white keys (SNAP keeps every key and rounds it down to the scale). C4 plays **ROOT**; consecutive white keys play consecutive scale notes
-above and below it. Black keys are silent, including during live recording and
-step entry. **TRN** transposes the resulting notes; the octave buttons shift them
-by full octaves. Set QNT to OFF for the normal chromatic keyboard. QNT SEQ snaps the keys like SNAP and
-also maps the sequenced notes onto the current ROOT / SCALE as they play (the steps are not changed; drum
-kits are never quantized).
+DUELL has ONE global scale for the whole instrument (both parts, every output mode). On the **SCL** button's first page, **SCALE** (global),
+K1 sets the SCALE, K2 the ROOT and K3 **OFF-SCALE**: **SNAP** (the default) moves a key or MIDI note outside the scale to the nearest scale
+note (a tie goes down), **PLAY** lets it sound as it is. The default scale is CHROMATIC (nothing to snap; OFF-SCALE is faded and says so).
+**TRN** (the part's, on the CHORD page) transposes the keys; the octave buttons shift them by full octaves. The scale is a device setting:
+no patch, part, multi or factory sound stores it. The arp and the SEQUENCER steps follow it (steps move onto the scale, or in semitones
+when CHROMATIC).
 
 Available scales: chromatic (CHR), major (MAJ), natural minor (MIN), Dorian (DOR),
 Mixolydian (MIX), major pentatonic (PEN), minor pentatonic (MPEN), harmonic minor
 (HARM), Phrygian (PHRY), Lydian (LYD), Locrian (LOC), ascending melodic minor (MEL),
 minor blues (BLUES), whole tone (WHOLE), half-whole diminished (DIMHW), and
-whole-half diminished (DIMWH). Scales with other than seven notes continue across
-the white keys without repeating notes; their roots need not fall on every C key.
-Drum kits and incoming MIDI keep their own note mapping.
+whole-half diminished (DIMWH).
+Drum kits keep their own note mapping (never snapped); incoming MIDI notes follow the same SNAP / PLAY rule as the keys.
 
 Press **SCL** again for the **CHORD** page: CHRD picks the chord keys (OFF, the scale's triads or
 sevenths, or a fixed shape) and VOIC the voicing.

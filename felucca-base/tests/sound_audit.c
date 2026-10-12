@@ -31,6 +31,7 @@
  * A HIT (PERC, and an OTHER that is not sounding at 9 s: a one-shot) is judged by its PEAK alone: between -6 and -3 dBFS
  * (hit level), no weighted-loudness rule. Risers allowed to take longer than 2 s to reach the plateau: WHITE OUT, MOOR WIND,
  * LESLIE STORM (a swell is their sound); nothing else.
+ * Every sound must set LFO 1's and LFO 2's TRIG to FREE itself (DUELL 0.2.2; the pair is in the sound, not the default): else FAIL.
  *   build/host/sound_audit                   the table; exit 1 on a FAIL
  *   SOUND_TRIM=1 build/host/sound_audit      also the LEVEL each sound would need for AUDIT_TARGET_DB (weighted, in its
  *                                            window), its peak at most AUDIT_PEAK_DB (LEVEL: 0.5 dB a step,
@@ -65,7 +66,7 @@
 #define AUDIT_HIT_HI (-3.0)
 #define AUDIT_HIT_TRIM (-4.5)
 #define AUDIT_REL_MARGIN 3.0           /* rule (6): a sustaining sound's MED at most this far under the median MED of the sustaining ones */
-static const char *const AUDIT_RISERS[] = {"WHITE OUT", "MOOR WIND", "LESLIE STORM"};
+static const char *const AUDIT_RISERS[] = {"WHITE OUT", "MOOR WIND", "LESLIE STORM", "RAIN CHIMES"};   /* RAIN CHIMES: its arp is one LFO phrase now (TRIG NOTE no longer restarts per step), so its 0.25 Hz LFO 2 filter sweep runs its 4 s cycle as the recipe says */
 static const char *const AUDIT_KEEP[] = {"BACKSPIN"};   /* keep-as-designed: exempt from quiet body, falls away, quiet vs others */
 
 typedef struct { uint32_t e, k, mode, b, seed, amt, chord, tap; } au_t;   /* b: 0 End A (the sound), 1 its factory End B, 2 seed / amt */
@@ -228,7 +229,9 @@ int main(void)
         char cpk[16];
         if (only && !str_eq(s->name, only))
             continue;
-        if (A->nan || T->nan)
+        if (ds_value(s, P_LTRIG, 0) != 1 || ds_value(s, P_L2TRIG, 0) != 1)   /* (def 0: a sound that leaves it out fails) */
+            why = "FAIL (LFO TRIG not FREE)";   /* DUELL 0.2.2: every factory sound sets both LFOs FREE itself */
+        else if (A->nan || T->nan)
             why = "FAIL (NaN / crash)";
         else if (A->loud < -60)
             why = "FAIL (silent)";

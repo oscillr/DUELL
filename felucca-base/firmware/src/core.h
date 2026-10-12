@@ -16,6 +16,10 @@
 #endif
 #define NTRK NPART               /* tracks (the formats and the protocol count these): every track is a part */
 #define NSTEP 64
+#ifndef DUELL_TEST_MODE
+#define DUELL_TEST_MODE 0        /* DUELL developer switch (-DDUELL_TEST_MODE=1; env DUELL_TEST_MODE=1 for build.py / web/emu/build.sh / host_tests.sh): 1 builds in MENU > SYSTEM > TEST (the CPU test screen)
+                                  * and the four CPU test multis M13..M16 (tools/gen_duell_multis.py must be run with the same switch); 0 (the release default) leaves both out */
+#endif
 #define HALF_FRAMES 128          /* I2S half buffer: 2.9 ms at 44.1 kHz (a key waits 0..1 half, then plays 1 half later) */
 #ifndef FELUCCA_SLICE
 #define FELUCCA_SLICE 1          /* the SLICE engine (eng_slice.c), engine 13; FELUCCA_SLICE=0 builds without it */
@@ -47,9 +51,10 @@ enum {
     F_INT, F_PCT, F_BIPCT, F_TIME, F_LFOHZ, F_CUTOFF, F_DB, F_SEMI, F_ENUM, F_BPM, F_NOTE,
     F_ONOFF, F_OCT, F_STEPS,
     F_EQDB, F_EQLO, F_EQMID, F_EQHI, F_EQQ,
-    F_DKCH, F_DKNOTE, F_DKRLS, F_DKHLD     /* DUELL DUCK: F_DKCH retired (SRC is an F_ENUM; kept: the fmt numbers are in the protocol), NOTE (0 ANY, n = note n, 1..127), RELEASE (log, 20 ms .. 2 s); ATK is F_INT ms, HOLD (F_DKHLD) 5 ms a step */
+    F_DKCH, F_DKNOTE, F_DKRLS, F_DKHLD,    /* DUELL DUCK: F_DKCH retired (SRC is an F_ENUM; kept: the fmt numbers are in the protocol), NOTE (0 ANY, n = note n, 1..127), RELEASE (log, 20 ms .. 2 s); ATK is F_INT ms, HOLD (F_DKHLD) 5 ms a step */
        /* DUELL EQ: a gain (-12..+12 dB), the three freqs (a semitone step around 120 Hz /
                                                  * 1 kHz / 8 kHz), Q (1/6 octave steps around 1.0): all 0 at their default */
+    F_FILT                                 /* DUELL 0.2.2 UNIVERSAL FILTER CUT (-64..63): 0 OFF, left of it a low-pass, right of it a high-pass, shown "LP 47" / "HP 47" (appended: the fmt numbers are in the protocol) */
 };
 
 typedef struct {
@@ -73,9 +78,10 @@ enum {                          /* per-track parameters */
     P_DIST, P_CHOR, P_DLY, P_REV,
     P_VOICE, P_GLIDE, P_PAN, P_MUTE,
     P_GLMODE, P_PRIO, P_ALLOC, P_DETUNE,
-    P_FREEA, P_FREEB, P_FREEC, P_FREED,        /* free (were the SLICER insert's SLCR PAT RATE DEPTH, removed): reserved for the
-                                                * universal filter (CUT/RES/TYPE/KTR), SPEC next version. Nothing reads them;
-                                                * old stores may hold the SLICER's values here (1, 1, 127): ignored */
+    P_FREEA, P_FREEB, P_FREEC, P_FREED,        /* were the SLICER insert's SLCR PAT RATE DEPTH (removed). DUELL 0.2.2: P_FREEA is the UNIVERSAL FILTER's CUT
+                                                * (-64..63, 0 = OFF, left a low-pass, right a high-pass) and P_FREEB its RES (0..127), read only on the engines with
+                                                * engine_t.ufilt (voice.c uf_run); P_FREEC, P_FREED stay free (TYPE / KTR, reserved). A store of Felucca's layout
+                                                * (the SLICER's values here: 1, 1, 127) takes the defaults (param_retired) */
     P_M1SRC, P_M1DST, P_M1AMT,                 /* modulation matrix (mod.c): 8 slots of SRC, DST, AMT (DUELL: slots 5..8 */
     P_M2SRC, P_M2DST, P_M2AMT,                 /* on the ids that were DIGITAL's OP ENV, see PL_* below); new common */
     P_M3SRC, P_M3DST, P_M3AMT,                 /* parameters go just before P_E0 (user presets and projects map by */
@@ -178,10 +184,11 @@ static uint32_t eq_hz_q8(uint32_t band, int32_t r)
 #define PL_FM4_LEVEL 80u
 #define PL_LN0 83u                     /* DRUM's lane levels KICK .. BELL */
 #define PL_LN7 90u
-#define PL_NRETIRED 29u
+#define PL_NRETIRED 33u                /* the 29 ids above + P_FREEA..D (the SLICER's: DUELL 0.2.2's universal filter, CUT, RES, two free) */
 static int param_retired(uint32_t id)
 {
-    return id == PL_ED_FX || (id >= PL_FM1_ATK && id <= PL_FM4_LEVEL) || (id >= PL_LN0 && id <= PL_LN7);
+    return id == PL_ED_FX || (id >= PL_FM1_ATK && id <= PL_FM4_LEVEL) || (id >= PL_LN0 && id <= PL_LN7) ||
+           (id >= P_FREEA && id <= P_FREED);   /* (DUELL 0.2.2: the SLICER's ids, in a store of Felucca's layout: CUT / RES / free take their defaults) */
 }
 /* Felucca's defaults at the retired ids (OP ENV ATK DEC 0, SUS 127, REL 0, LEVEL 127; the lane levels 127; ED_FX 0) into
  * def: what a store of Felucca's layout older than those ids loads there by count (DIGITAL's conversion reads them) */
@@ -253,6 +260,8 @@ typedef struct {
     int32_t fine;                /* unison detune: phase increment * (1 + fine / 4096) */
     uint32_t ph[3];
     int32_t s[8];                /* engine state (filters, envs) */
+    int32_t uf[2];               /* the universal filter's integrators (voice.c uf_run; engine_t.ufilt engines only), 0 while it is off */
+    uint8_t uft;                 /* .. its kind as it last ran: 0 off, 1 low-pass, 2 high-pass */
     int32_t apitch;              /* ARP TARGET (SPEC 2.3, voice.c atg_voice): the arp pitch of the masked units, 1/16
                                   * semitone, with glide */
     int32_t again;               /* .. their level (the arp's gate and accent), Q15, smoothed */
@@ -367,6 +376,8 @@ typedef struct {                 /* an engine (engines.c ENGINES[]; the eng_*.c 
      * (after the old one's fade) the region is zeroed when another engine had it (eng_mem_claim) */
     uint16_t mem;
     uint8_t atgt;                /* ARP TARGET's units (SPEC 2.3, params.c atgt_bits): ATG_*, 0 = none (ALL only) */
+    uint8_t ufilt;               /* DUELL 0.2.2: 1 = the engine has no filter of its own: the cutoff routes (ENV / LFO FLT, the matrix's CUT) and the FILTER page's
+                                  * CUT / RES (P_FREEA, P_FREEB) drive the universal per-voice filter (voice.c uf_run) and no longer the engine's tone control */
 } engine_t;
 enum { ATG_NONE, ATG_ANALOG, ATG_TRIO, ATG_FM6, ATG_KINDS };
 
@@ -471,7 +482,7 @@ typedef struct track {
     uint8_t held[16];
     uint8_t nheld;
     uint8_t arp_phys;            /* keys physically held for the arp */
-    uint8_t latched;             /* HOLD: keep notes after release */
+    uint8_t arp_ph;              /* the arp has played a note since the keys were pressed: its next steps are the same phrase (voice.c: the LFO's FADE, and its phase with TRIG NOTE (the option; the default is FREE), restart once, not every step) */
     /* arp runtime */
     uint32_t arp_pos;            /* q8 samples into the current arp step */
     uint32_t arp_idx;
@@ -571,6 +582,22 @@ static volatile uint32_t cpu_sum, cpu_n, cpu_pk, cpu_miss;
 #endif
 #define TRK_HIDDEN(t) ((uint32_t)((t) - trk) >= NLIVE)   /* DUELL: tracks 3..4 never render, sound or own engine memory */
 #define TSEL (&trk[song.sel])    /* the selected track */
+
+/* ONE GLOBAL SCALE (DUELL; owner design 2026-10-12, replaces SCALE LINK): SCALE and ROOT are settings of the instrument, not of a patch,
+ * a part, a MULTI or a factory sound: scale_g (0 = CHROMATIC, the default; an unknown value reads as it) and root_g (0 = C), and the
+ * OFF-SCALE KEYS setting offscale_g: OS_SNAP (the default) moves a key or MIDI note outside the scale to the NEAREST scale note (a tie
+ * goes DOWN) before it reaches the parts (seq.c note_snap); OS_PLAY lets it pass. Chromatic: nothing to snap. The per-part P_SCALE /
+ * P_ROOT / P_QUANT ids stay reserved (patch, MULTI and editor formats do not change) but nothing reads them (a MULTI or an old patch
+ * record that holds a scale is read and discarded; P_ROOT is also SLICE's own key map, eng_slice.c, not a scale). Kept with the settings,
+ * favorites.factory[15][3] (bit 7 the format flag, bit 6 PLAY, bits 0-3 the scale) and [4] (the root): ui.c ui_scale_set / scale_sync;
+ * a zero byte (a new unit, any older blob) is CHROMATIC, C, SNAP. EVERY consumer reads scale_of / root_of (or scale_mask, note_snap:
+ * seq.c); the UI edits scale_g / root_g / offscale_g only (ui_input.c scale_knob, the SCL quick layer). A note already sounding keeps
+ * its pitch (every source remembers the notes it started) */
+enum { OS_SNAP, OS_PLAY, OS_N };
+static volatile int16_t scale_g, root_g;               /* the global SCALE (0 = CHROMATIC) and ROOT (0 = C) */
+static volatile uint8_t offscale_g;                    /* OS_SNAP / OS_PLAY */
+static int32_t scale_of(const track_t *t) { (void)t; return scale_g; }
+static int32_t root_of(const track_t *t) { (void)t; return root_g; }
 
 /* SWING of a track's step clock: the track's own plus the global one, at most 100 (#31). The sequencer
  * (seq.c step_samples) times steps with it. At 100 the even

@@ -2,14 +2,17 @@
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
 /* Chord keys (SCL > CHORD: P_CHRD, P_VOIC): one key, MIDI note or arp input plays a chord. Included by seq.c
  * after kb_map; runs in the audio ISR with the rest of the note input.
- *   CHRD OFF; DIA3 / DIA7: the triad / seventh of the track's scale (ROOT, SCALE) built on the key, every tone
- *        in key; the root stays as played: a key outside the scale (a black key in C major) gets the shape of
- *        the scale note below it, on its own root (C# = C#-F-G#); CHR: the major scale of ROOT;
- *        MAJ MIN DOM7 MAJ7 MIN7 SUS4 POW: that shape on the key, whatever the scale.
+ *   The played note is snapped first (seq.c note_snap: OFF-SCALE KEYS SNAP, the global scale), the chord is built on the note it gives.
+ *   CHRD OFF; DIA3 / DIA7: the triad / seventh of the GLOBAL scale (ROOT, SCALE) built on the note, every tone
+ *        in the scale (stacked scale degrees); with OFF-SCALE PLAY and a root outside the scale the root stays as
+ *        played and the shape is the scale note's below it (C# = C#-F-G#). With the scale CHROMATIC there is no scale
+ *        to stack: they play the plain MAJ triad / MAJ7 (the CHORD page says so: NEEDS SCALE);
+ *        MAJ MIN DOM7 MAJ7 MIN7 SUS4 POW: that shape from the (snapped) root, whatever the scale: its tones are
+ *        the user's explicit choice and are NOT snapped again.
  *   VOIC CLOSE (root position); OPEN (the second tone an octave up: 1-5-3); INV1 / INV2 (the lowest tone, then
  *        the next, an octave up); +OCT (the root an octave down added; a seventh drops its fifth). At most
  *        CHORD_MAX notes, notes outside 0..127 left out.
- * The key is mapped first (kb_map: QNT SNAP / WHITE, TRN, the octave), the chord is built on the note it gives.
+ * The key is mapped first (kb_map: the octave, TRN, OFF-SCALE SNAP), the chord is built on the note it gives.
  * MONO / LEGATO / UNISON parts play the chord's root only; a kit (the DRUM engine, slices: an
  * engine that maps the keys itself) ignores CHRD. Every source keeps the notes it started (kb_chord for a
  * key, mchord for a MIDI note) and its release ends exactly those, so CHRD / VOIC changed while it is held
@@ -39,8 +42,8 @@ static int chord_kit(const track_t *t)
 }
 
 /* the tones of the chord (semitones above *root, ascending, iv[0] = 0) -> their number. *root is never moved:
- * a DIA chord on a root outside the scale has the shape of the scale note below it, built on that root (C# in
- * C major: C's triad 0-4-7 on C#) */
+ * a DIA chord on a root outside the scale (OFF-SCALE PLAY) has the shape of the scale note below it, built on that root (C# in
+ * C major: C's triad 0-4-7 on C#). DIA with the scale CHROMATIC: the plain MAJ triad / MAJ7 */
 static uint32_t chord_tones(const track_t *t, uint32_t mode, int32_t *root, int32_t *iv)
 {
     uint32_t n = 0, i;
@@ -51,9 +54,13 @@ static uint32_t chord_tones(const track_t *t, uint32_t mode, int32_t *root, int3
     }
     {
         uint32_t mask = scale_mask(t), deg[12], c = 0, at = 0, guard = 12;
-        int32_t r = t->p[P_ROOT], b = *root;            /* b: the scale note at or below the root (its shape is used) */
-        if (mask == 0xFFFu)
-            mask = SCALE_MASK[1];                       /* CHR: no key of its own, the major scale of ROOT */
+        int32_t r = root_of(t), b = *root;            /* b: the scale note at or below the root (its shape is used) */
+        if (mask == 0xFFFu) {                           /* CHROMATIC: no scale to stack, the plain MAJ triad / MAJ7 */
+            const int8_t *sh = CHORD_SHAPE[(mode == CH_DIA7 ? CH_MAJ7 : CH_MAJ) - CH_MAJ];
+            for (i = 0; i < CHORD_MAX && sh[i] >= 0; i++)
+                iv[n++] = sh[i];
+            return n;
+        }
         while (guard-- && !((mask >> (uint32_t)((b - r + 120) % 12)) & 1u))
             b--;                                        /* outside the scale: the shape of the scale note below */
         for (i = 0; i < 12u; i++)
@@ -78,6 +85,10 @@ static uint32_t chord_make(const track_t *t, uint32_t root, uint8_t *out, int32_
     int32_t iv[CHORD_MAX + 1u], r = (int32_t)root, x;
     uint32_t mode = (uint32_t)t->p[P_CHRD], n, i, j, m = 0;
     uint16_t mask = 0;
+    if (!chord_kit(t) && !(root & ~127u)) {              /* OFF-SCALE SNAP: the played note first (a kit's notes are its own map) */
+        r = clamp(note_snap(t, r), 0, 127);
+        root = (uint32_t)r;
+    }
     *rp = r;
     *maskp = 0;
     if (!mode || mode > CH_POW || chord_kit(t)) {

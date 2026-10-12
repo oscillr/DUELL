@@ -558,6 +558,7 @@ static void sweep_setup(const sweep_t *s)
     uint32_t e = eng_by_name(s->eng), k;
     track_t *t = &trk[0];
     fresh(e, preset_by_name(e, s->preset));
+    t->p[P_LTRIG] = t->p[P_L2TRIG] = mph[0].base[P_LTRIG] = mph[0].base[P_L2TRIG] = 0;   /* NOTE: the sweeps' seeds were tuned with it (FREE, the default since 0.2.2, lands the shared noise elsewhere) */
     t->p[P_VOICE] = V_POLY;
     t->p[P_SUS] = 110;
     t->p[P_AMODE] = 0;

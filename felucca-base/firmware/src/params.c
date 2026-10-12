@@ -39,11 +39,12 @@ static const param_desc_t ESYNC_DESC[6] = {   /* ATK DEC REL with ENV SYNC on: t
     {"REL2", F_INT, 0, 127, 60, ESYNC_NAMES, 0},
 };
 static uint32_t esync_idx(int32_t v) { return (uint32_t)(v & 127) * ESYNC_N >> 7; }   /* (param_format's split) */
-/* seq.c kb_map; 1 = SNAP (stored projects: the former ON); 3 = SEQ: SNAP, and the sequencer's notes snap too as
- * they play (seq.c seq_step; the steps keep what was written). Append-only: older projects hold 0..2 */
+/* P_QUANT (QNT) is RETIRED (owner 2026-10-12): the OFF-SCALE KEYS setting is global (core.h offscale_g, SNAP / PLAY), no page or key path reads
+ * this any more; the id and its names stay so stored formats and the editor's table hold */
 static const char *const N_QUANT[] = {"OFF", "SNAP", "WHITE", "SEQ"};
 /* chord keys (chord.c): OFF, the diatonic triad / seventh of the track's ROOT and SCALE on the key, fixed shapes */
 static const char *const N_CHRD[] = {"OFF", "DIA3", "DIA7", "MAJ", "MIN", "DOM7", "MAJ7", "MIN7", "SUS4", "POW"};
+static const char *const N_OFFSCALE[] = {"SNAP", "PLAY"};   /* core.h offscale_g: OS_SNAP, OS_PLAY (SCALE page K3) */
 static const char *const N_VOIC[] = {"CLOSE", "OPEN", "INV1", "INV2", "+OCT"};   /* VC_CLOSE .. VC_BASS */
 static const char *const N_VOICE[] = {"POLY", "MONO", "LEG", "UNI"};   /* V_POLY .. V_UNISON */
 static const char *const N_GLMODE[] = {"RATE", "TIME"};
@@ -138,7 +139,11 @@ static const param_desc_t TP[P_COUNT] = {
     [P_DETUNE] = PD("DTUNE", F_INT, 0, 127, 40),
     [P_PAN] = PD("PAN", F_BIPCT, -64, 63, 0),
     [P_MUTE] = PE("MUTE", N_ONOFF, 0),
-    [P_FREEA] = PFREE, [P_FREEB] = PFREE, [P_FREEC] = PFREE, [P_FREED] = PFREE,   /* the SLICER's, removed (core.h) */
+    /* the SLICER's ids (removed). DUELL 0.2.2: P_FREEA is the UNIVERSAL FILTER's CUT, P_FREEB its RES (voice.c uf_run), on the engines with
+     * engine_t.ufilt only; 0 = OFF (the filter is not run: bit for bit as before), RES 0 = Q 0.7. P_FREEC, P_FREED stay free */
+    [P_FREEA] = PD("CUT", F_FILT, -64, 63, 0),
+    [P_FREEB] = PD("RES", F_PCT, 0, 127, 0),
+    [P_FREEC] = PFREE, [P_FREED] = PFREE,
 #define MSLOT(k) [P_M##k##SRC] = PE("SRC" #k, N_MSRC, 0), [P_M##k##DST] = PE("DST" #k, N_MDST, 0), \
                  [P_M##k##AMT] = PD("AMT" #k, F_BIPCT, -64, 63, 0)
     MSLOT(1), MSLOT(2), MSLOT(3), MSLOT(4), MSLOT(5), MSLOT(6), MSLOT(7), MSLOT(8),
@@ -159,7 +164,7 @@ static const param_desc_t TP[P_COUNT] = {
     [P_CHRD] = PE("CHRD", N_CHRD, 0),
     [P_VOIC] = PE("VOIC", N_VOIC, 0),
     [P_L2SYNC] = PE("SYNC2", N_LSYNC, 0),
-    [P_L2TRIG] = PE("TRIG2", N_LTRIG, 0),
+    [P_L2TRIG] = PE("TRIG2", N_LTRIG, 1),   /* DUELL 0.2.2: FREE (free-running) is the default, NOTE the option */
     [P_L2POL] = PE("POL2", N_LPOL, 0),
     [P_ATGT] = PE("TRGT", N_ATG_FM6, 0),         /* ARP TARGET (SPEC 2.3): the device shows the engine's (atgt_desc) */
     [P_EQLF] = PD("LO HZ", F_EQLO, -24, 24, 0),   /* LOW shelf's corner, 120 Hz at 0 (30 .. 480 Hz) */
@@ -167,7 +172,7 @@ static const param_desc_t TP[P_COUNT] = {
     [P_EQMF] = PD("MD HZ", F_EQMID, -24, 24, 0),  /* MID's centre, 1 kHz at 0 (250 Hz .. 4 kHz) */
     [P_EQMQ] = PD("Q", F_EQQ, -12, 12, 0),        /* MID's Q, 1.0 at 0 (0.25 .. 4) */
     [P_LSYNC] = PE("SYNC", N_LSYNC, 0),
-    [P_LTRIG] = PE("TRIG", N_LTRIG, 0),
+    [P_LTRIG] = PE("TRIG", N_LTRIG, 1),    /* DUELL 0.2.2: FREE by default (was NOTE); the sparse patch store keeps NOTE as its own default: upreset.c up_def */
     [P_LPOL] = PE("POL", N_LPOL, 0),
     [P_SQNT] = PE("QNTZ", N_ONOFF, 1),            /* ON: every step on its start, as before 1.2 */
     [P_SPRD] = PD("SPRD", F_PCT, 0, 127, 0),      /* #148: 0 = every voice on PAN, as before (fx.c mix_spread) */
@@ -514,6 +519,14 @@ static void param_format(const param_desc_t *d, int32_t v, char *val, const char
         }
         break;
     }
+    case F_FILT:                                    /* DUELL 0.2.2: CUT, 0 OFF, else the share of the dial (100 % = -64) and LP / HP */
+        if (!v) {
+            str_cpy(val, "OFF", 6);
+        } else {
+            fmt_int(val, ((v < 0 ? -v : v) * 100 + 32) / 64);
+            *unit = v < 0 ? "LP" : "HP";
+        }
+        break;
     case F_DKNOTE:
         if (v <= 0)
             str_cpy(val, "ANY", 6);
@@ -568,6 +581,8 @@ enum { SC_TRACK, SC_GLOBAL, SC_ENGINE, SC_STEP, SC_TRK,   /* SC_TRK: the TRACKS 
        SC_MORPH,         /* DUELL 4b: HOME's MORPH pages: no parameter, the morph's controls (ui_input.c morph_knob) */
        SC_MODE,          /* DUELL step 5: HOME's MODE page: the output MODE, no parameter (ui_input.c mode_knob) */
        SC_TEST,          /* DUELL 0.1-beta: GLO's TEST page (CPU test): no parameter, ui_input.c test_knob */
+       SC_SCALE,         /* DUELL: the SCL button's first page, GLOBAL (core.h scale_g, root_g, offscale_g): K1 SCALE, K2 ROOT, K3 OFF-SCALE; no parameter id
+                          * (ui_input.c scale_knob); page_global() below: the header lights both parts */
        SC_MIDI };        /* DUELL step 6: GLO's MIDI pages (all MIDI settings live here): MIDI (KNOB 1, 2 the parts' channels, KNOB 3 MIDI IN, KNOB 4 CLK),
                           * SIDECHAIN (KNOB 1, 2 the selected part's DUCK SRC and NOTE: the track's own parameters), MIDI LEARN (KNOB 1 LEARN, KNOB 2 CLEAR):
                           * ui_input.c midi_knob */
@@ -577,7 +592,7 @@ enum { GR_NONE, GR_ADSR, GR_LFO, GR_STEPS, GR_ARP, GR_SCALE, GR_FX, GR_ROLL, GR_
        GR_ENGINE,        /* GR_ENGINE: EDIT's first page: ENGINE, SOUND, FAV, INIT (SPEC 1.2) */   /* (GR_STEPS: SEQ TOOLS' knobs; GR_FMOP..: FM6's operator pages, ui_fm6op.c) */
        GR_MORPH, GR_MORPHSET,     /* DUELL 4b: HOME's MORPH (fader, AMOUNT, ROLL, UNDO) and MORPH SET (TARGET SMART ARP PITCH) */
        GR_MODE,                   /* DUELL step 5: HOME's MODE (SPLIT / STEREO / LAYER, SPEC 5b.1) */
-       GR_GLO, GR_MIDI, GR_MLEARN,   /* DUELL step 6: GLO (MUTE, SOLO, the parts' LEVELs and the level meters), MIDI (GR_MIDI: channels, MIDI IN, CLK), MIDI LEARN */
+       GR_GLO, GR_MIDI, GR_MLEARN,   /* DUELL step 6: GLO (MUTE 1, MUTE 2, the parts' LEVELs and the level meters), MIDI (GR_MIDI: channels, MIDI IN, CLK), MIDI LEARN */
        GR_SCHAIN,                    /* DUELL 0.1: SIDECHAIN (the selected part's DUCK SRC / NOTE; was KNOB 3, 4 of the MIDI page) */
        GR_TEST,                      /* DUELL 0.1-beta: GLO's TEST page (the CPU test: multi, engines, patches, CPU load; ui_menu.c graph_test) */
        GR_TEMPO };                   /* DUELL 2026-10-12: GLO's TEMPO page (KNOB 1 TEMPO, 2 SWG, 3 TAP: ui_input.c tempo_tap) */
@@ -603,38 +618,42 @@ static const page_t PAGES[] = {
     {"LFO 2", FAM_LFO, SC_TRACK, GR_LFO, {P_L2RATE, P_L2WAVE, P_L2PHASE, P_L2FADE}},   /* DUELL: LFO 2, a matrix source */
     {"LFO 2 SYNC", FAM_LFO, SC_TRACK, GR_LFO, {P_L2SYNC, P_L2TRIG, P_L2POL, 0xFF}},
     {"LFO 2 DEST", FAM_LFO, SC_TRACK, GR_NONE, {P_L2PIT, P_L2FLT, P_L2SHP, 0xFF}},   /* DUELL: LFO 2's own depths (AMP: the matrix) */
-    {"MOD 1", FAM_LFO, SC_TRACK, GR_MOD, {0xFF, P_M1SRC, P_M1DST, P_M1AMT}},   /* KNOB 1: the slot (mod_ui_slot) */
-    {"MOD 2", FAM_LFO, SC_TRACK, GR_MOD, {0xFF, P_M5SRC, P_M5DST, P_M5AMT}}, /* DUELL: slots 5..8, the same layout */
+    {"MATRIX 1-4", FAM_LFO, SC_TRACK, GR_MOD, {0xFF, P_M1SRC, P_M1DST, P_M1AMT}},   /* KNOB 1: the slot (mod_ui_slot) */
+    {"MATRIX 5-8", FAM_LFO, SC_TRACK, GR_MOD, {0xFF, P_M5SRC, P_M5DST, P_M5AMT}}, /* DUELL: slots 5..8, the same layout */
     /* FAM_FX in the order the sound flows (fx.c mix_part): the part's DIST (FX page, KNOB 1) -> INSERT -> EQ -> DUCK -> level, pan and the
      * sends (FX page KNOBS 2-4), then the global buses side by side: CHORUS and the delay (DLY 1, 2) summed, the REVERB added last (fx_bus.c) */
     {"FX", FAM_FX, SC_TRACK, GR_FX, {P_DIST, P_CHOR, P_DLY, P_REV}},
-    {"INSERT 1", FAM_FX, SC_TRACK, GR_INS, {P_ITYPE, P_IA, P_IB, P_IC}},   /* 1.5: the track's INSERT (fx.c) */
-    {"INSERT 2", FAM_FX, SC_TRACK, GR_INS, {P_IMIX, 0xFF, 0xFF, 0xFF}},  /* .. its dry / wet */
-    {"EQ 1", FAM_FX, SC_TRACK, GR_NONE, {P_EQLG, P_EQLF, P_EQHG, P_EQHF}},     /* DUELL (SPEC 5c.3): the part's EQ after its INSERT: LOW and */
-    {"EQ 2", FAM_FX, SC_TRACK, GR_NONE, {P_EQMG, P_EQMF, P_EQMQ, 0xFF}},
-    {"DUCK 1", FAM_FX, SC_TRACK, GR_NONE, {P_DKSRC, P_DKRATE, P_DKDEP, P_DKATK}},   /* DUELL (SPEC 5c.4): the part's sidechain; KNOB 2 is RATE / THR / NOTE by SRC (duck_ctx_id) */
-    {"DUCK 2", FAM_FX, SC_TRACK, GR_NONE, {P_DKHLD, P_DKRLS, P_DKCRV, 0xFF}},
+    {"INSERT 1/2", FAM_FX, SC_TRACK, GR_INS, {P_ITYPE, P_IA, P_IB, P_IC}},   /* 1.5: the track's INSERT (fx.c) */
+    {"INSERT 2/2", FAM_FX, SC_TRACK, GR_INS, {P_IMIX, 0xFF, 0xFF, 0xFF}},  /* .. its dry / wet */
+    {"EQ 1/2", FAM_FX, SC_TRACK, GR_NONE, {P_EQLG, P_EQLF, P_EQHG, P_EQHF}},     /* DUELL (SPEC 5c.3): the part's EQ after its INSERT: LOW and */
+    {"EQ 2/2", FAM_FX, SC_TRACK, GR_NONE, {P_EQMG, P_EQMF, P_EQMQ, 0xFF}},
+    {"DUCK 1/2", FAM_FX, SC_TRACK, GR_NONE, {P_DKSRC, P_DKRATE, P_DKDEP, P_DKATK}},   /* DUELL (SPEC 5c.4): the part's sidechain; KNOB 2 is RATE / THR / NOTE by SRC (duck_ctx_id) */
+    {"DUCK 2/2", FAM_FX, SC_TRACK, GR_NONE, {P_DKHLD, P_DKRLS, P_DKCRV, 0xFF}},
     {"CHORUS", FAM_FX, SC_GLOBAL, GR_NONE, {G_CRATE, G_CDEPTH, 0xFF, 0xFF}},
-    {"DLY 1", FAM_FX, SC_GLOBAL, GR_NONE, {G_DTIME, G_DFDBK, G_DCOLOR, G_DMIX}},
-    {"DLY 2", FAM_FX, SC_GLOBAL, GR_NONE, {G_PINGPONG, G_PINGSPREAD, 0xFF, 0xFF}},   /* DUELL: PING-PONG (STEREO / LAYER; fx_bus.c) */
+    {"DELAY 1/2", FAM_FX, SC_GLOBAL, GR_NONE, {G_DTIME, G_DFDBK, G_DCOLOR, G_DMIX}},
+    {"DELAY 2/2", FAM_FX, SC_GLOBAL, GR_NONE, {G_PINGPONG, G_PINGSPREAD, 0xFF, 0xFF}},   /* DUELL: PING-PONG (STEREO / LAYER; fx_bus.c) */
     {"REVERB", FAM_FX, SC_GLOBAL, GR_NONE, {G_RTYPE, G_RSIZE, G_RDAMP, 0xFF}},   /* TYPE: ROOM / SPRING / HALL / SHIM / RESO */
-    {"SCL", FAM_SCL, SC_TRACK, GR_SCALE, {P_ROOT, P_SCALE, P_QUANT, P_TRANS}},
-    {"CHORD", FAM_SCL, SC_TRACK, GR_CHORD, {P_CHRD, P_VOIC, 0xFF, 0xFF}},   /* SCL again: the chord keys (chord.c) */
+    /* SCL (the button printed SEL): page 1 SCALE is GLOBAL (K1 SCALE, K2 ROOT, K3 OFF-SCALE SNAP / PLAY: the instrument's, core.h), page 2 CHORD is the
+     * SELECTED PART's (K1 CHRD, K2 VOIC, K3 TRN: chord.c). No page mixes the two kinds (owner rule) */
+    {"SCALE", FAM_SCL, SC_SCALE, GR_SCALE, {0xFF, 0xFF, 0xFF, 0xFF}},
+    {"CHORD", FAM_SCL, SC_TRACK, GR_CHORD, {P_CHRD, P_VOIC, P_TRANS, 0xFF}},
     /* SPEC 1.2: EDIT's first sub-page is the ENGINE page (the engine is never hidden behind a hold), then the engine's */
     {"ENGINE", FAM_EDIT, SC_TRACK, GR_ENGINE, {0xFF, 0xFF, 0xFF, 0xFF}},   /* KNOB 1 ENGINE, 2 SOUND, 3 FAV, 4 INIT */
     {"EDIT 1", FAM_EDIT, SC_ENGINE, GR_NONE, {P_E0, P_E1, P_E2, P_E3}},
     {"EDIT 2", FAM_EDIT, SC_ENGINE, GR_NONE, {P_E4, P_E5, P_E6, P_E7}},
     {"FILTER", FAM_EDIT, SC_TRACK, GR_NONE, {P_FTYPE, P_E4, P_E5, P_E7}},   /* ANALOG only (1.5, #104): TYPE CUT RES KTR */
+    {"FILTER", FAM_EDIT, SC_TRACK, GR_NONE, {P_FREEA, P_FREEB, 0xFF, 0xFF}},   /* DUELL 0.2.2: the engines with no filter of their own (engine_t.ufilt):
+                                                                             * the universal filter, K1 CUT (LP | OFF | HP), K2 RES; the same slot as ANALOG's */
     {"SLICES", FAM_EDIT, SC_TRACK, GR_SLICES, {0xFF, 0xFF, 0xFF, 0xFF}},   /* SLICE only: the slices by hand (ui_slice.c) */
-    {"OPERATOR 1", FAM_EDIT, SC_TRACK, GR_FMOP, {0xFF, 0xFF, 0xFF, 0xFF}},    /* FM6 only: KNOB 1 the operator, then its */
+    {"OP TUNE", FAM_EDIT, SC_TRACK, GR_FMOP, {0xFF, 0xFF, 0xFF, 0xFF}},    /* FM6 only: KNOB 1 the operator, then its */
     {"OP ENV", FAM_EDIT, SC_TRACK, GR_FMENV, {0xFF, 0xFF, 0xFF, 0xFF}},     /* bytes of the track's patch (ui_fm6op.c): */
-    {"OPERATOR 2", FAM_EDIT, SC_TRACK, GR_FMOP2, {0xFF, 0xFF, 0xFF, 0xFF}}, /* CRS FINE LEVEL / STG RATE LEVEL / MODE DTUN VEL */
-    {"VOICE 1", FAM_EDIT, SC_TRACK, GR_NONE, {P_VOICE, P_GLIDE, P_GLMODE, P_PRIO}},
-    {"VOICE 2", FAM_EDIT, SC_TRACK, GR_NONE, {P_ALLOC, P_DETUNE, P_PAN, P_MUTE}},
-    {"VOICE 3", FAM_EDIT, SC_TRACK, GR_NONE, {P_SPRD, 0xFF, 0xFF, 0xFF}},   /* #148: SPREAD */
+    {"OP MODE", FAM_EDIT, SC_TRACK, GR_FMOP2, {0xFF, 0xFF, 0xFF, 0xFF}}, /* CRS FINE LEVEL / STG RATE LEVEL / MODE DTUN VEL */
+    {"VOICE 1/3", FAM_EDIT, SC_TRACK, GR_NONE, {P_VOICE, P_GLIDE, P_GLMODE, P_PRIO}},
+    {"VOICE 2/3", FAM_EDIT, SC_TRACK, GR_NONE, {P_ALLOC, P_DETUNE, P_PAN, P_MUTE}},
+    {"VOICE 3/3", FAM_EDIT, SC_TRACK, GR_NONE, {P_SPRD, 0xFF, 0xFF, 0xFF}},   /* #148: SPREAD */
     /* 1.2 (Discussion #153): a family's pages go round in this order, a tap of its button each (ui.c open_family) */
-    /* DUELL (SPEC 1.3, step 6; reworked 2026-10-12): GLO's pages, in this order: the main page GLO (graph GR_GLO: KNOB 1 MUTE and 2 SOLO, both
-     * two-sided (a twist left acts on part 1, right on part 2, once per twist), KNOB 3, 4 LEVEL 1, 2; between the parts' columns their level
+    /* DUELL (SPEC 1.3, step 6; reworked 2026-10-12): GLO's pages, in this order (the CPU TEST is not one of them: MENU > SYSTEM > TEST): the main page GLO (graph GR_GLO: KNOB 1 MUTE 1 and 2 MUTE 2,
+     * each its own part (a twist right mutes it, left unmutes it, once per twist), KNOB 3, 4 LEVEL 1, 2; between the parts' columns their level
      * meters; the keys play notes: ui_layer.c glo_knob), then ALL the MIDI settings (none in MENU): MIDI (KNOB 1 P1 CH, 2 P2 CH, 3 MIDI IN:
      * OWN CH / SELECTED, 4 CLK: the clock source INT, USB or TRS), SIDECHAIN (KNOB 1 SC SRC, 2 SC NOTE), MIDI LEARN (KNOB 1 LEARN, 2 CLEAR),
      * then TEMPO (graph GR_TEMPO): KNOB 1 TEMPO (inert, EXT, with an external MIDI clock), KNOB 2 SWG, KNOB 3 TAP (a detent either way is
@@ -644,7 +663,6 @@ static const page_t PAGES[] = {
     {"SIDECHAIN", FAM_GLO, SC_MIDI, GR_SCHAIN, {P_DKSRC, P_DKNOTE, 0xFF, 0xFF}},
     {"MIDI LEARN", FAM_GLO, SC_MIDI, GR_MLEARN, {0xFF, 0xFF, 0xFF, 0xFF}},
     {"TEMPO", FAM_GLO, SC_GLOBAL, GR_TEMPO, {G_BPM, G_SWING, 0xFF, 0xFF}},
-    {"TEST", FAM_GLO, SC_TEST, GR_TEST, {0xFF, 0xFF, 0xFF, 0xFF}},   /* the CPU test (beta): K1 MORPH, K2 ROLL, K3 LOAD MULTI, K4 RESET (ui_input.c test_knob) */
     /* SAVE's taps (1.5, #173; names and order 2026-10-11, 2026-10-12): PATCHES (one list of the sounds; SAVE's first tap), PATTERNS (Felucca's PHRASES, with DUELL's slots P1..P16), MULTI
      * (DUELL: Felucca's PROJECT, sixteen multis M01..M16: SLOT, LOAD ERASE SAVE; project.c multi.c), TOOLS.
      * DUELL has no song mode: GLO keeps the TEMPO page, Felucca's SONG page is gone */
@@ -654,9 +672,9 @@ static const page_t PAGES[] = {
                                                                              * patslot.c); the tap after PRESETS */
     {"MULTIS", FAM_SAVE, SC_GLOBAL, GR_SLOTS, {G_SLOT, G_LOAD, 0xFF, G_SAVE}},   /* KNOB 1 the multi, then LOAD ERASE SAVE */
     {"TOOLS", FAM_SAVE, SC_GLOBAL, GR_TOOLS, {G_CLRSEQ, G_INITSND, 0xFF, 0xFF}},
-    {"ARP 1", FAM_ARP, SC_TRACK, GR_ARP, {P_AMODE, P_ARATE, P_AOCT, P_AGATE}},
-    {"ARP 2", FAM_ARP, SC_TRACK, GR_NONE, {P_ASWING, P_APROB, P_AHOLD, P_AORDER}},
-    {"ARP 3", FAM_ARP, SC_TRACK, GR_NONE, {P_ATGT, 0xFF, 0xFF, 0xFF}},   /* DUELL: ARP TARGET (SPEC 2.3) */
+    {"ARP 1/3", FAM_ARP, SC_TRACK, GR_ARP, {P_AMODE, P_ARATE, P_AOCT, P_AGATE}},
+    {"ARP 2/3", FAM_ARP, SC_TRACK, GR_NONE, {P_ASWING, P_APROB, P_AHOLD, P_AORDER}},
+    {"ARP 3/3", FAM_ARP, SC_TRACK, GR_NONE, {P_ATGT, 0xFF, 0xFF, 0xFF}},   /* DUELL: ARP TARGET (SPEC 2.3) */
     {"STEP", FAM_SEQ, SC_STEP, GR_ROLL, {0, 1, 2, 3}},
     {"AUTOMATION", FAM_SEQ, SC_TRACK, GR_EVENTS, {0xFF, 0xFF, 0xFF, 0xFF}},  /* the locks, events, CHANCE and RATCH as a
                                                                              * list, PLAY and CLEAR (ui_events.c) */
@@ -673,10 +691,23 @@ static const page_t PAGES[] = {
     /* the matrix pages again as the ENV family's last two (after AMP ENV, AMP DEST, ENV 2, ENV 2 DEST): the same title, graph and ids as the LFO
      * family's MOD 1 / MOD 2, so ENV 2 is routable without the LFO button. Appended here so no earlier PAGES index moves; the family
      * order, the counter and the remembered page work by index + family, the help by title (the same hint), mod_ui_slot is shared */
-    {"MOD 1", FAM_ENV, SC_TRACK, GR_MOD, {0xFF, P_M1SRC, P_M1DST, P_M1AMT}},
-    {"MOD 2", FAM_ENV, SC_TRACK, GR_MOD, {0xFF, P_M5SRC, P_M5DST, P_M5AMT}},
+    {"MATRIX 1-4", FAM_ENV, SC_TRACK, GR_MOD, {0xFF, P_M1SRC, P_M1DST, P_M1AMT}},
+    {"MATRIX 5-8", FAM_ENV, SC_TRACK, GR_MOD, {0xFF, P_M5SRC, P_M5DST, P_M5AMT}},
 };
 #define NPAGES (sizeof(PAGES) / sizeof(PAGES[0]))
+/* The CPU TEST screen (DUELL 0.2.2): on no button and in no family's round (not in PAGES: the GLO group is GLO, MIDI, SIDECHAIN, MIDI LEARN, TEMPO).
+ * MENU > SYSTEM > TEST (ui.menu 3, ui_menu.c) shows it by making this the current page (ui.c page_over) while it draws and takes the knobs: the multi, each
+ * part's engine and patch, the CPU meter; K1 MORPH, K2 ROLL, K3 LOAD MULTI, K4 RESET (ui_input.c test_knob) */
+#if DUELL_TEST_MODE                                      /* developer builds only (DUELL_TEST_MODE); SC_TEST / GR_TEST stay in the enums so no id moves */
+static const page_t TEST_PAGE = {"TEST", FAM_GLO, SC_TEST, GR_TEST, {0xFF, 0xFF, 0xFF, 0xFF}};
+#endif
+/* GLOBAL pages: they edit the instrument, not the selected part, so the header's part badges light BOTH parts equally (ui_draw.c badge_lit) and
+ * the page says it. One flag for the header: the SCALE page and GLO's pages except SIDECHAIN (the selected part's DUCK SRC / NOTE) and TEST (the selected part's MORPH). A page
+ * never mixes global and per-part controls. (Other global pages: CHORUS, DLY 1/2, REVERB, MODE, MULTIS, TEMPO: see the audit) */
+static int page_global(const page_t *pg)
+{
+    return pg->scope == SC_SCALE || (pg->fam == FAM_GLO && pg->graph != GR_SCHAIN && pg->scope != SC_TEST);
+}
 static uint8_t mod_ui_slot;      /* the MOD pages: the matrix slot of the page (0..3: MOD 1..4, MOD 2 5..8) KNOB 2..4 edit */
 /* a MOD page's first slot (0: MOD, 4: MOD 2) */
 static uint32_t mod_page_base(const page_t *pg) { return (uint32_t)(pg->id[1] - P_M1SRC) / 3u; }
@@ -694,7 +725,8 @@ static const param_desc_t *page_desc(const page_t *pg, uint32_t slot, int16_t **
         *valp = 0;
         return 0;
     }
-    if (pg->scope == SC_STEP || pg->scope == SC_TRK || pg->scope == SC_MORPH || pg->scope == SC_MODE || pg->scope == SC_TEST) {
+    if (pg->scope == SC_STEP || pg->scope == SC_TRK || pg->scope == SC_MORPH || pg->scope == SC_MODE || pg->scope == SC_TEST ||
+        pg->scope == SC_SCALE) {
         *valp = 0;
         return 0;
     }

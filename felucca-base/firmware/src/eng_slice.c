@@ -645,4 +645,5 @@ static const engine_t ENG_SLICE = {
     .keys = slice_keys,
     .amp = slice_amp,
     .mem = sizeof(slc_rbuf_t),
+    .ufilt = 1,                 /* DUELL 0.2.2: no filter of its own: the universal filter (voice.c uf_run, P_FREEA CUT / P_FREEB RES) */
 };

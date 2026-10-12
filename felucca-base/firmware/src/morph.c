@@ -243,6 +243,14 @@ static mtag_t morph_tag(const engine_t *e, const int8_t *o, uint32_t id, uint32_
     uint32_t i, k;
     if (id >= P_COUNT)
         return g;
+    if ((id == P_FREEA || id == P_FREEB) && e->ufilt) {  /* DUELL 0.2.2: the universal filter's CUT and RES, continuous like any other. SMART: a filter that is
+                                                         * off (CUT 0) stays off, and so does its RES (unheard): a roll never switches it on; WILD rolls from
+                                                         * the centre too. Drawn from a stream of their own (morph_roll_pure) */
+        if (!o[P_FREEA] && !(mrc & (MC_WILD | MC_LIST)))
+            return g;
+        g.kind = MK_CONT;
+        return g;
+    }
     if (id < P_E0) {
         g = morph_cfg_tag(MT[id], e, id, stereo);
         if ((MT[id].flags & MF_DUCK) && !o[P_DKDEP] && !(mrc & (MC_WILD | MC_LIST)))
@@ -820,7 +828,7 @@ static void morph_rules(const engine_t *e, const int8_t *o, int8_t *end, uint32_
 static void morph_roll_pure(const int8_t *o, int8_t *end, const engine_t *e, uint32_t amount, uint32_t seed,
                             uint32_t part, uint32_t stereo)
 {
-    uint32_t rs = morph_state(seed, part), rs2 = morph_state(seed, part + 8u), id;
+    uint32_t rs = morph_state(seed, part), rs2 = morph_state(seed, part + 8u), rs3 = morph_state(seed, part + 16u), id;
     for (id = 0; id < P_COUNT; id++)
         end[id] = o[id];
     if (!amount)
@@ -831,7 +839,12 @@ static void morph_roll_pure(const int8_t *o, int8_t *end, const engine_t *e, uin
         const param_desc_t *pd = morph_desc(e, id);
         uint32_t *r = id >= P_E2FLT && id <= P_L2SHP ? &rs2 : &rs;   /* (ENV 2 / LFO 2 DEST: their own stream, so a seed of
                                                                        * before draws every other value as it did) */
-        if (g.kind == MK_CONT) {
+        if ((id == P_FREEA || id == P_FREEB) && e->ufilt) {   /* DUELL 0.2.2: the universal filter's CUT, RES: rs3 (so a seed of before draws every */
+            if ((mrc & MC_WILD) && mr_below(r, 100u) < amount)   /* other value as it did); the SLICER's draws they had stay on rs */
+                (void)mr_next(r);
+            if (g.kind == MK_CONT)
+                end[id] = (int8_t)morph_cont(&rs3, g, pd, o[id], amount);
+        } else if (g.kind == MK_CONT) {
             end[id] = (int8_t)morph_cont(r, g, pd, o[id], amount);
         } else if (g.kind == MK_FADE) {
             if (mr_below(r, 100u) < amount)
@@ -927,7 +940,7 @@ static uint32_t morph_fm6(uint32_t tr, uint8_t *p);
 static int morph_stale(const track_t *t, const morph_part_t *mp);
 static void morph_fm_live(uint32_t pi, uint8_t *live);
 
-#ifdef FM1_IRQ_TARGET
+#if defined(FM1_IRQ_TARGET) || defined(HOST_IRQ_HOOK)    /* (HOST_IRQ_HOOK: tests/loadcost_test.c counts the windows) */
 #define MORPH_LOCK() fm1_irq_off()
 #define MORPH_UNLOCK() fm1_irq_on()
 #else
@@ -944,8 +957,16 @@ static void morph_build(morph_part_t *mp)
     uint8_t sv = mrc;
     mrc = MC_ARP | MC_PIT | MC_LIST;                     /* v2: smart, permissive: whatever an end was rolled with is listed */
     for (id = 0; id < P_COUNT; id++) {
-        mtag_t g = morph_tag(e, mp->base, id, 1);
-        uint32_t w = g.kind == MK_SLOT ? 3u : 1u, diff = 0;
+        mtag_t g;
+        uint32_t w, diff = 0;
+        for (q = 0; q < 3u && id + q < P_COUNT; q++)   /* nothing differs here (a slot is 3 wide): listed whatever the tag says, so */
+            diff |= a[id + q] != mp->base[id + q] || b[id + q] != mp->base[id + q] ||   /* skip the tag lookup (most values: it */
+                    (ramp && s[id + q] != mp->base[id + q]);    /* cost ~15 k instructions a build, with interrupts off) */
+        if (!diff)
+            continue;
+        diff = 0;
+        g = morph_tag(e, mp->base, id, 1);
+        w = g.kind == MK_SLOT ? 3u : 1u;
         if (g.kind == MK_EX || g.kind == MK_HARD ||     /* (a WILD end: a switch flips; a fade outside its values flips) */
             (g.kind == MK_FADE && (g.flags & MF_NFADE) &&
              (a[id] < 0 || a[id] >= g.lim || b[id] < 0 || b[id] >= g.lim || s[id] < 0 || s[id] >= g.lim)))

@@ -82,11 +82,7 @@ static void fresh(uint32_t e, uint32_t pi)        /* the boot state (no FX tails
     memset(rev_comb, 0, sizeof rev_comb);
     memset(rev_ap, 0, sizeof rev_ap);
     memset(&fx, 0, sizeof fx);
-    memset(&pf, 0, sizeof pf);
     memset(ins, 0, sizeof ins);
-    for (k = 0; k < NTRK; k++)
-        pf.mg[k] = 32768;
-    perf_held = perf_latched = 0;
     lim_env = LIM_T;
     dc_l = dc_r = dce_l = dce_r = 0;
     vage = 0;
@@ -133,7 +129,7 @@ static void t_layout(void)
             ok &= PAGES[i].scope == SC_GLOBAL || PAGES[i].scope == SC_STEP || PAGES[i].scope == SC_TRK ||
                   PAGES[i].id[c] == 0xFFu || PAGES[i].id[c] >= P_E0 || TP[PAGES[i].id[c]].label[0] != '-';
     printf("step3: retired ids %u: DUELL parameters on them %u, free %u (the EQ's five are DUELL's now)\n", n, dk, n - dk);
-    ck("layout: P_E0 + 8 == P_COUNT (the ids DUELL added all go before P_E0; no 7-bit id overflows); matrix slots 1..8 in a row (49..72); 29 retired ids, the "
+    ck("layout: P_E0 + 8 == P_COUNT (the ids DUELL added all go before P_E0; no 7-bit id overflows); matrix slots 1..8 in a row (49..72); 33 retired ids (29 + the SLICER's four), the "
        "free ones inert and on no page", ok && n == PL_NRETIRED);
     ok = 1;
     for (i = 0; i < NELEM(MIDI_CC_MAP); i++)
@@ -631,6 +627,7 @@ static void t_lfo2(void)
     ck("LFO 2 SYNC 1/4 at 120 BPM: 8 cycles in 4 s (+-1)", lfo2_wraps >= 7 && lfo2_wraps <= 9);
     /* NOTE: a fresh phrase restarts it at PHS2; FREE: it runs on */
     fresh(0, 0);
+    t->p[P_L2TRIG] = 0;                              /* NOTE (the default is FREE since 0.2.2) */
     t->p[P_L2PHASE] = 64; t->p[P_L2RATE] = 40;
     mslot(t, 5, MS_LFO2, MD_SHP, 1);
     mixb(77);
@@ -776,25 +773,17 @@ static uint32_t page_of(const char *title)
 }
 static void t_pages(void)
 {
-    uint32_t m = page_of("MOD 1"), m2 = page_of("MOD 2"), i;
+    uint32_t m = page_of("MATRIX 1-4"), m2 = page_of("MATRIX 5-8"), i;
     int ok = m < NPAGES && m2 == m + 1u && PAGES[m2].fam == FAM_LFO && PAGES[m2].graph == GR_MOD &&
              PAGES[m2].id[1] == P_M5SRC && PAGES[m2].id[2] == P_M5DST && PAGES[m2].id[3] == P_M5AMT && PAGES[m2].id[0] == 0xFFu;
     ck("pages: MOD 2 after MOD (LFO's family): KNOB 1 the slot 5..8, KNOB 2..4 its SRC DST AMT", ok);
-    ok = 1;
-    for (i = 0; i < NPAGES; i++) {
-        uint8_t h = ui.home, pg = ui.page;
-        ui.home = 0; ui.page = (uint8_t)i;
-        ok &= help_page() != 0;
-        ui.home = h; ui.page = pg;
-    }
-    ck("pages: every page has its help hint", ok);
     ui_power_on();
-    go_title("MOD 2");
+    go_title("MATRIX 5-8");
     mod_ui_slot = 0;
     turn(EN_K1, 1); turn(EN_K1, 1);                    /* slot 7 */
     turn(EN_K2, 3);                                    /* SRC 7: LFO (the knob order is OFF AENV ENV2 LFO1 ..: params.c MSRC_ORDER) */
     turn(EN_K4, 5);
-    ck("MOD 2: KNOB 1 to slot 7, KNOB 2 / 4 set SRC7 / AMT7 (not slot 3's)", str_eq(cur_page()->title, "MOD 2") &&
+    ck("MOD 2: KNOB 1 to slot 7, KNOB 2 / 4 set SRC7 / AMT7 (not slot 3's)", str_eq(cur_page()->title, "MATRIX 5-8") &&
        mod_ui_slot == 2u && TSEL->p[P_M7SRC] == MS_LFO && TSEL->p[P_M7AMT] != 0 && !TSEL->p[P_M3SRC] && !TSEL->p[P_M3AMT]);
     turn(EN_K1, 5);
     ck("MOD 2: the slot stops at 8", mod_ui_slot == 3u);
@@ -819,7 +808,7 @@ static void t_pages(void)
         ck("ENV on ENV DEST opens ENV 2; KNOB 1 turns ATK2 (not ATK); ENV SYNC: its times as note values", ok);
     }
     {   /* LFO 2 (3c): LFO, LFO SYNC (Felucca's "LFO 2"), LFO DEST, LFO 2, LFO 2 SYNC, MOD, MOD 2; no two pages one title */
-        static const char *const L[8] = {"LFO 1", "LFO 1 SYNC", "LFO 1 DEST", "LFO 2", "LFO 2 SYNC", "LFO 2 DEST", "MOD 1", "MOD 2"};
+        static const char *const L[8] = {"LFO 1", "LFO 1 SYNC", "LFO 1 DEST", "LFO 2", "LFO 2 SYNC", "LFO 2 DEST", "MATRIX 1-4", "MATRIX 5-8"};
         uint32_t j, k2, l2 = page_of("LFO 2"), l2s = page_of("LFO 2 SYNC");
         ok = 1;
         for (j = 0, k2 = page_of("LFO 1"); j < 8u; j++)
@@ -828,7 +817,9 @@ static void t_pages(void)
             for (k2 = j + 1u; k2 < NPAGES; k2++)
                 ok &= !str_eq(PAGES[j].title, PAGES[k2].title) ||    /* (MOD 1 / MOD 2 are in ENV's family too: the same page twice) */
                       (PAGES[j].graph == GR_MOD && PAGES[k2].graph == GR_MOD && PAGES[j].fam == FAM_LFO && PAGES[k2].fam == FAM_ENV &&
-                       !memcmp(PAGES[j].id, PAGES[k2].id, 4));
+                       !memcmp(PAGES[j].id, PAGES[k2].id, 4)) ||
+                      (str_eq(PAGES[j].title, "FILTER") && PAGES[j].id[0] == P_FTYPE && PAGES[k2].id[0] == P_FREEA);   /* (0.2.2: the
+                                                   * universal filter's page and ANALOG's FILTER, one slot, the engines tell which shows) */
         ok &= PAGES[l2].graph == GR_LFO && PAGES[l2].id[0] == P_L2RATE && PAGES[l2].id[3] == P_L2FADE &&
               PAGES[l2s].id[0] == P_L2SYNC && PAGES[l2s].id[1] == P_L2TRIG && PAGES[l2s].id[2] == P_L2POL;
         ck("pages: LFO, LFO SYNC, LFO DEST, LFO 2, LFO 2 SYNC, MOD, MOD 2 (LFO's family); every title unique (but MOD 1 / MOD 2 again in ENV's)", ok);

@@ -76,10 +76,6 @@ static void fresh(uint32_t e, uint32_t pi)        /* the boot state (no FX tails
     memset(rev_comb, 0, sizeof rev_comb);
     memset(rev_ap, 0, sizeof rev_ap);
     memset(&fx, 0, sizeof fx);
-    memset(&pf, 0, sizeof pf);
-    for (k = 0; k < NTRK; k++)
-        pf.mg[k] = 32768;
-    perf_held = perf_latched = 0;
     lim_env = LIM_T;
     dc_l = dc_r = dce_l = dce_r = 0;                      /* (the master's DC blockers: no residue of a run before) */
     vage = 0;                                             /* the seeds: every run the same (ANALOG's noise by age) */
@@ -586,37 +582,6 @@ static void test_spread_fx(void)
         trk_note_on(t, CHORD[i], 100);
     blocks(FS / 4u / CTL + FS / CTL);
     (void)k; (void)closed; (void)side_closed; (void)side_open; (void)msg;
-    /* the mute key (FX layer, black key 1): both sides ramp to silence. What is left after it is the master's DC
-     * blockers settling: as much at SPRD 127 as at 0, and L - R no more than that (the side muted with the mid) */
-    {
-        double side[2][2] = {{0}}, all[2][2] = {{0}};
-        uint32_t ph, r;
-        for (r = 0; r < 2u; r++) {
-            fresh(0, preset_by_name(0, "SOFT PAD"));
-            dry(t);
-            t->p[P_ATK] = 0;
-            t->p[P_SPRD] = (int16_t)(r ? 127 : 0);
-            for (i = 0; i < 4u; i++)
-                trk_note_on(t, CHORD[i], 100);
-            for (ph = 0; ph < 2u; ph++) {
-                if (ph)
-                    perf_held |= 1u << PF_M1;
-                blocks(FS / 8u / CTL);
-                for (k = 0; k < 8u; k++) {
-                    blocks(1);
-                    for (i = 0; i < CTL; i++) {
-                        side[r][ph] += fabs((double)out_buf[2u * i] - out_buf[2u * i + 1u]);
-                        all[r][ph] += fabs((double)out_buf[2u * i]) + fabs((double)out_buf[2u * i + 1u]);
-                    }
-                }
-            }
-            perf_held = 0;
-        }
-        snprintf(msg, sizeof msg, "the mute key: L and R both go (SPRD 127: left %.1e, L - R %.1e of before; SPRD 0: %.1e)",
-                 all[1][1] / all[1][0], side[1][1] / side[1][0], all[0][1] / all[0][0]);
-        check(msg, side[1][0] > 0 && all[1][1] / all[1][0] < 2 * all[0][1] / all[0][0] + 1e-3 &&
-              side[1][1] <= all[1][1] && all[0][1] < all[0][0] * 0.05);
-    }
     /* the sends: mono (a chord with SPRD 127 and only REV: what the wet bus gets is the same) */
     {
         uint64_t hw[2];

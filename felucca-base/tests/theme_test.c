@@ -50,9 +50,8 @@ int main(int argc, char **argv)
     assert(NPALETTES == 10u && !strcmp(UI_PALETTES[0].name, "GREY") && !strcmp(UI_PALETTES[7].name, "HI-CON") &&
            !strcmp(UI_PALETTES[8].name, "NIGHT") && !strcmp(UI_PALETTES[9].name, "MONO") && UI_BW_INDEX == 9u);
     /* (#50, 1.0.2: appended, the ids stay; GREY is the MONO of 1.0.1, id 0) */
-    for (unsigned st = ST_FLAT; st <= ST_LINE; st++) {   /* MONO: every token black or white, in FLAT and LINE */
+    {   /* MONO: every token black or white */
         uint16_t *tok = &ux.bg;
-        ux.style = (uint8_t)st;
         palette_set(UI_BW_INDEX);
         assert(&ux.grid - tok == 15);
         for (unsigned i = 0; i < 16; i++) {
@@ -60,12 +59,11 @@ int main(int argc, char **argv)
             int grey_ok = tok[i] == UI_BW_GREY && (&tok[i] == &ux.dim || &tok[i] == &ux.line || &tok[i] == &ux.raise ||
                                                    &tok[i] == &ux.lane);
             if (!(tok[i] == 0x0000u || tok[i] == 0xFFFFu || grey_ok))
-                printf("MONO (%s): token %u = %04x is not black or white\n", st ? "LINE" : "FLAT", i, tok[i]);
+                printf("MONO: token %u = %04x is not black or white\n", i, tok[i]);
             assert(tok[i] == 0x0000u || tok[i] == 0xFFFFu || grey_ok);
         }
         assert(T_BG == 0u && T_SURF == 0u && T_TEXT == 0xFFFFu && T_SEL == 0xFFFFu && T_INK == 0u && T_REC == 0xFFFFu);
     }
-    ux.style = ST_FLAT;
     for (unsigned p = 0; p < NPALETTES; p++) {
         uint16_t *tok = &ux.bg;
         palette_set(p);

@@ -14,12 +14,12 @@
  * default; ui.c ui_morph_set, ui_input.c morph_settings: read on any change, so an import needs nothing here);
  * [15][11]: PATCHES > TYPE (1.2, Discussion #90; DUELL: 1..CAT_N-1 a category, CAT_N + e only the engine e's patches; ui.c ui_lcat:
  * 0 none = ALL / FAV as favorites.filter says);
- * [15][14..23]: the FX layer's key map (1.2, ui_layer.c fx_keys: 16 white keys x 5 bits, perform.c perf_map_of; 0 = the
- * key's default, an unknown code too: kept as saved, a later firmware's effect survives a round trip here).
+ * [15][14..23]: the FX layer's key map up to 0.2.1 (16 white keys x 5 bits); the layer is removed in DUELL 0.2.2: not read or written any
+ * more (an older record's bytes are carried through unchanged), never reused.
  * [15][25] (DUELL step 3): 1 = the MIDI LEARN map in [14] names DUELL's ids. 0 (every older setting) = Felucca's: its
  * entries on an id DUELL took (core.h PL_*: DIGITAL's OP ENV, DRUM's lane levels, ED FX) are dropped once on import, so
  * an old learned CC never moves a DUELL parameter; every export writes 1.
- * MENU's flags (ui.c PREF_*) are append-only bits whose 0 is the default: bit 16 (BPM LOCK, retired in DUELL: SELECT is no tempo) stays clear, LARGE (32) = OFF, RESTORE LAST OFF (128, 1.2) = ON, read as saved (nothing to migrate, so importing twice changes nothing). */
+ * MENU's flags (ui.c PREF_*) are append-only bits whose 0 is the default: bit 16 (BPM LOCK, retired in DUELL: SELECT is no tempo) stays clear, the retired LARGE (32) is ignored, RESTORE LAST OFF (128, 1.2) = ON, read as saved (nothing to migrate, so importing twice changes nothing). */
 typedef struct {
     uint32_t magic, palette, lowcut, zoom;
     panel_t panel;
@@ -50,8 +50,7 @@ static int settings_import(persist_t *p, int n)
     }
     if (old1 || old2) p->bold = 0;
     if (!current) memset(&p->favorites, 0, sizeof p->favorites);
-    if (p->favorites.factory[15][29] > 1u)        /* STYLE (ui.c ui_style): 2, the retired PIXEL = LINE; unknown = FLAT */
-        p->favorites.factory[15][29] = p->favorites.factory[15][29] == 2u ? 1u : 0u;
+    /* ([15][29]: the retired STYLE byte (FLAT / LINE); nothing reads it, whatever it holds: the look is FLAT only) */
     {   /* CLICK, CLICK LEVEL, COUNT-IN (ui.c ui_rec_prefs): two bits each, 3 is no value: the default (0) */
         uint32_t b = p->favorites.factory[15][28], f;
         for (f = 0; f < 3u; f++)

@@ -141,6 +141,30 @@ def octave_conv(files):
     return 2 if votes[2] >= votes[1] else 1
 
 
+def flute_loop(x):
+    """FLUTE's sustain loop and start. The generic loop (le = last sample, crossfade into x[ls-xf..ls]) left x[le] raw, a
+    jump of ~20 000 to x[ls] at every wrap (a click), and blended two unrelated phases (an amplitude dip). Here: the loop
+    end is searched (the last 1200 samples) where the waveform before it best matches the waveform before ls, the 60 ms
+    before it is crossfaded to the samples that precede ls (x[le-k] -> x[ls-1-k]), so x[le] flows into x[ls]; and the
+    first 2 ms fade in (the file starts mid-wave); the soft lead-in of the breath (under 35 % of the steady level) is cut, the note speaks at once. -> (samples cut at le, (ls, le))"""
+    ref = max(abs(v) for v in x[int(0.30 * TR):int(0.50 * TR)])         # the steady level
+    h = int(0.005 * TR)
+    cut = next((i for i in range(0, int(0.30 * TR), h) if max(abs(v) for v in x[i:i + h]) > 0.35 * ref), 0)
+    x = x[max(0, cut - h):]                          # the breath's quiet lead-in goes: the note speaks at once
+    n = len(x)
+    ls, xf, w = int(0.40 * TR), int(0.06 * TR), 256
+    best = min(range(n - 1200, n),
+               key=lambda e: sum((x[e - j] - x[ls - 1 - j]) ** 2 for j in range(w)))
+    x = x[:best + 1]
+    for k in range(xf):
+        a = 0.5 + 0.5 * math.cos(math.pi * k / xf)   # 1 at the loop end -> 0 xf samples before it
+        x[best - k] = x[best - k] * (1 - a) + x[ls - 1 - k] * a
+    fade = int(0.002 * TR)
+    for i in range(fade):
+        x[i] *= i / fade
+    return x, (ls, best)
+
+
 def cc0_entries(setname, kind):
     """-> [(file name, int16 samples at TR, loop or None, root)]"""
     files = sorted((CC0 / setname).glob("*.wav"))
@@ -165,7 +189,9 @@ def cc0_entries(setname, kind):
         keep = SET_KEEP.get(setname) or {"oneshot": 1.0, "sus": 0.95, "kit": 0.6}[kind]
         x = x[:int(keep * TR)]
         n = len(x)
-        if kind == "sus":                            # crossfaded sustain loop in the steady part
+        if kind == "sus" and setname == "FLUTE":     # phase-matched loop + a clean start (the old loop clicked, see flute_loop)
+            x, loop = flute_loop(x)
+        elif kind == "sus":                          # crossfaded sustain loop in the steady part
             ls, le, xf = int(0.40 * TR), n - 1, int(0.06 * TR)
             for i in range(xf):
                 a = i / xf

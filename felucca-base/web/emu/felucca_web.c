@@ -29,8 +29,9 @@
 #define FELUCCA_OTA 0
 #define FELUCCA_UAC 0
 #define FELUCCA_UART 0
+#include "duell_version.h"
 #ifndef FELUCCA_VERSION
-#define FELUCCA_VERSION "WEB"
+#define FELUCCA_VERSION DUELL_VERSION_STR
 #endif
 
 static uint8_t nor[0x100000];            /* the SPI NOR (erased: 0xFF) */
@@ -221,7 +222,8 @@ static void fm1_adc_init(void) {}
 static void fm1_timer5_ack(void) {}
 static void fm1_timer5_start(void (*isr)(void), uint32_t prio) { (void)isr; (void)prio; }
 void isr_timer5(void) {}
-static void fm1_reboot(void) {}
+static uint32_t web_reboot_req;
+static void fm1_reboot(void) { web_reboot_req = 1; }   /* ERASE DATA: the page reloads (worklet.js, index.html) */
 static void fm1_enter_uboot(void) {}
 static void fm1_guard_lock_top(void) {}
 static void fm1_irq_enable_all(void) {}
@@ -280,6 +282,8 @@ static void web_frame(void)
     if (b > 0)
         song.batt_raw = song.batt_raw ? song.batt_raw + (b - song.batt_raw) / 32 : b;
     master_poll();
+    if (erase_restart_due())                              /* main.c: ERASE DATA done, the restart */
+        fm1_reboot();
     felucca_dbg.ui_frames++;
     ui_input();
     settings_poll();
@@ -352,6 +356,7 @@ EXPORT uint8_t *web_nor(void) { return nor; }
 EXPORT uint32_t web_nor_size(void) { return sizeof nor; }
 EXPORT void web_nor_erase(void) { memset(nor, 0xFF, sizeof nor); }
 EXPORT uint32_t web_flash_writes_count(void) { return web_flash_writes; }
+EXPORT uint32_t web_reboot_requested(void) { return web_reboot_req; }   /* ERASE DATA: the device would restart */
 EXPORT void web_boot(void)
 {
     if (!web_booted)

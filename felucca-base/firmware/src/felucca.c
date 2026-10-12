@@ -31,8 +31,9 @@
 #ifndef FELUCCA_ID
 #define FELUCCA_ID "FM-1_900"    /* package identity (build.py: the .fwsc marker string) */
 #endif
+#include "duell_version.h"       /* generated from the VERSION file (tools/gen_version.py) */
 #ifndef FELUCCA_VERSION
-#define FELUCCA_VERSION "DUELL 0.1 beta" /* shown in the splash, ABOUT, the menu, the console and the editor; build.py --release X.Y[-suffix] writes "DUELL X.Y suffix" */
+#define FELUCCA_VERSION DUELL_VERSION_STR /* "DUELL 0.MINOR.BUILD beta": shown in the splash, ABOUT, INFO, the console and the editor */
 #endif
 #if FELUCCA_OTA && !FELUCCA_FLASH
 #error "FELUCCA_OTA needs FELUCCA_FLASH"
@@ -63,7 +64,7 @@
 #include "mod.c"               /* the modulation matrix, used by voice.c and fx.c */
 #include "morph.c"               /* DUELL MORPH: the ends, the fader's blend (its hook: fx.c mix_block, voice.c) */
 #include "voice.c"
-#include "slicer.c"              /* sl_buf: the FX layer's loop buffer (perform.c); the SLICER insert is removed */
+#include "slicer.c"              /* the 2.9 ms gain ramp (SL_*); the SLICER insert and the FX layer's buffer are removed */
 #include "fx.c"
 
 /* ------------------------------------------------- MIDI, sequencer --- */
@@ -91,6 +92,7 @@
 #include "storage_hw.c"
 #include "storage.c"
 #endif
+#define ERASE_FEED() fm1_wdt_feed()   /* erase_data.c (via project.c): the watchdog fed between the erases */
 #include "upreset.c"             /* user presets (RAM mirror; flash with FELUCCA_FLASH) */
 #include "project.c"
 #if FELUCCA_OTA

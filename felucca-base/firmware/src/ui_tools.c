@@ -235,7 +235,7 @@ static uint32_t tl_fill(track_t *t, uint32_t len, uint32_t l)
 }
 
 /* ----------------------------------------------------------- melodic --- */
-static int32_t tl_in_scale(const track_t *t, int32_t n) { return (int32_t)((scale_mask(t) >> (uint32_t)((n - t->p[P_ROOT] + 120) % 12)) & 1u); }
+static int32_t tl_in_scale(const track_t *t, int32_t n) { return (int32_t)((scale_mask(t) >> (uint32_t)((n - root_of(t) + 120) % 12)) & 1u); }
 /* the next note of the scale above (d 1) or below (d -1) n */
 static int32_t tl_neigh(const track_t *t, int32_t n, int32_t d)
 {
@@ -262,7 +262,7 @@ static void tl_random_notes(track_t *t, uint32_t len)
     if (g) {
         c /= (int32_t)g;
     } else {                                            /* no rhythm: 8ths, a few rests, always step 1 */
-        c = 60 + t->p[P_ROOT] % 12;
+        c = 60 + root_of(t) % 12;
         c -= c > 66 ? 12 : 0;
         for (i = 0; i < len; i++) {
             step_clear(&t->step[i]);

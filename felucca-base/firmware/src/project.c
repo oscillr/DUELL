@@ -986,6 +986,9 @@ static int project_restore_runtime(const project_t *input)
 {
     project_t *p = &proj_scratch;
     uint32_t i, k;
+    int16_t fit[NTRK][P_COUNT];                         /* (the main loop's stack: ~1.6 KB) */
+    uint8_t fv[NTRK][FP_SIZE + 1u];
+    int32_t fslot[NTRK];
     if (!proj_ok(input) || !proj_engines_ok(input)) return 1;
     mom_back(0);                                  /* (ui_input.c MOMENTARY: the values as they were, then the load) */
     memset(drum_mute, 0, sizeof drum_mute);       /* (1.4.1: the DRUM lanes' mutes, performance state) */
@@ -997,6 +1000,20 @@ static int project_restore_runtime(const project_t *input)
     if (!proj_keep_play)
         transport_req = 2;
     panic_req = (1u << NTRK) - 1u;                      /* (every note off) */
+    /* the slow part first, interrupts on (a window of ~74 k instructions here once, a quarter of the audio interrupt's time: a load
+     * with the audio running missed blocks): every value fitted to its range, each FM6 patch unpacked and the SLOT it shows found
+     * (fm6_adopt_slot compares with up to 32 factory patches). The window then only copies */
+    for (k = 0; k < NTRK; k++) {
+        const proj_trk_t *s = &p->t[k];
+        uint32_t e = s->engine;                         /* (< NENGINES: proj_engines_ok) */
+        for (i = 0; i < P_COUNT; i++) {                 /* every value back inside its range (param_fit) */
+            const param_desc_t *d = param_desc_of(e, i);
+            fit[k][i] = (int16_t)param_fit(d, s->p[i]);
+        }
+        proj_steps(p->t[k].step);                       /* (the steps inside their fields: p is the scratch copy) */
+        fm6_unpack(p->fm6[k], fv[k]);
+        fslot[k] = e == ENGI_FM6 ? fm6_adopt_slot(fv[k], fit[k][P_E7]) : fit[k][P_E7];
+    }
     fm1_irq_off();                                      /* the audio ISR must not see half a project */
     if (!proj_keep_play) {                              /* (a MULTI load keeps the transport: multi_load) */
         seq_stop();
@@ -1011,22 +1028,19 @@ static int project_restore_runtime(const project_t *input)
     for (k = 0; k < NTRK; k++) {
         track_t *t = &trk[k];
         const proj_trk_t *s = &p->t[k];
-        uint32_t e = s->engine;                         /* (< NENGINES: proj_engines_ok) */
+        uint32_t e = s->engine;
         t->eng_req = (uint8_t)e;
         t->user = 0;                                    /* (no user preset slot is saved) */
-        for (i = 0; i < P_COUNT; i++) {                 /* every value back inside its range (param_fit) */
-            const param_desc_t *d = param_desc_of(e, i);
-            t->p[i] = (int16_t)param_fit(d, s->p[i]);
-        }
+        memcpy(t->p, fit[k], sizeof t->p);
+        t->p[P_SCALE] = TP[P_SCALE].def;                /* a stored per-part SCALE / QNT is ignored: the scale is the instrument's (core.h) */
+        t->p[P_QUANT] = TP[P_QUANT].def;
         t->preset = (uint8_t)(ds_count(e) ? (s->preset >= PROJ_DEF_KEEP ? 0u : s->preset) % ds_count(e) : 0u);   /* (sounds.c) */
         memcpy(t->step, s->step, sizeof t->step);
-        proj_steps(t->step);
-        {   /* the project's own FM6 patch, never reloaded from SLOT: F n if it is that factory patch, else OWN */
-            uint8_t v[FP_SIZE + 1u];
-            fm6_unpack(p->fm6[k], v);
-            fm6_set_patch(k, v);
-            fm6_adopt(k);
-        }
+        fm6_set_patch(k, fv[k]);                        /* the project's own FM6 patch, never reloaded from SLOT: F n if it is that */
+        fm6_own_ok &= (uint8_t)~(1u << k);              /* factory patch, else OWN (fm6_adopt, done above) */
+        if (e == ENGI_FM6)
+            t->p[P_E7] = (int16_t)fslot[k];
+        fm6_slot[k] = (uint8_t)fslot[k];
     }
     song.sel = (uint8_t)(p->sel < NTRK ? p->sel : 0u);
     fm1_irq_on();
@@ -1102,10 +1116,13 @@ static void persist_boot(void)                    /* before settings_init / pane
 #endif
 }
 
+static int erase_busy(void);                      /* erase_data.c (included below): ERASE DATA done, the restart pending */
 static void settings_poll(void)
 {
 #if FELUCCA_FLASH
     persist_t p;
+    if (erase_busy())
+        return;                                    /* DUELL 0.2.2: nothing is written over the erased flash */
 #if FELUCCA_SLICE
     slc_store_poll();                              /* SLICE's slices edited on the SLICES page */
 #endif
@@ -1241,7 +1258,16 @@ static void autosave_poll(void)
 
 /* power-on, after the defaults (main.c): the autosave becomes the music when `allowed` (no crash, hang or failed boot
  * before) and RESTORE LAST is ON; an autosave that does not load (none, torn, damaged, another format) is ignored.
+ * DUELL 0.2.2: a part never starts muted (MUTE is a part's setting, kept in multis and the autosave while editing, but
+ * power-on is audible, see boot_unmute); a restored autosave is cleared of it, a later multi LOAD keeps its stored mute.
  * The music now (restored or not) is what is saved: nothing is written until it changes. 1 = restored */
+static void boot_unmute(void)                     /* power-on is audible: no part starts muted (DUELL 0.2.2) */
+{
+    uint32_t k;
+    for (k = 0; k < NTRK; k++)
+        trk[k].p[P_MUTE] = 0;
+}
+
 static int autosave_boot(int allowed)
 {
     int rc = 0;
@@ -1255,6 +1281,7 @@ static int autosave_boot(int allowed)
             if (!project_restore_runtime(&proj_scratch)) {
                 ui_message("RESTORED");
                 rc = 1;
+                boot_unmute();
             }
         }
     }
@@ -1266,6 +1293,7 @@ static int autosave_boot(int allowed)
     return rc;
 }
 
+#include "erase_data.c"                          /* DUELL 0.2.2: ERASE DATA (MENU > SYSTEM, editor cmd 80) */
 #if FELUCCA_FLASH
 _Static_assert(sizeof(project_store_t) <= ST_PAYLOAD_MAX, "project does not fit one flash sector");
 _Static_assert(sizeof(persist_t) <= ST_PAYLOAD_MAX, "settings do not fit one flash sector");

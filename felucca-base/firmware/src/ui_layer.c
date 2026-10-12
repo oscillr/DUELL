@@ -3,15 +3,14 @@
 /* Felucca quick layers: while a page button is held, the keys and KNOB 1..4
  * are its shortcuts and its map shows over the page. One table (LAYERS) drives the gesture, the keys, the knobs,
  * the LEDs and the overlay:
- *   FX   HOLD  the performance effects (perform.c) and the track mutes while held; KNOB 1..4 its macros. The white
- *              keys' effects are the user's (1.2): a white key held in the layer (FX held or locked) + PRESETS turned
- *              steps that key through NONE and the effects (it holds the new one at once), EDIT puts the key's default
- *              back; kept with the settings (fx_keys) when the layer closes
+ *   FX   (DUELL 0.2.2: not a layer any more. The FX hold layer and its performance effects are removed: FX is a plain page button, a
+ *              short press opens the FX pages and holding it does nothing special. The LAYER_RES slot keeps the other layers' ids)
  *   GLO  (DUELL: not a layer; the LAYER_GLO slot only names GLO's MAIN PAGE, graph GR_GLO, which draw_layer draws. The keys play notes there as
- *              on every page; KNOB 1 MUTE and 2 SOLO (two-sided twists, glo_knob), KNOB 3, 4 LEVEL 1, 2; between the parts' columns the level
+ *              on every page; KNOB 1 MUTE 1 and 2 MUTE 2 (twist right mutes, left unmutes, glo_knob), KNOB 3, 4 LEVEL 1, 2; between the parts' columns the level
  *              meters (glo_meters). GLO held + PLAY: from the top without stopping)
- *   SCL  SET   any key: its note name is ROOT; KNOB 1..4 ROOT SCL CHRD VOIC (LY_SCL: the SCL page's first two,
- *              the CHORD page's two; QNT TRN stay on SCL); the LEDs show the root lit and the scale's notes breathing
+ *   SCL  SET   GLOBAL (core.h; the header lights both parts): any key: its note name is ROOT; KNOB 1..3 SCALE ROOT OFF-SCALE (LY_SCL: the SCALE
+ *              page's three; CHRD VOIC TRN are the selected part's and live on the CHORD page only: no mixing); the LEDs show the root
+ *              lit and the scale's notes breathing
  *   EDIT SET   the first white key (F3) INIT (LY_INIT; the dialog). No engine keys: the engine is picked on the ENGINE page
  *              (EDIT's first) or by KNOB 1 here; KNOB 1 ENG, 2 No. (the engine's sounds), 3 FAV. Sound loads as on
  *              PRESETS: the steps stay, SAVE held undoes, the editor gets RELOAD; they apply while playing too.
@@ -55,16 +54,16 @@ typedef struct {
 } layer_t;
 static const layer_t LAYERS[LAYER_N] = {
     {0, 0, 0, "", "", ""},
-    {B_FX, LK_HOLD, FAM_HOME, "[FX] HOLD", "FX", "HOLD"},   /* (LET GO: the header's HOLD) */
+    {0, 0, 0, "", "", ""},                                  /* (LAYER_RES: the FX hold layer, removed in 0.2.2) */
     {B_GLO, LK_SET, FAM_HOME, "[GLO] SET", "GLO", "SET"},
     {B_SCL, LK_SET, FAM_SCL, "[SCL] SET", "SCL", "SET"},
     {B_EDIT, LK_SET, FAM_HOME, "[EDIT] SET", "EDIT", "SET"},
     {B_SEQ, LK_SET, FAM_SEQ, "[SEQ] TOOLS", "SEQ", "TOOLS"},
     {B_REC, LK_SET, FAM_HOME, "[REC] SET", "REC", "SET"},
 };
-static const uint8_t LY_KC[LAYER_N] = {0, KC_FX, KC_GLO, KC_SCL, KC_EDIT, KC_SEQ, KC_REC};
-/* SCL's knobs: the key and its chord (cur_page() while the layer edits or draws them: page_over) */
-static const page_t LY_SCL = {"SCL", FAM_SCL, SC_TRACK, GR_SCALE, {P_ROOT, P_SCALE, P_CHRD, P_VOIC}};
+static const uint8_t LY_KC[LAYER_N] = {0, 0, KC_GLO, KC_SCL, KC_EDIT, KC_SEQ, KC_REC};
+/* SCL's knobs: the SCALE page's, global (cur_page() while the layer edits or draws them: page_over) */
+static const page_t LY_SCL = {"SCALE", FAM_SCL, SC_SCALE, GR_SCALE, {0xFF, 0xFF, 0xFF, 0xFF}};
 /* SEQ TOOLS' knobs: LEN DIV SWING GATE (the length the tools work in; up to 1.1.5 the PATTERN page's) */
 static const page_t LY_SEQ = {"PATTERN", FAM_SEQ, SC_TRACK, GR_STEPS, {P_SLEN, P_SDIV, P_SSWING, P_SGATE}};
 static const page_t *ly_page(uint32_t l) { return l == LAYER_SCL ? &LY_SCL : l == LAYER_SEQ ? &LY_SEQ : 0; }
@@ -73,19 +72,16 @@ static const page_t *ly_page(uint32_t l) { return l == LAYER_SCL ? &LY_SCL : l =
 #define LY_DEAD 8u                     /* .. pressed where there is no layer: does nothing */
 #define LY_INIT 0u                     /* EDIT: the white key of INIT, the first (F3), its map cell (no engine keys any more) */
 #define layer_seen (favorites.factory[15][31])   /* bit l: layer l opened once (a byte no engine uses) */
-/* the FX layer's key map (perform.c perf_map_of / perf_map_put: 16 x 5 bits; all 0, every older setting: the default
- * map) in 10 bytes no engine uses, kept with the settings */
-#define fx_keys (&favorites.factory[15][14])
+/* (favorites.factory[15][14..23], 10 bytes: the FX layer's key map up to 0.2.1, retired in 0.2.2: not read or written any more, never reused) */
 
 static struct {
     uint8_t l, trk, loaded, oct;       /* SET: the layer and the track of the snapshot; EDIT: a sound loaded since
                                         * it opened (SEQ: a tool used); OCT- / OCT+ pressed in a SET layer (bits) */
     uint8_t cook;                      /* SEQ: COOK pressed since it opened */
-    uint8_t rp_dirty;                  /* REC: a setting changed (settings_save when the layer lets go); FX: the key map */
-    uint8_t fxk;                       /* FX: the white key pressed last in the layer (+ 1; 0 none): PRESETS assigns it */
+    uint8_t rp_dirty;                  /* REC: a setting changed (settings_save when the layer lets go) */
     uint8_t mute[NPART];               /* EDIT: the DRUM lanes' mutes when it opened (eng_drum.c drum_mute; OCT-) */
     uint32_t eqh;                      /* EDIT: the keys (bits 0..26) of the HOLD quick actions held */
-    int16_t v[9];                      /* the values when it opened: SCL ROOT..TRN, CHRD VOIC;
+    int16_t v[9];                      /* the values when it opened: SCL: SCALE ROOT OFF-SCALE (global);
                                         * SEQ LEN DIV SWING GATE; REC the settings (ui_rec_prefs) */
     uint8_t quiet;                     /* #39: a layer closed after it opened: KNOB 1..4 do nothing until quiet_t + */
     uint32_t quiet_t;                  /* LY_QUIET_MS (fm1_ms) */
@@ -104,24 +100,24 @@ static uint32_t ly_down(uint32_t l) { return l && ((fm1_in.buttons & ly_bit(l)) 
 static uint32_t layer_bits(void)
 {
     uint32_t l, m = 0;
-    for (l = LAYER_FX; l < LAYER_N; l++)
-        if (l != LAYER_GLO)                             /* (DUELL step 6: GLO is a page, not a held layer) */
+    for (l = LAYER_GLO; l < LAYER_N; l++)
+        if (l != LAYER_GLO)                             /* (DUELL step 6: GLO is a page, not a held layer; 0.2.2: FX neither) */
             m |= ly_bit(l);                             /* (1.2: every layer on every page, SEQ's too) */
     return m;
 }
 static uint32_t layer_btn(void) { return LAYERS[ui.layer % LAYER_N].btn; }
-static const char *layer_head(void) { return ui.layer == LAYER_FX && perf_latch_on ? "[FX] LATCH" : LAYERS[ui.layer % LAYER_N].head; }
-/* the footer's page place for the layer shown ("GLO" | "SET"; FX LATCH: "FX" | "LATCH") */
+static const char *layer_head(void) { return LAYERS[ui.layer % LAYER_N].head; }
+/* the footer's page place for the layer shown ("GLO" | "SET") */
 static void layer_foot_title(char *nm, char *ct)
 {
     const layer_t *l = &LAYERS[ui.layer % LAYER_N];
     str_cpy(nm, l->name, 12);
-    str_cpy(ct, ui.layer == LAYER_FX && perf_latch_on ? "LATCH" : l->tag, 8);
+    str_cpy(ct, l->tag, 8);
 }
 static uint32_t layer_open(void) { return ui.ly && (ui.ly_t0 & LY_OPEN) && ly_down(ui.ly) && layer_allowed() ? ui.ly : 0u; }
-static int layer_set_open(void)                 /* (FX LATCH: FX is one too, OCT- turns all off) */
+static int layer_set_open(void)
 {
-    return layer_open() && (LAYERS[layer_open()].kind == LK_SET || (layer_open() == LAYER_FX && perf_latch_on));
+    return layer_open() && LAYERS[layer_open()].kind == LK_SET;
 }
 static uint32_t layer_held(void) { return ui.ly && ly_down(ui.ly) && layer_allowed(); }
 /* GLO's main page shown (no menu, dialog or NAME over it): drawn by draw_layer, GLO held + PLAY restarts (layer_play). The keys and the knobs
@@ -131,14 +127,13 @@ static int glo_pg(void) { return !ui.home && layer_allowed() && cur_page()->grap
 /* each pass, before the keys: what the ISR (seq.c keyboard_block) gives to a layer. Armed: its button; none
  * armed: any layer button not already down (one pressed meanwhile is armed below; one held over from before
  * is ignored, its keys stay notes); armed but dead (pressed under a dialog, a menu or NAME that has closed
- * since): nothing, its keys stay notes and FX starts no effect with no map shown; FX's effects only with FX */
+ * since): nothing, its keys stay notes */
 static void layer_masks(void)
 {
     uint32_t m = !layer_allowed() || (ui.ly && (ui.ly_t0 & LY_DEAD)) ? 0u
                : ui.ly ? ly_bit(ui.ly) : layer_bits() & ~fm1_in.buttons;
     kb_mask = m;
-    perf_mask = m & ly_bit(LAYER_FX);
-    kb_lock = (uint8_t)(m && ui.lock ? 1u | (ui.lock == LAYER_FX ? 2u : 0u) : 0u);   /* (no button held: the ISR's) */
+    kb_lock = (uint8_t)(m && ui.lock ? 1u : 0u);        /* (no button held: the ISR's) */
 }
 
 /* a layer button pressed (its edge) while none is armed: it is now, a dead one where no layer opens */
@@ -147,7 +142,7 @@ static void layer_arm(uint32_t pressed, uint32_t now)
     uint32_t l;
     if (ui.ly)
         return;
-    for (l = LAYER_FX; l < LAYER_N; l++)
+    for (l = LAYER_GLO; l < LAYER_N; l++)
         if (l != LAYER_GLO && (pressed & ly_bit(l))) {
             ui.ly = (uint8_t)l;
             ui.ly_t0 = (now & ~15u) | 1u | (layer_allowed() ? 0u : LY_DEAD);
@@ -157,13 +152,11 @@ static void layer_arm(uint32_t pressed, uint32_t now)
         }
 }
 
-/* the armed layer lets go (its button up, or its lock closed): FX's macros snap back (FX LATCH: they stay); one that
+/* the armed layer lets go (its button up, or its lock closed); one that
  * opened, or a combo: KNOB 1..4 quiet for a while (#39: the knob still turning is not the page's) */
 static void layer_let_go(uint32_t quiet)
 {
-    if (ui.ly == LAYER_FX && !perf_latch_on)
-        perf_k[0] = perf_k[1] = perf_k[2] = perf_k[3] = 0;
-    if (lys.rp_dirty) {                                 /* REC: its settings kept, as MENU does when it closes (FX: the map) */
+    if (lys.rp_dirty) {                                 /* REC: its settings kept, as MENU does when it closes */
         lys.rp_dirty = 0;
         settings_save();                                /* (deferred while playing) */
     }
@@ -180,12 +173,9 @@ static void layer_let_go(uint32_t quiet)
  * the button held keeps it open (a peek: let go, it closes, no tap). Another button but PLAY, REC and OCT- / OCT+
  * (another page button, another layer's, HOME, SAVE, SEQ): closed now, and that button acts as always. Any other
  * button pressed between the taps of a double tap: no double tap */
-static uint32_t fx_key_held(void);
 static void layer_lock_input(uint32_t pressed)
 {
     uint32_t keep = 1u << panel.btn[B_PLAY] | 1u << panel.btn[B_REC] | 1u << panel.btn[B_OCTDN] | 1u << panel.btn[B_OCTUP];
-    if (ui.lock == LAYER_FX && fx_key_held())           /* (FX's lock, a key held: EDIT puts its default back) */
-        keep |= 1u << panel.btn[B_EDIT];
     if (lys.dt_l && (pressed & ~ly_bit(lys.dt_l)))
         lys.dt_l = 0;
     if (!ui.lock)
@@ -243,8 +233,7 @@ static void layer_opened(uint32_t l)
         if (l == LAYER_SEQ) {
             lys.v[k] = TSEL->p[P_SLEN + k];
         } else {
-            lys.v[k] = TSEL->p[P_ROOT + k];
-            lys.v[4u + k] = k < 2u ? TSEL->p[P_CHRD + k] : 0;
+            lys.v[k] = k == 0u ? scale_g : k == 1u ? root_g : k == 2u ? offscale_g : 0;   /* (the global three, core.h) */
         }
     lys.v[8] = song.g[G_BPM];
     memcpy(lys.mute, drum_mute, sizeof lys.mute);
@@ -417,66 +406,7 @@ static void rec_key(uint32_t p)
     ui_say(r == 2u ? "CLICK LEVEL " : r ? "COUNT-IN " : "CLICK ", rl_name(r, v));
 }
 
-/* FX: the effects' names (the message; NONE: PF_N) and the map's cells' */
-static const char *const PF_NAME[PF_NFX + 1] = {"REPEAT 1/8", "REPEAT 1/16", "REPEAT 1/32", "REVERSE", "LPF", "HPF",
-    "TAPE STOP", "FREEZE", "OCT UP", "OCT DN", "FLANGER", "PHASER", "NONE"};
-static const char *const PF_CELL[PF_NFX] = {"1/8", "1/16", "1/32", "REV", "LPF", "HPF", "STOP", "FRZ", "OCT+", "OCT-",
-    "FLNG", "PHSR"};
 static const char W_NOTE[16] = {'F', 'G', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'A', 'B', 'C', 'D', 'E', 'F', 'G'};
-/* each pass: the map from the settings to the ISR (a change: seq.c makes a key held take its new effect) */
-static void fx_map_sync(void)
-{
-    uint32_t p, e;
-    for (p = 0; p < PF_KEYS; p++)
-        if (perf_map[p] != (e = perf_map_of(fx_keys, p))) {
-            perf_map[p] = (uint8_t)e;
-            perf_remap = 1;
-        }
-}
-/* the white key PRESETS assigns: the last pressed in the FX layer, while still held (+ 1; 0 none) */
-static uint32_t fx_key_held(void)
-{
-    return lys.fxk && ui.ly == LAYER_FX && ((kb_layer >> (lys.fxk - 1u)) & 1u) ? lys.fxk : 0u;
-}
-/* "B4 FLANGER": white key k's note (F3 .. G5) and effect e */
-static void fx_say(uint32_t k, uint32_t e, const char *tail)
-{
-    uint32_t p = key_place(k);
-    char n[4] = {W_NOTE[p % 16u], (char)('3' + (p >= 4u) + (p >= 11u)), ' ', 0};
-    ui_say(n, PF_NAME[e < PF_NFX ? e : PF_NFX]);
-    str_cpy(ui.msg + str_len(ui.msg), tail, sizeof ui.msg - str_len(ui.msg));
-}
-/* PRESETS turned (s) in the FX layer: the key held steps through NONE and the effects, round; none held: how */
-static void fx_assign(int32_t s)
-{
-    uint32_t k = fx_key_held(), p, i, n = PF_NFX + 1u;
-    if (!k) {
-        ui_message("HOLD A KEY: ASSIGN");
-        return;
-    }
-    p = key_place(--k);
-    i = perf_map_of(fx_keys, p);                        /* (the list: NONE, then the effects in order) */
-    i = i < PF_NFX ? i + 1u : 0u;
-    i = (i + (s > 0 ? 1u : n - 1u)) % n;
-    perf_map_put(fx_keys, p, i ? i - 1u : PF_N);
-    lys.rp_dirty = 1;
-    fx_map_sync();
-    fx_say(k, i ? i - 1u : PF_N, "");
-    ui.force = 1;
-}
-/* EDIT with a key held in the FX layer: its default effect back */
-static void fx_default(void)
-{
-    uint32_t k = fx_key_held(), p;
-    if (!k)
-        return;
-    p = key_place(--k);
-    perf_map_put(fx_keys, p, PF_DEF[p]);
-    lys.rp_dirty = 1;
-    fx_map_sync();
-    fx_say(k, PF_DEF[p], " (DEF)");
-    ui.force = 1;
-}
 
 /* 1.4.1 ENGINE QUICK ACTIONS: the EDIT layer's black keys (1..11: F#3 .. F#5) do what the selected track's engine
  * offers there: EQA, per engine up to 11, black key n the n-th; past them (and on an engine with none) a key is dark
@@ -573,11 +503,8 @@ static uint32_t eqa_sig(void)
 static void layer_key(uint32_t l, uint32_t k)
 {
     uint32_t p = key_place(k);
-    if (l == LAYER_FX) {
-        if (!key_black(k) && p < PF_KEYS)
-            lys.fxk = (uint8_t)(k + 1u);                /* (PRESETS assigns it while held) */
-    } else if (l == LAYER_SCL) {
-        TSEL->p[P_ROOT] = (int16_t)((k + 5u) % 12u);    /* the key's note name (F3 = F) */
+    if (l == LAYER_SCL) {
+        root_g = (int16_t)((k + 5u) % 12u);             /* the key's note name (F3 = F): the global ROOT */
     } else if (l == LAYER_EDIT && !key_black(k)) {
         if (p == LY_INIT)
             confirm_open(CF_INIT_SOUND, song.sel);      /* (the dialog closes the layer) */
@@ -604,15 +531,11 @@ static void layer_keys(uint32_t keys)
         eqa_release();
 }
 
-/* KNOB 1..4 in the open layer: its own (FX macros, EDIT's sound), else the four of its page */
+/* KNOB 1..4 in the open layer: its own (EDIT's sound, REC's settings), else the four of its page */
 static void layer_knob(uint32_t k, int32_t s)
 {
     uint32_t l = layer_open();
-    if (l == LAYER_FX) {                                /* perform.c perf_k, not recorded */
-        if (k == 3u && !perf_harm_on())
-            s = -s;                                     /* DEPTH (100 - perf_k[3]) rises to the right (#40: it fell) */
-        perf_k[k] = (int8_t)clamp(perf_k[k] + accel(EN_K1 + k, s, k ? 100 : 200), k ? 0 : -100, 100);   /* (#126) */
-    } else if (l == LAYER_EDIT) {                       /* ENG, No., FAV */
+    if (l == LAYER_EDIT) {                       /* ENG, No., FAV */
         if (k == 0u)
             edit_load(eng_step(TSEL->eng_req, s), 0);
         else if (k == 1u)
@@ -634,26 +557,18 @@ static void layer_knob(uint32_t k, int32_t s)
     }
 }
 
-/* GLO's page, KNOB 1 MUTE and 2 SOLO (the MORPH page's twist gesture: three detents either way, once per twist; the card shows it building
- * up): a twist left acts on part 1, right on part 2. MUTE toggles the part's mute (latched, as before: P_MUTE); SOLO toggles its solo (perf_solo:
- * the other part is muted while any part is soloed; both soloed sound; the same side again releases it; a solo stays when the page is left).
- * KNOB 3, 4 LEVEL 1, 2 (recorded as on MIXER; MIDI LEARN picks them) */
+/* GLO's page, KNOB 1 MUTE 1 and 2 MUTE 2 (the MORPH page's twist gesture with ONE detent: instant, once per twist): each knob is its own part. A click either way flips it: muted <-> sounding (P_MUTE, latched). KNOB 3, 4 LEVEL 1, 2 (recorded as on MIXER; MIDI LEARN picks all four) */
 static void glo_knob(uint32_t k, int32_t s)
 {
     if (k < 2u) {
-        int32_t d = morph_gesture(2u + k, s);
-        uint32_t p, on;
+        int32_t d = gesture_det(2u + k, s, 1);   /* (one detent: a mute is instant) */
+        int16_t m;
         if (!d)
             return;
-        p = d > 0 ? 1u : 0u;
-        if (k == 0u) {
-            on = trk[p].p[P_MUTE] = (int16_t)!trk[p].p[P_MUTE];
-            ui_say(p ? "PART 2 " : "PART 1 ", on ? "MUTED" : "UNMUTED");
-        } else {
-            perf_solo ^= (uint8_t)(1u << p);
-            on = (perf_solo >> p) & 1u;
-            ui_say(p ? "PART 2 " : "PART 1 ", on ? "SOLO" : "SOLO OFF");
-        }
+        m = (int16_t)!trk[k].p[P_MUTE];                 /* either way: the state flips */
+        ml_knob(&trk[k], P_MUTE);                       /* (MIDI LEARN: MUTE 1 / MUTE 2 picked) */
+        trk[k].p[P_MUTE] = m;
+        ui_say(k ? "PART 2 " : "PART 1 ", m ? "MUTED" : "UNMUTED");
     } else {
         int16_t *vp = &trk[k - 2u].p[P_LEVEL];
         *vp = (int16_t)clamp(*vp + accel(EN_K1 + k, s, TP[P_LEVEL].max - TP[P_LEVEL].min), TP[P_LEVEL].min, TP[P_LEVEL].max);
@@ -677,13 +592,13 @@ static int layer_play(void)
     return 1;
 }
 
-/* OCT- / OCT+ pressed with a SET layer's button down (FX LATCH: FX's) before it opened: a combo, so it opens now,
+/* OCT- / OCT+ pressed with a SET layer's button down before it opened: a combo, so it opens now,
  * before oct_taps and layer_oct read it (else the press was nobody's: no put back / ALL OFF, no octave) */
 static void layer_oct_open(uint32_t pressed)
 {
     uint32_t l = ui.ly, oct = 1u << panel.btn[B_OCTDN] | 1u << panel.btn[B_OCTUP];
     if ((pressed & oct) && l && !(ui.ly_t0 & (LY_OPEN | LY_DEAD)) && layer_held() &&
-        (LAYERS[l].kind == LK_SET || (l == LAYER_FX && perf_latch_on))) {
+        LAYERS[l].kind == LK_SET) {
         ui.ly_t0 |= LY_OPEN | LY_COMBO;
         layer_opened(l);
     }
@@ -697,11 +612,7 @@ static uint32_t layer_oct(uint32_t pressed, uint32_t oct)
         lys.oct |= (uint8_t)(((pressed >> dn) & 1u) | ((pressed >> up) & 1u) << 1);
     mine = oct & lys.oct;
     if (mine & 1u) {                                    /* OCT-: back to when it opened */
-        if (lys.l == LAYER_FX) {                        /* (FX LATCH) every effect and macro off */
-            perf_latched = 0;
-            perf_k[0] = perf_k[1] = perf_k[2] = perf_k[3] = 0;
-            ui_message("FX ALL OFF");
-        } else if (lys.l == LAYER_EDIT) {
+        if (lys.l == LAYER_EDIT) {
             uint32_t ld = lys.loaded;
             if (ld)
                 undo_swap();                            /* (the copy from its first load) */
@@ -730,10 +641,9 @@ static uint32_t layer_oct(uint32_t pressed, uint32_t oct)
                 ui_message(lys.l == LAYER_REC ? "REC PUT BACK" : "SEQUENCE PUT BACK");
             }
         } else {
-            for (k = 0; k < 4u; k++)
-                trk[lys.trk % NTRK].p[P_ROOT + k] = lys.v[k];
-            trk[lys.trk % NTRK].p[P_CHRD] = lys.v[4];
-            trk[lys.trk % NTRK].p[P_VOIC] = lys.v[5];
+            scale_g = lys.v[0];
+            root_g = lys.v[1];
+            offscale_g = (uint8_t)lys.v[2];
             ui_message("SCALE PUT BACK");
         }
     }
@@ -744,20 +654,16 @@ static uint32_t layer_oct(uint32_t pressed, uint32_t oct)
 /* --------------------------------------------------------- the LEDs --- */
 /* lit = in effect now (held, the value, a track sounding), breathing = can be pressed (*br: dark .. ~60 % and
  * back, ~1.1 s, hal/fm1_input.h fm1_led_breath; was a hard 250 ms blink, #119), dark = nothing there */
-static int glo_sounding(uint32_t t) { return !trk[t].p[P_MUTE] && (!perf_solo || ((perf_solo >> t) & 1u)); }
+static int glo_sounding(uint32_t t) { return !trk[t].p[P_MUTE]; }
 static int rec_clearable(void) { return !seq_is_empty(TSEL) || motion_count(TSEL) != 0u; }
 static uint32_t layer_leds(uint32_t *br)
 {
-    uint32_t k, m = 0, n = 0, l = ui.layer, held = perf_held | perf_latched, ok = perf_avail();
-    uint32_t mask = scale_mask(TSEL), root = (uint32_t)TSEL->p[P_ROOT] % 12u;
+    uint32_t k, m = 0, n = 0, l = ui.layer;
+    uint32_t mask = scale_mask(TSEL), root = (uint32_t)root_of(TSEL) % 12u;
     const eqa_t *a;
     for (k = 0; k < 27u; k++) {
         uint32_t p = key_place(k), b = (uint32_t)key_black(k), on = 0, can = 0, e;
-        if (l == LAYER_FX) {                            /* effects breathe, held lit, a too-long REPEAT dark */
-            e = perf_key(k);
-            can = e < PF_N && ((ok >> e) & 1u);
-            on = can && ((held >> e) & 1u);
-        } else if (l == LAYER_SCL) {                    /* the root lit, the scale's notes breathe */
+        if (l == LAYER_SCL) {                    /* the root lit, the scale's notes breathe */
             e = (k + 5u + 12u - root) % 12u;
             on = e == 0u;
             can = (mask >> e) & 1u;
@@ -784,31 +690,16 @@ static uint32_t layer_leds(uint32_t *br)
 
 /* ------------------------------------------------------ the overlay --- */
 /* One template: the header names the button and the kind ("[GLO] SET"); the cards are KNOB 1..4; the panel the
- * map of the keys as cells (the key's note name, a Fukiai icon, a name; FX's 16 white keys: the note and the effect's
- * short name, 4 a row); the footer the keycaps. A cell: RAISE
+ * map of the keys as cells (the key's note name, a Fukiai icon, a name); the footer the keycaps. A cell: RAISE
  * (can be pressed), the selection's fill (the value now, SET), the accent (held, HOLD), DIM (cannot now: pressing
  * it says why), KEY (a muted track, as the MUTE badge); HOLD cells in a SET layer: a corner triangle */
-static const char B_NOTE[NTRK] = {'F', 'G', 'A', 'C'};  /* black keys 1..4: F# G# A# C# */
 #define LC_X(c) (6 + 58 * (int32_t)(c))                 /* cell column c: 54 px wide, 4 px apart */
 #define LC_W 54
 #define LC_H 42                                          /* the big cells: rows at y 4 and 50 */
-#define LF_H 19                                          /* FX: the white keys' rows (F3 .. B3, C4 .. F4, G4 .. C5, D5 .. G5) */
-#define LM_Y 96                                          /* the black keys' row (22 px) */
-#define LM_H 22
 enum { LS_OFF, LS_SEL, LS_HELD, LS_WAIT, LS_DIM, LS_MUTE };
-/* 1.5 (#173): | LS_ALT, an idle (OFF, DIM) cell of the FX map's 2nd and 4th columns in a fill of its own, the columns
- * light / dark in turn as the piano roll's keys, so the effects are told apart at a glance: SURF -> TEXT 22 % (the
- * idle RAISE is 12 %); LINE (idle cells unfilled) 10 %; MONO (its one grey) none */
-#define LS_ALT 0x10u
-static uint16_t lc_alt(void)
-{
-    return ux.raise == UI_BW_GREY && ux.dim == UI_BW_GREY ? T_RAISE : ux_mix(T_SURF, T_TEXT, ux.style ? 10 : 22);
-}
 
 static uint16_t lc_fill(uint32_t st, uint16_t *ink)
 {
-    uint32_t alt = st & LS_ALT;
-    st &= ~LS_ALT;
     *ink = st == LS_DIM ? T_DIM : T_THEME;
     if (st == LS_MUTE) {
         *ink = T_INK;
@@ -822,30 +713,20 @@ static uint16_t lc_fill(uint32_t st, uint16_t *ink)
         *ink = T_INK;
         return T_THEME;
     }
-    return alt ? lc_alt() : T_RAISE;
+    return T_RAISE;
 }
 /* a cell at x, y, h px high: big (h > 30) the icon over the name; a name: compact, the icon at the right (none: no
  * icon); else a black key's: two icons at the right. tri: a HOLD cell in a SET layer */
-/* a cell's box: its fill on the panel. LINE: a RAISE (idle) cell is not filled, and 1 px rules divide the
- * cells: one in the gap left of a cell (not the first column) and one in the gap above it (not the first row), each
- * across the gap's corner, so they meet in a grid. Cells are 4 px apart from x 6, y 4. Returns the fill */
+/* a cell's box: its fill on the panel (cells are 4 px apart from x 6, y 4). Returns the fill */
 static uint16_t lc_box(int32_t x, int32_t y, int32_t w, int32_t h, uint16_t fill)
 {
-    if (ux.style) {
-        if (fill == T_RAISE)
-            fill = T_SURF;
-        if (x > 7)                                       /* (not the first column: x 6) */
-            cv_rule(x - 2, y > 4 ? y - 4 : y, 1, h + (y > 4 ? 4 : 0));
-        if (y > 4)
-            cv_rule(x > 7 ? x - 4 : x, y - 2, w + (x > 7 ? 4 : 0), 1);
-    }
     cv_rrect(x, y, w, h, 4, fill, T_SURF);
     return fill;
 }
 static void lcell(int32_t x, int32_t y, int32_t h, const char *note, uint32_t icon, uint32_t icon2, const char *name,
                   uint32_t st, int tri)
 {
-    uint16_t ink, fill = lc_fill(st, &ink), idle = fill == T_RAISE || ((st & LS_ALT) && fill == lc_alt());
+    uint16_t ink, fill = lc_fill(st, &ink), idle = fill == T_RAISE;
     fill = lc_box(x, y, LC_W, h, fill);
     if (note)
         cv_text_on(x + 5, y + 3, &AF_S, note, idle ? T_MID : ink, fill);
@@ -884,30 +765,9 @@ static void lcell(int32_t x, int32_t y, int32_t h, const char *note, uint32_t ic
             cv_rect(x + LC_W - 7 + j, y + 2 + j, 4 - j, 1, ink);
     }
 }
-static void bnote(char *n, uint32_t t) { n[0] = B_NOTE[t]; n[1] = '#'; n[2] = 0; }
-
-static void layer_fx(void)
-{
-    uint32_t held = perf_kill ? 0u : perf_held | perf_latched, act = perf_act, ok = perf_avail(), p, e, st;
-    uint32_t ed = fx_key_held() ? key_place(fx_key_held() - 1u) : PF_KEYS;
-    char n[3] = {0, 0, 0};
-    for (p = 0; p < PF_KEYS; p++) {                     /* the white keys F3 .. G5, 4 a row: the effect each holds */
-        e = perf_map[p];
-        st = p == ed ? LS_SEL : e >= PF_NFX || !((ok >> e) & 1u) ? LS_DIM : !((held >> e) & 1u) ? LS_OFF
-           : (act >> e) & 1u ? LS_HELD : LS_WAIT;       /* (the key PRESETS assigns: the selection's fill) */
-        n[0] = W_NOTE[p];
-        lcell(LC_X(p % 4u), 4 + (LF_H + 4) * (int32_t)(p / 4u), LF_H, n, 0, 0, e < PF_NFX ? PF_CELL[e] : "",
-              st | (p & 1u ? LS_ALT : 0u), 0);           /* (#173: the 2nd and 4th columns' idle cells their own fill) */
-    }
-    for (e = 0; e < NSHOWN; e++) {                      /* the mutes of the black keys 1..2 */
-        bnote(n, e);
-        lcell(LC_X(e), LM_Y, LM_H, n, ICON_MUTE, trk_icon(e, 0), 0, (held >> (PF_M1 + e)) & 1u ? LS_MUTE : LS_OFF, 0);
-    }
-}
-/* GLO (DUELL 5b.3), two parts: a column each (88 px, x 6 and 146; part 1 is the left of KNOB 1 and 2, part 2 the right): SOLO over MUTE, big
- * cells with the part's badge and the word in M; between the columns (x 98 .. 142) the parts' level meters (glo_meters). A part soloed: its SOLO
- * cell in the accent; muted: its MUTE cell in the key colour (the badge dark); SOLO of the other part mutes it without lighting its MUTE cell
- * (its badge dark, as the meter). A part's cells carry its colour */
+/* GLO (DUELL 5b.3), two parts: a column each (88 px, x 6 and 146; part 1 is the left of KNOB 1 and 2, part 2 the right): one tall
+ * cell with the part's badge and the word in M (LIVE, or MUTED in the key colour with the badge dark); between the columns (x 98 .. 142) the
+ * parts' level meters (glo_meters; a muted part's bar greyed and empty). A part's cell carries its colour */
 #define GC_W 88
 #define GC_X(k) (6 + 140 * (int32_t)(k))
 static void gcell(int32_t x, int32_t y, int32_t w, int32_t h, int32_t k, const char *word, uint32_t st, uint32_t lit)
@@ -918,9 +778,9 @@ static void gcell(int32_t x, int32_t y, int32_t w, int32_t h, int32_t k, const c
     if (fill == T_THEME)
         fill = T_PTHEME((uint32_t)k);
     fill = lc_box(x, y, w, h, fill);
-    cv_part(x + 22, y + HALF_UP(h - 20), 20, (uint32_t)k, lit, fill);   /* the part's badge (20 px) and the word, M, on the cell's middle */
+    cv_part(x + 8, y + HALF_UP(h - 20), 20, (uint32_t)k, lit, fill);   /* the part's badge (20 px) and the word, M, on the cell's middle */
     GFX_HOOK_ALIGN(0, y, 0, y + h, AL_V, "glo cell word centred up/down");
-    cv_text_on(x + 46, y + CAP_IN(M, h), &AF_M, word, ink, fill);
+    cv_text_on(x + 32, y + CAP_IN(M, h), &AF_M, word, ink, fill);
 }
 
 /* ------------------------------------------------ GLO's level meters --- */
@@ -1056,13 +916,12 @@ static void layer_glo(void)
 {
     uint32_t e;
     for (e = 0; e < NSHOWN; e++) {
-        gcell(GC_X(e), 4, GC_W, 54, (int32_t)e, "SOLO", (perf_solo >> e) & 1u ? LS_HELD : LS_OFF, (perf_solo >> e) & 1u);
-        gcell(GC_X(e), 62, GC_W, 54, (int32_t)e, "MUTE", trk[e].p[P_MUTE] ? LS_MUTE : LS_OFF, !trk[e].p[P_MUTE]);
+        gcell(GC_X(e), 4, GC_W, 112, (int32_t)e, trk[e].p[P_MUTE] ? "MUTED" : "LIVE", trk[e].p[P_MUTE] ? LS_MUTE : LS_OFF, !trk[e].p[P_MUTE]);
     }
 }
-static void layer_scl(void)                             /* KNOB 2's scales, 4 x 4, the one now selected */
+static void layer_scl(void)                             /* KNOB 1's scales, 4 x 4, the one now selected */
 {
-    uint32_t i, sc = (uint32_t)TSEL->p[P_SCALE];
+    uint32_t i, sc = (uint32_t)scale_of(TSEL);
     for (i = 0; i < 16u && i <= (uint32_t)TP[P_SCALE].max; i++) {
         int32_t x = LC_X(i % 4u), y = 4 + 29 * (int32_t)(i / 4u);
         uint16_t ink, fill = lc_fill(i == sc ? LS_SEL : LS_OFF, &ink);
@@ -1168,20 +1027,17 @@ static void layer_rec(void)
     }
 }
 
-/* GLO's four cards: KNOB 1 MUTE and 2 SOLO (which parts, or the twist building up: <P1 / P2> in the accent), KNOB 3, 4 LEVEL 1, 2 (the part's
+/* GLO's four cards: KNOB 1 MUTE 1 and 2 MUTE 2 (ON = muted, OFF), KNOB 3, 4 LEVEL 1, 2 (the part's
  * colour; DIM when it is not sounding) */
 static void glo_cards(void)
 {
     char val[12];
     const char *unit;
-    uint32_t c, mu = (uint32_t)(trk[0].p[P_MUTE] != 0) | (uint32_t)(trk[1].p[P_MUTE] != 0) << 1, so = perf_solo & 3u;
-    int32_t g;
-    static const char *const WHO[4] = {"OFF", "P1", "P2", "P1 P2"};
-    static const uint8_t ON_PART[4] = {0, 0, 1, 2};     /* the colour of what is on: part 1's, part 2's, both: the accent */
-    g = morph_pending(2);
-    draw_column(0, "MUTE", g < 0 ? "<P1" : g > 0 ? "P2>" : WHO[mu], "", g || ON_PART[mu] == 2u ? T_ACCENT : mu ? T_PTHEME(ON_PART[mu]) : VAL(0u), -1, ICON_MUTE);
-    g = morph_pending(3);
-    draw_column(1, "SOLO", g < 0 ? "<P1" : g > 0 ? "P2>" : WHO[so], "", g || ON_PART[so] == 2u ? T_ACCENT : so ? T_PTHEME(ON_PART[so]) : VAL(1u), -1, ICON_NONE);
+    uint32_t c;
+    for (c = 0; c < NSHOWN; c++) {
+        uint32_t mu = trk[c].p[P_MUTE] != 0;
+        draw_column(c, c ? "MUTE 2" : "MUTE 1", mu ? "ON" : "OFF", "", mu ? T_PTHEME(c) : VAL(c), -1, ICON_MUTE);
+    }
     for (c = 0; c < NSHOWN; c++) {
         param_format(&TP[P_LEVEL], trk[c].p[P_LEVEL], val, &unit);
         draw_column(2u + c, c ? "LEVEL 2" : "LEVEL 1", val, unit, glo_sounding(c) ? T_PTHEME(c) : T_DIM,
@@ -1192,26 +1048,7 @@ static void layer_cards(uint32_t l)
 {
     char val[12];
     uint32_t c;
-    if (l == LAYER_FX) {                                /* FILTER CRUSH THROW DEPTH */
-        int32_t m = perf_k[0];
-        fmt_int(val, m < 0 ? -m : m);
-        draw_column(0, "FILTER", m ? val : "OFF", m < 0 ? "LP" : m > 0 ? "HP" : "", m ? VAL(0u) : T_DIM, (m + 100) * 5,
-                    ICON_CUTOFF);
-        fmt_int(val, perf_k[1]);
-        draw_column(1, "CRUSH", perf_k[1] ? val : "OFF", perf_k[1] ? "%" : "", perf_k[1] ? VAL(1u) : T_DIM,
-                    perf_k[1] * 10, ICON_BITS);
-        fmt_int(val, perf_k[2]);
-        draw_column(2, "THROW", perf_k[2] ? val : "OFF", perf_k[2] ? "%" : "", perf_k[2] ? VAL(2u) : T_DIM,
-                    perf_k[2] * 10, ICON_DELAY);
-        if (perf_harm_on()) {                           /* OCT UP / DN playing: KNOB 4 is its shimmer (SHIMR) */
-            fmt_int(val, perf_k[3]);
-            draw_column(3, "SHIMR", perf_k[3] ? val : "OFF", perf_k[3] ? "%" : "", perf_k[3] ? VAL(3u) : T_DIM,
-                        perf_k[3] * 10, ICON_FEEDBACK);
-        } else {
-            fmt_int(val, 100 - perf_k[3]);
-            draw_column(3, "DEPTH", val, "%", VAL(3u), (100 - perf_k[3]) * 10, ICON_MIX);
-        }
-    } else if (l == LAYER_GLO) {
+    if (l == LAYER_GLO) {
         glo_cards();
     } else if (l == LAYER_EDIT) {
         engine_columns(0);
@@ -1237,18 +1074,10 @@ static void draw_layer(void)
 {
     uint32_t l = ui.layer ? ui.layer % LAYER_N : LAYER_GLO, sig = l * 7919u + ux.gen * 977u;   /* (no layer: GLO's page) */
     layer_cards(l);
-    if (l == LAYER_FX)
-    {
-        uint32_t p;
-        sig += (perf_kill ? 0u : perf_held | perf_latched) * 31u + perf_latch_on * 11u + perf_act * 131u + perf_avail() * 7u + (uint32_t)perf_harm_on() * 3u +
-               fx_key_held() * 4099u;
-        for (p = 0; p < PF_KEYS; p++)                   /* (the key map) */
-            sig = sig * 33u + perf_map[p];
-    }
-    else if (l == LAYER_GLO)
-        sig += perf_solo * 31u + (uint32_t)(trk[0].p[P_MUTE] | trk[1].p[P_MUTE] << 1 | trk[2].p[P_MUTE] << 2 | trk[3].p[P_MUTE] << 3) * 131u;
+    if (l == LAYER_GLO)
+        sig += (uint32_t)(trk[0].p[P_MUTE] | trk[1].p[P_MUTE] << 1 | trk[2].p[P_MUTE] << 2 | trk[3].p[P_MUTE] << 3) * 131u;
     else if (l == LAYER_SCL)
-        sig += (uint32_t)TSEL->p[P_SCALE] * 31u;
+        sig += (uint32_t)scale_of(TSEL) * 31u + (uint32_t)root_of(TSEL) * 7u + (uint32_t)offscale_g * 3u;
     else if (l == LAYER_REC)
         sig += (uint32_t)ui_rec_prefs * 31u + (uint32_t)rec_clearable() * 5u + song.sel * 977u;
     else if (l == LAYER_SEQ)
@@ -1261,9 +1090,7 @@ static void draw_layer(void)
         cv_begin(240, H_GRAPH, T_BG);
         cv_rrect(3, 0, 234, H_GRAPH, 5, T_SURF, T_BG);
         cv_bg = T_SURF;
-        if (l == LAYER_FX)
-            layer_fx();
-        else if (l == LAYER_GLO)
+        if (l == LAYER_GLO)
             layer_glo();
         else if (l == LAYER_SCL)
             layer_scl();

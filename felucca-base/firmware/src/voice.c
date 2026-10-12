@@ -303,6 +303,8 @@ static void voice_start(track_t *t, voice_t *v, uint32_t note, uint32_t vel, int
         v->env = 0;
         v->env_out = 0;
         v->env2 = 0;
+        v->uf[0] = v->uf[1] = 0;                        /* the universal filter from rest (DUELL 0.2.2) */
+        v->uft = 0;
         v->side = t->sp_alt;                            /* SPREAD: left, right, left .. (UNISON: mono_play); a */
         t->sp_alt ^= 1u;                                /* sounding voice keeps its side (no jump) */
     }                                                   /* sounding: the attack starts from the current level */
@@ -410,7 +412,7 @@ static void trk_note_on_x(track_t *t, uint32_t note, uint32_t vel)
     mod_note(t, note, vel);                             /* the matrix's VEL / KEY / RAND */
     for (i = 0; i < NVOICE; i++)
         any |= t->v[i].gate;
-    if (!any) {                                        /* fresh phrase: LFO retrigger (TRIG NOTE) and fade */
+    if (!any && !t->arp_ph) {                       /* fresh phrase: the LFO restarts at PHS only with TRIG NOTE (FREE, the default since 0.2.2, never restarts the phase), and its FADE starts over with either (an arp is one phrase: its steps after the first are not fresh) */
         if (!t->p[P_LTRIG])
             t->lfo_ph = (uint32_t)t->p[P_LPHASE] << 25;
         t->lfo_fade = 0;
@@ -711,6 +713,64 @@ static __attribute__((noinline)) void atg_voice(const track_t *t, voice_t *v, vm
     m->again = v->again;
 }
 
+/* DUELL 0.2.2 UNIVERSAL FILTER (SPEC 2.5): a per-voice 2-pole state-variable filter on the engines with no filter of their own
+ * (engine_t.ufilt; the others keep theirs, unchanged). ONE bipolar CUT (P_FREEA, -64..63) whose centre is OFF: left of it a
+ * low-pass, right of it a high-pass, both swept like the old master FILTER macro (the LP from 16 kHz at -1 down to 120 Hz at -64, the HP from 30 Hz at +1 up
+ * to 3.8 kHz at +63, an even step of the cutoff table, SVF_G) and RES (P_FREEB, 0..127: the damping from 1.41, Q 0.71, to 0.145, Q 6.9).
+ * CUT is the dial's position, the cutoff routes add to it (ENV 1 / ENV 2 / LFO 1 / LFO 2 FLT, the matrix's CUT, with the engine's
+ * own cutoff index units: 63 steps = the whole dial, clamped to -64..63; the accent's opening does not apply). The filter runs
+ * only while CUT is off-centre: at 0 the voice renders straight into the part's buffer as always (no work, bit for bit), the
+ * routes are inert. m.cutoff is taken off the engine on these engines whatever CUT is: the engine's own tone control (PHASE DCW,
+ * LOFI TONE, GRAIN / SLICE TONE, FM6 MLVL, PHYS BRIT, VOICE's vowel) is the engine's, no longer a cutoff route.
+ * The filter is the trapezoidal SVF of dsp.c (ANALOG's, TRIO's: unconditionally stable at any cutoff and resonance; the integrators
+ * clamp at +-150000, the output goes through a soft knee at the voice's full level, 48000), run on the voice AFTER its amplitude,
+ * in a scratch block (the engine renders into a cleared buffer, the filtered block is added to the part's). A kind change (LP <->
+ * HP through the middle, off -> on) starts the state from rest (the LP charged with the block's first sample: no step);
+ * near the middle both are transparent (LP -1: 14 kHz, HP +1: 33 Hz), so the switch is not heard */
+#define UF_SPAN 99                                      /* cutoff-table steps over the dial: 127 -> 28 (LP), 0 -> 99 (HP) */
+#define UF_K(res) (5793 - (res) * 5200 / 127)           /* damping, Q12 (dsp.c tsvf_coef_k) */
+#define UF_KNEE 48000
+static __attribute__((noinline)) void uf_run(voice_t *v, int32_t *buf, uint32_t n, int32_t c, int32_t k)
+{
+    tsvf_t f;
+    uint32_t i, hp = c > 0, kind = 1u + hp;
+    int32_t ic1 = v->uf[0], ic2 = v->uf[1];
+    if (v->uft != kind) {                               /* off, or the other kind: from rest */
+        ic1 = ic2 = 0;
+        v->uft = (uint8_t)kind;
+    }
+    tsvf_coef_k(&f, hp ? (c * UF_SPAN) >> 6 : (127 << 8) + ((c * UF_SPAN) >> 6), k);
+    if (!hp && !ic1 && !ic2)
+        ic2 = buf[0] >> 1;                              /* (the low-pass charged with the signal: no step at the start) */
+    for (i = 0; i < n; i++) {
+        int32_t x = buf[i] >> 1, v3 = x - ic2, v1 = (f.a1 * ic1 + f.a2 * v3) >> 13, v2 = ic2 + ((f.a2 * ic1 + f.a3 * v3) >> 13), y;
+        ic1 = clamp(2 * v1 - ic1, -150000, 150000);
+        ic2 = clamp(2 * v2 - ic2, -150000, 150000);
+        y = hp ? x - ((k * v1) >> 12) - v2 : v2;
+        buf[i] = soft_knee(y << 1, UF_KNEE);
+    }
+    v->uf[0] = ic1;
+    v->uf[1] = ic2;
+}
+/* one voice of a ufilt engine with the filter on: the engine into a cleared scratch block, filtered, added to dst */
+static __attribute__((noinline)) void uf_voice(const engine_t *e, track_t *t, voice_t *v, int32_t *dst, uint32_t n,
+                                               const vmod_t *m, int32_t c, int32_t k)
+{
+    int32_t tmp[CTL];
+    uint32_t i;
+    if (n > CTL)
+        n = CTL;
+    for (i = 0; i < n; i++)
+        tmp[i] = 0;
+    e->render(t, v, tmp, n, m);
+    uf_run(v, tmp, n, c, k);
+    for (i = 0; i < n; i++)
+        dst[i] += tmp[i];
+}
+/* t's universal filter is off while its CUT is at the centre, or the engine (the UI's choice) has none: the cutoff routes then do nothing
+ * (the FLT cards say so, ui_draw.c) */
+static int uf_idle(const track_t *t) { return ENGINES[eng_idx(t->eng_req)]->ufilt && !t->p[P_FREEA]; }
+
 /* render one block of a part into out (cleared here); returns the voices rendered */
 /* Channel bend is live performance state, outside projects/presets. Q8 semitones. */
 static int32_t midi_bend_q8[NTRK], midi_bend_target[NTRK];
@@ -741,7 +801,8 @@ static uint32_t track_render(track_t *t, int32_t *out, uint32_t n)
     bend = midi_bend_q8[ti];
     bend16 = bend >= 0 ? bend / 16 : -((-bend + 15) / 16);
     bend_fine = (bend - bend16 * 16) * 2367 / 2560;
-    uint32_t nr = 0, fade = t->xf_on && t->xf, abits = atgt_bits(t);
+    uint32_t nr = 0, fade = t->xf_on && t->xf, abits = atgt_bits(t), uf = e->ufilt;
+    int32_t ucut0 = uf ? p[P_FREEA] : 0, uk = uf ? UF_K(p[P_FREEB]) : 0;   /* the universal filter's dial and damping (0 = off) */
     int16_t pe_new[8];
     for (i = 0; i < n; i++)
         out[i] = 0;
@@ -818,7 +879,7 @@ static uint32_t track_render(track_t *t, int32_t *out, uint32_t n)
             m.inc += (uint32_t)((int32_t)(m.inc >> 12) * (v->fine + tune_fine + bend_fine));
         m.cutoff = ((lfo * p[P_LD_FLT]) >> 7) + ((m.envq15 * p[P_ED_FLT]) >> 7) + ((lfo2 * p[P_L2FLT]) >> 7) +
                    (((v->env2 >> 9) * p[P_E2FLT]) >> 7); /* (ENV 2 / LFO 2 DEST: as ENV 1's and LFO 1's; 0 when unset) */
-        if (v->vel > 110)                               /* accent opens the filter with the env */
+        if (v->vel > 110 && !uf)                        /* accent opens the filter with the env (a universal-filter engine: below) */
             m.cutoff += (m.envq15 * 24) >> 7;
         m.shape = (64 << 8) + ((lfo * p[P_LD_SHP]) >> 7) + ((m.envq15 * p[P_ED_SHP]) >> 7) + ((lfo2 * p[P_L2SHP]) >> 7) +
                   (((v->env2 >> 9) * p[P_E2SHP]) >> 7);
@@ -827,6 +888,17 @@ static uint32_t track_render(track_t *t, int32_t *out, uint32_t n)
             atg_voice(t, v, &m);
         if (mod.on)                                     /* the modulation matrix (mod.c) */
             mod_voice(t, v, &m, v->fine + tune_fine + bend_fine);
+        if (uf) {                                       /* DUELL 0.2.2: no filter of its own: the cutoff routes are the universal filter's */
+            int32_t uc = ucut0 ? clamp((ucut0 << 8) + m.cutoff, -(64 << 8), 63 << 8) : 0;
+            m.cutoff = v->vel > 110 ? (m.envq15 * 24) >> 7 : 0;   /* the routes are the filter's, whatever CUT is; the accent's lift stays the engine's own (its tone control, as ever) */
+            if (uc) {
+                uf_voice(e, t, v, spread_on > v->side ? spread_buf : out, n, &m, uc, uk);
+                nr++;
+                continue;
+            }
+            v->uf[0] = v->uf[1] = 0;                    /* off: from rest next time */
+            v->uft = 0;
+        }
         e->render(t, v, spread_on > v->side ? spread_buf : out, n, &m);   /* (SPREAD: the left ones) */
         nr++;
     }

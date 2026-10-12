@@ -6,7 +6,17 @@ static struct {
     uint32_t pos, rendered, last_ms, start_ms, rem, interval_ms;
     uint32_t pulse_samples, interp_q8, tempo_ms;
     uint8_t mode, have_pulse, tempo_valid, tempo_n;
+    uint8_t seen;                                  /* a clock pulse of the selected source has arrived (the UI's EXT / NO CLOCK) */
+    uint8_t stopped;                               /* an external Stop (0xFC or this unit's STOP) until the next Start / Continue: the arp waits */
 } midi_clock;
+
+/* CLK card / TEMPO page status: 0 INT, 1 external clock arriving, 2 external selected but no pulse for 1 s (NO CLOCK) */
+static uint32_t clock_state(void)
+{
+    if (!song.g[G_CLOCK])
+        return 0;
+    return midi_clock.seen && (int32_t)(fm1_ms - midi_clock.last_ms) < 1000 ? 1u : 2u;
+}
 
 static __attribute__((noinline)) void midi_clock_transport(uint32_t status, uint32_t ms)
 {
@@ -15,6 +25,7 @@ static __attribute__((noinline)) void midi_clock_transport(uint32_t status, uint
         midi_clock.have_pulse = midi_clock.tempo_valid = 0;
         midi_clock.interval_ms = 0;
         midi_clock.start_ms = ms;
+        midi_clock.stopped = 0;
         seq_start();
     } else if (status == 0xFBu) {                  /* Continue: preserve the step */
         midi_clock.pos = midi_clock.rendered;
@@ -22,10 +33,12 @@ static __attribute__((noinline)) void midi_clock_transport(uint32_t status, uint
         midi_clock.have_pulse = midi_clock.tempo_valid = 0;
         midi_clock.interval_ms = 0;
         midi_clock.start_ms = ms;
+        midi_clock.stopped = 0;
         if (!song.playing)
             motion_begin();
         song.playing = 1;
     } else if (status == 0xFCu) {
+        midi_clock.stopped = 1;                    /* (the arp waits for the next Start; the pulses are not counted) */
         seq_stop();
     }
 }
@@ -65,7 +78,8 @@ static __attribute__((noinline)) void midi_clock_pulse(uint32_t ms)
             song.g[G_BPM] = (int16_t)clamp((int32_t)((15000u + dt / 2u) / dt), 40, 240);
         }
     }
-    if (song.playing) {
+    midi_clock.seen = 1;
+    if (song.playing || !midi_clock.stopped) {     /* (a clock running without a Start still steps the ARP: events_block) */
         if (midi_clock.have_pulse) {
             uint32_t interval = ms - midi_clock.last_ms;
             if (interval >= 8u && interval <= 80u)

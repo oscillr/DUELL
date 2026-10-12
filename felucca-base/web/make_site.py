@@ -8,15 +8,16 @@
   emu/                        the browser emulator (the output of web/emu/build.sh: build/emu), or a
                               "not attached yet" page
   install/index.html          the installer page (web/install/index.html)
-  install/duell-VER.fwsc      the package, when there is one (+ LICENSE, LICENSING.md, LICENSES/: the
+  install/duell-VER-beta.fwsc the package, when there is one, also as duell-latest.fwsc, with duell-version.json
+                              {"version": "VER"} (VER is read from the file name; + LICENSE, LICENSING.md, LICENSES/: the
                               package holds JieLi SDK files under Apache-2.0, see LICENSING.md)
-  fm1pkg.js fm1ota.js fm1backup.js   imported by the installer page as "../fm1*.js"
+  fm1pkg.js fm1ota.js fm1backup.js installer_state.js   imported by the installer page as "../fm1*.js"
   .nojekyll
 
   web/make_site.py [--pkg FILE.fwsc] [--emu DIR] [OUT_DIR]
 
   OUT_DIR  default: site/ at the repository root
-  --pkg    default: build/duell-0.1-beta.fwsc if it exists. Without a package the installer shows
+  --pkg    default: the newest build/duell-<VERSION>-beta.fwsc if there is one (any version in the name). Without a package the installer shows
            "Build not yet attached" (and still lets a tester choose a file).
   --emu    default: build/emu if it exists.
            Without it, /emu/ is a short page that says the emulator is not attached yet.
@@ -25,6 +26,7 @@ The package must be one made by tools/fm1pkg_make.py (Felucca's own loader, no v
 Its identity (FM-1_9xx) is read from the package.
 """
 import argparse
+import json
 import re
 import shutil
 import sys
@@ -39,6 +41,20 @@ BLOCKS, BLK, KEEP = 20, 0x30, 0x2F
 def product_of(raw):
     """the package identity: one marker byte after each of the first 20 blocks (fm1pkg.js productOf)"""
     return "".join(chr((m - i - 1) & 0xFF) for i in range(BLOCKS) if (m := raw[i * BLK + KEEP]) != 0x7D)
+
+
+PKG_NAME = re.compile(r"duell-(\d+(?:\.\d+)+)(?:-beta)?\.fwsc")
+
+
+def version_of(name):
+    """the version in a package file name (duell-0.2.1-beta.fwsc -> (0, 2, 1)); None for other names"""
+    m = PKG_NAME.fullmatch(name)
+    return tuple(int(x) for x in m[1].split(".")) if m else None
+
+
+def newest_package(folder):
+    found = [p for p in folder.glob("duell-*.fwsc") if version_of(p.name)]
+    return max(found, key=lambda p: version_of(p.name), default=None)
 
 
 def check_package(pkg):
@@ -59,7 +75,7 @@ def main():
     ap.add_argument("--emu")
     a = ap.parse_args()
     out = Path(a.out).resolve()
-    pkg = Path(a.pkg) if a.pkg else (BASE / "build" / "duell-0.1-beta.fwsc")
+    pkg = Path(a.pkg) if a.pkg else (newest_package(BASE / "build") or BASE / "build" / "duell-none.fwsc")
     emu = Path(a.emu) if a.emu else (BASE / "build" / "emu")
     if a.pkg and not pkg.is_file():
         raise SystemExit(f"--pkg {pkg}: no such file")
@@ -73,7 +89,7 @@ def main():
     inst.mkdir(parents=True)
     (out / ".nojekyll").write_text("", encoding="utf-8")
     shutil.copy(HERE / "landing.html", out / "index.html")
-    for js in ("fm1pkg.js", "fm1ota.js", "fm1backup.js"):
+    for js in ("fm1pkg.js", "fm1ota.js", "fm1backup.js", "installer_state.js"):
         shutil.copy(HERE / js, out / js)
 
     # installer page (+ the package, when there is one)
@@ -81,12 +97,15 @@ def main():
     note = "no package: the installer says \"Build not yet attached\""
     if pkg.is_file():
         raw, product = check_package(pkg)
+        ver = version_of(pkg.name)
+        if not ver:
+            raise SystemExit(f"{pkg.name}: the file name must be duell-<version>-beta.fwsc (the version is read from it)")
+        vtxt = ".".join(map(str, ver))
         shutil.copy(pkg, inst / pkg.name)
-        if pkg.name != "duell-0.1-beta.fwsc":    # the page looks for this name first; make it look for ours
-            html, n = re.subn(r'const PKG_URLS = \[', f'const PKG_URLS = ["./{pkg.name}", ', html, count=1)
-            if n != 1:
-                raise SystemExit("install/index.html: PKG_URLS not found; update make_site.py")
-        note = f"{pkg.name} ({len(raw)} B, {product})"
+        if pkg.name != "duell-latest.fwsc":
+            shutil.copy(pkg, inst / "duell-latest.fwsc")      # the page tries this name first
+        (inst / "duell-version.json").write_text(json.dumps({"version": vtxt}) + "\n", encoding="utf-8")
+        note = f"{pkg.name} ({len(raw)} B, {product}), version {vtxt}, also duell-latest.fwsc + duell-version.json"
     (inst / "index.html").write_text(html, encoding="utf-8")
     lic = BASE / "LICENSES"        # the package holds JieLi SDK files (Apache-2.0): the licence texts travel with it
     (inst / "LICENSES").mkdir()

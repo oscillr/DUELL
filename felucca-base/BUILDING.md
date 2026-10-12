@@ -43,10 +43,10 @@ On Linux x86-64 the toolchain runs natively and Docker is not needed.
 `JIELI_TOOLCHAIN` and `AC79_SDK` override the default locations
 (`~/.jieli/toolchain`, `~/fw-AC79_AIoT_SDK`).
 
-`./build.sh --release 1.0` makes a release build: the package identity becomes `FM-1_910`
-and the version string `v1.0`; the package is `build/felucca-1.0.fwsc`, and
-`build/release-1.0/` holds what a release ships: the package, the app
-(`felucca-1.0-app.bin`), `SHA256SUMS`, the sample attribution, `LICENSE`, `LICENSING.md` and
+The version comes from the `VERSION` file at the DUELL root (`0.MINOR.BUILD`, shown as "DUELL 0.2.1 beta").
+Every build writes `build/duell-<VERSION>-beta.fwsc` (identity `FM-1_901`), `build/duell-latest.fwsc` and
+`build/duell-version.json`. `./build.sh --release` also makes `build/release-<VERSION>-beta/`, which holds what a
+release ships: the package, the app (`duell-<VERSION>-beta-app.bin`), `SHA256SUMS`, the sample attribution, `LICENSE`, `LICENSING.md` and
 `LICENSES/` (the package contains Apache-2.0 SDK files, so the licence texts travel with it).
 
 Build options (environment, `0` or `1`; defaults in `firmware/src/felucca.c`, `core.h` and `icons.c`):

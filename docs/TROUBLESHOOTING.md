@@ -8,8 +8,8 @@ Symptom, then fix. For a failed or interrupted flash read [RECOVERY.md](RECOVERY
 | "MIDI (SysEx) access was not allowed" | Allow MIDI in the site settings in the address bar, then try again. |
 | "FM-1 not found" | Use a **data** USB cable, straight into the computer (no hub). Close DAWs and other tabs using MIDI. Switch the unit off and on. |
 | "The connected device is not an FM-1" | Unplug other MIDI devices and try again. |
-| Install button stays grey | Tick all four checklist boxes, and load a firmware file. "Build not yet attached" means there is no file yet: choose one you built. |
-| "This file cannot be installed" | The file is not a DUELL/Felucca package. Rebuild with `tools/build.py --release 0.1-beta`. Never use a patched official file. |
+| Install button stays grey | Tick all four checklist boxes. If the page says the firmware is not yet released, no package was found next to it; try again later or see the releases page. |
+| "This file cannot be installed" | The file is not a DUELL/Felucca package. Rebuild with `tools/build.py --release`. Never use a patched official file. |
 | It stopped halfway / "USB connection was lost" | Replug and press Install again; the unit stays in update mode and the page resumes. |
 | "The update loader did not appear" | Replug the cable and press Install again. |
 | Done, but the unit does not behave | Unplug and plug it in again. Check HOME (hold) > ABOUT for the version. |

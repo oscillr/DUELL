@@ -4,8 +4,11 @@
  * and voice code: the diatonic triads and sevenths of several scales and roots as music theory has them, the
  * fixed shapes, the voicings, at most 4 notes, the names, MONO plays the root, a key's or a MIDI note's release
  * ends exactly the notes it started (CHRD / VOIC changed while held too), shared notes, live recording writes the
- * chord into one step, the ARP gets the chord as held notes, QNT WHITE maps the key first, a kit (the DRUM engine,
- * SAMPLE PERC) ignores CHRD, MIDI OUT of the keys, and OFF plays exactly as before.
+ * chord into one step, the ARP gets the chord as held notes, a kit (the DRUM engine, SAMPLE PERC) ignores CHRD, MIDI OUT
+ * of the keys, and OFF plays exactly as before. The GLOBAL scale (core.h; owner 2026-10-12): CHROMATIC by default, OFF-SCALE
+ * KEYS SNAP (nearest scale note, a tie down) / PLAY, both parts the same note, DIA3 / DIA7 stack the scale and play plain
+ * MAJ / MAJ7 when chromatic, fixed shapes keep their intervals from the snapped root, arps and SEQUENCER steps follow the scale,
+ * the settings, the patch AK block (an old SCALE read and discarded) and the factory sounds (no SCALE).
  * Run by tests/run_tests.sh (needs build/gen from one firmware build). */
 #define UI_TEST_NO_MAIN 1
 #include "ui_test.c"
@@ -26,7 +29,7 @@ static void reset(void)
     ui_power_on();
     memset(kb_chn, 0, sizeof kb_chn); memset(mchord, 0, sizeof mchord); memset(chord_last, 0, sizeof chord_last);
     fm1_in.notes = kb_prev = 0; mo_w = mo_r = 0; usb.config = 1;
-    trk[0].p[P_VOICE] = V_POLY; trk[0].p[P_SCALE] = 1; trk[0].p[P_ROOT] = 0;   /* C major, POLY */
+    trk[0].p[P_VOICE] = V_POLY; scale_g = 1; root_g = 0; offscale_g = OS_PLAY;   /* C major, POLY; keys as played (the root rule of the chords; SNAP has its own test) */
     events_block(CTL);
 }
 /* the chord track 0 plays on note r: "n1 n2 n3 [n4]" compared with want (0-terminated) */
@@ -77,12 +80,12 @@ static int theory(void)
         t->p[P_CHRD] = CH_DIA7; ok &= name_is(CMAJ[i], MAJ7[i]);
     }
     bad += check("C major: C Dm Em F G Am Bdim, Cmaj7 Dm7 Em7 Fmaj7 G7 Am7 Bm7b5", ok);
-    t->p[P_SCALE] = 2; t->p[P_ROOT] = 9; t->p[P_CHRD] = CH_DIA3;   /* A minor */
+    scale_g = 2; root_g = 9; t->p[P_CHRD] = CH_DIA3;   /* A minor */
     bad += check("A minor DIA3 on B: B D F", chord_is(71, (const uint8_t[]){71, 74, 77, 0}));
     bad += check("A minor DIA3 on A: A C E (Am), on C: C E G, on E: E G B (Em)",
                  chord_is(69, (const uint8_t[]){69, 72, 76, 0}) && chord_is(60, (const uint8_t[]){60, 64, 67, 0}) &&
                  chord_is(64, (const uint8_t[]){64, 67, 71, 0}) && name_is(69, "Am") && name_is(64, "Em"));
-    t->p[P_SCALE] = 7;                                             /* A harmonic minor */
+    scale_g = 7;                                             /* A harmonic minor */
     bad += check("A harmonic minor DIA3 on E: E G# B (E), on C: C E G# (Caug)",
                  chord_is(64, (const uint8_t[]){64, 68, 71, 0}) && name_is(64, "E") &&
                  chord_is(60, (const uint8_t[]){60, 64, 68, 0}) && name_is(60, "Caug"));
@@ -90,24 +93,27 @@ static int theory(void)
     bad += check("A harmonic minor DIA7 on E: E G# B D (E7), on G#: G# B D F (G#dim7), on A: AmM7",
                  chord_is(64, (const uint8_t[]){64, 68, 71, 74}) && name_is(64, "E7") && name_is(68, "G#dim7") &&
                  name_is(69, "AmM7"));
-    t->p[P_SCALE] = 1; t->p[P_ROOT] = 3;                           /* Eb major */
+    scale_g = 1; root_g = 3;                           /* Eb major */
     bad += check("Eb major DIA7 on Bb: Bb D F Ab (A#7)", chord_is(58, (const uint8_t[]){58, 62, 65, 68}) && name_is(58, "A#7"));
-    t->p[P_SCALE] = 3; t->p[P_ROOT] = 2; t->p[P_CHRD] = CH_DIA3;   /* D dorian */
+    scale_g = 3; root_g = 2; t->p[P_CHRD] = CH_DIA3;   /* D dorian */
     bad += check("D dorian DIA3 on D: Dm, on G: G (the major IV)", name_is(62, "Dm") && name_is(67, "G") &&
                  chord_is(67, (const uint8_t[]){67, 71, 74, 0}));
-    t->p[P_SCALE] = 1; t->p[P_ROOT] = 0;
+    scale_g = 1; root_g = 0;
     bad += check("a root outside the scale keeps its pitch, the shape of the scale note below (C# in C major: C#-F-G#, C's 0-4-7)",
                  chord_is(61, (const uint8_t[]){61, 65, 68, 0}) && name_is(61, "C#"));
     bad += check("  Eb (D's shape: minor) and F# (F's shape: major) too",
                  chord_is(63, (const uint8_t[]){63, 66, 70, 0}) && name_is(63, "D#m") && chord_is(66, (const uint8_t[]){66, 70, 73, 0}));
     t->p[P_CHRD] = CH_DIA7;
     bad += check("  DIA7 on C#: C's seventh shape on C# (C#-F-G#-C)", chord_is(61, (const uint8_t[]){61, 65, 68, 72}));
-    t->p[P_CHRD] = CH_MAJ; t->p[P_SCALE] = 2;
+    t->p[P_CHRD] = CH_MAJ; scale_g = 2;
     bad += check("  a fixed shape ignores the scale (MAJ on C#: C#-F-G#)", chord_is(61, (const uint8_t[]){61, 65, 68, 0}));
-    t->p[P_CHRD] = CH_DIA3; t->p[P_SCALE] = 1;
-    t->p[P_SCALE] = 0; t->p[P_ROOT] = 7;                           /* CHR: the major scale of G */
-    bad += check("CHR: the major scale of ROOT (G: on A, Am; on F#, F#dim)", name_is(69, "Am") && name_is(66, "F#dim"));
-    t->p[P_SCALE] = 5; t->p[P_ROOT] = 0;                           /* C major pentatonic: every other note */
+    t->p[P_CHRD] = CH_DIA3; scale_g = 1;
+    scale_g = 0; root_g = 7;                           /* CHROMATIC: no scale to stack (the root is no matter) */
+    bad += check("CHROMATIC: DIA3 plays the plain MAJ triad (A: A C# E, F#: F# A# C#), DIA7 the MAJ7 (C: C E G B)",
+                 chord_is(69, (const uint8_t[]){69, 73, 76, 0}) && name_is(69, "A") && name_is(66, "F#") &&
+                 (t->p[P_CHRD] = CH_DIA7, chord_is(60, (const uint8_t[]){60, 64, 67, 71})) && name_is(60, "Cmaj7"));
+    t->p[P_CHRD] = CH_DIA3;
+    scale_g = 5; root_g = 0;                           /* C major pentatonic: every other note */
     bad += check("pentatonic DIA3: in the scale (C E A: C6)", chord_is(60, (const uint8_t[]){60, 64, 69, 0}) && name_is(60, "C6"));
     {   /* every scale, root, mode: every note in the scale */
         uint32_t s, r, n, k, note;
@@ -117,7 +123,7 @@ static int theory(void)
         for (s = 1; s <= (uint32_t)TP[P_SCALE].max; s++)
             for (r = 0; r < 12u; r++)
                 for (note = 36; note < 96u; note++) {
-                    t->p[P_SCALE] = (int16_t)s; t->p[P_ROOT] = (int16_t)r;
+                    scale_g = (int16_t)s; root_g = (int16_t)r;
                     t->p[P_CHRD] = (int16_t)(note & 1u ? CH_DIA3 : CH_DIA7);
                     n = chord_build(t, note, out);
                     ok &= n == (note & 1u ? 3u : 4u);
@@ -152,7 +158,7 @@ static int shapes_voicings(void)
     t->p[P_CHRD] = CH_MIN7; bad += check("MIN7: C Eb G Bb (Cm7)", chord_is(60, (const uint8_t[]){60, 63, 67, 70}) && name_is(60, "Cm7"));
     t->p[P_CHRD] = CH_SUS4; bad += check("SUS4: C F G (Csus4)", chord_is(60, (const uint8_t[]){60, 65, 67, 0}) && name_is(60, "Csus4"));
     t->p[P_CHRD] = CH_POW; bad += check("POW: C G C (C5)", chord_is(60, (const uint8_t[]){60, 67, 72, 0}) && name_is(60, "C5"));
-    t->p[P_CHRD] = CH_MIN; t->p[P_SCALE] = 1;
+    t->p[P_CHRD] = CH_MIN; scale_g = 1;
     bad += check("a fixed shape ignores the scale (MIN on D# in C major: D# F# A#)", chord_is(63, (const uint8_t[]){63, 66, 70, 0}));
     t->p[P_CHRD] = CH_MAJ;
     t->p[P_VOIC] = VC_OPEN; bad += check("OPEN: C G E (1-5-3)", chord_is(60, (const uint8_t[]){60, 67, 76, 0}));
@@ -177,7 +183,7 @@ static int shapes_voicings(void)
             for (c = 1; c <= (uint32_t)TP[P_CHRD].max; c++)
                 for (v = 0; v <= (uint32_t)TP[P_VOIC].max; v++)
                     for (note = 0; note < 128u; note++) {
-                        t->p[P_SCALE] = (int16_t)s; t->p[P_CHRD] = (int16_t)c; t->p[P_VOIC] = (int16_t)v;
+                        scale_g = (int16_t)s; t->p[P_CHRD] = (int16_t)c; t->p[P_VOIC] = (int16_t)v;
                         n = chord_make(t, note, out, &r, &mask);
                         ok &= n >= 1u && n <= CHORD_MAX && (mask & 1u);
                         for (k = 1; k < n; k++) ok &= out[k] > out[k - 1u];
@@ -227,26 +233,20 @@ static int keys(void)
     bad += check("LEGATO: the root alone (E)", ngated(t) == 1u && gate_note(t, 64));
     key_up(K_E4);
     t->p[P_VOICE] = V_POLY;
-    t->p[P_QUANT] = 2;                                             /* WHITE in A minor: D4 is the 4th degree */
-    t->p[P_SCALE] = 2; t->p[P_ROOT] = 9;
-    key_down(K_D4);                                                /* WHITE: C4 = A4 (the root), D4 = B4 */
-    bad += check("QNT WHITE: the key mapped first (A minor, D4 -> B4), then its chord B D F",
-                 kb_note[K_D4] == 71 && gate_note(t, 71) && gate_note(t, 74) && gate_note(t, 77));
-    key_up(K_D4);
-    bad += check("  released", !ngated(t));
-    t->p[P_SCALE] = 1; t->p[P_ROOT] = 0; t->p[P_QUANT] = 0;
+    scale_g = 1; root_g = 0; offscale_g = OS_PLAY;
     key_down(K_C4 + 1u);
-    bad += check("QNT OFF, C major DIA3: the black key C# plays a chord on C# (C# F G#)",
+    bad += check("OFF-SCALE PLAY, C major DIA3: the black key C# plays a chord on C# (C# F G#)",
                  ngated(t) == 3u && gate_note(t, 61) && gate_note(t, 65) && gate_note(t, 68) && !gate_note(t, 60));
     key_up(K_C4 + 1u);
-    t->p[P_QUANT] = 1;                                             /* QNT SNAP: the user asked for it */
+    offscale_g = OS_SNAP;
     key_down(K_C4 + 1u);
-    bad += check("QNT SNAP still snaps the key to the scale (C# -> C: C E G)",
+    bad += check("OFF-SCALE SNAP snaps the key to the scale first (C# -> C: C E G)",
                  ngated(t) == 3u && gate_note(t, 60) && gate_note(t, 64) && gate_note(t, 67) && !gate_note(t, 61));
     key_up(K_C4 + 1u);
-    t->p[P_CHRD] = CH_OFF; t->p[P_QUANT] = 0;
+    offscale_g = OS_PLAY;
+    t->p[P_CHRD] = CH_OFF;
     key_down(K_C4 + 1u);
-    bad += check("CHRD OFF with a scale: the key's real note (C#)", ngated(t) == 1u && gate_note(t, 61));
+    bad += check("CHRD OFF with a scale, PLAY: the key's real note (C#)", ngated(t) == 1u && gate_note(t, 61));
     key_up(K_C4 + 1u);
     before = mo_w;
     key_down(K_C4);
@@ -382,7 +382,7 @@ static int arp_seq_mode(void)
     t->step[0] = (step_t){{60}, 1, ST_NOTE, 0, 100};
     t->step[2] = (step_t){{64}, 1, ST_NOTE, SF_ACCENT, 100};
     t->step[3] = (step_t){{67}, 1, ST_NOTE, 0, 100};
-    t->p[P_SLEN] = 4; t->p[P_SCALE] = 0; t->p[P_AOCT] = 1; t->p[P_APROB] = 127; t->p[P_AGATE] = 64;
+    t->p[P_SLEN] = 4; scale_g = 0; t->p[P_AOCT] = 1; t->p[P_APROB] = 127; t->p[P_AGATE] = 64;
     t->p[P_ARATE] = 2; t->p[P_AMODE] = AM_SEQ;
     per = div_samples(2);
     t->nheld = 1; t->held[0] = 48; memset(held_key[0], 0, sizeof held_key[0]);
@@ -400,9 +400,177 @@ static int arp_seq_mode(void)
     return bad;
 }
 
+
+/* The GLOBAL scale (core.h): one SCALE and ROOT for the whole instrument, OFF-SCALE KEYS SNAP / PLAY */
+static int in_mask(int32_t note, int32_t scale, int32_t root) { return (SCALE_MASK[scale] >> ((note - root + 120) % 12)) & 1; }
+static int chord_of(track_t *t, uint32_t r, const uint8_t *want)
+{
+    uint8_t out[CHORD_MAX];
+    uint32_t n = chord_build(t, r, out), i;
+    for (i = 0; i < n; i++) if (want[i] != out[i]) return 0;
+    return i == CHORD_MAX || !want[i];
+}
+static int global_scale(void)
+{
+    int bad = 0, ok;
+    uint32_t i, k;
+    reset();
+    /* a new unit / an old blob: CHROMATIC, C, SNAP */
+    memset(&favorites, 0, sizeof favorites);
+    scale_last = 0xFFFFFFFFu; scale_g = 9; root_g = 4; offscale_g = OS_PLAY;
+    scale_sync();
+    bad += check("first boot (zero settings): CHROMATIC, C, SNAP", scale_g == 0 && root_g == 0 && offscale_g == OS_SNAP);
+    ui_scale_set = 0x0Au; ui_root_set = 5u;                 /* an old SCALE LINK blob (link OFF, a scale, a root): read as the defaults */
+    scale_last = 0xFFFFFFFFu;
+    scale_sync();
+    bad += check("  an old SCALE LINK blob reads CHROMATIC, C, SNAP too", scale_g == 0 && root_g == 0 && offscale_g == OS_SNAP);
+    /* settings round trip */
+    scale_g = 7; root_g = 5; offscale_g = OS_PLAY;
+    scale_sync();
+    ok = (ui_scale_set & 0x80u) && (ui_scale_set & 15u) == 7u && (ui_scale_set & 0x40u) && ui_root_set == 5u;
+    {   persist_t p;
+        settings_export(&p);
+        scale_g = 2; root_g = 9; offscale_g = OS_SNAP;
+        memset(&favorites, 0, sizeof favorites);
+        scale_last = 0xFFFFFFFFu;
+        scale_sync();
+        ok &= scale_g == 0 && root_g == 0 && offscale_g == OS_SNAP;
+        settings_import(&p, sizeof p);
+        scale_sync();
+        ok &= scale_g == 7 && root_g == 5 && offscale_g == OS_PLAY; }
+    bad += check("settings: SCALE, ROOT and OFF-SCALE round trip", ok);
+    bad += check("MENU > CONTROL has no SCALE LINK row", menu_n(MI_HOMEPG) == (uint32_t)HP_COUNT && MI_TAB[MI_LOWCUT] == MTAB_AUDIO);
+    reset();
+    scale_g = 0; root_g = 0; offscale_g = OS_SNAP;
+    /* SNAP: the nearest scale note, a tie goes down; PLAY passes; CHROMATIC has nothing to snap */
+    bad += check("CHROMATIC + SNAP: every key plays as it is", note_snap(&trk[0], 61) == 61 && note_snap(&trk[0], 66) == 66);
+    scale_g = 1;                                            /* C major */
+    ok = note_snap(&trk[0], 61) == 60 && note_snap(&trk[0], 63) == 62 && note_snap(&trk[0], 66) == 65 && note_snap(&trk[0], 68) == 67 &&
+         note_snap(&trk[0], 70) == 69 && note_snap(&trk[0], 64) == 64;
+    bad += check("SNAP, C major: a black key (a tie between two white ones) goes DOWN (C# C, D# D, F# F, G# G, A# A), a scale note stays", ok);
+    scale_g = 5;                                            /* C major pentatonic C D E G A */
+    ok = note_snap(&trk[0], 65) == 64 && note_snap(&trk[0], 71) == 72 && note_snap(&trk[0], 66) == 67 && note_snap(&trk[0], 70) == 69;
+    bad += check("SNAP, pentatonic: the NEAREST note (F -> E, B -> C up, F# -> G, A# -> A)", ok);
+    root_g = 2; scale_g = 1;                                // D major: F# C# in, F C out
+    bad += check("SNAP follows ROOT (D major: F -> E, C -> B)", note_snap(&trk[0], 65) == 64 && note_snap(&trk[0], 60) == 59);
+    offscale_g = OS_PLAY;
+    bad += check("PLAY: out-of-scale notes pass unchanged", note_snap(&trk[0], 65) == 65 && note_snap(&trk[0], 60) == 60);
+    /* a key and a MIDI note take the same path; both parts sound the same note */
+    root_g = 0; scale_g = 1; offscale_g = OS_SNAP;
+    trk[0].p[P_CHRD] = trk[1].p[P_CHRD] = CH_OFF; trk[0].p[P_TRANS] = trk[1].p[P_TRANS] = 0;
+    song.octave = 0;
+    duell_mode_force(DM_LAYER);
+    key_down(K_C4 + 1u);                                    /* C# */
+    bad += check("SNAP, LAYER: the key C# sounds C on BOTH parts (and goes out as C on MIDI OUT)",
+                 gate_note(&trk[0], 60) && gate_note(&trk[1], 60) && !gate_note(&trk[0], 61) && !gate_note(&trk[1], 61) &&
+                 ((midi_out_q[mo_w - 1u] >> 16) & 0xFFu) == 60u);
+    key_up(K_C4 + 1u);
+    bad += check("  and its release ends them", !ngated(&trk[0]) && !ngated(&trk[1]));
+    midi(0x90, 66, 100);                                    /* F# on part 1's channel: LAYER plays both */
+    bad += check("SNAP: a MIDI note follows the same path (F# -> F on both parts)",
+                 gate_note(&trk[0], 65) && gate_note(&trk[1], 65) && !gate_note(&trk[0], 66));
+    midi(0x80, 66, 0);
+    bad += check("  its note-off ends it", !ngated(&trk[0]) && !ngated(&trk[1]));
+    offscale_g = OS_PLAY;
+    key_down(K_C4 + 1u);
+    bad += check("PLAY: the key plays C# on both parts", gate_note(&trk[0], 61) && gate_note(&trk[1], 61));
+    key_up(K_C4 + 1u);
+    /* the chords: DIA stacks the scale; chromatic plays plain MAJ / MAJ7; fixed shapes keep their intervals from the snapped root */
+    offscale_g = OS_SNAP;
+    trk[0].p[P_CHRD] = trk[1].p[P_CHRD] = CH_DIA3;
+    key_down(K_D4);
+    bad += check("DIA3 in C major stacks scale degrees (D4: D F A) on both parts",
+                 gate_note(&trk[0], 62) && gate_note(&trk[0], 65) && gate_note(&trk[0], 69) && gate_note(&trk[1], 62) && gate_note(&trk[1], 65) &&
+                 gate_note(&trk[1], 69) && ngated(&trk[0]) == 3u && ngated(&trk[1]) == 3u);
+    key_up(K_D4);
+    trk[0].p[P_CHRD] = trk[1].p[P_CHRD] = CH_DIA7;
+    key_down(K_D4 - 2u);                                    /* C4 */
+    bad += check("DIA7 in C major: C E G B", gate_note(&trk[0], 60) && gate_note(&trk[0], 64) && gate_note(&trk[0], 67) && gate_note(&trk[0], 71) &&
+                 ngated(&trk[0]) == 4u);
+    key_up(K_D4 - 2u);
+    scale_g = 0;
+    trk[0].p[P_CHRD] = CH_DIA3; trk[1].p[P_CHRD] = CH_DIA7;
+    key_down(K_D4);
+    bad += check("CHROMATIC: DIA3 plays the MAJ triad (D F# A), DIA7 the MAJ7 (D F# A C#)",
+                 gate_note(&trk[0], 62) && gate_note(&trk[0], 66) && gate_note(&trk[0], 69) && ngated(&trk[0]) == 3u &&
+                 gate_note(&trk[1], 62) && gate_note(&trk[1], 66) && gate_note(&trk[1], 69) && gate_note(&trk[1], 73) && ngated(&trk[1]) == 4u);
+    key_up(K_D4);
+    scale_g = 1;
+    trk[0].p[P_CHRD] = trk[1].p[P_CHRD] = CH_MIN;
+    key_down(K_C4 + 1u);                                    /* C# snaps to C, MIN from C: C Eb G (Eb is NOT snapped again) */
+    bad += check("a FIXED shape keeps its intervals from the snapped root (MIN on C# -> C: C Eb G, Eb not re-snapped)",
+                 gate_note(&trk[0], 60) && gate_note(&trk[0], 63) && gate_note(&trk[0], 67) && ngated(&trk[0]) == 3u && gate_note(&trk[1], 63));
+    key_up(K_C4 + 1u);
+    ok = 1;
+    for (i = 36; i < 96u; i++) {                            /* DIA3 / DIA7 with SNAP: the root is in the scale, every tone is in the scale */
+        uint8_t o[CHORD_MAX];
+        uint32_t n, j;
+        trk[0].p[P_CHRD] = (int16_t)(i & 1u ? CH_DIA3 : CH_DIA7);
+        for (k = 1; k <= (uint32_t)TP[P_SCALE].max; k++) {
+            scale_g = (int16_t)k; root_g = (int16_t)(i % 12u);
+            n = chord_build(&trk[0], i, o);
+            for (j = 0; j < n; j++) ok &= in_mask(o[j], (int32_t)k, root_g);
+        }
+    }
+    bad += check("SNAP: every DIA3 / DIA7 tone of every scale and root is in the scale", ok);
+    /* arps use the held (snapped) notes; the SEQUENCER steps follow the global scale (degrees; semitones when chromatic) */
+    scale_g = 1; root_g = 0; offscale_g = OS_SNAP;
+    trk[0].p[P_CHRD] = CH_OFF; trk[0].p[P_AMODE] = AM_UP;
+    key_down(K_C4 + 1u);
+    bad += check("ARP: the held note is the snapped one (C# -> C)", trk[0].nheld == 1u && trk[0].held[0] == 60);
+    key_up(K_C4 + 1u);
+    trk[0].p[P_AMODE] = 0; trk_all_off(&trk[0]); trk[0].nheld = 0;
+    for (i = 0; i < NSTEP; i++) { trk[0].step[i] = trk[1].step[i] = (step_t){{0}, 0, ST_REST, 0, 0}; }
+    for (i = 0; i < 12u; i++) trk[0].step[i] = trk[1].step[i] = (step_t){{(uint8_t)(60 + i)}, 1, ST_NOTE, 0, 100};
+    trk[0].p[P_SLEN] = trk[1].p[P_SLEN] = 12; trk[0].p[P_AOCT] = trk[1].p[P_AOCT] = 1;
+    for (k = 0, ok = 1; k < 2u; k++)
+        for (i = 0; i < 12u; i++) {
+            uint32_t list[1] = {48}, vel, m;
+            uint8_t o[4];
+            trk[k].arp_idx = i;
+            m = arp_seq_notes(&trk[k], list, 1, o, &vel);
+            ok &= m == 1u && in_mask(o[0], 1, 0);
+        }
+    bad += check("SEQUENCER steps of both parts land in the global scale", ok);
+    scale_g = 0;
+    { uint32_t list[1] = {48}, vel; uint8_t o[4];
+      trk[1].arp_idx = 1; (void)arp_seq_notes(&trk[1], list, 1, o, &vel);
+      bad += check("  CHROMATIC: they move in semitones (the C# step gives 49)", o[0] == 49); }
+    /* a note already sounding keeps its pitch when the scale changes; every note ends */
+    scale_g = 1; offscale_g = OS_SNAP;
+    trk[0].p[P_CHRD] = CH_OFF;
+    key_down(K_C4 + 1u);
+    scale_g = 0;
+    bad += check("the scale changed while a key is held: it keeps its note (C), the release ends it", gate_note(&trk[0], 60));
+    key_up(K_C4 + 1u);
+    bad += check("  nothing hangs", !ngated(&trk[0]) && !ngated(&trk[1]));
+    /* loading a sound never touches the global scale; no factory sound carries one */
+    {   uint32_t e, nl = 0, nk = 0;
+        ok = 1;
+        scale_g = 7; root_g = 5; offscale_g = OS_PLAY;
+        for (k = 0; k < 2u; k++)
+            for (e = 0; e < NENGINES; e++) {
+                uint32_t n = ds_count(e);
+                if (!n) continue;
+                set_engine_of(&trk[k], e);
+                for (i = 0; i < n && i < 30u; i++) {
+                    uint32_t j;
+                    const ds_sound_t *ds = ds_get(e, i);
+                    nk += (ds->flags & DSF_KEYS) != 0;
+                    nl++;
+                    for (j = 0; j < ds->np; j++) ok &= DS_PAIR[ds->at + j].id != P_SCALE;
+                    apply_preset_to(&trk[k], i);
+                    ok &= scale_g == 7 && root_g == 5 && offscale_g == OS_PLAY;
+                }
+            }
+        bad += check("loading sounds on either part leaves the global SCALE, ROOT and OFF-SCALE alone; no factory pad sets a SCALE", ok && nl > 20u && nk > 0u); }
+    scale_g = 0; root_g = 0; offscale_g = OS_SNAP;
+    return bad;
+}
+
 int main(void)
 {
-    int bad = theory() + shapes_voicings() + keys() + arp_rec() + arp_seq_mode() + midi_in() + kits();
+    int bad = global_scale() + theory() + shapes_voicings() + keys() + arp_rec() + arp_seq_mode() + midi_in() + kits();
     printf("%s\n", bad ? "CHORD TEST FAILED" : "chord keys test passed");
     return bad != 0;
 }

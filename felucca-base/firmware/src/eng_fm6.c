@@ -198,6 +198,20 @@ static int fm6_load_slot(uint32_t tr, uint32_t s)
     return 0;
 }
 
+/* the SLOT value a patch shows: the factory patch it equals unchanged (F n; the one at the SLOT s it had first, then on from there),
+ * else OWN. The search unpacks up to FM6_NFACTORY patches: a project load does it before it turns the interrupts off (project.c) */
+static int32_t fm6_adopt_slot(const uint8_t *patch, int32_t s)
+{
+    uint8_t v[FP_SIZE + 1u];
+    uint32_t k, f = s >= 0 && s < (int32_t)FM6_NFACTORY ? (uint32_t)s : 0u;
+    for (k = 0; k < FM6_NFACTORY; k++) {
+        fm6_unpack(FM6_FACTORY[(f + k) % FM6_NFACTORY], v);
+        if (!memcmp(v, patch, FP_SIZE))
+            break;
+    }
+    return k < FM6_NFACTORY ? (int32_t)((f + k) % FM6_NFACTORY) : (int32_t)FM6_OWN;
+}
+
 /* track tr's patch was just put in as its own (a project, a user preset, the editor, a conversion): an FM6 track's
  * SLOT shows the factory patch it equals unchanged (F n; the SLOT it had first), else OWN; nothing reloads over it
  * (fm6_poll) */
@@ -208,14 +222,7 @@ static void fm6_adopt(uint32_t tr)
     tr %= NTRK;
     fm6_own_ok &= (uint8_t)~(1u << tr);
     if (t->eng_req == ENGI_FM6) {
-        uint8_t v[FP_SIZE + 1u];
-        uint32_t k, f = s >= 0 && s < (int32_t)FM6_NFACTORY ? (uint32_t)s : 0u;
-        for (k = 0; k < FM6_NFACTORY; k++) {
-            fm6_unpack(FM6_FACTORY[(f + k) % FM6_NFACTORY], v);
-            if (!memcmp(v, fm6_patch[tr], FP_SIZE))
-                break;
-        }
-        s = k < FM6_NFACTORY ? (int32_t)((f + k) % FM6_NFACTORY) : (int32_t)FM6_OWN;
+        s = fm6_adopt_slot(fm6_patch[tr], s);
         t->p[P_E7] = (int16_t)s;
     }
     fm6_slot[tr] = (uint8_t)s;
@@ -484,4 +491,5 @@ static const engine_t ENG_FM6 = {
     .done = fm6_done,
     .mem = sizeof(fm6_note_t) * FM6_POLY,
     .atgt = ATG_FM6,             /* ARP TARGET: OP1..OP6 (SPEC 2.3) */
+    .ufilt = 1,                 /* DUELL 0.2.2: no filter of its own: the universal filter (voice.c uf_run, P_FREEA CUT / P_FREEB RES) */
 };

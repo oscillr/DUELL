@@ -4,7 +4,7 @@
  * the parameters, saved by multi.c's packer (project_save_as), the record read back from the store. Then every record is loaded again
  * in a fresh power-on and printed (engines, patch names, mode, tempo, arp / chord / voice / effect settings) and played (a key held
  * with the chord on: the voices busy must reach 8).
- *   cc -O1 -Ibuild/gen -Ifirmware/src -Itests -DFELUCCA_VERSION='"x"' -o build/host/gen_test_multis tests/gen_test_multis.c -lm
+ *   cc -O1 -DDUELL_TEST_MODE=1 -Ibuild/gen_test -Ibuild/gen -Ifirmware/src -Itests -DFELUCCA_VERSION='"x"' -o build/host/gen_test_multis tests/gen_test_multis.c -lm
  *   build/host/gen_test_multis tools/factory_multis        (writes M13.bin..M16.bin; without an argument only prints) */
 #define UI_TEST_NO_MAIN 1
 #include "ui_test.c"

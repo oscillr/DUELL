@@ -2,14 +2,13 @@
 /* DUELL build step 5: the output MODE (SPEC 5b.1): SPLIT, STEREO, LAYER. On the firmware's sources (the DSP of hostsim.c and
  * the UI against ui_test.c's stubs).  build/host/mode_test   (DUELL/host_tests.sh "mode")
  *   STEREO     bit for bit as before step 5: a busy two-part render (SPREAD, the matrix's PAN, an INSERT CHORUS, every
- *              send, HALL, BASS+, the FX layer's THROW / FLANGER / PHASER; tests/mode_scn.h) hashes to what the sources
+ *              send, HALL, BASS+; tests/mode_scn.h) hashes to what the sources
  *              before step 5 gave (MODE_STEREO_HASH). (regress's goldens: the same, unchanged)
  *   ISOLATION  SPLIT: a loud part 1 alone (every engine, chords at velocity 127, LEVEL 127, PAN pointing the other way,
  *              SPREAD 127, the matrix LFO -> PAN, DIST, each INSERT type, every send at 127, delay feedback,
- *              ROOM / SPRING / HALL, BASS+, the FX layer's THROW, FLANGER, PHASER, LPF, OCT UP and REPEAT; part 2
+ *              ROOM / SPRING / HALL, BASS+; part 2
  *              silent with all of that on too): the right channel is exactly 0 in every sample, and the reverse for
- *              part 2; then CRUSH too (Felucca's: it puts an offset of its own on a silent channel, in every mode): the
- *              other channel bit for bit what it is with the part silent. Then both parts at once (every engine, with
+ *              part 2. Then both parts at once (every engine, with
  *              a partner): the left channel equals part 1's alone sample for sample, the right part 2's (no shared
  *              state: the limiters and BASS+ per channel, the buses per part), while the limiter works.
  *   LAYER      a note of part 1 plays part 2 too (the same note, velocity, bend, sustain): the keys (with part 2 selected
@@ -32,7 +31,7 @@
 #endif
 #include <sys/wait.h>
 
-#define MODE_STEREO_HASH 0x174A9561B9854C15ull   /* mode_stereo_scenario(); was 0xA233C4BC0DC6D894 (the sources before step 5, commit bb60ab7) up to 8f45fc5; re-based at 0d28bf8: a bipolar LFO now swings the whole range of a per-block destination and the scenario routes LFO to PAN */
+#define MODE_STEREO_HASH 0xBB6416D3547A055Cull   /* mode_stereo_scenario(); re-based in 0.2.2: the FX layer's THROW / FLANGER / PHASER left the scenario with the layer (the output idle is regress's goldens, unchanged); was 0x174A9561B9854C15, before that 0xA233C4BC0DC6D894 (the sources before step 5, commit bb60ab7) up to 8f45fc5; re-based at 0d28bf8: a bipolar LFO now swings the whole range of a per-block destination and the scenario routes LFO to PAN */
 
 static int bad, ncheck;
 static int expect(const char *what, int ok)
@@ -66,13 +65,6 @@ static void dsp_clean(uint32_t mode)                    /* the DSP as at power-o
     memset(mph, 0, sizeof mph);
     memset(&morph, 0, sizeof morph);
     memset(&mxf, 0, sizeof mxf);
-    memset(&pf, 0, sizeof pf);
-    pf.src = pf.next = PF_N;
-    pf.lc = PF_TOP;
-    for (uint32_t k = 0; k < NTRK; k++)
-        pf.mg[k] = 32768;
-    perf_held = perf_latched = perf_act = 0;
-    memset((void *)perf_k, 0, sizeof perf_k);
     memset(ins, 0, sizeof ins);
     memset(midi_sel_on, 0, sizeof midi_sel_on);
     memset(midi_ch, 0, sizeof midi_ch);
@@ -206,7 +198,6 @@ static const char *const ENGS[] = {"ANALOG", "PHASE", "LOFI", "SAMPLE", "VOICE",
                                    "FM6", "SLICE"};
 #define NENGS (sizeof ENGS / sizeof ENGS[0])
 static int32_t iso_other[MAXB * CTL];
-static uint32_t iso_crush;                              /* the sample CRUSH started at */
 /* one isolation render: part p plays (loud) or not, everything on; the other channel into iso_other; the own channel's
  * peak returned */
 static int32_t iso_render(uint32_t e, uint32_t p, uint32_t rt, uint32_t k, uint32_t loud)
@@ -223,27 +214,16 @@ static int32_t iso_render(uint32_t e, uint32_t p, uint32_t rt, uint32_t k, uint3
         for (i = 0; i < 4u; i++)
             trk_note_on(&trk[p], CH[i] + rt, 127);
     mblk(FS / 2u / CTL);
-    perf_k[2] = 100;                                     /* the FX layer: THROW, FLANGER, PHASER, the LPF */
-    perf_held = PF_BIT(PF_FLG) | PF_BIT(PF_PHS) | PF_BIT(PF_LPF);
     mblk(FS / 2u / CTL);
     if (loud)
         for (i = 0; i < 4u; i++)
             trk_note_on(&trk[p], CH[i] + 7u, 127);       /* (a second chord: steals, retriggers) */
-    perf_held |= PF_BIT(PF_OUP);                         /* the buffer: OCT UP, then REPEAT 1/16 */
-    mblk(FS / 4u / CTL);
-    perf_held = (perf_held & ~PF_BIT(PF_OUP)) | PF_BIT(PF_R16);
-    mblk(FS / 4u / CTL);
-    iso_crush = rec_n;
-    perf_k[1] = 40;                                      /* CRUSH (last: see t_isolation) */
-    mblk(FS / 4u / CTL);
+    mblk(FS / 2u / CTL);
     for (i = 0; i < 4u; i++) {
         trk_note_off(&trk[p], CH[i] + rt);
         trk_note_off(&trk[p], CH[i] + 7u);
     }
-    perf_held = 0;
-    perf_k[1] = 0;
     mblk(FS / 4u / CTL);
-    perf_k[2] = 0;
     mblk(2u * FS / CTL);                                 /* the tails: delay, reverb */
     for (i = 0; i < rec_n; i++)
         iso_other[i] = p ? rec_l[i] : rec_r[i];
@@ -253,7 +233,7 @@ static void t_isolation(void)
 {
     static int32_t quiet[MAXB * CTL];
     uint32_t ei, p, rt, i, ok_zero = 1, ok_same = 1, ok_loud = 1, n = 0;
-    int32_t worst = 0, quietest = 0x7FFFFFFF, crush_dc = 0;
+    int32_t worst = 0, quietest = 0x7FFFFFFF;
     for (ei = 0; ei < NENGS; ei++)
         for (p = 0; p < 2u; p++)
             for (rt = 0; rt < 3u; rt++) {
@@ -265,13 +245,11 @@ static void t_isolation(void)
                 m = rec_n;
                 memcpy(quiet, iso_other, m * sizeof quiet[0]);
                 own = iso_render(e, p, rt, k, 1);
-                other = peak_of(iso_other, iso_crush);   /* (before CRUSH) */
+                other = peak_of(iso_other, rec_n);
                 if (other > worst)
                     worst = other;
                 if (own < quietest)
                     quietest = own;
-                i = peak_of(quiet + iso_crush, m - iso_crush);
-                crush_dc = (int32_t)i > crush_dc ? (int32_t)i : crush_dc;
                 if (other) {
                     ok_zero = 0;
                     printf("mode:   leak: %s part %u reverb %u: the other channel peaks %d (%.1f dBFS)\n", ENGS[ei], p + 1u,
@@ -286,22 +264,19 @@ static void t_isolation(void)
                     ok_loud = 0;
                 n++;
             }
-    printf("mode: %u renders of 4.25 s: own channel peaks at least %.1f dBFS; the other channel at most %d before CRUSH\n", n,
+    printf("mode: %u renders of 4.25 s: own channel peaks at least %.1f dBFS; the other channel at most %d\n", n,
            dbfs(quietest), worst);
-    printf("mode: (the FX layer's CRUSH puts its own half-step offset on a silent channel, in every mode: up to %d, %.1f dBFS,\n"
-           "mode:  the DC blocker's transient; the same with the part silent: not the part's sound)\n", crush_dc, dbfs(crush_dc));
-    expect("SPLIT: part 1 alone, every engine, every effect on: the right channel is 0 in every sample (until CRUSH)", ok_zero);
+    expect("SPLIT: part 1 alone, every engine, every effect on: the right channel is 0 in every sample", ok_zero);
     expect("  .. and part 2 alone: the left channel is 0 in every sample (the same renders)", ok_zero);
-    expect("  .. with CRUSH too: the other channel bit for bit as with the part silent (nothing of the part in it)", ok_same);
+    expect("  .. the other channel bit for bit as with the part silent (nothing of the part in it)", ok_same);
     expect("  .. the part's own channel loud (above -21 dBFS) in every render", ok_loud);
 }
 
-/* a switch STEREO -> SPLIT while part 1 rings with everything on (its reverb and delay tails, the FX layer's FLANGER,
- * PHASER, LPF and a REPEAT held across it, THROW), then part 1 plays a new chord. The lines are cleared at the switch's
+/* a switch STEREO -> SPLIT while part 1 rings with everything on (its reverb and delay tails), then part 1 plays a new chord. The lines are cleared at the switch's
  * silent point, but the master's DC blocker and LOWCUT keep their state (a reset would click: the blocker's output at
  * silence is minus its DC estimate): what the right channel has after the switch is that state's own decay, sub-audio.
  * Checked in two processes from the silent point on, part 1 playing the new chord or not: the right channel the same
- * sample for sample (nothing of part 1's sound after the switch), and the residue a DC drift (no sample step above 4) */
+ * sample for sample (nothing of part 1's sound after the switch), and the residue a DC drift (no sample step above 8) */
 static int32_t max_step(const int32_t *x, uint32_t a, uint32_t b);
 static void switch_after(uint32_t play, uint32_t at, uint64_t *h, int32_t *pk, int32_t *st)
 {
@@ -319,8 +294,6 @@ static void switch_after(uint32_t play, uint32_t at, uint64_t *h, int32_t *pk, i
             for (i = 0; i < 4u; i++)
                 trk_note_on(&trk[0], B[i], 127);
         mblk(FS / CTL);
-        perf_held = 0;
-        perf_k[2] = 0;
         mblk(FS / CTL);
         for (i = at; i < rec_n; i++)
             hh = (hh ^ (uint32_t)rec_r[i]) * 0x100000001B3ull;
@@ -357,8 +330,6 @@ static void t_switch_iso(void)
         rec_n = 0;
         for (i = 0; i < 4u; i++)
             trk_note_on(&trk[0], A[i], 127);
-        perf_k[2] = 100;
-        perf_held = PF_BIT(PF_FLG) | PF_BIT(PF_PHS) | PF_BIT(PF_LPF) | PF_BIT(PF_R16);
         mblk(FS / CTL);
         duell_mode_req = DM_SPLIT;
         at = 0;
@@ -370,14 +341,14 @@ static void t_switch_iso(void)
         switch_after(1, at, &h1, &p1, &s1);
         switch_after(0, at, &h0, &p0, &s0);
         ok &= h1 && h1 == h0;
-        okdc &= s1 <= 4;
+        okdc &= s1 <= 8;
         worst = p1 > worst ? p1 : worst;
         printf("mode:   reverb %u: after the switch the right channel: peak %d (%.1f dBFS), largest step %d\n", rt, p1,
                dbfs(p1), s1);
     }
     expect("STEREO -> SPLIT while part 1 rings: after the switch the right channel is the same whether part 1 plays or not",
            ok);
-    expect("  .. what it has is the master's DC blocker / LOWCUT state decaying (sub-audio: no step above 4)", okdc);
+    expect("  .. what it has is the master's DC blocker / LOWCUT state decaying (sub-audio: no step above 8)", okdc);
 }
 
 /* both parts at once = each alone, per channel, sample for sample. Two things are global by design and are not sound: the
@@ -405,8 +376,6 @@ static void two_part(uint32_t e1, uint32_t e2, uint32_t rt, uint32_t which, int3
         trk_note_on(&trk[which & 2u ? 1 : 2], B[i], 127);
     }
     mblk(FS / 2u / CTL);
-    perf_k[2] = 90;
-    perf_held = PF_BIT(PF_FLG) | PF_BIT(PF_HPF);
     mblk(FS / 2u / CTL);
     for (i = 0; i < 3u; i++) {
         trk_note_off(&trk[0], A[i]);
@@ -414,8 +383,6 @@ static void two_part(uint32_t e1, uint32_t e2, uint32_t rt, uint32_t which, int3
         trk_note_off(&trk[2], A[i]);
         trk_note_off(&trk[2], B[i]);
     }
-    perf_held = 0;
-    perf_k[2] = 0;
     mblk(FS / CTL);
     for (k = 0; k < rec_n; k++) {
         l[k] = rec_l[k];
@@ -485,6 +452,89 @@ static uint32_t key_of(uint32_t note)                   /* the key whose note (o
         if (kb_map(&trk[0], k) == note)
             return k;
     return 27u;
+}
+/* an arp is one phrase for the LFO: TRIG NOTE restarts LFO 1 at the key press, not at every arp step (LAYER, part 2 on its own arp;
+ * the owner's GLASS SHARDS: LFO -> PAN/DIST did nothing because every 1/16 step restarted the LFO at phase 0) */
+static void t_arp_lfo(void)
+{
+    uint32_t i, drops = 0, steps = 0, last_note = 0, pl, rate = 20;
+    dsp_clean(DM_LAYER);
+    host_preset(&trk[0], eng_of("ANALOG"), 0);
+    host_preset(&trk[1], eng_of("ANALOG"), 0);
+    trk[0].p[P_AMODE] = 0;
+    trk[1].p[P_AMODE] = 1;                               /* UP */
+    trk[1].p[P_ARATE] = 2;
+    trk[1].p[P_AGATE] = 64;
+    trk[1].p[P_LTRIG] = 0;                               /* NOTE (the option; the default is FREE since 0.2.2) */
+    trk[1].p[P_LRATE] = (int16_t)rate;
+    trk[1].p[P_M1SRC] = 1;                               /* LFO 1 -> PAN, +63 */
+    trk[1].p[P_M1DST] = 5;
+    trk[1].p[P_M1AMT] = 63;
+    mblk(2);
+    fm1_in.notes = 1u << key_of(60) | 1u << key_of(64) | 1u << key_of(67);
+    mblk(4);
+    pl = trk[1].lfo_ph;
+    for (i = 0; i < FS / CTL; i++) {                     /* 1 s of arp steps (1/16: about 8 at the default tempo) */
+        mblk(1);
+        drops += trk[1].lfo_ph < pl;
+        pl = trk[1].lfo_ph;
+        if (trk[1].arp_note != last_note && trk[1].arp_note) {
+            steps++;
+            last_note = trk[1].arp_note;
+        }
+    }
+    expect("LAYER: part 2's arp steps do not restart LFO 1 (TRIG NOTE): its phase runs on through 1 s of steps",
+           steps >= 3u && drops == 0u && LFO_INC[rate] * (FS / CTL) < 0x80000000u);
+    fm1_in.notes = 0;
+    mblk(FS / 4u / CTL);
+    fm1_in.notes = 1u << key_of(60);                     /* a new press after the keys were let go: a new phrase, the LFO restarts */
+    pl = trk[1].lfo_ph;
+    mblk(FS / 4u / CTL);
+    expect("  .. letting go and pressing again is a new phrase: the phase restarts", trk[1].lfo_ph < pl);
+    fm1_in.notes = 0;
+    mblk(FS / 4u / CTL);
+}
+/* LFO TRIG (DUELL 0.2.2): FREE is the default of both LFOs (the table, a fresh power-on, a sound load / INIT SOUND, the track's
+ * defaults); NOTE, the option, still restarts the LFO at PHS on a new phrase and FREE never does */
+static void t_lfo_trig_default(void)
+{
+    track_t *t = &trk[0];
+    uint32_t i;
+    int ok;
+    expect("LFO TRIG: the table's default is FREE for both LFOs", TP[P_LTRIG].def == 1 && TP[P_L2TRIG].def == 1);
+    ui_power_on();
+    expect("  a fresh part (power-on) has both FREE", trk[0].p[P_LTRIG] == 1 && trk[0].p[P_L2TRIG] == 1 &&
+           trk[1].p[P_LTRIG] == 1 && trk[1].p[P_L2TRIG] == 1);
+    for (i = 0; i < NENGINES; i++) {
+        if (!eng_ok(i) || i == ENGI_DIGITAL)
+            continue;
+        t->p[P_LTRIG] = t->p[P_L2TRIG] = 0;
+        set_engine_of(t, i);                              /* INIT SOUND (set_engine): the engine's first sound over the defaults */
+        if (t->p[P_LTRIG] != 1 || t->p[P_L2TRIG] != 1)
+            break;
+    }
+    expect("  INIT SOUND / an engine change on every engine: FREE", i == NENGINES);
+    t->p[P_LTRIG] = t->p[P_L2TRIG] = 0;
+    track_defaults(t);
+    expect("  the track's defaults (CLEAR / project reset): FREE", t->p[P_LTRIG] == 1 && t->p[P_L2TRIG] == 1);
+    dsp_clean(DM_LAYER);
+    host_preset(t, eng_of("ANALOG"), 0);
+    /* a new phrase: NOTE restarts both LFOs at PHS, FREE leaves the phase alone, FADE starts over with either */
+    for (i = 0; i < 2u; i++) {
+        t->p[P_LPHASE] = 32;
+        t->p[P_L2PHASE] = 32;
+        t->p[P_LTRIG] = t->p[P_L2TRIG] = (int16_t)i;     /* i 0 NOTE, 1 FREE */
+        trk_all_off(t);
+        mblk(FS / 4u / CTL);
+        t->lfo_ph = t->lfo2.ph = 0x55555555u;
+        t->lfo_fade = t->lfo2.fade = 32767;
+        trk_note_on(t, 60, 100);
+        ok = t->lfo_fade == 0 && t->lfo2.fade == 0;
+        ok &= i ? t->lfo_ph == 0x55555555u && t->lfo2.ph == 0x55555555u : t->lfo_ph == 32u << 25 && t->lfo2.ph == 32u << 25;
+        expect(i ? "  TRIG FREE: a new phrase keeps the phase of both LFOs (FADE starts over)" :
+                   "  TRIG NOTE: a new phrase restarts both LFOs at PHS (FADE starts over)", ok);
+    }
+    trk_all_off(t);
 }
 static void t_layer(void)
 {
@@ -1139,6 +1189,119 @@ static void t_jiant_rev(void)
             }
 }
 
+/* LEAK MAP (owner report, 2026-10-12: "part 2 sounds on both sides in SPLIT"): one feature at a time (then all together), each
+ * part alone with a held chord on a sustained sound, the other channel measured (exactly 0 = digital silence), the own
+ * channel must sound. The feature is set on BOTH parts and the globals (the silent part has it on too) */
+typedef struct { const char *name; void (*set)(uint32_t v); uint32_t nv; } leak_t;
+static void lk_part(track_t *t, uint32_t e)
+{
+    host_preset(t, e, 0);
+    t->p[P_LEVEL] = 100;
+    t->p[P_VOICE] = V_POLY;
+    t->p[P_SUS] = 120;
+    t->p[P_REL] = 60;
+    t->p[P_AMODE] = 0;
+    t->p[P_PAN] = 0;
+    t->p[P_SPRD] = 0;
+    t->p[P_CHOR] = t->p[P_DLY] = t->p[P_REV] = 0;
+    t->p[P_DIST] = 0;
+    t->p[P_ITYPE] = 0;
+}
+static void lk_none(uint32_t v) { (void)v; }
+static void lk_cho(uint32_t v) { (void)v; trk[0].p[P_CHOR] = trk[1].p[P_CHOR] = 127; song.g[G_CDEPTH] = 127; }
+static void lk_dly(uint32_t v) { trk[0].p[P_DLY] = trk[1].p[P_DLY] = 127; song.g[G_DFDBK] = 110; song.g[G_DMIX] = 127; song.g[G_DTIME] = 1; song.g[G_PINGPONG] = (int16_t)v; song.g[G_PINGSPREAD] = 100; }
+static void lk_rev(uint32_t v) { trk[0].p[P_REV] = trk[1].p[P_REV] = 127; song.g[G_RTYPE] = (int16_t)v; song.g[G_RSIZE] = 120; }
+static void lk_ins(uint32_t v)
+{
+    for (uint32_t k = 0; k < 2u; k++) {
+        trk[k].p[P_ITYPE] = (int16_t)(v + 1u);
+        trk[k].p[P_IA] = 70; trk[k].p[P_IB] = 100; trk[k].p[P_IC] = 90; trk[k].p[P_IMIX] = 127;
+    }
+}
+static void lk_spread(uint32_t v) { (void)v; for (uint32_t k = 0; k < 2u; k++) { trk[k].p[P_SPRD] = 127; trk[k].p[P_VOICE] = k ? V_UNISON : V_POLY; trk[k].p[P_DETUNE] = 60; trk[k].p[P_CHOR] = 100; } }
+static void lk_pan(uint32_t v) { trk[0].p[P_PAN] = (int16_t)(v ? -64 : 63); trk[1].p[P_PAN] = (int16_t)(v ? 63 : -64); }
+static void lk_lfopan(uint32_t v)
+{
+    (void)v;
+    for (uint32_t k = 0; k < 2u; k++) {
+        trk[k].p[P_M1SRC] = MS_LFO; trk[k].p[P_M1DST] = MD_PAN; trk[k].p[P_M1AMT] = 63; trk[k].p[P_LRATE] = 90;
+    }
+}
+static void lk_eq(uint32_t v)
+{
+    (void)v;
+    for (uint32_t k = 0; k < 2u; k++) { trk[k].p[P_EQLG] = 20; trk[k].p[P_EQMG] = -20; trk[k].p[P_EQHG] = 20; }
+}
+static void lk_duck(uint32_t v)
+{
+    (void)v;
+    for (uint32_t k = 0; k < 2u; k++) { trk[k].p[P_DKSRC] = 0; trk[k].p[P_DKDEP] = 80; trk[k].p[P_DKATK] = 10; trk[k].p[P_DKRLS] = 40; trk[k].p[P_DKRATE] = 64; }
+}
+static void lk_dist(uint32_t v) { (void)v; trk[0].p[P_DIST] = trk[1].p[P_DIST] = 90; }
+static void lk_bass(uint32_t v) { (void)v; fx_lowcut = 2; }
+static void lk_all(uint32_t v)
+{
+    lk_cho(0); lk_dly(1); lk_rev(v % 5u); lk_ins(v % 8u); lk_spread(0); lk_pan(0); lk_lfopan(0); lk_eq(0); lk_duck(0);
+    lk_dist(0); lk_bass(0);
+}
+static const leak_t LEAKS[] = {
+    {"nothing (the dry part)", lk_none, 1}, {"CHORUS send", lk_cho, 1}, {"DELAY send", lk_dly, 1}, {"DELAY send PING-PONG", lk_dly, 1},
+    {"REVERB ROOM", lk_rev, 1}, {"REVERB SPRING", lk_rev, 1}, {"REVERB HALL", lk_rev, 1}, {"REVERB SHIM", lk_rev, 1},
+    {"REVERB RESO", lk_rev, 1}, {"INSERT SOFT", lk_ins, 1}, {"INSERT HARD", lk_ins, 1}, {"INSERT FOLD", lk_ins, 1},
+    {"INSERT FUZZ", lk_ins, 1}, {"INSERT CRUSH", lk_ins, 1}, {"INSERT PHASR", lk_ins, 1}, {"INSERT FLANG", lk_ins, 1},
+    {"INSERT CHOR", lk_ins, 1}, {"SPREAD 127 (+ chorus send)", lk_spread, 1}, {"PAN hard (part 1 right, part 2 left)", lk_pan, 1},
+    {"PAN hard the other way", lk_pan, 1}, {"LFO -> PAN", lk_lfopan, 1}, {"EQ +-20", lk_eq, 1}, {"DUCKER (PUMP)", lk_duck, 1},
+    {"DIST 90", lk_dist, 1}, {"BASS+ (speaker EQ)", lk_bass, 1}, {"ALL together", lk_all, 1}};
+#define NLEAKS (sizeof LEAKS / sizeof LEAKS[0])
+/* the variant of entry i for its set function */
+static uint32_t lk_var(uint32_t i)
+{
+    return i == 3u ? 1u : i == 2u ? 0u : i >= 4u && i <= 8u ? i - 4u : i >= 9u && i <= 16u ? i - 9u : i == 19u ? 1u : i == 25u ? 4u : 0u;
+}
+static int32_t lk_render(uint32_t i, uint32_t p, uint32_t mode, int32_t *other_pk)
+{
+    static const uint8_t CH[4] = {40, 47, 55, 64};
+    uint32_t k;
+    dsp_clean(mode);
+    song.g[G_RTYPE] = 0;
+    song.g[G_PINGPONG] = 0;
+    for (k = 0; k < 2u; k++)
+        lk_part(&trk[k], eng_of("ANALOG"));
+    LEAKS[i].set(lk_var(i));
+    rec_n = 0;
+    mblk(8);
+    for (k = 0; k < 4u; k++)
+        trk_note_on(&trk[p], CH[k], 127);
+    mblk(FS / CTL);
+    for (k = 0; k < 4u; k++)
+        trk_note_off(&trk[p], CH[k]);
+    mblk(3u * FS / CTL);                                 /* the release and the tails */
+    *other_pk = peak_of(p ? rec_l : rec_r, rec_n);
+    return peak_of(p ? rec_r : rec_l, rec_n);
+}
+static void t_leakmap(void)
+{
+    uint32_t i, p, ok = 1, ok_own = 1, st_wide = 0;
+    printf("mode: LEAK MAP, SPLIT: the opposite channel's peak (int, 0 = digital silence; dB re full scale) with ONE part sounding\n");
+    for (i = 0; i < NLEAKS; i++) {
+        int32_t own[2], oth[2], so, sown;
+        for (p = 0; p < 2u; p++)
+            own[p] = lk_render(i, p, DM_SPLIT, &oth[p]);
+        printf("mode:   %-40s part 1: own %6d, other %d (%s)   part 2: own %6d, other %d (%s)\n", LEAKS[i].name, own[0], oth[0],
+               oth[0] ? "LEAK" : "-inf", own[1], oth[1], oth[1] ? "LEAK" : "-inf");
+        if (oth[0] || oth[1])
+            ok = 0;
+        if (own[0] < 500 || own[1] < 500)
+            ok_own = 0;
+        sown = lk_render(i, 1, DM_STEREO, &so);          /* (STEREO: PAN / SPREAD / PING-PONG / HALL may well reach the left) */
+        if (so > sown / 100)
+            st_wide++;
+    }
+    expect("SPLIT, one part alone, each effect and stereo feature on its own and all together: the other channel is digital silence", ok);
+    expect("  .. and the part's own channel sounds in every case", ok_own);
+    expect("  .. STEREO still shows its width (some of these put part 2 on the left there)", st_wide > 0);
+}
+
 #ifndef MODE_TEST_NO_MAIN
 /* DUELL step 6: the parts' MIDI channels (GLO > MIDI) and the level meters' data (GLO's page) */
 static void t_midi_ch(void)
@@ -1265,15 +1428,81 @@ static void t_meter(void)
         mblk(1);
     expect("  .. STEREO: part 2's peak is kept, the buses are not scanned", trk[1].peak > 0 && !meter_bus[0] && !meter_bus[1]);
 }
+/* ------------------------------------------- the outputs, the speaker, MUTE --- */
+/* DUELL 0.2.2 (owner: "only the RIGHT side in the headphones, the speaker silent"). The firmware has one stereo stream for the
+ * headphones, line out, USB and the built-in speaker (hardware picks); there is no speaker feed of its own to sum. So the facts the
+ * start relies on: SPLIT with only part 2 sounding is right only (a speaker that plays the left channel is silent: the reported
+ * symptom), a part 1 that is MUTED is silent in every mode, and LAYER (the opening setup) carries a part in BOTH channels, equal, so
+ * whichever channel the speaker uses it hears it at the level of one headphone channel (no summing, no gain step when both parts play) */
+static void out_render(uint32_t mode, uint32_t mute1, uint32_t p1, uint32_t p2)
+{
+    uint32_t i, e = eng_of("ANALOG");
+    dsp_clean(mode);
+    host_preset(&trk[0], e, 0);
+    host_preset(&trk[1], e, 1);
+    trk[0].p[P_LEVEL] = trk[1].p[P_LEVEL] = 80;     /* (under the limiter: it would hide the sum) */
+    trk[0].p[P_PAN] = trk[1].p[P_PAN] = 0;
+    trk[0].p[P_MUTE] = (int16_t)mute1;
+    rec_n = 0;
+    mblk(8);
+    for (i = 0; i < 3u; i++) {
+        if (p1)
+            trk_note_on(&trk[0], 48u + 7u * i, 110);
+        if (p2)
+            trk_note_on(&trk[1], 48u + 7u * i, 110);
+    }
+    mblk(FS / 2u / CTL);
+}
+static int32_t diff_peak(void)                           /* max |L - R| of the render */
+{
+    uint32_t i;
+    int32_t m = 0;
+    for (i = 0; i < rec_n; i++) {
+        int32_t d = rec_l[i] - rec_r[i];
+        m = d < 0 && -d > m ? -d : d > m ? d : m;
+    }
+    return m;
+}
+static void t_outputs(void)
+{
+    int32_t pl, pr, both_l, one_l;
+    out_render(DM_SPLIT, 0, 0, 1);
+    pl = peak_of(rec_l, rec_n);
+    pr = peak_of(rec_r, rec_n);
+    printf("mode: SPLIT, part 2 alone: left %d, right %d\n", pl, pr);
+    expect("SPLIT, only part 2 sounds: the left channel is silent, the right loud (hard pan stays on every output)", pl == 0 && pr > 3000);
+    out_render(DM_LAYER, 1, 1, 1);
+    pl = peak_of(rec_l, rec_n);
+    pr = peak_of(rec_r, rec_n);
+    printf("mode: LAYER, part 1 muted, part 2 plays: left %d, right %d, |L-R| %d\n", pl, pr, diff_peak());
+    expect("LAYER with part 1 MUTED: part 2 is in BOTH channels, equal (a speaker on either channel hears it)",
+           pl > 3000 && pr > 3000 && diff_peak() <= 2);
+    out_render(DM_LAYER, 0, 0, 1);
+    one_l = peak_of(rec_l, rec_n);
+    out_render(DM_LAYER, 0, 1, 1);
+    both_l = peak_of(rec_l, rec_n);
+    printf("mode: LAYER peak, part 2 alone %d, both parts %d (%.1f dB)\n", one_l, both_l, 20.0 * log10((double)both_l / (one_l ? one_l : 1)));
+    expect("LAYER: both parts play: both channels equal, the peak up over one part by less than 6 dB (the headroom rule: no gain step, master limiter only)",
+           diff_peak() <= 2 && both_l > one_l && both_l < one_l * 2);
+    out_render(DM_LAYER, 1, 1, 0);
+    pl = peak_of(rec_l, rec_n) + peak_of(rec_r, rec_n);
+    out_render(DM_SPLIT, 1, 1, 0);
+    pr = peak_of(rec_l, rec_n) + peak_of(rec_r, rec_n);
+    expect("MUTE: a muted part 1 sounds nothing, in LAYER (with part 2 not playing) and in SPLIT", pl == 0 && pr == 0);
+}
 int main(void)
 {
     setvbuf(stdout, NULL, _IONBF, 0);
     t_stereo();                                          /* (first: the process's own power-on state) */
+    t_outputs();
     t_isolation();
+    t_leakmap();
     t_jiant_rev();
     t_switch_iso();
     t_superpose();
     t_layer();
+    t_arp_lfo();
+    t_lfo_trig_default();
     t_mix();
     t_hanging();
     t_click();

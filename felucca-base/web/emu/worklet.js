@@ -142,7 +142,11 @@ if (typeof registerProcessor === "function") {
         this.sentWrites = writes;
         msg.sectors = storeSectors(new Uint8Array(mem, ex.web_nor(), ex.web_nor_size()));
       }
-      if (msg.leds || msg.fb || msg.sectors || msg.load !== undefined) this.port.postMessage(msg, transfer);
+      if (ex.web_reboot_requested && ex.web_reboot_requested()) {   // ERASE DATA: the device restarts; the page reloads (index.html)
+        msg.reboot = true;
+        msg.sectors = storeSectors(new Uint8Array(mem, ex.web_nor(), ex.web_nor_size()));
+      }
+      if (msg.leds || msg.fb || msg.sectors || msg.reboot || msg.load !== undefined) this.port.postMessage(msg, transfer);
     }
 
     // A click's down and up can arrive within one render quantum, but the FM-1's contacts never close for less than

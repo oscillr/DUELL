@@ -38,7 +38,7 @@ static volatile uint8_t kb_boot_hold;    /* #137: set from power-on to the end o
                                           * and one held across its end stays silent until it is let go and pressed again */
 static uint8_t kb_note[27], kb_trk[27];  /* per key: the note it started and on which track */
 static uint8_t in_key;                   /* the key (+ 1) whose notes go into input_on now (key_on), 0: none (MIDI IN) */
-/* #191: where each track's held[i] came from, so the arp maps it again as it plays (arp_list: TRN, ROOT, SCALE, QNT as
+/* #191: where each track's held[i] came from, so the arp maps it again as it plays (arp_list: TRN and the global ROOT, SCALE, OFF-SCALE as
  * they are now). held_key: the key + 1 (bits 0..4) and the octave buttons then + 3 (bits 5..7); 0: not a key's own
  * mapping (MIDI IN, the DRUM grid, an engine's own key map), held[i] plays as it is. held_dt: held[i] above the key's
  * note (a CHRD chord's other notes). Out of track_t: its size stays as the audio ISR's trk[] indexing wants it */
@@ -90,19 +90,35 @@ static const step_t *seq_steps(const track_t *t) { return t->step; }
 
 static uint32_t scale_mask(const track_t *t)
 {
-    return SCALE_MASK[clamp(t->p[P_SCALE], 0, sizeof SCALE_MASK / sizeof SCALE_MASK[0] - 1)];
+    (void)t;
+    return SCALE_MASK[clamp(scale_g, 0, sizeof SCALE_MASK / sizeof SCALE_MASK[0] - 1)];
 }
 
-/* note n moved down onto the track's scale (ROOT, SCALE): QNT SNAP's keys and QNT SEQ's sequenced notes */
+/* note n moved DOWN onto the global scale (ROOT, SCALE): the SEQUENCER arp's offset notes and the diatonic chords' root rule */
 static int32_t scale_snap(const track_t *t, int32_t n)
 {
     uint32_t mask = scale_mask(t), guard = 12;
-    while (guard-- && !((mask >> (uint32_t)((n - t->p[P_ROOT] + 120) % 12)) & 1u))
+    while (guard-- && !((mask >> (uint32_t)((n - root_g + 120) % 12)) & 1u))
         n--;
     return n;
 }
 
-enum { QN_OFF, QN_SNAP, QN_WHITE, QN_SEQ };      /* P_QUANT */
+/* OFF-SCALE KEYS: a key's or MIDI note's note n -> the note that sounds. SNAP (the default): the NEAREST note of the global scale, a tie
+ * goes DOWN (C major: C# gives C, F# gives F); PLAY, or CHROMATIC (nothing is outside it): n as it is. Every source goes through this
+ * (kb_pitch for the keys, chord_make for any note that starts a chord or a single note), so both parts sound the same note for a key */
+static int32_t note_snap(const track_t *t, int32_t n)
+{
+    uint32_t mask = scale_mask(t), d;
+    if (offscale_g != OS_SNAP || mask == 0xFFFu)
+        return n;
+    for (d = 0; d <= 6u; d++) {
+        if ((mask >> (uint32_t)((n - (int32_t)d - root_g + 240) % 12)) & 1u)
+            return n - (int32_t)d;                      /* (down first: a tie goes down) */
+        if ((mask >> (uint32_t)((n + (int32_t)d - root_g + 240) % 12)) & 1u)
+            return n + (int32_t)d;
+    }
+    return n;
+}
 
 /* the engine's own key map (DRUM's GM map, slices) for key k, -1 none */
 static int32_t kb_engine(const track_t *t, uint32_t k)
@@ -111,39 +127,12 @@ static int32_t kb_engine(const track_t *t, uint32_t k)
     return e->keys ? e->keys(t, k) : -1;
 }
 
-/* key k's note with the octave buttons at oct: QNT, ROOT, SCALE, TRN (KB_SILENT: a black key under WHITE). The keys
- * (kb_map) and the arp's latched keys (arp_list, #191: as the keys play now, the octave they were pressed in) */
+/* key k's note with the octave buttons at oct: TRN, then the global OFF-SCALE rule (note_snap). The keys (kb_map) and the arp's latched
+ * keys (arp_list, #191: as the keys play now, the octave they were pressed in) */
 static uint32_t kb_pitch(const track_t *t, uint32_t k, int32_t oct)
 {
-    static const int8_t DEGREE[12] = {0, -1, 1, -1, 2, 3, -1, 4, -1, 5, -1, 6};
-    int32_t n = 53 + (int32_t)k;
-    if (t->p[P_QUANT] == QN_SNAP || t->p[P_QUANT] == QN_SEQ)   /* SNAP (and SEQ): every key, rounded down */
-        return (uint32_t)clamp(scale_snap(t, n + 12 * oct + t->p[P_TRANS]), 0, 127);
-    if (t->p[P_QUANT] == QN_WHITE) {                    /* WHITE: white keys walk the scale, black keys are silent */
-        uint32_t mask = scale_mask(t), i;
-        int32_t count = 0, degree = DEGREE[n % 12], wo;
-        if (degree < 0)
-            return KB_SILENT;
-        /* C4 is the root. Walk scale degrees on successive white keys, including
-         * below C4; scales with 5, 6, 8 or 12 notes still have no duplicated degrees. */
-        degree += (n / 12 - 5) * 7;
-        for (i = 0; i < 12u; i++)
-            count += (mask >> i) & 1u;
-        wo = degree / count;
-        degree %= count;
-        if (degree < 0) {
-            degree += count;
-            wo--;
-        }
-        for (i = 0; i < 12u; i++)
-            if ((mask >> i) & 1u) {
-                if (!degree)
-                    break;
-                degree--;
-            }
-        n = 60 + t->p[P_ROOT] + 12 * wo + (int32_t)i;
-    }
-    return (uint32_t)clamp(n + 12 * oct + t->p[P_TRANS], 0, 127);
+    int32_t n = 53 + (int32_t)k + 12 * oct + t->p[P_TRANS];
+    return (uint32_t)clamp(note_snap(t, n), 0, 127);
 }
 
 static uint32_t kb_map(const track_t *t, uint32_t k)
@@ -178,7 +167,7 @@ static void arp_add(track_t *t, uint32_t note)
             return;                                 /* repeated note-on: not a new note */
     if (t->nheld < 16u) {
         /* #191: a key the track's scale keyboard maps (not the DRUM grid, not an engine's own map) is kept as that
-         * key, so TRN, ROOT, SCALE and QNT reach the notes the arp holds (arp_list); the octave stays the one it was
+         * key, so TRN and the global ROOT, SCALE and OFF-SCALE reach the notes the arp holds (arp_list); the octave stays the one it was
          * pressed in. Anything else (MIDI IN) plays as it came, as before */
         uint8_t *hk = held_key[trk_index(t)];
         hk[t->nheld] = in_key && song.grid != 1u && kb_engine(t, k) < 0
@@ -237,6 +226,7 @@ static void arp_forget(track_t *t)               /* (its notes ended otherwise: 
 {
     t->arp_note = t->arp_ch[0] = t->arp_ch[1] = t->arp_ch[2] = 0;
     t->atg_note = t->atg_vel = t->atg_lat = 0;
+    t->arp_ph = 0;
 }
 
 /* CHORD's notes. Not inlined: they run once an arp step, and kept out of the audio ISR's loop over the tracks
@@ -286,7 +276,7 @@ static uint32_t arp_seq_notes(track_t *t, const uint32_t *list, uint32_t n, uint
         lo = list[i] < lo ? list[i] : lo;
     for (i = 0; i < n; i++) {                       /* (lo: the root; every held note moves by the same offset) */
         int32_t x = (int32_t)list[i] + off + 12 * (int32_t)oc;
-        if (t->p[P_SCALE])
+        if (scale_of(t))
             x = scale_snap(t, x);
         nt = (uint32_t)clamp(x, 0, 127);
         for (j = 0; j < m && out[j] != nt; j++)
@@ -407,8 +397,8 @@ static int click_wanted(void)                  /* CLICK REC: while a track is ar
 }
 /* the arp's note list (list, its length returned; 0: nothing to play): the held notes (sorted or as played) over OCT
  * octaves, *cnt of them. #191: the notes as they play now, a key's mapped again through kb_pitch (TRN, ROOT, SCALE,
- * QNT now, the octave it was pressed in; a chord's note as far above it), the rest (MIDI IN) as they came; each once
- * (two keys may meet on one note now), a key silent now (a black key, QNT WHITE since) left out. With nothing changed
+ * OFF-SCALE now, the octave it was pressed in; a chord's note as far above it), the rest (MIDI IN) as they came; each once
+ * (two keys may meet on one note now), a key silent now (KB_SILENT) left out. With nothing changed
  * since the keys were pressed, exactly the list of held[] as before */
 static uint32_t arp_list(const track_t *t, uint32_t *list, uint32_t *cnt)
 {
@@ -485,7 +475,7 @@ static __attribute__((noinline)) void atg_fire(track_t *t, uint32_t *list, uint3
 static __attribute__((noinline)) void arp_fire(track_t *t, uint32_t period)
 {
     uint32_t cnt, list[64], len, j;
-    if (!(len = arp_list(t, list, &cnt))) {        /* (every key silent now: QNT WHITE's black keys) */
+    if (!(len = arp_list(t, list, &cnt))) {        /* (every key silent now) */
         if (t->arp_note)
             arp_off(t);
         return;
@@ -536,6 +526,7 @@ static void arp_step(track_t *t, uint32_t n, uint32_t gate_n)
             t->arp_off -= gate_n;
     }
     if (!t->p[P_AMODE] || !t->nheld) {
+        t->arp_ph = 0;                              /* (a new press starts a new phrase) */
         if (!t->nheld && t->arp_note)
             arp_off(t);
         return;
@@ -547,6 +538,8 @@ static void arp_step(track_t *t, uint32_t n, uint32_t gate_n)
         return;
     t->arp_pos = 0;
     arp_fire(t, period);
+    if (t->arp_note)
+        t->arp_ph = 1;                              /* (the next step's note-on continues this phrase: voice.c) */
 }
 
 static void arp_tick(track_t *t, uint32_t n) { arp_step(t, n, n); }
@@ -783,62 +776,6 @@ static void input_off(track_t *t, uint32_t note)
         trk_note_off(t, note);                      /* other mode (ARP switched while held) */
 }
 
-/* the effect of key k in the FX layer (PF_N none): the white keys F3 .. G5 the map's (perf_map: the settings,
- * ui_layer.c; by default 1.1.5's ten, FLANGER, PHASER), black keys 1..4 (F#3 G#3 A#3 C#4) the track mutes */
-static uint32_t perf_key(uint32_t k)
-{
-    uint32_t p = key_place(k);
-    return !key_black(k) ? (p < PF_KEYS ? perf_map[p] : PF_N) : p < NSHOWN ? PF_M1 + p : PF_N;
-}
-
-/* a key of the FX layer down (FX held) / up: the effect it holds. kb_fx: the one it took (+ 1, 0 none), so a key
- * remapped while held lets go of what it holds; an effect two keys hold ends with the last of them. noinline: out
- * of keyboard_block's loop (the audio ISR) */
-static uint8_t kb_fx[27];
-static __attribute__((noinline)) void perf_key_press(uint32_t k, int down)
-{
-    uint32_t e, j;
-    if (down) {
-        e = perf_key(k);
-        kb_fx[k] = (uint8_t)(e + 1u);
-        perf_press(e, 1);
-        return;
-    }
-    if (!kb_fx[k])
-        return;
-    e = kb_fx[k] - 1u;
-    kb_fx[k] = 0;
-    for (j = 0; j < 27u; j++)
-        if (kb_fx[j] == e + 1u)
-            return;
-    perf_press(e, 0);
-}
-
-/* the map changed (ui_layer.c: PRESETS with a key held, EDIT, a settings load): a white key held takes its new
- * effect at once (the old one let go); FX LATCH: a latched effect of the key's becomes the new one */
-static __attribute__((noinline)) void perf_key_remap(void)
-{
-    uint32_t k, e, o;
-    perf_remap = 0;
-    for (k = 0; k < 27u; k++) {
-        if (!kb_fx[k] || key_black(k) || (o = kb_fx[k] - 1u) == (e = perf_key(k)))
-            continue;
-        if (!perf_latch_on) {
-            perf_key_press(k, 0);
-            perf_key_press(k, 1);
-            continue;
-        }
-        kb_fx[k] = (uint8_t)(e + 1u);
-        if (o < PF_N && ((perf_latched >> o) & 1u)) {
-            perf_latched &= ~PF_BIT(o);
-            if (e < PF_N) {
-                perf_latched |= PF_BIT(e);
-                perf_ord[e] = ++perf_seq;
-            }
-        }
-    }
-}
-
 /* key k plays kb_note[k] on track t: its chord (chord.c; the note alone with CHRD OFF). A note another key
  * holds already sounds: it is not started again (nor sent to MIDI OUT); the key keeps its notes */
 static void key_on(uint32_t k, track_t *t)
@@ -912,13 +849,17 @@ static __attribute__((noinline)) void kb_lat(uint32_t k)
 }
 #endif
 
+/* the quick layers' keys (ui_layer.c): kb_mask the button bits whose hold makes keys a layer's (main sets it), kb_lock a layer
+ * locked open (#83, no button held), kb_layer the keys held that are a layer's (a bit per key; ISR) */
+static volatile uint32_t kb_mask;
+static volatile uint8_t kb_lock;
+static volatile uint32_t kb_layer;
+
 static void keyboard_block(void)
 {
     uint32_t cur = fm1_in.notes, ch, k;
-    uint32_t lay, fx, mute;
+    uint32_t lay, mute;
     ch = cur ^ kb_prev;                          /* keys also sound while entering steps */
-    if (perf_remap)
-        perf_key_remap();
     if (!ch)
         return;
     if (kb_boot_hold) {                           /* #137: under the splash; their release is silent too */
@@ -929,7 +870,6 @@ static void keyboard_block(void)
         return;
     }
     lay = (fm1_in.buttons & kb_mask) || kb_lock;  /* (#83: kb_lock, a layer locked open with no button held) */
-    fx = (fm1_in.buttons & perf_mask) || (kb_lock & 2u);
     mute = song.grid == 2u ? ~0u : 0u;           /* the keys that never sound here */
     for (k = 0; k < 27u; k++) {
         if (!((ch >> k) & 1u))
@@ -941,10 +881,8 @@ static void keyboard_block(void)
                 continue;
             }
             if (lay) {                            /* a layer's button held (or locked): the key is the layer's */
-                kb_note[k] = KB_SILENT;           /* (ui_layer.c), with FX an effect (perform.c) */
+                kb_note[k] = KB_SILENT;           /* (ui_layer.c) */
                 kb_layer |= 1u << k;
-                if (fx)
-                    perf_key_press(k, 1);
                 continue;
             }
             if ((mute >> k) & 1u)                 /* NAME (ui_name.c): every key types, none sounds */
@@ -962,7 +900,6 @@ static void keyboard_block(void)
         } else {
             if ((kb_layer >> k) & 1u) {
                 kb_layer &= ~(1u << k);
-                perf_key_press(k, 0);
                 continue;
             }
             if (kb_note[k] == KB_SILENT)
@@ -996,7 +933,6 @@ static void seq_start(void)
     beat_pos = 0; beat_n = 0;                      /* the ARP LED's beat from the top too */
     clk_pos = CLK_START;                           /* the metronome's first beat with step 0 */
     song.playing = 1;
-    perf_start();                                  /* perform.c: its 1/16 grid too */
     duck_start();                                  /* fx.c: the DUCK's PUMP from the top as well */
 }
 
@@ -1052,10 +988,6 @@ static __attribute__((noinline)) void seq_step(track_t *t, const step_t *s, uint
     uint32_t hits = step_ratchet(s);
     uint8_t nn[4 + NLANE], vv[4 + NLANE];           /* the notes it plays: its notes, then its hits */
     uint32_t m = 0, sk = 0;
-    /* QNT SEQ: the step's notes (not the lane hits) snap to the scale as they play; never on a drum kit, the slices
-     * or another engine that maps the keys itself. seq_notes keeps the notes that sound: their note-offs match */
-    const engine_t *e = ENGINES[eng_idx(t->eng_req)];
-    uint32_t qseq = t->p[P_QUANT] == QN_SEQ && !(e->keys && e->keys(t, 0) >= 0);
     if (!(skip & SEQ_REP)) {
         t->rat_left = 0;
         if ((skip & SEQ_MISS) ||
@@ -1082,13 +1014,6 @@ static __attribute__((noinline)) void seq_step(track_t *t, const step_t *s, uint
     }
     for (i = 0; i < s->n && i < 4u; i++) {
         uint32_t x = s->note[i];
-        if (qseq) {                                 /* QNT SEQ: onto the scale now; two notes snapping */
-            x = (uint32_t)clamp(scale_snap(t, (int32_t)x), 0, 127);   /* together play once */
-            for (j = 0; j < m && nn[j] != x; j++)
-                ;
-            if (j < m)
-                continue;
-        }
         nn[m] = (uint8_t)x;
         vv[m] = (uint8_t)vel;
         sk |= ((skip >> i) & 1u) << m;
@@ -1124,7 +1049,7 @@ static __attribute__((noinline)) void seq_step(track_t *t, const step_t *s, uint
 
 /* MENU > CONTROL > STEP PREVIEW (1.2, Discussion #169): the UI asks for a step of a track to sound once (aud_req: step
  * << 8 | track + 1; ui_input.c cursor_move); with the transport stopped it plays here as the sequencer would play it,
- * through the track's sound: its notes or hits, accent, QNT SEQ (not its chance, ratchet repeats or locks), for a 1/16
+ * through the track's sound: its notes or hits, accent (not its chance, ratchet repeats or locks), for a 1/16
  * at the track's GATE (seq_tick lets it go, stopped too). A SLIDE or TIE after it does not hold it. Nothing is recorded:
  * the step is only read */
 static volatile uint16_t aud_req;
@@ -1428,7 +1353,7 @@ static __attribute__((noinline)) void stop_all(void)
 /* everything that happens between two rendered blocks */
 static void events_block(uint32_t n)
 {
-    uint32_t i, pr, seq_n = n;
+    uint32_t i, pr, seq_n = n, arp_n = n, arp_gate = n;   /* arp_n: the samples the ARP's steps advance by, arp_gate: its gates */
     uint32_t clock_mode = (uint32_t)song.g[G_CLOCK];
     if (midi_clock.mode != clock_mode) {
         seq_stop();
@@ -1451,6 +1376,8 @@ static void events_block(uint32_t n)
             seq_start();
         transport_req = 0;
     } else if (transport_req == 2u) {
+        if (clock_mode)
+            midi_clock.stopped = 1;                 /* (an external clock: the arp waits for the next Start, as for 0xFC) */
         seq_stop();
         transport_req = 0;
     } else if (transport_req == 4u) {                 /* PLAY STOP twice or held: STOP ALL */
@@ -1529,14 +1456,22 @@ static void events_block(uint32_t n)
             midi_event(st, ch, d1, d2);
     }
     if (clock_mode) {
-        seq_n = 0;
+        /* The ARP's held notes follow the keys at once (above); only its STEPPING waits for the clock: the transport's pulses while it
+         * plays, or the pulses of a clock that runs without a Start (not after a Stop). No pulses: the arp waits (the UI says NO CLOCK) */
+        seq_n = arp_n = 0;
         if (song.playing) {
             uint32_t last = midi_clock.have_pulse ? midi_clock.last_ms : midi_clock.start_ms;
             if (fm1_ms - last > 500u) {
                 seq_stop();                         /* cable loss must not leave a running held note */
                 midi_clock.tempo_valid = 0;
             } else
-                seq_n = midi_clock_advance(fm1_ms);
+                seq_n = arp_n = arp_gate = midi_clock_advance(fm1_ms);
+        } else if (!midi_clock.stopped && midi_clock.have_pulse) {
+            if ((int32_t)(fm1_ms - midi_clock.last_ms) > 500) {
+                midi_clock.have_pulse = 0;          /* the clock went away: a returning one starts clean */
+                midi_clock.pos = midi_clock.rendered = midi_clock.rem = 0;
+            } else
+                arp_n = arp_gate = midi_clock_advance(fm1_ms);
         }
     }
     if (aud_req)
@@ -1548,9 +1483,9 @@ static void events_block(uint32_t n)
     if (song.playing)
         click_tick(seq_n);
     for (i = 0; i < NSHOWN; i++)
-        arp_step(&trk[i], clock_mode ? seq_n : n, clock_mode && song.playing ? seq_n : n);
-    duck_pump(clock_mode ? seq_n : n);                /* DUCK SRC PUMP: the arp's samples (fx.c) */
-    beat_pos += clock_mode ? seq_n : n;               /* the beat the ARP LED flashes on (ui_leds) */
+        arp_step(&trk[i], arp_n, arp_gate);
+    duck_pump(arp_n);                                 /* DUCK SRC PUMP: the arp's samples (fx.c) */
+    beat_pos += arp_n;               /* the beat the ARP LED flashes on (ui_leds) */
     if (beat_pos >= beat_samples()) {
         beat_pos -= beat_samples();
         beat_pos = beat_pos < beat_samples() ? beat_pos : 0u;

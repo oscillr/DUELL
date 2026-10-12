@@ -36,20 +36,21 @@ ALIAS = {
     "ENV2 FLT": "E2FLT", "ENV2 SHP": "E2SHP",
     "AMP FLT": "ED_FLT", "AMP PIT": "ED_PIT", "AMP SHP": "ED_SHP",
     "LFO RATE": "LRATE", "LFO WAVE": "LWAVE", "LFO PHS": "LPHASE", "LFO FADE": "LFADE",
-    "LFO PIT": "LD_PIT", "LFO FLT": "LD_FLT", "LFO SHP": "LD_SHP", "LFO AMP": "LD_AMP",
+    "LFO TRIG": "LTRIG", "LFO PIT": "LD_PIT", "LFO FLT": "LD_FLT", "LFO SHP": "LD_SHP", "LFO AMP": "LD_AMP",
     "LFO2 RATE": "L2RATE", "LFO2 WAVE": "L2WAVE", "LFO2 PHS": "L2PHASE", "LFO2 FADE": "L2FADE",
     "LFO2 SYNC": "L2SYNC", "LFO2 TRIG": "L2TRIG", "LFO2 POL": "L2POL",
     "LFO2 PIT": "L2PIT", "LFO2 FLT": "L2FLT", "LFO2 SHP": "L2SHP",
     "ARP MODE": "AMODE", "ARP RATE": "ARATE", "ARP OCT": "AOCT", "ARP GATE": "AGATE", "ARP SWING": "ASWING",
     "ARP PROB": "APROB", "ARP HOLD": "AHOLD", "ARP ORDER": "AORDER",
     "DST": "DIST", "CHO": "CHOR", "INSERT": "ITYPE", "INS A": "IA", "INS B": "IB", "INS C": "IC", "INS MIX": "IMIX",
+    "UF CUT": "FREEA", "UF RES": "FREEB",   # DUELL 0.2.2: the universal filter's CUT (-64..63, 0 OFF) and RES, on PHASE LOFI VOICE WHEEL GRAIN PHYS FM6 SLICE
     "FILTER": "FTYPE", "STEREO SPRD": "SPRD", "REVERB": "REV",   # (GRAIN has an EDIT label SPRD: write E6 there)
 }
 # a sound load leaves these to the track (ui.c param_kept), so a sound may not set them; P_LEVEL, the arp (AMODE..
-# AORDER) and the scale / chord keys (SCALE CHRD VOIC) are the exceptions: a factory sound sets its level (its loudness trim)
+# AORDER) and the chord keys (CHRD VOIC) are the exceptions: a factory sound sets its level (its loudness trim)
 # and may lend the arp and the keys (ui.c ds_arp, ds_keys)
 TRACK_ONLY = {"PAN", "MUTE", "ROOT", "QUANT", "TRANS", "SLEN", "SDIV", "SSWING", "SGATE", "SQNT"}
-KEY_IDS = ["SCALE", "CHRD", "VOIC"]      # lent like the arp (ui.c ds_keys): a pad may set chord keys + scale (ROOT stays the player's)
+KEY_IDS = ["CHRD", "VOIC"]               # lent like the arp (ui.c ds_keys): a pad may set chord keys. No SCALE: the scale is the instrument's (core.h)
 ARP_IDS = ["AMODE", "ARATE", "AOCT", "AGATE", "ASWING", "APROB", "AHOLD", "AORDER"]
 CATS = ["BASS", "LEAD", "PAD", "PLUCK", "KEYS", "PERC", "FX", "OTHER"]
 MAX_PAIRS = 64

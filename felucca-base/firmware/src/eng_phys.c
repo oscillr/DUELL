@@ -105,9 +105,7 @@ static phys_slot_t *phys_slot_of(track_t *t, voice_t *v)
 /* a clean state for model md */
 static void phys_reset(phys_slot_t *S, uint32_t md, uint32_t seed)
 {
-    uint32_t i, *w = (uint32_t *)&S->u;
-    for (i = 0; i < sizeof S->u / 4u; i++)
-        w[i] = 0;
+    memset(&S->u, 0, sizeof S->u);                       /* (libc.c: a word at a time; the loop here was the voice start's biggest lump) */
     S->model = (uint8_t)md;
     seed |= 1u;
     switch (md) {
@@ -148,7 +146,7 @@ static __attribute__((noinline)) void phys_symp_pitches(const track_t *t, const 
     for (k = 0; k < PX_NSYMP; k++) {
         int32_t p16 = PHYS_DETUNE[k];
         p16 += c < 7u ? m->pitch16 + ((PHYS_CHORDS[c][k] * 41) >> 8)   /* cents -> 1/16 semitones (0.16) */
-                      : (48 + t->p[P_ROOT] + (k == 1u ? 7 : k == 2u ? 12 : 0)) * 16;
+                      : (48 + root_of(t) + (k == 1u ? 7 : k == 2u ? 12 : 0)) * 16;
         f[k] = pitch_inc(clamp(p16, 0, 2047));
     }
 }
@@ -252,4 +250,5 @@ static const engine_t ENG_PHYS = {
     .poly = PHYS_POLY,
     .desc = phys_desc,
     .mem = sizeof(phys_slot_t) * PHYS_POLY,
+    .ufilt = 1,                 /* DUELL 0.2.2: no filter of its own: the universal filter (voice.c uf_run, P_FREEA CUT / P_FREEB RES) */
 };

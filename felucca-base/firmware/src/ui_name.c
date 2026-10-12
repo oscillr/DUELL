@@ -4,7 +4,7 @@
  *
  * Where: SAVE > USER, SAVE (KNOB 4, OCT+) and SAVE > MULTI (Felucca's PROJECT), SAVE: after the OVERWRITE? dialog when the slot is
  * used, the NAME screen opens before anything is written; OCT+ writes, OCT- cancels (back to the page, nothing
- * written). EDIT on those pages renames the selected slot (only its name is written). The name is prefilled:
+ * written). Any page button or HOME cancels it too (NOT SAVED, nothing written; ui_input.c). The name is prefilled:
  * USER the sound's own (the user preset it came from) or the automatic one ("DIGITAL 14"), PROJECT the current
  * multi's (as loaded or last saved; none: "MULTI M01"), so SAVE, OCT+, OCT+ saves with the default name.
  * Writing needs the transport stopped (STOP TO SAVE; the screen stays).
@@ -123,21 +123,6 @@ static void name_open(uint32_t kind, uint32_t slot)
     if (!nm.len)                                       /* nothing to keep (a new sound, an unnamed multi): a random name */
         nm_random();
     ui.force = 1;
-}
-
-/* SAVE > USER / PROJECT, EDIT: rename the selected slot */
-static void name_rename(void)
-{
-    int user = cur_page()->graph == GR_BROWSE;
-    uint32_t e, k = (uint32_t)song.g[G_SLOT] - 1u;
-    if (user && (ui.pe || !pl_row(&e, &k) || e != NENGINES))   /* PATCHES: a stored patch (a factory sound has none to rename) */
-        ui_message(ui.pe ? "EMPTY PLACE" : "NOT STORED");
-    else if (!(user ? up_used(k) : project_used(k)))
-        ui_message("EMPTY SLOT");
-    else if (transport_busy())
-        ui_message("STOP TO SAVE");
-    else
-        name_open(user ? NK_USER_RENAME : NK_PROJ_RENAME, k);
 }
 
 static void nm_commit(void)                            /* the letter being cycled is kept: the cursor past it */
@@ -392,9 +377,7 @@ static void nm_draw_field(void)
     uint32_t i, empty = nm.len == 0u;
     cv_begin(240, CARD_H, T_BG);
     cv_rrect(3, 0, 234, CARD_H, 4, T_SURF, T_BG);
-    nm_title(b);
-    cv_text_on(9, 2, &AF_S, b, T_MID, T_SURF);
-    fmt_int(b, nm.len);
+    fmt_int(b, nm.len);   /* (the title, "SAVE U07", is the header's: head_page_title) */
     str_cpy(b + str_len(b), "/12", 4);
     cv_text_r(231, 2, &AF_S, b, nm.len >= NM_LEN ? T_ACCENT : T_DIM, T_SURF);
     if (NM_USER())                                     /* USER: the category KNOB 3 sets, left of the count */

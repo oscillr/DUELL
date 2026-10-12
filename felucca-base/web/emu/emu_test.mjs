@@ -96,13 +96,13 @@ check("PLAY: the sequencer runs, PLAY's green LED", a.ex.web_playing() === 1 && 
 a.tap(B.PLAY);
 a.render(300);
 check("PLAY again stops it", a.ex.web_playing() === 0);
-a.ex.web_buttons(1 << B.FX);                                  // #119: FX held, its map: the effects breathe
+a.ex.web_buttons(1 << B.EDIT);                                // #119: EDIT held (0.2.2: FX has no layer any more), its map: INIT breathes
 a.render(800);
 const brK = a.ex.web_breath_keys(), brB = a.ex.web_breath_buttons(), litK = a.ex.web_lit_keys();
 a.ex.web_buttons(0);
 a.render(300);
-check("FX held: its button and the effects' keys breathe, none lit; let go: nothing",
-      (brB >> B.FX & 1) === 1 && brK !== 0 && (brK & litK) === 0 && litK === 0 &&
+check("EDIT held: its button and its INIT key breathe, none lit; let go: nothing",
+      (brB >> B.EDIT & 1) === 1 && brK !== 0 && (brK & litK) === 0 && litK === 0 &&
       a.ex.web_breath_keys() === 0 && a.ex.web_breath_buttons() === 0);
 { // the page's breathing peaks against the firmware's (hal/fm1_input.h FM1_LED_BREATH_PK / _LO, /256 of lit): the
   // colour at 50 % between the dark and the lit one by the LED's share, gamma-encoded (sRGB), within 0.06

@@ -73,17 +73,14 @@ static inline uint32_t eng_idx(uint32_t e) { return e < NENGINES ? e : 0u; }
  * engine's state is in it. An engine without memory leaves it as it is: a switch back finds its state. */
 static void eng_mem_claim(const track_t *t)
 {
-    uint32_t p = (uint32_t)(t - trk), e, k, n;
-    uint32_t *w;
+    uint32_t p = (uint32_t)(t - trk), e, n;
     if (p >= NLIVE)                           /* (a hidden part has no region and no engine running) */
         return;
     e = eng_idx(t->engine);
     n = ENGINES[e]->mem;
     if (!n || eng_mem_owner[p] == e + 1u)
         return;
-    w = (uint32_t *)ENG_MEM(p);
-    for (k = 0; k < (n + 3u) / 4u; k++)
-        w[k] = 0;
+    memset(ENG_MEM(p), 0, (n + 3u) & ~3u);               /* (libc.c: a word at a time) */
     eng_mem_owner[p] = (uint8_t)(e + 1u);
 }
 

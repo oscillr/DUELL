@@ -266,7 +266,8 @@ static int midi_track_held(uint32_t track)
 /* The standard CC map (#103): always on, these CCs only, on the track the channel plays (ROUT as notes). A CC
  * sets its parameter as a knob would, 0..127 over the parameter's range (64: the middle of a bipolar one), and
  * AUTOMATION records it as a knob move (motion_capture: the selected track, armed and playing). CC74 / CC71 are
- * the engine's own brightness / resonance (MIDI_CC_ENG); an engine without one ignores them. CC121 resets none
+ * the engine's own cutoff / resonance (MIDI_CC_ENG); an engine without one ignores them. DUELL 0.2.2: on the engines with no filter
+ * of their own (engine_t.ufilt) they are the universal filter's CUT (64 = the centre, OFF) and RES (MCC_UF). CC121 resets none
  * of them (RP-015: they are the sound's) */
 #define MCC_CUT 0xFEu
 #define MCC_RES 0xFFu
@@ -274,13 +275,15 @@ static const uint8_t MIDI_CC_MAP[][2] = {
     {5, P_GLIDE}, {7, P_LEVEL}, {10, P_PAN}, {71, MCC_RES}, {72, P_REL}, {73, P_ATK}, {74, MCC_CUT}, {75, P_DEC},
     {91, P_REV}, {93, P_CHOR}, {94, P_DLY},
 };
-/* per engine (ENGINES[] order): CC74's E index + 1 in the high nibble, CC71's in the low one, 0 = none */
+/* per engine (ENGINES[] order): CC74's E index + 1 in the high nibble, CC71's in the low one, 0 = none; MCC_UF (0xFF): the engine's
+ * universal filter, CC74 its CUT and CC71 its RES (DUELL 0.2.2) */
+#define MCC_UF 0xFFu
 static const uint8_t MIDI_CC_ENG[NENGINES] = {
-    0x56, 0x00, 0x30, 0x80, 0x50, 0x07, 0x67, 0x00,   /* ANALOG CUT RES, -, PHASE DCW, LOFI TONE, SAMPLE CUT, VOICE Q,
-                                                       * TRIO CUT RES, WHEEL - */
-    0x80, 0x30, 0x30, 0x34, 0x30,                     /* GRAIN TONE, PHYS BRIT, DRUM TONE, NOISE FREQ RES, FM6 MLVL */
+    0x56, 0x00, MCC_UF, MCC_UF, 0x50, MCC_UF, 0x67, MCC_UF,   /* ANALOG CUT RES, -, PHASE UF, LOFI UF, SAMPLE CUT, VOICE UF,
+                                                       * TRIO CUT RES, WHEEL UF */
+    MCC_UF, MCC_UF, 0x30, 0x34, MCC_UF,               /* GRAIN UF, PHYS UF, DRUM TONE (hidden), NOISE FREQ RES, FM6 UF */
 #if FELUCCA_SLICE
-    0x80,                                             /* SLICE TONE */
+    MCC_UF,                                           /* SLICE UF */
 #endif
 };
 /* a CC sets parameter id of track t as a knob would: 0..127 over its range */
@@ -354,7 +357,7 @@ static void __attribute__((noinline)) midi_cc_map(track_t *t, uint32_t cc, uint3
         e = MIDI_CC_ENG[eng_idx(t->eng_req)] >> (id == MCC_CUT ? 4 : 0) & 15u;
         if (!e)
             return;
-        id = P_E0 + e - 1u;
+        id = e == 15u ? (id == MCC_CUT ? P_FREEA : P_FREEB) : P_E0 + e - 1u;   /* (15: the universal filter's CUT, RES) */
     }
     midi_cc_set(t, id, value);
 }

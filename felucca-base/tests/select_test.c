@@ -181,11 +181,11 @@ static void sweep_home(void)
                 expect(PAGES[e].id[1] == P_M1SRC ? "ENV's MOD 1 edits LFO's MOD 1 slots" : "ENV's MOD 2 edits LFO's MOD 2 slots", ok);
             }
         }
-        expect("ENV family: AMP ENV, AMP DEST, ENV 2, ENV 2 DEST, MOD 1, MOD 2 (the last two MOD pages)", n == 6u && str_eq(PAGES[fam_step(e, -1)].title, "MOD 1"));
+        expect("ENV family: AMP ENV, AMP DEST, ENV 2, ENV 2 DEST, MOD 1, MOD 2 (the last two MOD pages)", n == 6u && str_eq(PAGES[fam_step(e, -1)].title, "MATRIX 1-4"));
     }
     {   /* the classic arrangement (SPEC 2.4): each family's pages in this order (index order, the button's round) */
-        static const char *const EF[] = {"AMP ENV", "AMP DEST", "ENV 2", "ENV 2 DEST", "MOD 1", "MOD 2"};
-        static const char *const LF[] = {"LFO 1", "LFO 1 SYNC", "LFO 1 DEST", "LFO 2", "LFO 2 SYNC", "LFO 2 DEST", "MOD 1", "MOD 2"};
+        static const char *const EF[] = {"AMP ENV", "AMP DEST", "ENV 2", "ENV 2 DEST", "MATRIX 1-4", "MATRIX 5-8"};
+        static const char *const LF[] = {"LFO 1", "LFO 1 SYNC", "LFO 1 DEST", "LFO 2", "LFO 2 SYNC", "LFO 2 DEST", "MATRIX 1-4", "MATRIX 5-8"};
         uint32_t i, ne = 0, nl = 0, e2 = 0, l2 = 0;
         ok = 1;
         for (i = 0; i < NPAGES; i++) {
@@ -243,7 +243,7 @@ static void sweep_other(void)
     expect("ABOUT: SELECT scrolls, tempo untouched, stays in ABOUT", ui.menu == 2u && song.g[G_BPM] == 117);
     ui.menu = 3; frames(48);
     turn(EN_SELECT, 1); turn(EN_SELECT, -1);
-    expect("INFO: tempo untouched, stays in INFO", ui.menu == 3u && song.g[G_BPM] == 117);
+    expect("TEST: tempo untouched, stays in TEST", ui.menu == 3u && song.g[G_BPM] == 117);
     ui.menu = 0; frames(16);
     /* a dialog: nothing, the dialog stays */
     ui_power_on();
@@ -306,7 +306,7 @@ static void sweep_menu(void)
     }
     /* ALGORITHM and PRESETS: nothing in the menu, wherever the selection is */
     for (i = 0; i < 4u; i++) {
-        static const uint8_t AT[4] = {0, MI_HOLD, MI_INFO, MI_COUNT - 1u};
+        static const uint8_t AT[4] = {0, MI_HOLD, MI_TEST, MI_COUNT - 1u};
         uint32_t sel = AT[i], prefs = ui_prefs, sk = song.sel;
         ui.menu_sel = (uint8_t)sel; frames(4);
         turn(EN_ALGO, 1); turn(EN_ALGO, -1); turn(EN_ALGO, 3);
@@ -334,7 +334,7 @@ static void sweep_menu(void)
 /* a layer button held: SELECT is nobody's (not the tempo, not the page) */
 static void sweep_layers(void)
 {
-    static const uint8_t LB[] = {B_FX, B_SCL, B_EDIT, B_SEQ, B_REC};   /* (GLO is a page, not a held layer, since step 6) */
+    static const uint8_t LB[] = {B_SCL, B_EDIT, B_SEQ, B_REC};   /* (GLO is a page, not a held layer, since step 6; FX neither, since 0.2.2) */
     uint32_t l;
     for (l = 0; l < sizeof LB; l++) {
         uint32_t pg;
@@ -365,11 +365,14 @@ static void test_tempo(void)
     ui_power_on();
     for (i = 0; i < NPAGES; i++)
         ck = PAGES[i].fam == FAM_GLO && str_eq(PAGES[i].title, "TEMPO") ? i : ck;
-    expect("GLO's pages in order: GLO, MIDI, SIDECHAIN, MIDI LEARN, TEMPO (KNOB 1 is G_BPM, KNOB 2 G_SWING, KNOB 3 TAP), TEST",
+    expect("GLO's pages in order: GLO, MIDI, SIDECHAIN, MIDI LEARN, TEMPO (KNOB 1 is G_BPM, KNOB 2 G_SWING, KNOB 3 TAP), no TEST page (it is MENU > SYSTEM > TEST)",
            PAGES[glo1].graph == GR_GLO && str_eq(PAGES[glo1].title, "GLO") && str_eq(PAGES[glo1 + 1u].title, "MIDI") &&
            PAGES[glo1 + 1u].graph == GR_MIDI && str_eq(PAGES[glo1 + 2u].title, "SIDECHAIN") && str_eq(PAGES[glo1 + 3u].title, "MIDI LEARN") &&
            ck == glo1 + 4u && PAGES[ck].id[0] == G_BPM && PAGES[ck].id[1] == G_SWING && PAGES[ck].id[2] == 0xFFu && PAGES[ck].id[3] == 0xFFu &&
-           PAGES[ck].scope == SC_GLOBAL && PAGES[ck].graph == GR_TEMPO && str_eq(PAGES[glo1 + 5u].title, "TEST") && PAGES[glo1 + 6u].fam != FAM_GLO);
+           PAGES[ck].scope == SC_GLOBAL && PAGES[ck].graph == GR_TEMPO && PAGES[glo1 + 5u].fam != FAM_GLO);
+    for (i = 0, g0 = 0; i < NPAGES; i++)
+        g0 += PAGES[i].scope == SC_TEST || PAGES[i].graph == GR_TEST || str_eq(PAGES[i].title, "TEST");
+    expect("  .. no page named TEST or of its kind is in the table at all", g0 == 0u);
     expect("the label is TEMPO", str_eq(GP[G_BPM].label, "TEMPO"));
     {
         uint32_t i, c, n = 0;
@@ -468,56 +471,47 @@ static void test_glo_page(void)
     frames(48);
     expect("GLO tapped: its main page (graph GR_GLO), no layer held, the keys are the page's (kb_lock 0)",
            !ui.home && ui.page == glo1 && !ui.layer && kb_lock == 0u && cur_page()->graph == GR_GLO);
-    trk[0].p[P_MUTE] = trk[1].p[P_MUTE] = 0; perf_solo = 0;
+    trk[0].p[P_MUTE] = trk[1].p[P_MUTE] = 0;
     key_down(1);                                         /* F#3 plays a note: it was MUTE part 1 */
     frames(48);
     expect("  .. F#3 held: it plays a note (no layer key)", !((kb_layer >> 1) & 1u) && kb_note[1] != KB_SILENT && gates() > 0u);
     key_up(1);
     frames(48);
     key_down(2); frames(48); key_up(2); frames(48);
-    expect("  .. F#3 and G3 changed nothing (no MUTE, no SOLO on keys)", trk[0].p[P_MUTE] == 0 && trk[1].p[P_MUTE] == 0 && perf_solo == 0u);
+    expect("  .. F#3 and G3 changed nothing (no MUTE on keys)", trk[0].p[P_MUTE] == 0 && trk[1].p[P_MUTE] == 0);
     key_down(7); frames(48); key_up(7); frames(48);
     key_down(0); frames(48); key_up(0); frames(48);
     expect("  .. F4, F3 neither: no ALL, no TAP (the tempo untouched)", song.g[G_BPM] == 117 && ui.tap_n == 0u);
-    /* KNOB 1 MUTE: a twist left (past the detent) acts on part 1, right on part 2, once per twist */
-    turn(EN_K1, -1); turn(EN_K1, -1);
-    expect("KNOB 1 MUTE: a nudge below the detent (2 detents) does nothing", trk[0].p[P_MUTE] == 0 && trk[1].p[P_MUTE] == 0);
-    frames(600);
-    turn(EN_K1, -MORPH_DET);
-    expect("  .. a twist left: part 1 muted", trk[0].p[P_MUTE] == 1 && trk[1].p[P_MUTE] == 0 && !glo_sounding(0) && glo_sounding(1));
-    turn(EN_K1, -MORPH_DET); turn(EN_K1, -MORPH_DET);
+    /* KNOB 1 MUTE 1 / KNOB 2 MUTE 2: each its own part; one click either way flips the mute, once per twist */
+    turn(EN_K1, 1);
+    expect("KNOB 1 MUTE 1: ONE detent right mutes at once", trk[0].p[P_MUTE] == 1 && trk[1].p[P_MUTE] == 0 && !glo_sounding(0) && glo_sounding(1));
+    turn(EN_K1, 1); turn(EN_K1, 1);
     expect("  .. the same twist going on: still one action", trk[0].p[P_MUTE] == 1);
     frames(600);
-    turn(EN_K1, MORPH_DET);
-    expect("  .. a twist right: part 2 muted too", trk[0].p[P_MUTE] == 1 && trk[1].p[P_MUTE] == 1);
+    turn(EN_K1, 1);
+    expect("  .. another click (same way) unmutes", trk[0].p[P_MUTE] == 0 && glo_sounding(0));
     frames(600);
-    turn(EN_K1, -MORPH_DET);
-    expect("  .. left again: part 1 unmuted (latched toggle)", trk[0].p[P_MUTE] == 0 && trk[1].p[P_MUTE] == 1);
+    turn(EN_K1, -1);
+    expect("  .. a click left mutes too (either way flips)", trk[0].p[P_MUTE] == 1);
+    draw_layer();
     frames(600);
-    turn(EN_K1, MORPH_DET);
-    expect("  .. right again: part 2 unmuted", trk[0].p[P_MUTE] == 0 && trk[1].p[P_MUTE] == 0);
-    /* KNOB 2 SOLO: left = part 1, right = part 2; a solo mutes the other; the same side again releases it; it stays when the page is left */
+    turn(EN_K1, -1);
+    expect("  .. and a click left again unmutes", trk[0].p[P_MUTE] == 0);
     frames(600);
-    turn(EN_K2, -MORPH_DET);
-    expect("KNOB 2 SOLO: a twist left: part 1 soloed (perf_solo 1), part 2 not sounding", perf_solo == 1u && glo_sounding(0) && !glo_sounding(1));
+    turn(EN_K2, 1);
+    expect("KNOB 2 MUTE 2: a click mutes part 2 only", trk[0].p[P_MUTE] == 0 && trk[1].p[P_MUTE] == 1 && !glo_sounding(1));
     frames(600);
-    turn(EN_K2, MORPH_DET);
-    expect("  .. a twist right: part 2 soloed too, both sound", perf_solo == 3u && glo_sounding(0) && glo_sounding(1));
+    turn(EN_K2, -1);
+    expect("  .. a click the other way unmutes it", trk[1].p[P_MUTE] == 0 && glo_sounding(1));
     frames(600);
-    turn(EN_K2, -MORPH_DET);
-    expect("  .. left again releases part 1: part 2 alone", perf_solo == 2u && !glo_sounding(0) && glo_sounding(1));
-    frames(600);
-    turn(EN_K2, MORPH_DET);
-    expect("  .. right again: no solo, both sound", perf_solo == 0u && glo_sounding(0) && glo_sounding(1));
-    frames(600);
-    turn(EN_K2, -MORPH_DET);
+    turn(EN_K2, 1);
     turn(EN_SELECT, 1);
     frames(48);
-    expect("  .. a solo stays when the page is left", perf_solo == 1u && str_eq(cur_page()->title, "MIDI"));
+    expect("  .. a mute stays when the page is left (latched)", trk[1].p[P_MUTE] == 1 && str_eq(cur_page()->title, "MIDI"));
     turn(EN_SELECT, -1);
     frames(600);
-    turn(EN_K2, -MORPH_DET);
-    expect("  .. and the page releases it", perf_solo == 0u && ui.page == glo1);
+    turn(EN_K2, 1);
+    expect("  .. and back on the page a click unmutes", trk[1].p[P_MUTE] == 0 && ui.page == glo1);
     lvl = trk[0].p[P_LEVEL];
     turn(EN_K3, 5);
     expect("KNOB 3: LEVEL 1 (part 1)", trk[0].p[P_LEVEL] != lvl);
@@ -575,7 +569,7 @@ static void test_glo_page(void)
     {
         uint32_t i, ok = 0;
         for (i = 0; i < NPAGES; i++)
-            ok |= str_eq(PAGES[i].title, "DUCK 1") && PAGES[i].id[0] == P_DKSRC && PAGES[i].id[1] == P_DKRATE;
+            ok |= str_eq(PAGES[i].title, "DUCK 1/2") && PAGES[i].id[0] == P_DKSRC && PAGES[i].id[1] == P_DKRATE;
         expect("  .. DUCK 1 holds the same parameters (SRC, KNOB 2 by SRC)", ok && duck_ctx_id(TSEL) == P_DKNOTE);
     }
     turn(EN_SELECT, 1);
@@ -595,11 +589,7 @@ static void test_glo_page(void)
     expect("  .. KNOB 2 right: CLEAR, every learned CC gone", ml_count() == 0u && msg_is("LEARN CLEARED"));
     turn(EN_SELECT, 1);
     frames(48);
-    expect("  .. SELECT right: the TEMPO page (keys play: not locked); then the TEST page (the last), then round, the main GLO page", str_eq(cur_page()->title, "TEMPO") && kb_lock == 0u);
-    turn(EN_SELECT, 1);
-    frames(48);
-    expect("  .. SELECT right: TEST, the last page of GLO (no parameter; keys play: not locked)", str_eq(cur_page()->title, "TEST") && cur_page()->graph == GR_TEST &&
-           cur_page()->fam == FAM_GLO && kb_lock == 0u);
+    expect("  .. SELECT right: the TEMPO page (keys play: not locked); then round, the main GLO page (no TEST page any more)", str_eq(cur_page()->title, "TEMPO") && kb_lock == 0u);
     turn(EN_SELECT, 1);
     frames(48);
     expect("  .. back on GLO: the keys still play notes", ui.page == glo1 && kb_lock == 0u && song.g[G_BPM] == 117);
@@ -610,18 +600,21 @@ static void test_glo_page(void)
     frames(48);
 }
 
-/* DUELL 0.1: INFO and ABOUT (read only) open with KNOB 1 turned right as well as OCT+; KNOB 1 left or OCT- close them; CALIBRATION
- * (a setup, not read only) still takes OCT+ only */
+/* DUELL 0.1: TEST (was INFO) and ABOUT open with KNOB 1 turned right as well as OCT+; KNOB 1 left (ABOUT) or OCT- close them (on TEST KNOB 1 is MORPH, both
+ * ways: only OCT- goes back); CALIBRATION (a setup) still takes OCT+ only */
 static void sweep_readonly(void)
 {
     ui_power_on();
-    ui.menu = 1; ui.menu_sel = MI_INFO; frames(8);
+    ui.menu = 1; ui.menu_sel = MI_TEST; frames(8);
+    expect("the item is called TEST", str_eq(MI_NAME[MI_TEST], "TEST") && MI_TAB[MI_TEST] == MTAB_SYSTEM);
     turn(EN_K1, 1);
-    expect("INFO: KNOB 1 right opens it", ui.menu == 3u);
+    expect("TEST: KNOB 1 right opens it", ui.menu == 3u);
     turn(EN_K1, 2);
-    expect("  .. KNOB 1 right again: stays", ui.menu == 3u);
+    expect("  .. KNOB 1 right again: stays (it is MORPH there)", ui.menu == 3u);
     turn(EN_K1, -1);
-    expect("  .. KNOB 1 left: back to the tabs, INFO still the row", ui.menu == 1u && ui.menu_sel == MI_INFO);
+    expect("  .. KNOB 1 left: stays too (MORPH goes both ways); OCT- is the way back", ui.menu == 3u);
+    press(B_OCTDN);
+    expect("  .. OCT-: back to the tabs, TEST still the row", ui.menu == 1u && ui.menu_sel == MI_TEST);
     press(B_OCTUP);
     expect("  .. OCT+ still opens it", ui.menu == 3u);
     press(B_OCTDN);

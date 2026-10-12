@@ -18,8 +18,9 @@
 enum { ED_MENU_DESC = 72, ED_MENU_SET };
 enum { EDM_ENUM, EDM_INT };                            /* kind: names follow; or a unit (none yet) */
 static const uint8_t ED_MENU[][2] = {
-    {MI_COLOR, 0}, {MI_STYLE, 1}, {MI_LARGE, 2}, {MI_ANIM, 3}, {MI_LEDS, 4}, {MI_HOLD, 5}, {MI_ACCEL, 6},
-    {MI_LATCH, 7}, {MI_LOWCUT, 9}, {MI_USB, 10}, {MI_SERIAL, 11},
+    {MI_COLOR, 0}, {MI_ANIM, 3}, {MI_LEDS, 4}, {MI_HOLD, 5}, {MI_ACCEL, 6},
+                                                       /* (id 7, FX LATCH, retired in DUELL 0.2.2: the FX hold layer is removed; never reused) */
+    {MI_LOWCUT, 9}, {MI_USB, 10}, {MI_SERIAL, 11},
     {MI_CLICK, 12}, {MI_CLKLVL, 13}, {MI_COUNTIN, 14},
     {MI_RESTORE, 15},                                  /* 1.2 (Discussion #130), a row of SYSTEM */
     {MI_SCLLED, 16},                                   /* 1.2 (Discussion #127), a row of CONTROL */
@@ -27,10 +28,11 @@ static const uint8_t ED_MENU[][2] = {
     {MI_SCOPE, 18},                                    /* 1.2 (Discussion #165), a row of DISPLAY */
     {MI_PREVIEW, 19},                                  /* 1.2 (Discussion #169), a row of CONTROL */
     {MI_CHADD, 20},                                    /* 1.2 (#155), a row of CONTROL */
+                                                       /* (ids 1 STYLE and 2 LARGE, retired in DUELL 0.2.2: the look is FLAT only and LARGE is gone; never reused) */
                                                        /* (id 21, MIDI IN, retired in DUELL 0.1: it is GLO > MIDI' MIDI IN now; never reused) */
     {MI_TUNE, 22},                                     /* 1.2: the project's G_TUNE (was GLO > GLOBAL), AUDIO */
     {MI_HOME, 23},                                     /* 1.3 (Discussions #112, #134): HOME SCOPE / TRACKS, DISPLAY (DUELL: OVERVIEW SCOPE / PARTS) */
-    {MI_HELP, 24},                                     /* 1.5 (Discussion #156): HELP OFF / ON, SYSTEM */
+                                                       /* (id 24, HELP, retired in DUELL 0.2.2: removed for now; never reused) */
     {MI_HOMEPG, 25},                                   /* DUELL 0.1: HOME OPENS MORPH / MODE / MIXER / OVERVIEW, CONTROL */
 };
 #define ED_MENU_N NELEM(ED_MENU)

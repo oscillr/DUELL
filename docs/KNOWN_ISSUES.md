@@ -1,15 +1,17 @@
-# Known issues: DUELL 0.1 beta
+# Known issues: DUELL 0.2.4 beta
 
-- **Emulator first, no firmware download yet.** The browser emulator is the public beta. The firmware has been flashed to and run on **one** real FM-1 by the author (it works), but broader hardware testing is pending and no firmware package is offered. The installer page says "firmware not yet released".
-- **The way back to the official firmware is untested.** Single-bank layout, no known rollback. See [RECOVERY.md](RECOVERY.md).
+- **Tested on one unit.** The firmware has been flashed to and run on **one** real FM-1, the author's (it works). Other units, cables and USB hubs are untested. Use a data cable straight into the computer, no hub.
+- **The way back to the official firmware** (V15) has worked on the author's unit about three times: the installer's return button wrote V15 and the unit booted normally. Other units are untested. Single-bank layout, no known rollback beyond that. See [RECOVERY.md](RECOVERY.md).
+- **Backup is incomplete and restore is untested.** The device backup covers patches, settings, the old project data and user samples, but **not MULTIs and not the PATTERN slots**. Restore uses the editor, which has not been adapted to DUELL, so it has not been tested. Write down or keep what you need from your multis and patterns before an ERASE DATA.
+- **The editor is not adapted.** `felucca-base/web/editor.html` in the source tree still says Felucca and DUELL's new parameters are only partly described there. A web editor for DUELL is not built yet.
+- **Very rare missed audio blocks.** When you switch to a very heavy multi, a block of audio can be late once in a while; you may hear a short click. Normal loads of patches and multis do not do this.
+- **Factory sounds can be overwritten.** Saving over a factory sound stores your own copy; ERASE on that copy brings the factory sound back. Copies count toward the store.
+- **The patch store holds at most 48 patches** (copies of factory sounds count): the biggest possible patch is 435 bytes and 48 of them always fit, so a save never fails half way. At 48 the PATCHES page shows FREE 0 and says NO FREE PLACE (ERASE ONE); erase one to save another.
 - **Dual core is off and untested.** An optional second-core mode is planned, off by default; it has not been run on a unit.
-- **MIDI is untested with many devices.** It follows the spec and the host tests; the emulator takes notes and controllers from a WebMIDI keyboard or controller (not clock, not SysEx). Real controllers, sequencers and DAWs on the hardware are still to be tested.
-- **The patch store holds at most 48 patches** (copies of factory sounds count): the biggest possible patch is 435 bytes and 48 of them always fit, so a save never fails half way. At 48 the PATCHES page shows FREE 0 and says NO FREE PLACE (ERASE ONE); erase one to save another. Typical sounds are much smaller, so this is a deliberate limit, not what the flash could hold.
-- **User sample slots are unused by factory sounds.** Slots 1 and 2 still work as in Felucca; slot 3's flash now holds the patch store.
-- **Emulator: your data lives in the browser** (this site's storage in your browser, on this computer only). After an update of the emulator, clear the site data if saved data from an older build misbehaves. Press "Download saved data" first: it backs up everything the emulator stores. Clearing browser data or switching browser or computer loses it otherwise.
-- **Backup is incomplete.** The device backup covers patches, settings, the old project data and user samples, but **not MULTIs and not the PATTERN slots**. Restore uses the editor, which is still Felucca's page and has not been adapted to DUELL or tested with it.
-- **The editor is not adapted.** `felucca-base/web/editor.html` still says Felucca and DUELL's new parameters are only partly described there.
-- **On-device backup/restore** is therefore only partly possible. In the emulator, "Download saved data" and "Load saved data" cover everything the emulator stores, but that file is emulator-only: there is no tool to move it onto a device.
-- **Data may not carry across betas.** Patches, MULTIs and PATTERNs saved here may not load in older or later betas. Old Felucca PROJECT data is not migrated (it reads as empty). Patches saved by this build may read as damaged on older firmware.
-- **Not built yet:** random-pattern action, tempo-synced ducker release, the universal filter, a web editor for DUELL.
-- **Version text:** a release build made with `--release 0.1-beta` shows "DUELL 0.1 beta" on the device (splash, ABOUT, MENU > SYSTEM > INFO) and writes `duell-0.1-beta.fwsc`.
+- **MIDI is untested with many devices.** It follows the spec and the host tests; real controllers, sequencers and DAWs are still to be tested. The emulator takes notes and controllers from a WebMIDI device (not clock, not SysEx).
+- **User sample slots:** factory sounds use none. Slots 1 and 2 work as in Felucca; slot 3's flash now holds the patch store.
+- **No rename on the device** for a stored patch or multi for now (the page buttons leave the NAME screen without writing); the editor can rename.
+- **Data may not carry across betas.** Patches, MULTIs and PATTERNs saved here may not load in older or later betas. Old Felucca PROJECT data is not migrated (it reads as empty). Patches saved by this build may read as damaged on older firmware. Back up first.
+- **Emulator: your data lives in the browser** (this site's storage, on this computer only). After an emulator update, clear the site data if saved data from an older build misbehaves. Press "Download saved data" first. That file is emulator-only: there is no tool to move it onto a device.
+- **Not built yet:** random-pattern action, tempo-synced ducker release.
+- **Version text:** the device shows "DUELL 0.2.4 beta" (splash, ABOUT). The release has no TEST screen and no test multis.
