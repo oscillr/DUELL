@@ -96,14 +96,23 @@ static int theory(void)
     bad += check("D dorian DIA3 on D: Dm, on G: G (the major IV)", name_is(62, "Dm") && name_is(67, "G") &&
                  chord_is(67, (const uint8_t[]){67, 71, 74, 0}));
     t->p[P_SCALE] = 1; t->p[P_ROOT] = 0;
-    bad += check("a key outside the scale: the scale note below (C# in C major: C)", chord_is(61, (const uint8_t[]){60, 64, 67, 0}));
+    bad += check("a root outside the scale keeps its pitch, the shape of the scale note below (C# in C major: C#-F-G#, C's 0-4-7)",
+                 chord_is(61, (const uint8_t[]){61, 65, 68, 0}) && name_is(61, "C#"));
+    bad += check("  Eb (D's shape: minor) and F# (F's shape: major) too",
+                 chord_is(63, (const uint8_t[]){63, 66, 70, 0}) && name_is(63, "D#m") && chord_is(66, (const uint8_t[]){66, 70, 73, 0}));
+    t->p[P_CHRD] = CH_DIA7;
+    bad += check("  DIA7 on C#: C's seventh shape on C# (C#-F-G#-C)", chord_is(61, (const uint8_t[]){61, 65, 68, 72}));
+    t->p[P_CHRD] = CH_MAJ; t->p[P_SCALE] = 2;
+    bad += check("  a fixed shape ignores the scale (MAJ on C#: C#-F-G#)", chord_is(61, (const uint8_t[]){61, 65, 68, 0}));
+    t->p[P_CHRD] = CH_DIA3; t->p[P_SCALE] = 1;
     t->p[P_SCALE] = 0; t->p[P_ROOT] = 7;                           /* CHR: the major scale of G */
     bad += check("CHR: the major scale of ROOT (G: on A, Am; on F#, F#dim)", name_is(69, "Am") && name_is(66, "F#dim"));
     t->p[P_SCALE] = 5; t->p[P_ROOT] = 0;                           /* C major pentatonic: every other note */
     bad += check("pentatonic DIA3: in the scale (C E A: C6)", chord_is(60, (const uint8_t[]){60, 64, 69, 0}) && name_is(60, "C6"));
     {   /* every scale, root, mode: every note in the scale */
         uint32_t s, r, n, k, note;
-        uint8_t out[CHORD_MAX];
+        uint8_t out[CHORD_MAX], ob[CHORD_MAX];
+        uint32_t m = 0;
         ok = 1;
         for (s = 1; s <= (uint32_t)TP[P_SCALE].max; s++)
             for (r = 0; r < 12u; r++)
@@ -112,10 +121,21 @@ static int theory(void)
                     t->p[P_CHRD] = (int16_t)(note & 1u ? CH_DIA3 : CH_DIA7);
                     n = chord_build(t, note, out);
                     ok &= n == (note & 1u ? 3u : 4u);
-                    for (k = 0; k < n; k++)
-                        ok &= (scale_mask(t) >> ((out[k] + 120u - r) % 12u)) & 1u;
+                    ok &= out[0] == note;                      /* the root is never moved */
+                    if ((scale_mask(t) >> ((note + 120u - r) % 12u)) & 1u) {
+                        for (k = 0; k < n; k++)
+                            ok &= (scale_mask(t) >> ((out[k] + 120u - r) % 12u)) & 1u;
+                    } else {                                   /* outside the scale: the shape of the scale note below */
+                        uint32_t b = note;
+                        while (!((scale_mask(t) >> ((b + 120u - r) % 12u)) & 1u)) b--;
+                        ok &= chord_build(t, b, ob) == n;
+                        for (k = 0; k < n; k++)
+                            ok &= out[k] - note == ob[k] - b;
+                        m++;
+                    }
                 }
-        bad += check("DIA3 / DIA7 of every scale and root: 3 / 4 notes, every one in key", ok);
+        bad += check("DIA3 / DIA7 of every scale and root: 3 / 4 notes, the root as played; in the scale every tone in key, "
+                     "outside it the shape of the scale note below", ok && m > 0);
     }
     return bad;
 }
@@ -197,8 +217,8 @@ static int keys(void)
     key_up(K_E4);
     bad += check("  E up: nothing left, MIDI OUT balanced", !ngated(t) && mo_w == 8u);
     t->p[P_VOICE] = V_MONO;
-    key_down(K_C4 + 1u);                                           /* C#: DIA snaps to C */
-    bad += check("MONO: the root alone (C# in C major: C)", ngated(t) == 1u && gate_note(t, 60));
+    key_down(K_C4 + 1u);                                           /* C#: the root as played */
+    bad += check("MONO: the root alone (C# in C major: C#)", ngated(t) == 1u && gate_note(t, 61));
     t->p[P_VOICE] = V_POLY;
     key_up(K_C4 + 1u);
     bad += check("  released (MONO switched off meanwhile)", !ngated(t));
@@ -214,7 +234,20 @@ static int keys(void)
                  kb_note[K_D4] == 71 && gate_note(t, 71) && gate_note(t, 74) && gate_note(t, 77));
     key_up(K_D4);
     bad += check("  released", !ngated(t));
+    t->p[P_SCALE] = 1; t->p[P_ROOT] = 0; t->p[P_QUANT] = 0;
+    key_down(K_C4 + 1u);
+    bad += check("QNT OFF, C major DIA3: the black key C# plays a chord on C# (C# F G#)",
+                 ngated(t) == 3u && gate_note(t, 61) && gate_note(t, 65) && gate_note(t, 68) && !gate_note(t, 60));
+    key_up(K_C4 + 1u);
+    t->p[P_QUANT] = 1;                                             /* QNT SNAP: the user asked for it */
+    key_down(K_C4 + 1u);
+    bad += check("QNT SNAP still snaps the key to the scale (C# -> C: C E G)",
+                 ngated(t) == 3u && gate_note(t, 60) && gate_note(t, 64) && gate_note(t, 67) && !gate_note(t, 61));
+    key_up(K_C4 + 1u);
     t->p[P_CHRD] = CH_OFF; t->p[P_QUANT] = 0;
+    key_down(K_C4 + 1u);
+    bad += check("CHRD OFF with a scale: the key's real note (C#)", ngated(t) == 1u && gate_note(t, 61));
+    key_up(K_C4 + 1u);
     before = mo_w;
     key_down(K_C4);
     bad += check("OFF: one note, as before", ngated(t) == 1u && gate_note(t, 60) && mo_w == before + 1u);
@@ -270,6 +303,17 @@ static int midi_in(void)
     bad += check("MIDI IN: a note plays its chord (D F A)", gate_note(t, 62) && gate_note(t, 65) && gate_note(t, 69) && ngated(t) == 3u);
     t->p[P_CHRD] = CH_OFF;
     midi(0x80, 62, 0);
+    t->p[P_CHRD] = CH_DIA3;
+    midi(0x90, 61, 100);
+    bad += check("MIDI IN, a note outside the scale (C#): its chord on C# (C# F G#), not snapped",
+                 gate_note(t, 61) && gate_note(t, 65) && gate_note(t, 68) && !gate_note(t, 60) && ngated(t) == 3u);
+    midi(0x80, 61, 0);
+    t->p[P_CHRD] = CH_OFF;
+    midi(0x90, 61, 100);
+    bad += check("  CHRD OFF: the note itself", ngated(t) == 1u && gate_note(t, 61));
+    midi(0x80, 61, 0);
+    t->p[P_CHRD] = CH_DIA3;
+    midi(0x90, 62, 100); midi(0x80, 62, 0);
     for (i = 0; i < MCHORD_N; i++) free &= !mchord[i].id;
     bad += check("  its note-off ends the chord (CHRD OFF meanwhile), the table empty", !ngated(t) && free);
     t->p[P_CHRD] = CH_DIA3;

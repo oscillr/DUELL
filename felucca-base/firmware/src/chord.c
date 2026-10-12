@@ -3,8 +3,9 @@
 /* Chord keys (SCL > CHORD: P_CHRD, P_VOIC): one key, MIDI note or arp input plays a chord. Included by seq.c
  * after kb_map; runs in the audio ISR with the rest of the note input.
  *   CHRD OFF; DIA3 / DIA7: the triad / seventh of the track's scale (ROOT, SCALE) built on the key, every tone
- *        in key (a key outside the scale takes the scale note below it, as QNT SNAP does; CHR builds on the
- *        major scale of ROOT); MAJ MIN DOM7 MAJ7 MIN7 SUS4 POW: that shape on the key, whatever the scale.
+ *        in key; the root stays as played: a key outside the scale (a black key in C major) gets the shape of
+ *        the scale note below it, on its own root (C# = C#-F-G#); CHR: the major scale of ROOT;
+ *        MAJ MIN DOM7 MAJ7 MIN7 SUS4 POW: that shape on the key, whatever the scale.
  *   VOIC CLOSE (root position); OPEN (the second tone an octave up: 1-5-3); INV1 / INV2 (the lowest tone, then
  *        the next, an octave up); +OCT (the root an octave down added; a seventh drops its fifth). At most
  *        CHORD_MAX notes, notes outside 0..127 left out.
@@ -37,8 +38,9 @@ static int chord_kit(const track_t *t)
     return e->oneshot || (e->keys && e->keys(t, 0) >= 0);
 }
 
-/* the tones of the chord (semitones above *root, ascending, iv[0] = 0) -> their number; DIA may move *root
- * down onto the scale */
+/* the tones of the chord (semitones above *root, ascending, iv[0] = 0) -> their number. *root is never moved:
+ * a DIA chord on a root outside the scale has the shape of the scale note below it, built on that root (C# in
+ * C major: C's triad 0-4-7 on C#) */
 static uint32_t chord_tones(const track_t *t, uint32_t mode, int32_t *root, int32_t *iv)
 {
     uint32_t n = 0, i;
@@ -49,14 +51,14 @@ static uint32_t chord_tones(const track_t *t, uint32_t mode, int32_t *root, int3
     }
     {
         uint32_t mask = scale_mask(t), deg[12], c = 0, at = 0, guard = 12;
-        int32_t r = t->p[P_ROOT];
+        int32_t r = t->p[P_ROOT], b = *root;            /* b: the scale note at or below the root (its shape is used) */
         if (mask == 0xFFFu)
             mask = SCALE_MASK[1];                       /* CHR: no key of its own, the major scale of ROOT */
-        while (guard-- && !((mask >> (uint32_t)((*root - r + 120) % 12)) & 1u))
-            (*root)--;                                  /* outside the scale: the scale note below */
+        while (guard-- && !((mask >> (uint32_t)((b - r + 120) % 12)) & 1u))
+            b--;                                        /* outside the scale: the shape of the scale note below */
         for (i = 0; i < 12u; i++)
             if ((mask >> i) & 1u) {
-                if (i == (uint32_t)((*root - r + 120) % 12))
+                if (i == (uint32_t)((b - r + 120) % 12))
                     at = c;
                 deg[c++] = i;
             }

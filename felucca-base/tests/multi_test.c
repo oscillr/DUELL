@@ -480,7 +480,7 @@ int main(void)
     {
         static track_t m01[NSHOWN];
         static persist_t pb;
-        uint32_t m01_bpm, m01_mode, m01_bal, sector, i;
+        uint32_t m01_bpm, m01_mode, m01_bal, sector, i, m01_lo[2];
         int16_t g_copy[G_COUNT];
         /* the reference: what M01 loads to */
         memset(nor, 0xFF, sizeof nor);
@@ -520,6 +520,38 @@ int main(void)
             ck("  TEMPO, the globals and BALANCE as M01 holds them", (uint32_t)song.g[G_BPM] == m01_bpm && !memcmp(song.g, g_copy, sizeof g_copy) &&
                (uint8_t)mix_bal == m01_bal);
             ck("  the first-start flag is used up", first_boot_pending == 0u);
+            events_block(CTL);                        /* (the audio side takes the MODE: LAYER)  */
+            if (sector == 0u) {                       /* tester bug: a black key played a semitone apart on the two parts */
+                uint32_t kk;
+                for (kk = 0; kk < 2u; kk++) {
+                    static const uint32_t KEY2[2] = {0, 7};   /* F3 / F#3, then C4 / C#4 (key 0 = F3) */
+                    uint32_t j;
+                    for (j = 0; j < 2u; j++) {
+                        uint32_t key = KEY2[kk] + j, lo[2], n;
+                        for (i = 0; i < 2u; i++)
+                            lo[i] = 255u;
+                        key_down(key);
+                        for (n = 0; n < 400u; n++) {        /* (part 2's arp starts its notes on its clock: audio blocks) */
+                            events_block(CTL);
+                            for (i = 0; i < 2u; i++) {
+                                uint32_t v;
+                                for (v = 0; v < NVOICE; v++)
+                                    if (trk[i].v[v].active && trk[i].v[v].gate && trk[i].v[v].note < lo[i])
+                                        lo[i] = trk[i].v[v].note;
+                            }
+                        }
+                        key_up(key);
+                        frames(32);
+                        if (j == 0u)
+                            m01_lo[0] = lo[0], m01_lo[1] = lo[1];
+                        else {
+                            printf("multi: M01 keys %u,%u: part 1 lowest note %u -> %u, part 2 %u -> %u\n", key - 1u, key, m01_lo[0], lo[0], m01_lo[1], lo[1]);
+                            ck("  M01 first boot: a key and the key above it (C, C#) are one semitone apart on BOTH parts, the same root on both",
+                               lo[0] == m01_lo[0] + 1u && lo[1] == m01_lo[1] + 1u && m01_lo[0] == m01_lo[1] && lo[0] == lo[1] && lo[0] < 128u);
+                        }
+                    }
+                }
+            }
             frames(2400);
             ck("  the settings are saved (a valid record in the flash now)", (st_load(OBJ_SETTINGS, &pb, sizeof pb) > 0) && pb.favorites.factory[15][9] == DM_LAYER);
             /* the next start: an ordinary one, theme and mode as saved */
