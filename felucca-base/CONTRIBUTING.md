@@ -1,20 +1,15 @@
-# Contributing to Felucca
+# Contributing to DUELL
 
 Thanks for helping! To keep things easy to follow, please use the right place:
 
 | What | Where |
 |---|---|
-| A bug you can reproduce | [Issues](https://github.com/hugelton/Felucca/issues/new/choose): one issue per bug |
-| A feature idea or request | [Discussions › Ideas](https://github.com/hugelton/Felucca/discussions/categories/ideas) (no promise it will be added) |
-| How to use it, or how something works | [Discussions › Q&A](https://github.com/hugelton/Felucca/discussions/categories/q-a) |
-| Forks, mods, music, demos | [Discussions › Show and tell](https://github.com/hugelton/Felucca/discussions/categories/show-and-tell) |
-| Anything else | [Discussions › General](https://github.com/hugelton/Felucca/discussions/categories/general) |
-
-Feature requests posted as issues will be moved to Discussions or closed.
+| A bug you can reproduce | [Issues](https://github.com/oscillr/DUELL/issues/new/choose), bug report form: one issue per bug |
+| A feature idea or request | [Issues](https://github.com/oscillr/DUELL/issues/new/choose), idea form: one idea per issue (no promise it will be added) |
 
 ## Reporting a bug
 
-Please include the Felucca version (hold HOME > ABOUT), your computer's OS and browser if the editor or
+Please include the DUELL version (hold HOME > ABOUT), your computer's OS and browser if the editor or
 installer is involved, the steps to reproduce it, what you expected and what happened. A photo or a short
 video helps.
 

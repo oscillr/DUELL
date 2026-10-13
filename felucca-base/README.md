@@ -368,9 +368,9 @@ the FM-1 can be brought back:
 If Felucca is useful to you, [sponsoring on GitHub](https://github.com/sponsors/hugelton) or a donation
 on [itch.io](https://hugelton.itch.io/felucca) helps keep its development going.
 
-Issues are for reproducible bugs (one per issue). Ideas and requests go to
-[Discussions](https://github.com/hugelton/Felucca/discussions), and feature requests posted as issues will be
-moved there. Pull requests are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md).
+For DUELL, bugs and ideas go to [Issues](https://github.com/oscillr/DUELL/issues/new/choose): the bug report form for
+reproducible bugs (one per issue) and the idea form for requests. Pull requests are welcome: see
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## AI disclaimer
 

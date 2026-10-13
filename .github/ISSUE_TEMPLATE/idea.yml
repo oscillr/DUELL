@@ -1,0 +1,22 @@
+name: Idea or request
+description: A feature idea, a request or a suggestion for DUELL (no promise it will be added)
+title: "[idea] "
+labels: ["idea"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **DUELL** - MultiMorphing Bitimbral Synthesizer by OSCILL/R.
+        Thanks for the idea. One idea per issue, please. Bugs go in the bug report form instead.
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like?
+      description: Say what you would like DUELL to do, and what you are trying to play or make.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Firmware version (optional)
+      description: Hold HOME and open ABOUT, or the emulator page footer.
