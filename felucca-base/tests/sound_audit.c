@@ -26,8 +26,8 @@
  *   (5) TAP under -24 dBFS                                                                           (quiet tap)
  *   (6) it sustains, is not a riser and its MED is more than 3 dB under the median MED of all the sounds that sustain
  *       (owner, 2026-10-12: a sound 5..8 dB under the rest was heard "very low" while still above rule 1)  (quiet vs others)
- * Keep-as-designed (exempt from (1), (4) and (6), because the owner loves them as they are): BACKSPIN (a reversed half-beat that
- * falls away to a quiet body by design; unchanged from commit 10940d9).
+ * Keep-as-designed (exempt from (1), (4) and (6), because the owner loves them as they are): none since 0.2.9 (BACKSPIN, a reversed
+ * half-beat that fell away to a quiet body by design, went with the SLICE engine).
  * A HIT (PERC, and an OTHER that is not sounding at 9 s: a one-shot) is judged by its PEAK alone: between -6 and -3 dBFS
  * (hit level), no weighted-loudness rule. Risers allowed to take longer than 2 s to reach the plateau: WHITE OUT, MOOR WIND,
  * LESLIE STORM (a swell is their sound); nothing else.
@@ -67,7 +67,8 @@
 #define AUDIT_HIT_TRIM (-4.5)
 #define AUDIT_REL_MARGIN 3.0           /* rule (6): a sustaining sound's MED at most this far under the median MED of the sustaining ones */
 static const char *const AUDIT_RISERS[] = {"WHITE OUT", "MOOR WIND", "LESLIE STORM", "RAIN CHIMES"};   /* RAIN CHIMES: its arp is one LFO phrase now (TRIG NOTE no longer restarts per step), so its 0.25 Hz LFO 2 filter sweep runs its 4 s cycle as the recipe says */
-static const char *const AUDIT_KEEP[] = {"BACKSPIN"};   /* keep-as-designed: exempt from quiet body, falls away, quiet vs others */
+static const char *const AUDIT_KEEP[] = {0};   /* keep-as-designed: exempt from quiet body, falls away, quiet vs others (BACKSPIN until
+                                                * 0.2.8: retired with SLICE; none now) */
 
 typedef struct { uint32_t e, k, mode, b, seed, amt, chord, tap; } au_t;   /* b: 0 End A (the sound), 1 its factory End B, 2 seed / amt */
 static void au_setup(void *v)
@@ -103,7 +104,7 @@ static int au_keep(const ds_sound_t *s)
 {
     uint32_t i;
     for (i = 0; i < sizeof AUDIT_KEEP / sizeof *AUDIT_KEEP; i++)
-        if (str_eq(s->name, AUDIT_KEEP[i]))
+        if (AUDIT_KEEP[i] && str_eq(s->name, AUDIT_KEEP[i]))
             return 1;
     return 0;
 }

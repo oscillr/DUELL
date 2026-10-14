@@ -10,7 +10,7 @@
  * [15][26]: MENU > DISPLAY > HOME (1.3; 0 = SCOPE, 1 TRACKS, 2 LEVELS (1.5), ui.c ui_home_view);
  * [15][24]: MENU's 1.2 flags SCOPE MIX, STEP PREVIEW ON, CHORD ENTRY ADD (bits 0-2, ui.c ui_prefs2; 0 = the defaults);
  * [15][10]: MENU > ANIM IDLE (1.2, Discussion #135, ui.c ui_idle: bit 0; 0 = off, ANIM as its bit in MENU's flags says);
- * [15][12..13] (DUELL 4b): the MORPH's TARGET (bit 7 of [12]) and each part's AMOUNT (bits 0-6: 1 + %, 0 = the default, 15 %: 25 % before 2026-10-11, the
+ * [15][12..13] (DUELL 4b): the MORPH's TARGET (bit 7 of [12]; 0.2.9: reserved, kept as stored, never read) and each part's AMOUNT (bits 0-6: 1 + %, 0 = the default, 15 %: 25 % before 2026-10-11, the
  * default; ui.c ui_morph_set, ui_input.c morph_settings: read on any change, so an import needs nothing here);
  * [15][11]: PATCHES > TYPE (1.2, Discussion #90; DUELL: 1..CAT_N-1 a category, CAT_N + e only the engine e's patches; ui.c ui_lcat:
  * 0 none = ALL / FAV as favorites.filter says);
@@ -92,7 +92,7 @@ static int settings_import(persist_t *p, int n)
         for (k = 0; k < FM4_NPRESETS; k++)
             if ((favorites.factory[ENGI_DIGITAL][0] >> k) & 1u)
                 favorites.factory[ENGI_FM6][FM4_TO_FM6[k] / 8u] |= (uint8_t)(1u << (FM4_TO_FM6[k] % 8u));
-        memset(favorites.factory[ENGI_DIGITAL], 0, sizeof favorites.factory[ENGI_DIGITAL]);
+        memset(favorites.factory[ENGI_DIGITAL], 0, FAV_WAVE_AT);   /* (DIGITAL's bytes only: 16..31 hold WAVE's flags, favorites.c) */
     }
 #endif
 #ifdef SMP_SET_PERC

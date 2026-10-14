@@ -12,7 +12,7 @@
  * 5. ENV 2 / LFO 2 (3b, 3c): see their sections.
  * 6. cost: instructions / sample (mod_test's method) of a PHYS part and of the two parts with everything active, against
  *    the same with the matrix off; at most the +25 % the CPU baseline allows.
- * 7. pages: MOD 2 (slots 5..8), ENV 2, LFO 2 and LFO 2 SYNC in their families, with help hints; the layout lint over every
+ * 7. pages: MOD 2 (slots 5..8), ENV 2, LFO 2 and LFO 2 TRIG in their families, with help hints; the layout lint over every
  *    page is tests/ui_render.c's (host_tests.sh "ui"). */
 #define UI_TEST_NO_MAIN 1
 #include "ui_test.c"
@@ -807,9 +807,9 @@ static void t_pages(void)
         TSEL->p[P_ESYNC] = 0;
         ck("ENV on ENV DEST opens ENV 2; KNOB 1 turns ATK2 (not ATK); ENV SYNC: its times as note values", ok);
     }
-    {   /* LFO 2 (3c): LFO, LFO SYNC (Felucca's "LFO 2"), LFO DEST, LFO 2, LFO 2 SYNC, MOD, MOD 2; no two pages one title */
-        static const char *const L[8] = {"LFO 1", "LFO 1 SYNC", "LFO 1 DEST", "LFO 2", "LFO 2 SYNC", "LFO 2 DEST", "MATRIX 1-4", "MATRIX 5-8"};
-        uint32_t j, k2, l2 = page_of("LFO 2"), l2s = page_of("LFO 2 SYNC");
+    {   /* LFO 2 (3c): LFO, LFO TRIG, LFO DEST, LFO 2, LFO 2 TRIG, MOD, MOD 2; no two pages one title */
+        static const char *const L[8] = {"LFO 1", "LFO 1 TRIG", "LFO 1 DEST", "LFO 2", "LFO 2 TRIG", "LFO 2 DEST", "MATRIX 1-4", "MATRIX 5-8"};
+        uint32_t j, k2, l2 = page_of("LFO 2"), l2s = page_of("LFO 2 TRIG");
         ok = 1;
         for (j = 0, k2 = page_of("LFO 1"); j < 8u; j++)
             ok &= k2 + j < NPAGES && str_eq(PAGES[k2 + j].title, L[j]) && PAGES[k2 + j].fam == FAM_LFO;
@@ -818,25 +818,24 @@ static void t_pages(void)
                 ok &= !str_eq(PAGES[j].title, PAGES[k2].title) ||    /* (MOD 1 / MOD 2 are in ENV's family too: the same page twice) */
                       (PAGES[j].graph == GR_MOD && PAGES[k2].graph == GR_MOD && PAGES[j].fam == FAM_LFO && PAGES[k2].fam == FAM_ENV &&
                        !memcmp(PAGES[j].id, PAGES[k2].id, 4)) ||
-                      (str_eq(PAGES[j].title, "FILTER") && PAGES[j].id[0] == P_FTYPE && PAGES[k2].id[0] == P_FREEA);   /* (0.2.2: the
-                                                   * universal filter's page and ANALOG's FILTER, one slot, the engines tell which shows) */
-        ok &= PAGES[l2].graph == GR_LFO && PAGES[l2].id[0] == P_L2RATE && PAGES[l2].id[3] == P_L2FADE &&
-              PAGES[l2s].id[0] == P_L2SYNC && PAGES[l2s].id[1] == P_L2TRIG && PAGES[l2s].id[2] == P_L2POL;
-        ck("pages: LFO, LFO SYNC, LFO DEST, LFO 2, LFO 2 SYNC, MOD, MOD 2 (LFO's family); every title unique (but MOD 1 / MOD 2 again in ENV's)", ok);
+                      0;   /* (0.2.9: the multimode FILTER and ANALOG's VCF are two pages; every title is unique) */
+        ok &= PAGES[l2].graph == GR_LFO && PAGES[l2].id[0] == P_L2WAVE && PAGES[l2].id[1] == P_L2RATE && PAGES[l2].id[2] == P_L2SYNC && PAGES[l2].id[3] == P_L2FADE &&
+              PAGES[l2s].id[0] == P_L2TRIG && PAGES[l2s].id[1] == P_L2PHASE && PAGES[l2s].id[2] == P_L2POL;
+        ck("pages: LFO, LFO TRIG, LFO DEST, LFO 2, LFO 2 TRIG, MOD, MOD 2 (LFO's family); every title unique (but MOD 1 / MOD 2 again in ENV's)", ok);
         ui_power_on();
         go_title("LFO 1 DEST");
         press(B_LFO);
         ok = str_eq(cur_page()->title, "LFO 2");
         {
             int16_t r1 = TSEL->p[P_LRATE], r2 = TSEL->p[P_L2RATE];
-            turn(EN_K1, 2);
+            turn(EN_K2, 2);
             ok &= TSEL->p[P_L2RATE] == r2 + 2 && TSEL->p[P_LRATE] == r1;
         }
         press(B_LFO);
-        ok &= str_eq(cur_page()->title, "LFO 2 SYNC");
+        ok &= str_eq(cur_page()->title, "LFO 2 TRIG");
         turn(EN_K3, 1);
         ok &= TSEL->p[P_L2POL] == 1 && TSEL->p[P_LPOL] == 0;
-        ck("LFO on LFO DEST opens LFO 2 (KNOB 1 RATE2), again LFO 2 SYNC (KNOB 3 POL2); LFO 1's untouched", ok);
+        ck("LFO on LFO DEST opens LFO 2 (KNOB 2 RATE2), again LFO 2 TRIG (KNOB 3 POL2); LFO 1's untouched", ok);
         ok = motion_param(P_L2RATE) && motion_param(P_L2FADE) && motion_param(P_E2ATK) && motion_param(P_E2REL) &&
              !motion_param(P_L2SYNC) && !motion_param(P_L2POL) && !motion_param(P_M5SRC);
         ck("automation as their twins: RATE2..FADE2, ATK2..REL2 yes; SYNC2 TRIG2 POL2 and the matrix no", ok);

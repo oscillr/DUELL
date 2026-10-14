@@ -1,8 +1,10 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 /* DUELL effects step 2 (SPEC 5c.4): the per-part MIDI-triggered sidechain (fx.c duck_*). On mode_test.c's rig (the DSP, MIDI in).
  *   build/host/duck_test   (DUELL/host_tests.sh "duck")
- *   CURVE    part 1 SRC CH10, NOTE ANY, DEPTH 100, ATK 5 ms, HOLD 100 ms, RLS 242 ms; a held tone; a note-on on channel 10:
- *            the level is about 0 in the hold, about half in the middle of the release, full after it
+ *   CURVE    part 1 SRC CH10, NOTE ANY, DEPTH 100, ATK 5 ms, RLS 242 ms; a held tone; a note-on on channel 10: LIN (a straight line):
+ *            about half in the middle of the release; EXP (the default since 0.2.5): 63 % after one time constant (RLS / 3), faster
+ *            than LIN at first, full after it; a stored HOLD (legacy, no page) changes nothing (bit for bit)
+ *   DEFAULTS a fresh part: SRC PUMP, RATE 1/4, DEPTH 0, ATK 5 ms, RLS 242 ms, CURVE EXP; DUCK 1/2 and 2/2 list no HOLD
  *   PER PART part 2 (DEPTH 0) is not touched; then part 2's own DUCK (another channel) leaves part 1 alone
  *   SWALLOW  a trigger note plays nothing on a channel that plays no part
  *   PUMP     SRC PUMP, DEPTH 100, RATE 1/4 at 120 BPM: three dips in 1.48 s, at 0, 500 and 1000 ms
@@ -18,6 +20,7 @@ static double rms_win(const int32_t *x, uint32_t at, uint32_t n)
     return sqrt(s / n);
 }
 static int32_t ref_l[MAXB * CTL], ref_r[MAXB * CTL];
+static uint32_t scene_hold = 0, scene_crv = 1;       /* the scene's stored HOLD (legacy) and CURVE (0 LIN, 1 EXP) */
 /* the scene: two held tones, part 1 on DUCK CH ch1, part 2 on ch2 (0 = OFF); the trigger note-on(s) at 500 ms; 1200 ms in all */
 static uint32_t scene(uint32_t ch1, uint32_t ch2, uint32_t trig_ch)
 {
@@ -33,8 +36,9 @@ static uint32_t scene(uint32_t ch1, uint32_t ch2, uint32_t trig_ch)
         trk[i].p[P_DKNOTE] = 0;
         trk[i].p[P_DKDEP] = 100;
         trk[i].p[P_DKATK] = 5;
-        trk[i].p[P_DKHLD] = 20;                          /* 100 ms */
+        trk[i].p[P_DKHLD] = (int16_t)scene_hold;         /* (legacy: ignored) */
         trk[i].p[P_DKRLS] = 36;                          /* 242 ms */
+        trk[i].p[P_DKCRV] = (int16_t)scene_crv;
     }
     trk[0].p[P_DKSRC] = (int16_t)(ch1 ? ch1 + 1u : 0u);   /* SRC 2..17 = CH1..16 (0 = off here: PUMP with DEPTH 0) */
     trk[1].p[P_DKSRC] = (int16_t)(ch2 ? ch2 + 1u : 0u);
@@ -58,11 +62,11 @@ static double ratio(const int32_t *on, const int32_t *off, uint32_t at_ms, uint3
     uint32_t ms = FS / 1000u;
     return rms_win(on, 500u * ms + at_ms * ms, len_ms * ms) / rms_win(off, 500u * ms + at_ms * ms, len_ms * ms);
 }
-/* PUMP: part 1 (left) a held tone, SRC PUMP from 200 ms on; the left channel's 10 ms levels for 1.48 s; the dips' starts */
-static uint32_t pump_dips(double *at)
+/* PUMP: part 1 (left) a held tone, SRC PUMP from 200 ms on (DEPTH 100, or 0 for the reference); the left channel's 10 ms levels
+ * for 1.48 s */
+static void pump_levels(int32_t depth, uint32_t twist_ms, double *r)
 {
-    uint32_t ms = FS / 1000u, i, w, nd = 0, low = 0;
-    double mx = 0, r[200];
+    uint32_t ms = FS / 1000u, w;
     dsp_clean(DM_SPLIT);
     memset(duck_st, 0, sizeof duck_st);
     host_preset(&trk[0], eng_of("ANALOG"), 0);
@@ -70,9 +74,8 @@ static uint32_t pump_dips(double *at)
     trk[0].p[P_SUS] = 127;
     trk[0].p[P_AMODE] = 0;
     trk[0].p[P_CHOR] = trk[0].p[P_DLY] = trk[0].p[P_REV] = 0;
-    trk[0].p[P_DKDEP] = 100;
+    trk[0].p[P_DKDEP] = (int16_t)(twist_ms ? 0 : depth);
     trk[0].p[P_DKATK] = 5;
-    trk[0].p[P_DKHLD] = 0;
     trk[0].p[P_DKRLS] = 25;                              /* 113 ms */
     trk[0].p[P_DKRATE] = 0;                              /* 1/4 */
     song.g[G_BPM] = 120;
@@ -82,17 +85,28 @@ static uint32_t pump_dips(double *at)
     mblk(200u * ms / CTL);
     trk[0].p[P_DKSRC] = 0;                               /* PUMP */
     rec_n = 0;
-    mblk(1480u * ms / CTL);
-    for (w = 0; w < 148u; w++) {
+    if (twist_ms) {                                      /* DEPTH turned up at twist_ms into the render (PUMP running from 0) */
+        mblk(twist_ms * ms / CTL);
+        trk[0].p[P_DKDEP] = (int16_t)depth;
+        mblk((1480u - twist_ms) * ms / CTL);
+    } else
+        mblk(1480u * ms / CTL);
+    for (w = 0; w < 148u; w++)
         r[w] = rms_win(rec_l, w * 10u * ms, 10u * ms);
-        mx = r[w] > mx ? r[w] : mx;
-    }
+}
+/* the dips (the level under half of the DEPTH 0 render's): their starts, ms; the number */
+static uint32_t pump_dips(double *at, uint32_t twist_ms)
+{
+    double on[148], off[148];
+    uint32_t w, nd = 0, low = 0;
+    pump_levels(100, twist_ms, on);
+    pump_levels(0, 0, off);
     for (w = 0; w < 148u; w++) {
-        if (r[w] < 0.5 * mx && !low && nd < 8u)
+        int below = on[w] < 0.5 * off[w];
+        if (below && !low && nd < 8u)
             at[nd++] = w * 10.0;
-        low = r[w] < 0.5 * mx;
+        low = below;
     }
-    (void)i;
     return nd;
 }
 /* PART: part 1 (left) a held tone keyed by part 2's loud notes, 400..800 ms (p2 0: none); returns part 1's levels before, in
@@ -113,7 +127,6 @@ static void part_levels(uint32_t src, uint32_t p2, double *bef, double *dur, dou
     trk[0].p[P_DKDEP] = 100;
     trk[0].p[P_DKTHR] = 30;
     trk[0].p[P_DKATK] = 5;
-    trk[0].p[P_DKHLD] = 0;
     trk[0].p[P_DKRLS] = 25;
     trk_note_on(&trk[0], 57, 100);
     rec_n = 0;
@@ -164,25 +177,47 @@ int main(void)
     memcpy(ref_l, rec_l, sizeof ref_l);
     memcpy(ref_r, rec_r, sizeof ref_r);
     v_on = scene(10, 0, 10);
-    double hold = ratio(rec_l, ref_l, 40, 20), mid = ratio(rec_l, ref_l, 225, 10), back = ratio(rec_l, ref_l, 600, 20);
+    double hold = ratio(rec_l, ref_l, 5, 4), mid = ratio(rec_l, ref_l, 225, 10), back = ratio(rec_l, ref_l, 600, 20);
     double lo = 9, hi = 0;
     for (i = 0; i < 680u; i += 10u) {
         double r = ratio(rec_r, ref_r, i, 10);
         lo = r < lo ? r : lo;
         hi = r > hi ? r : hi;
     }
-    printf("duck: part 1 of its undisturbed level: hold %.3f, mid-release %.3f, after %.3f; part 2 %.3f..%.3f\n", hold, mid, back, lo, hi);
-    expect("CURVE: ~0 in the hold (< 0.05), 0.25..0.75 mid release (linear: 0.5), >= 0.97 after the release", hold < 0.05 && mid > 0.25 && mid < 0.75 && back >= 0.97);
+    printf("duck: part 1 of its undisturbed level (EXP): trough %.3f, 80..90 ms %.3f, 225 ms %.3f, after %.3f; part 2 %.3f..%.3f\n", hold, ratio(rec_l, ref_l, 80, 10), mid, back, lo, hi);
+    expect("CURVE EXP (default): < 0.15 at the end of the attack, 0.55..0.75 after one time constant (RLS / 3 = 81 ms), 0.9 .. 1 at 225 ms, >= 0.97 after", hold < 0.15 && ratio(rec_l, ref_l, 80, 10) > 0.55 && ratio(rec_l, ref_l, 80, 10) < 0.75 && mid > 0.9 && back >= 0.97);
+    {
+        double e30 = ratio(rec_l, ref_l, 28, 4), l_mid, l30, lback;
+        scene_crv = 0;
+        scene(10, 0, 10);                                /* CURVE LIN: a straight line from the trough to full in 242 ms */
+        l_mid = ratio(rec_l, ref_l, 120, 10), l30 = ratio(rec_l, ref_l, 28, 4), lback = ratio(rec_l, ref_l, 600, 20);
+        printf("duck: LIN: 28 ms %.3f (EXP %.3f), 120..130 ms %.3f, after %.3f\n", l30, e30, l_mid, lback);
+        expect("CURVE LIN (as before): about half in the middle (0.35..0.65 at 125 ms), full after; EXP is the faster at first (28 ms)", l_mid > 0.35 && l_mid < 0.65 && lback >= 0.97 && e30 > l30 + 0.1);
+        scene_crv = 1;
+    }
+    {
+        int32_t hold_l[MAXB * CTL];
+        scene_hold = 100;                                /* a stored HOLD of 500 ms: ignored, the render is the same bit for bit */
+        scene(10, 0, 10);
+        memcpy(hold_l, rec_l, sizeof hold_l);
+        scene_hold = 0;
+        scene(10, 0, 10);
+        expect("HOLD (legacy, no page): a stored 500 ms HOLD changes nothing (bit for bit)", memcmp(hold_l, rec_l, sizeof hold_l) == 0);
+        scene(10, 0, 10);                                /* the reference again for the checks below */
+    }
     expect("PER PART: part 2 (CH OFF) identical all through (0.99 .. 1.01)", lo > 0.99 && hi < 1.01);
     expect("SWALLOW: the trigger note started no voice", v_on == v_ref);
     scene(0, 11, 11);                                    /* part 2 on channel 11, part 1 OFF */
-    double r2 = ratio(rec_r, ref_r, 40, 20), l1 = ratio(rec_l, ref_l, 40, 20);
-    printf("duck: part 2 in its hold %.3f, part 1 %.3f\n", r2, l1);
-    expect("PER PART: part 2's trigger ducks part 2 (< 0.05), part 1 not (0.99 .. 1.01)", r2 < 0.05 && l1 > 0.99 && l1 < 1.01);
+    double r2 = ratio(rec_r, ref_r, 5, 4), l1 = ratio(rec_l, ref_l, 5, 4);
+    printf("duck: part 2 at its trough %.3f, part 1 %.3f\n", r2, l1);
+    expect("PER PART: part 2's trigger ducks part 2 (< 0.15 at the trough), part 1 not (0.99 .. 1.01)", r2 < 0.15 && l1 > 0.99 && l1 < 1.01);
     double dip[8], b0, d0, a0, b1, d1, a1, b2, d2, a2;
-    uint32_t nd = pump_dips(dip);
+    uint32_t nd = pump_dips(dip, 0);
     printf("duck: PUMP %u dips at %.0f %.0f %.0f ms\n", nd, dip[0], dip[1], dip[2]);
     expect("PUMP: 3 dips in 1.48 s, at 0, 500, 1000 ms (+- 20)", nd == 3u && dip[0] <= 20 && dip[1] > 480 && dip[1] < 520 && dip[2] > 980 && dip[2] < 1020);
+    nd = pump_dips(dip, 710u);
+    printf("duck: PUMP, DEPTH turned up at 710 ms: %u dips at %.0f ms\n", nd, dip[0]);
+    expect("PUMP: DEPTH raised at 710 ms (PUMP counting since 200 ms): the first dip is on the beat at 1000 ms (+- 20), not at the turn", nd == 1u && dip[0] > 980 && dip[0] < 1020);
     part_levels(2, 1, &b0, &d0, &a0);                    /* the reference: SRC CH1 (no key), part 2 plays */
     part_levels(1, 1, &b1, &d1, &a1);
     part_levels(1, 0, &b2, &d2, &a2);
@@ -192,6 +227,20 @@ int main(void)
     double sp0 = ping_lr(0), sp50 = ping_lr(50), sp100 = ping_lr(100);
     printf("duck: PING SPREAD max |L-R|: 0 %% %.0f, 50 %% %.0f, 100 %% %.0f\n", sp0, sp50, sp100);
     expect("PING SPREAD 0: the repeats centred (L == R), 100: left / right (|L-R| large), 50 between", sp0 < 1.0 && sp100 > 1000.0 && sp50 > 0.3 * sp100 && sp50 < 0.7 * sp100);
+    {   /* DEFAULTS: a fresh part, DEPTH 0 (the ducker off) and nothing else touched, is a house / techno pump once DEPTH is turned up */
+        const param_desc_t *d;
+        uint32_t ok = TP[P_DKDEP].def == 0 && TP[P_DKSRC].def == 0 && TP[P_DKRATE].def == 0 && TP[P_DKATK].def == 5 && TP[P_DKRLS].def == 36 &&
+                      TP[P_DKCRV].def == 1 && TP[P_DKHLD].def == 0 && TP[P_DKTHR].def == 30, nohold = 1, k;
+        d = &TP[P_DKRATE];
+        printf("duck: defaults SRC %s, RATE %s (index %d), DEPTH %d, ATK %d ms, RLS step %d, CURVE %s\n", N_DKSRC[TP[P_DKSRC].def], d->names[TP[P_DKRATE].def],
+               TP[P_DKRATE].def, TP[P_DKDEP].def, TP[P_DKATK].def, TP[P_DKRLS].def, N_DKCRV[TP[P_DKCRV].def]);
+        expect("DEFAULTS: SRC PUMP, RATE 1/4, DEPTH 0, ATK 5 ms, RLS 242 ms (step 36), CURVE EXP, THR 30, HOLD 0", ok && str_eq(d->names[0], "1/4"));
+        for (k = 0; k < NPAGES; k++)
+            for (uint32_t j = 0; j < 4u; j++)
+                if (PAGES[k].scope == SC_TRACK && PAGES[k].id[j] == P_DKHLD)
+                    nohold = 0;
+        expect("HOLD is on no page (DUCK 1/2: SRC, RATE, DEPTH, ATK; DUCK 2/2: RLS, CURVE)", nohold);
+    }
     printf("duck: %d checks, %d failed\n", ncheck, bad);
     return bad ? 1 : 0;
 }

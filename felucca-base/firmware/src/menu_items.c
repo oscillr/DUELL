@@ -6,7 +6,8 @@
  * controls (HOLD: the layer threshold, KNOB ACCEL; 1.2: SCALE LEDS, the keys, STEP PREVIEW, CHORD
  * ENTRY), the sound (SPEAKER EQ: FLAT LOWCUT BASS+,
  * USB LEVEL; 1.1: CLICK, CLICK LEVEL, COUNT-IN; 1.2: TUNE), MIDI (1.2: MIDI IN; 1.5: LEARN CLEAR), USB SERIAL, RESTORE
- * LAST (1.2), then CALIBRATION (the setup screen: HARDWARE CALIBRATION), TEST (1.2: INFO; DUELL 0.2.2: the CPU test screen, the id is the old INFO's) and ABOUT, the rows with no value
+ * LAST (1.2), then CALIBRATION (the setup screen: HARDWARE CALIBRATION), TEST (1.2: INFO; DUELL 0.2.2: the CPU test screen, the id is the old INFO's), GUIDE (DUELL 0.2.11:
+ * the first-start guide's pages again, ui_guide.c; no editor id) and ABOUT, the rows with no value
  * (MI_VALUES: the rows before them hold one, but LEARN CLEAR: menu_valued). 1.0.5: in four tabs (MI_TAB); 1.2: five.
  * DUELL 0.1 (owner's feedback after the first flash): MENU holds no MIDI setting any more. MIDI IN (OWN CH / SELECTED, the
  * project's G_ROUTE) and LEARN CLEAR moved to GLO's MIDI pages (MIDI, SIDECHAIN, MIDI LEARN); the MIDI tab is gone (four tabs). HOME
@@ -14,12 +15,13 @@
  * button, power-on and leaving the menu open: MORPH, MODE, MIXER or OVERVIEW; CONTROL tab).
  * 1.2: TUNE is not a setting: it edits the project's G_TUNE, the value the project holds and saves as before (no format change;
  * a project load brings its own); nothing of its is in the settings record (MI_PROJECT: menu_get / menu_put read and write song.g) */
-enum { MI_COLOR, MI_ANIM, MI_LEDS, MI_SCROFF, MI_SCOPE, MI_HOME, MI_HOLD, MI_ACCEL, MI_SCLLED,
-       MI_PREVIEW, MI_CHADD, MI_HOMEPG, MI_LOWCUT, MI_USB,
+enum { MI_COLOR, MI_ANIM, MI_LEDS, MI_SCROFF, MI_SCOPE, MI_HOME, MI_CPU, MI_HOLD, MI_ACCEL, MI_SCLLED,
+       MI_PREVIEW, MI_CHADD, MI_HOMEPG, MI_MODERECALL, MI_LOWCUT, MI_USB,
        MI_CLICK, MI_CLKLVL, MI_COUNTIN, MI_TUNE, MI_SERIAL, MI_RESTORE, MI_PANEL,
 #if DUELL_TEST_MODE
        MI_TEST,                                        /* (developer builds only: DUELL_TEST_MODE; the release has no TEST row) */
 #endif
+       MI_GUIDE,                                       /* (DUELL 0.2.11: the first-start GUIDE again; no value, no editor id) */
        MI_ABOUT, MI_ERASE, MI_COUNT };
                                                        /* (1.1: the metronome's rows in AUDIO; 1.2: RESTORE LAST in
                                                         * SYSTEM, SCALE LEDS STEP PREVIEW CHORD ENTRY in CONTROL, SCOPE in
@@ -27,22 +29,22 @@ enum { MI_COLOR, MI_ANIM, MI_LEDS, MI_SCROFF, MI_SCOPE, MI_HOME, MI_HOLD, MI_ACC
                                                         * 1.3: HOME in DISPLAY). DUELL 0.2.2 removed STYLE (FLAT only), LARGE and HELP (their editor ids 1, 2 and 24 are retired) and FX LATCH (id 7: the FX hold layer is gone)) */
 #define MI_VALUES MI_PANEL
 static int menu_valued(uint32_t row) { return row < MI_VALUES; }   /* (a row with a value) */
-/* the rows that open a screen with no value (TEST, ABOUT): OCT+ or a knob turned right opens them, a knob turned left or OCT- closes
- * them again (ui_menu.c menu_input). CALIBRATION is a setup, not read-only: OCT+ only */
+/* the rows that open a screen with no value (TEST, GUIDE, ABOUT): OCT+ or a knob turned right opens them, a knob turned left or OCT- closes
+ * them again (ui_menu.c menu_input; the GUIDE: its own keys, ui_guide.c). CALIBRATION is a setup, not read-only: OCT+ only */
 #if DUELL_TEST_MODE
-#define MI_READONLY(row) ((row) == MI_TEST || (row) == MI_ABOUT)
+#define MI_READONLY(row) ((row) == MI_TEST || (row) == MI_GUIDE || (row) == MI_ABOUT)
 #else
-#define MI_READONLY(row) ((row) == MI_ABOUT)
+#define MI_READONLY(row) ((row) == MI_GUIDE || (row) == MI_ABOUT)
 #endif
 #define MI_PROJECT(row) ((row) == MI_TUNE)   /* the project's value (song.g), not a setting */
-static const char *const MI_NAME[MI_COUNT] = {"COLOR", "ANIM", "LEDS", "SCREEN OFF", "SCOPE", "OVERVIEW", "HOLD", "KNOB ACCEL",
-                                              "SCALE LEDS", "STEP PREVIEW", "CHORD ENTRY", "HOME OPENS",
+static const char *const MI_NAME[MI_COUNT] = {"COLOR", "ANIM", "LEDS", "SCREEN OFF", "SCOPE", "OVERVIEW", "CPU METER", "HOLD", "KNOB ACCEL",
+                                              "SCALE LEDS", "STEP PREVIEW", "CHORD ENTRY", "HOME OPENS", "MODE RECALL",
                                               "SPEAKER EQ", "USB LEVEL", "CLICK", "CLICK LEVEL", "COUNT-IN", "TUNE",
                                               "USB SERIAL", "RESTORE LAST", "CALIBRATION",
 #if DUELL_TEST_MODE
                                               "TEST",
 #endif
-                                              "ABOUT", "ERASE DATA"};
+                                              "GUIDE", "ABOUT", "ERASE DATA"};
 /* 1.0.5: the MENU's tabs (ui_menu.c: ALGORITHM steps between them, PRESETS among one tab's rows; the editor gets a
  * row's tab after its MENU_DESC reply). A tab's rows follow each other in MI order (tests/ui_test.c checks it); at
  * most MTAB_ROWS each (the page does not scroll: ui_menu.c fits them; 1.2: 7, the rows of such a tab 21 px; 1.3: 8,
@@ -57,10 +59,12 @@ static const uint8_t MI_TAB[MI_COUNT] = {
     MTAB_DISPLAY,                                                           /* SCREEN OFF (1.1.5) */
     MTAB_DISPLAY,                                                           /* SCOPE (1.2) */
     MTAB_DISPLAY,                                                           /* HOME (1.3) */
+    MTAB_DISPLAY,                                                           /* CPU METER (DUELL 0.2.9) */
     MTAB_CONTROL, MTAB_CONTROL,                                             /* HOLD KNOB ACCEL */
     MTAB_CONTROL,                                                           /* SCALE LEDS (1.2) */
     MTAB_CONTROL, MTAB_CONTROL,                                             /* STEP PREVIEW, CHORD ENTRY (1.2) */
     MTAB_CONTROL,                                                           /* HOME OPENS (DUELL) */
+    MTAB_CONTROL,                                                           /* MODE RECALL (DUELL 0.2.11) */
     MTAB_AUDIO, MTAB_AUDIO, MTAB_AUDIO, MTAB_AUDIO, MTAB_AUDIO,             /* SPEAKER EQ, USB LEVEL, CLICK, CLICK LEVEL,
                                                                              * COUNT-IN */
     MTAB_AUDIO,                                                             /* TUNE (1.2) */
@@ -69,6 +73,7 @@ static const uint8_t MI_TAB[MI_COUNT] = {
 #if DUELL_TEST_MODE
     MTAB_SYSTEM,                                                            /* TEST (1.2: INFO) */
 #endif
+    MTAB_SYSTEM,                                                            /* GUIDE (DUELL 0.2.11) */
     MTAB_SYSTEM,                                                            /* ABOUT */
     MTAB_SYSTEM,                                                            /* ERASE DATA (DUELL 0.2.2: OCT+ opens its dialog, ui_menu.c) */
 };
@@ -91,19 +96,21 @@ static uint32_t mtab_rows(uint32_t t)                  /* .. and how many it has
         n += MI_TAB[i] == t;
     return n;
 }
-/* the two-valued rows: a bit of ui_prefs (PREF_REC: of ui_rec_prefs, ui.c PREF_SCALE_LEDS) and its names (bit clear =
+/* the two-valued rows: a bit of ui_prefs (PREF_REC: of ui_rec_prefs, ui.c PREF_SCALE_LEDS_OFF) and its names (bit clear =
  * the default, bit set). A step up (a knob right,
  * OCT+) = ON on the ON / OFF rows (the switch's knob to the right; ANIM, USB SERIAL: their bit clears), else the
  * second name (USB LEVEL FIXED); a step down the other (menu_step) */
 typedef struct { uint8_t row; uint32_t bit; const char *name[2]; } menu_flag_t;
 static const menu_flag_t MENU_FLAGS[] = {
     {MI_ACCEL, PREF_ACCEL, {"OFF", "ON"}},            /* #52: ui_input.c accel */
-    {MI_USB, PREF_USB_FIXED, {"MASTER", "FIXED"}},     /* fx.c fx_usb_fixed: FIXED, USB at the full level */
+    {MI_USB, PREF_USB_FIXED, {"MASTER", "FIXED"}},     /* fx.c fx_usb_fixed: FIXED, USB at the default MASTER level */
     {MI_SERIAL, PREF_SERIAL_OFF, {"ON", "OFF"}},       /* #67: OFF, no serial console (usb_serial_apply) */
     {MI_RESTORE, PREF_RESTORE_OFF, {"ON", "OFF"}},     /* 1.2, #130: OFF, no autosave, power-on as new (project.c) */
-    {MI_SCLLED, PREF_SCALE_LEDS, {"OFF", "ON"}},      /* 1.2, Discussion #127: ON, the keys show the scale (ui_input.c) */
+    {MI_SCLLED, PREF_SCALE_LEDS_OFF, {"AUTO", "OFF"}}, /* 1.2, Discussion #127; 0.2.5: AUTO (default), the keys show the scale when it is not CHROMATIC; OFF, they do not (ui_input.c) */
     {MI_SCOPE, PREF_SCOPE_MIX, {"OUT", "MIX"}},        /* 1.2, Discussion #165: MIX, the scope before MASTER (fx.c) */
     {MI_PREVIEW, PREF_PREVIEW, {"OFF", "ON"}},         /* 1.2, Discussion #169: ON, the cursor's step sounds (ui_input.c) */
+    {MI_CPU, PREF_CPU_OFF, {"ON", "OFF"}},             /* DUELL 0.2.9: OFF, no CPU bar under the header's battery (ui_draw.c); bit clear = ON, as every older setting */
+    {MI_MODERECALL, PREF_MODE_RECALL, {"OFF", "ON"}},     /* DUELL 0.2.11: OFF (default) a multi load leaves the MODE as it is; ON, it sets the MODE saved in the multi (multi.c) */
     {MI_CHADD, PREF_CHORD_ADD, {"HOLD", "ADD"}},       /* 1.2, #155: ADD, keys add to the cursor step (ui_input.c) */
 };
 /* SPEAKER EQ (settings.lowcut, fx.c fx_lowcut): an EQ on the master for the small speaker, not a speaker switch
@@ -159,7 +166,7 @@ static const menu_flag_t *menu_flag(uint32_t row)
     return 0;
 }
 
-/* a row's value as 0..menu_n(row) - 1 in the order the menu steps it (LEDS: OFF DIM LO DIM HI INV, LEDS_MENU) */
+/* a row's value as 0..menu_n(row) - 1 in the order the menu steps it (LEDS: OFF LOW MEDIUM MAX, LEDS_MENU) */
 static uint32_t menu_n(uint32_t row)
 {
     return row == MI_COLOR ? NPALETTES : row == MI_LOWCUT || (row >= MI_CLICK && row <= MI_COUNTIN) ? 3u :

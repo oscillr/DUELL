@@ -268,4 +268,5 @@ static const engine_t ENG_NOISE = {
     .knob = {P_E2, P_E3, P_E1, P_REL},
     .keep = 0xF3,                /* the filter, the colour poles */
     .desc = noise_desc,
+    .ufilt = 2,                  /* its own filter stays; the multimode filter (the FILTER page, ids 45..48) runs in series after it (DUELL 0.2.9, voice.c) */
 };

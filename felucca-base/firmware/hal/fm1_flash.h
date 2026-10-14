@@ -55,7 +55,8 @@ static inline void *fl_far(void *p) { void *volatile q = p; return q; }
  * the 1 MiB part ignores the high address bits, so a wrapped range lands low. */
 #define FL_IN(off, n, lo, hi) ((uint32_t)(off) >= (lo) && (uint32_t)(off) <= (hi) && \
                                (uint32_t)(n) <= (hi) - (uint32_t)(off))
-/* Felucca's own store (DUELL's multis, user samples, pattern slots, user presets; settings; the autosave and the FM6 voice bank: one range) */
+/* Felucca's own store (DUELL's multis, the (retired, 0.2.9: unused) user sample region, pattern slots, user presets; settings; the autosave
+ * and the FM6 voice bank: one range) */
 #define FL_STORE_OK(off, n) (FL_IN(off, n, FL_DATA_LO, FL_DATA_HI) || FL_IN(off, n, FL_GLOB_LO, FL_GLOB_HI) || \
                              FL_IN(off, n, FL_AUTO_LO, FL_VBANK_HI))
 /* Where the RAM driver may erase / program. The app build allows only its own

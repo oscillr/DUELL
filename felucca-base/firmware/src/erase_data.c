@@ -6,7 +6,8 @@
  *   the autosave (OBJ_AUTOSAVE), the pattern slots (OBJ_PATSLOT0..2), the multis (OBJ_MULTI0..7: M01..M04 and M13..M16 are
  *   the factory ones again, ROM), the patch store (OBJ_PATCH0..5: every stored patch and every factory sound's shadow copy),
  *   and the settings (OBJ_SETTINGS: theme, scale, MIDI channels, the favourites, the preferences, the panel table).
- * What stays: the user sample slots USR1 / USR2 (eng_sample.c; not a storage.c object) and the firmware itself.
+ * What stays: the FM6 voice bank and the firmware itself (DUELL 0.2.9: the user sample slots are gone with the SAMPLE engine; their
+ * flash, 0xA0000..0xC7FFF, is not touched).
  *
  * Order and power cuts: the objects in that order, the SETTINGS LAST. Every object is erased copy by copy (st_wipe: the
  * copy that is not the current one first), so a cut at any point leaves each object either whole as it was or empty; nothing

@@ -7,7 +7,8 @@
 
 Outputs in build/: felucca.bin (app), loader/ota.bin (update loader),
 felucca.fwsc (package). A release build (--release; the version is always the VERSION file) writes duell-<VERSION>-beta.fwsc
-and a folder release-<VERSION>-beta/ with the package, the app, SHA256SUMS, the sample attribution and the licence files; the device
+and a folder release-<VERSION>-beta/ with the package, the app, SHA256SUMS and the licence files (DUELL 0.2.9: no sample data, no sample
+attribution any more); the device
 shows the version of the VERSION file at the DUELL root ("DUELL 0.2.1 beta"); the package is duell-<VERSION>-beta.fwsc
 (identity FM-1_901). Every build also writes duell-latest.fwsc (the same bytes) and duell-version.json {"version": "0.2.1"}.
 See BUILDING.md for the toolchain and the SDK.
@@ -102,9 +103,9 @@ def tc_all(*cmds):
 
 
 def generate():
-    """generated headers (UI fonts, icons, keycaps, palettes, tables, samples)"""
+    """generated headers (UI fonts, icons, keycaps, palettes, tables, factory sounds and multis; DUELL 0.2.9: no samples)"""
     GEN.mkdir(parents=True, exist_ok=True)
-    for old in ("felucca_font.h", "felucca_icons.h"):     # headers of the bitmap font and icon atlas
+    for old in ("felucca_font.h", "felucca_icons.h", "felucca_samples.h"):   # headers of the bitmap font and icon atlas, the samples (0.2.9)
         (GEN / old).unlink(missing_ok=True)
     tools = SRC / "tools"
     cmds = [[tools / "gen_version.py", GEN / "duell_version.h"],   # the VERSION file -> DUELL_VERSION, DUELL_VERSION_STR
@@ -115,9 +116,8 @@ def generate():
             [tools / "gen_splash_logo.py", GEN / "splash_logo.h"],   # the splash lockup mask (assets/splash_logo.svg)
             [tools / "gen_tables.py", GEN / "felucca_tables.h"],
             [tools / "gen_fm6_patches.py", GEN / "felucca_fm6.h"],
-            [tools / "gen_samples.py", GEN / "felucca_samples.h"],
             [tools / "gen_duell_sounds.py", GEN / "duell_sounds.h"],   # DUELL factory sounds (tools/duell_sounds.py)
-            [tools / "gen_duell_multis.py", GEN / "duell_multis.h"]]  # DUELL factory multis M01..M04 (tools/factory_multis); M13..M16 too with DUELL_TEST_MODE=1 (env, as the -D below)
+            [tools / "gen_duell_multis.py", GEN / "duell_multis.h"]]  # DUELL factory multis M01..M10 (tools/factory_multis); M13..M16 too with DUELL_TEST_MODE=1 (env, as the -D below)
     procs = [subprocess.Popen([sys.executable, *map(str, c)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                               text=True) for c in cmds]
     failed = []
@@ -204,7 +204,7 @@ def ld_regions():
 def build_app():
     flags = [*CFLAGS, "-Ifirmware/hal", "-Ifirmware/src", "-Ibuild/gen"]
     for flag in ("FELUCCA_FLASH", "FELUCCA_OTA", "FELUCCA_OTA_DRYRUN", "FELUCCA_OTA_RAMONLY", "FELUCCA_CDC",
-                 "FELUCCA_UART", "FELUCCA_UAC", "FELUCCA_UAC_TONE", "FELUCCA_UAC_48K", "FELUCCA_ICONS", "FELUCCA_SLICE", "FELUCCA_FM4",
+                 "FELUCCA_UART", "FELUCCA_UAC", "FELUCCA_UAC_TONE", "FELUCCA_UAC_48K", "FELUCCA_ICONS", "FELUCCA_FM4",
                  "FELUCCA_CDC_DEFAULT", "DUELL_TEST_MODE"):
         v = os.environ.get(flag)    # unset: the default in firmware/src/felucca.c (DUELL_TEST_MODE: core.h, 0 = release: no TEST screen, no M13..M16)
         if v in ("0", "1"):
@@ -382,9 +382,6 @@ def main():
     (OUT / name).write_bytes(pkg)
     (OUT / "duell-latest.fwsc").write_bytes(pkg)                      # stable name for the installer page
     (OUT / "duell-version.json").write_text(json.dumps({"version": ver}) + "\n")
-    att = SRC / "assets" / "samples-cc0" / "ATTRIBUTION.txt"
-    if att.exists():
-        shutil.copy(att, OUT / "ATTRIBUTION.txt")
     print(f"app      {OUT / 'felucca.bin'}  {len(img)} B")
     print(f"loader   {LDR / 'ota.bin'}  {len(ota)} B")
     print(f"package  {OUT / name}  {len(pkg)} B, identity {PRODUCT}")
@@ -401,8 +398,6 @@ def main():
             shutil.copy(f, rel / "LICENSES" / f.name)
         for doc in ("LICENSE", "LICENSING.md"):
             shutil.copy(SRC / doc, rel / doc)
-        if att.exists():
-            shutil.copy(att, rel / "ATTRIBUTION.txt")
         print(f"release  {rel}/")
     return 0
 

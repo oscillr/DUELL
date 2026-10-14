@@ -126,7 +126,9 @@ export async function restoreBackup(request, file, onProgress = () => {}) {
       if (!o.size) check(await ask([14, [slot]]));
       else {
         if (o.size < 512) throw new Error("Short sample backup");
-        check(await ask([11, [slot]]));
+        const b = await ask([11, [slot]]);
+        if (b[0] === slot && b.at(-1) === 6) { done += o.size; onProgress(done, total); continue; }   // no sample slots (DUELL 0.2.9): skipped
+        check(b);
         for (let off = 512; off < o.size; off += BACKUP_CHUNK) {
           const chunk = o.bytes.subarray(off, off + BACKUP_CHUNK);
           check(await ask([12, [slot, off & 127, off >>> 7 & 127, off >>> 14 & 127, ...bkPack(chunk)]]));

@@ -3,7 +3,8 @@
 /* Felucca menu (HOME held): its rows in tabs (1.0.5: DISPLAY CONTROL AUDIO SYSTEM; 1.2: MIDI before SYSTEM; SELECT
  * walks the rows across the tabs, SPEC 1.1a; no scrolling), the rows in menu_items.c (the settings, shared with the editor's
  * MENU_DESC / MENU_SET; 1.2: TUNE and MIDI IN, the project's). No BACK row: HOME closes it (ui_input.c). The two-valued
- * rows are bits of ui_prefs (MENU_FLAGS). SELECT scrolls from ABOUT through all credits (OCT- back to the tabs).
+ * rows are bits of ui_prefs (MENU_FLAGS). In ABOUT KNOB 1 scrolls through all credits and SELECT jumps between its sections (0.2.9;
+ * OCT- back to the tabs).
  * ui.menu: 1 the tabs, 2 ABOUT (information and credits: the firmware, the USB link and the CPU readings, which INFO showed before
  * DUELL 0.2.2), 3 TEST (DUELL 0.2.2: the CPU test screen, MENU > SYSTEM > TEST; it was GLO's TEST page, then the INFO item). */
 /* ------------------------------------------------------------ menu --- */
@@ -128,7 +129,7 @@ typedef struct { const char *text; uint8_t kind; } menu_credit_t;
 static const menu_credit_t MENU_CREDITS[] = {
     {"H\xFCgelton Instruments", MC_TITLE},  /* Felucca's own: above; these are ours too */
     {"Leo Kuroshita", MC_TEXT},
-    {"CrispyZebra (PHASE waveforms), the DRUM voices, the Sample Pack: GPL-3.0", MC_TEXT},
+    {"CrispyZebra (PHASE waveforms), the DRUM voices: GPL-3.0", MC_TEXT},
     {"Fukiai icon font: MIT", MC_TEXT},
     {"https://github.com/hugelton", MC_URL},
     {"", MC_TEXT},
@@ -154,11 +155,6 @@ static const menu_credit_t MENU_CREDITS[] = {
     {"The Inter Project Authors", MC_TEXT},
     {"SIL Open Font License 1.1", MC_TEXT},
     {"https://github.com/rsms/inter-tight", MC_URL},
-    {"", MC_TEXT},
-    {"VSCO-2 CE + VCSL", MC_TITLE},
-    {"Versilian Studios / CC0 1.0", MC_TEXT},
-    {"https://github.com/sgossner/VSCO-2-CE", MC_URL},
-    {"https://github.com/sgossner/VCSL", MC_URL},
     {"", MC_TEXT},
     {"VOICE", MC_TITLE},
     {"Dennis H. Klatt (1980)", MC_TEXT},
@@ -203,9 +199,11 @@ static uint32_t info_usb(void)                         /* 0 OFF, 1 WAIT, 2 BUS, 
 {
     return !usb.up ? 0u : usb.config ? 4u : usb.setups ? 3u : usb.sof_seen ? 2u : 1u;
 }
+static int32_t about_sec[2];                           /* ABOUT's CREDITS and LICENSES headings, from the document's top (menu_document) */
 static int32_t menu_document(int32_t y, int draw)
 {
     uint32_t i;
+    int32_t y0 = y;
     if (draw) {
         char b[16];
         uint16_t col = cpu_col(cpu_level(), T_BG);
@@ -235,6 +233,7 @@ static int32_t menu_document(int32_t y, int draw)
         cv_text(6, y + 244, &AF_S, "hugelton.com", T_MID);
         draw_about_qr(158, y + 186);
     }
+    about_sec[0] = y + 280 - y0;
     y = menu_text("CREDITS", y + 280, T_THEME, draw) + 8;
     for (i = 0; i < NELEM(MENU_CREDITS); i++) {
         const menu_credit_t *c = &MENU_CREDITS[i];
@@ -245,6 +244,7 @@ static int32_t menu_document(int32_t y, int draw)
         if (!text[0]) y += 8;
         else y = menu_text(text, y, c->kind == MC_TITLE ? T_THEME : c->kind == MC_URL ? T_MID : T_TEXT, draw);
     }
+    about_sec[1] = y + 12 - y0;
     y = menu_text("LICENSES + SOURCE", y + 12, T_THEME, draw);
     y = menu_text("DRUM + own samples: GPL-3.0-only", y, T_TEXT, draw);
     y = menu_text("Fonts and icons: their licences travel with the source and the release files.", y, T_TEXT, draw);
@@ -258,27 +258,40 @@ static int32_t menu_scroll_max(void)
     int32_t h = menu_document(0, 0);
     return h > MENU_DOC_H ? h - MENU_DOC_H : 0;
 }
+/* SELECT in ABOUT (0.2.9): the next (s > 0) or the previous section's start: the animation (0), the information (1: the document's top),
+ * CREDITS, LICENSES + SOURCE (each at most the end of the scroll); stops at the first and the last, no wrap */
+static int32_t about_section(int32_t cur, int32_t s)
+{
+    int32_t max = menu_scroll_max(), t[4], k, n = 4;
+    t[0] = 0, t[1] = 1, t[2] = about_sec[0] < max ? about_sec[0] : max, t[3] = about_sec[1] < max ? about_sec[1] : max;
+    if (s > 0) {
+        for (k = 0; k < n; k++)
+            if (t[k] > cur)
+                return t[k];
+        return cur;
+    }
+    for (k = n - 1; k >= 0; k--)
+        if (t[k] < cur)
+            return t[k];
+    return cur;
+}
 
 static void menu_dots(void);
-/* the menu's header (0..24): its icon and title, the REC mark, the tabs' dots; no keycap (the one top bar of every page) */
+/* the menu's header (0..24): its icon and title, the tabs' dots; no keycap (the one top bar of every page) */
 static void menu_head(void)
 {
     cv_begin(240, H_HEAD, T_BG);
     GFX_HOOK_ALIGN(0, HEAD_MY + AF_M_CAP_Y, 0, HEAD_MY + AF_M_CAP_Y + AF_M_CAP_H, AL_V, "header icon on its title's line");
     cv_icon_mid(8, H_HEAD / 2, 16, ui.menu == 2 ? ICON_X_INFO : ICON_X_COG, T_THEME, T_BG);   /* (as draw_head's) */
     GFX_HOOK_ALIGN(0, 0, 0, H_HEAD, AL_V, "header text on its middle");
-    {   /* the title in the top middle: centred on x 120 between the cog and the REC mark / the dots */
+    {   /* the title in the top middle: centred on x 120 between the cog and the dots */
         const char *t = ui.menu == 2 ? "ABOUT / CREDITS" : "MENU";
         int32_t x = 120 - HALF_UP(text_w(&AF_M, t));
         GFX_HOOK_ALIGN(0, 0, 0, H_HEAD, AL_V, "header text on its middle");
         cv_text(x < 30 ? 30 : x, HEAD_MY, &AF_M, t, T_TEXT);
     }
-    if (ui.menu == 2) {                               /* ABOUT: the REC mark at the right (no way-back keycap: SPEC 1.1a) */
-        draw_rec_mark(232 - 16, T_BG);
-    } else {                                          /* the tabs: their dots at the right, the REC mark 8 px before them */
-        draw_rec_mark(232 - (12 + (int32_t)(MTAB_COUNT - 1u) * 8) - 8 - 16, T_BG);   /* (menu_dots' left, its cell 16 wide) */
+    if (ui.menu != 2)                                 /* the tabs: their dots at the right (ABOUT: none; no way-back keycap: SPEC 1.1a) */
         menu_dots();
-    }
     cv_blit(0, Y_HEAD);
 }
 
@@ -500,6 +513,8 @@ static uint32_t test_sig(void)                         /* what the panel shows *
     uint32_t h = 2166136261u, k;
     test_sync();
     h = (h ^ cpu_sig()) * 16777619u;
+    h = (h ^ felucca_dbg.erase_max_us / 1000u) * 16777619u;
+    h = (h ^ (vcap_shown(0) * 16u + vcap_shown(1))) * 16777619u;
     test_multi_name(b);
     h = str_hash(h, b);
     for (k = 0; k < 2u; k++) {
@@ -527,24 +542,37 @@ static void graph_test(void)
         sound_name(&trk[k], b);
         cv_text_r(230, y, &AF_S, b, T_TEXT, T_SURF);
     }
-    cv_rect(8, 44, 224, 1, T_RAISE);
-    cv_text_on(10, 49, &AF_S, "AVERAGE 1 S", T_MID, T_SURF);
+    cv_rect(8, 43, 224, 1, T_RAISE);                   /* (0.2.11: 4 rows up a few px for the ERASE row) */
+    cv_text_on(10, 47, &AF_S, "AVERAGE 1 S", T_MID, T_SURF);
     test_pct(v, cpum.avg);
-    cv_text_r(230, 46, &AF_M, v, col, T_SURF);
-    cv_rect(8, 68, 224, 8, T_RAISE);                   /* the track, the fill, the 80 % mark, the peak tick */
-    cv_rect(8, 68, fill, 8, col);
-    cv_rect(8 + 224 * (int32_t)CPU_WARN / 100, 76, 1, 3, T_MID);
-    cv_rect(8 + (tick > 222 ? 222 : tick), 65, 2, 14, T_TEXT);
-    x = cv_text_on(10, 85, &AF_S, "PEAK HOLD", T_MID, T_SURF);
+    cv_text_r(230, 44, &AF_M, v, col, T_SURF);
+    cv_rect(8, 64, 224, 8, T_RAISE);                   /* the track, the fill, the 80 % mark, the peak tick */
+    cv_rect(8, 64, fill, 8, col);
+    cv_rect(8 + 224 * (int32_t)CPU_WARN / 100, 72, 1, 3, T_MID);
+    cv_rect(8 + (tick > 222 ? 222 : tick), 61, 2, 14, T_TEXT);
+    x = cv_text_on(10, 79, &AF_S, "PEAK HOLD", T_MID, T_SURF);
     test_pct(v, cpum.hold);
-    cv_text_on(x + 6, 85, &AF_S, v, cpu_col(plv, T_SURF), T_SURF);
+    cv_text_on(x + 6, 79, &AF_S, v, cpu_col(plv, T_SURF), T_SURF);
     fmt_int(v, (int32_t)(test_missed() > 9999u ? 9999u : test_missed()));
-    x = cv_text_r(230, 85, &AF_S, v, cpu_recent() ? cpu_col(2u, T_SURF) : T_TEXT, T_SURF);
-    cv_text_r(x - 6, 85, &AF_S, "MISSED", T_MID, T_SURF);
-    cv_text_on(10, 102, &AF_S, cpu_word(), lvl ? cpu_col(lvl, T_SURF) : T_MID, T_SURF);
+    x = cv_text_r(230, 79, &AF_S, v, cpu_recent() ? cpu_col(2u, T_SURF) : T_TEXT, T_SURF);
+    cv_text_r(x - 6, 79, &AF_S, "MISSED", T_MID, T_SURF);
+    cv_text_on(10, 93, &AF_S, cpu_word(), lvl ? cpu_col(lvl, T_SURF) : T_MID, T_SURF);
 #ifdef FELUCCA_METER_EST
-    cv_text_r(230, 102, &AF_S, "EMULATOR ESTIMATE", T_DIM, T_SURF);
+    cv_text_r(230, 93, &AF_S, "EMULATOR ESTIMATE", T_DIM, T_SURF);
 #endif
+    x = cv_text_on(10, 107, &AF_S, "ERASE", T_MID, T_SURF);   /* DUELL 0.2.11: the longest flash erase since boot (storage_hw.c: the driver's own time) */
+    if (felucca_dbg.erase_max_us) {
+        fmt_int(v, (int32_t)((felucca_dbg.erase_max_us + 500u) / 1000u));
+        str_cpy(v + str_len(v), " MS", 4);
+    } else
+        str_cpy(v, "--", 3);
+    cv_text_on(x + 6, 107, &AF_S, v, T_TEXT, T_SURF);
+    v[0] = (char)('0' + vcap_shown(0));          /* DUELL 0.2.11: the VOICE CAP of part 1 / part 2 (voice.c vcap; the engine's own cap included) */
+    str_cpy(v + 1, " / ", 4);
+    v[4] = (char)('0' + vcap_shown(1));
+    v[5] = 0;
+    x = cv_text_r(230, 107, &AF_S, v, T_TEXT, T_SURF);
+    cv_text_r(x - 6, 107, &AF_S, "VOICES", T_MID, T_SURF);
 }
 /* The TEST screen (ui.menu 3): the page TEST_PAGE drawn by the page code (header with its name TEST in the top middle, the K1..K4 cards, the
  * panel graph_test, the footer), page_over making it the current page; HOME / LAYER state is put aside while it draws */
@@ -637,7 +665,7 @@ static void draw_menu(void)
             cv_blit(0, H_HEAD + pass * 124u);
         }
         cv_begin(240, 240 - (H_HEAD + MENU_DOC_H), T_BG);
-        cv_key_row(8, 232, MK_Y - (H_HEAD + MENU_DOC_H), (const khint_t[2]){{KC_SELECT, "SCROLL"}, {KC_K1, "BACK"}}, 2u, 3u, T_BG);
+        cv_key_row(8, 232, MK_Y - (H_HEAD + MENU_DOC_H), ABOUT_KEYS, 3u, 7u, T_BG);
         cv_blit(0, H_HEAD + MENU_DOC_H);
         return;
     }
@@ -682,7 +710,8 @@ static void menu_close(void)
 }
 
 /* menu (SPEC 1.1a): SELECT is the one way round it: it walks the rows continuously across the tabs (a tab's last row,
- * then the next tab's first; stopping at the first and the last row of the whole menu, no wrap), in ABOUT it scrolls;
+ * then the next tab's first; stopping at the first and the last row of the whole menu, no wrap), in ABOUT it jumps between sections
+ * (KNOB 1 scrolls there);
  * KNOB 1..4 (any of them) change the selected row's value (menu_items.c menu_step), OCT+ / OCT- step it too (and OCT+
  * opens CALIBRATION / TEST / ABOUT, OCT- nothing there; OCT- in TEST and ABOUT goes back to the tabs) but no hint
  * names them. ALGORITHM and PRESETS do nothing here. HOME closes it, from them too (ui_input.c) */
@@ -725,14 +754,18 @@ static void menu_input(uint32_t oct)                  /* oct: ui_input.c oct_tap
         return;
     }
 #endif
-    if (ui.menu == 2) {                                /* ABOUT: SELECT scrolls (bounded); OCT- or a knob
-                                                        * turned left (KNOB 1) back to the tabs */
-        for (s = 0, k = 0; k < 4u; k++)
-            s += panel_enc(EN_K1 + k);
-        if (dn || s < 0)
+    if (ui.menu == 2) {                                /* ABOUT (0.2.9, the owner): KNOB 1 scrolls (right down, left up; bounded), SELECT
+                                                        * jumps to the next / previous section (about_section); OCT- back to the tabs,
+                                                        * HOME closes; KNOB 2..4, PRESETS, ALGORITHM nothing */
+        if (dn) {
             ui.menu = 1, ui.force = 1;
-        else if ((s = panel_enc(EN_SELECT)) != 0)
+            enc_drop();
+            return;
+        }
+        if ((s = panel_enc(EN_K1)) != 0)
             ui.menu_scroll = (uint16_t)clamp((int32_t)ui.menu_scroll + clamp(s, -128, 128) * 18, 0, menu_scroll_max());
+        for (s = clamp(panel_enc(EN_SELECT), -4, 4); s; s -= s > 0 ? 1 : -1)   /* (a section a detent) */
+            ui.menu_scroll = (uint16_t)about_section(ui.menu_scroll, s);
         enc_drop();
         return;
     }
@@ -770,6 +803,8 @@ static void menu_input(uint32_t oct)                  /* oct: ui_input.c oct_tap
             cpu_meter_open();                           /* (the CPU meter's window begins) */
             ui.force = 1;
 #endif
+        } else if (ui.menu_sel == MI_GUIDE) {           /* DUELL 0.2.11: the first-start GUIDE's pages, over the menu (ui_guide.c); the bit untouched */
+            guide_open(1);
         } else {                                       /* MI_ABOUT */
             ui.menu = 2;
             about_t0 = fm1_ms;

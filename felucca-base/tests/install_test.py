@@ -210,14 +210,7 @@ def installs():
     rc, out, err = cli(["--info"], dev)
     ok(rc == 0 and "FM-1_905" in out and not any(c in out for c in "\x1b\x07"),
        "--info: control bytes in the device's identity are not printed")
-    import fm1_sample_upload as U
-    lines = U.slot_info([3, 80, 2, 0x41, 0x1B, 0x5B, 0x32, 0x4A, 0, 40, 0, 0, 0, 0, 0, 0])
-    ok(lines[0] == "USR1: 2 zones, A?[2J, 40 KiB" and lines[1] == "USR2: empty", "sample upload: slot names printable only")
-    try:
-        U.slot_info([3, 80, 2, 0x41])
-        ok(False, "sample upload: a malformed SMP_INFO reply is an error")
-    except ValueError:
-        ok(True, "sample upload: a malformed SMP_INFO reply is an error")
+    # (tools/fm1_sample_upload.py and its checks went with the user sample slots: DUELL 0.2.9)
 
 
 def errors():

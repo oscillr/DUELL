@@ -192,7 +192,7 @@ async function editorMock() {
        items[23].kind === 0 && items[23].names.join() === "SCOPE,TRACKS,LEVELS" && items[23].value === 0 &&
        items[24].kind === 0 && items[24].names.join() === "OFF,ON" && items[24].value === 0 &&   // (1.5: HELP)
        eq(items[0].names, prefs.palettes) && items[0].value === m.state.palette &&
-       items[4].names.join() === "OFF,DIM LO,DIM HI,INV" && items[4].value === 2 && items[5].value === 1,
+       items[4].names.join() === "OFF,LOW,MEDIUM,MAX" && items[4].value === 2 && items[5].value === 1,
        "editor: MENU_DESC lists every setting, its value names and value");
     ok(items.map((d) => d.tab).join() === "0,0,0,0,0,1,1,1,1,2,2,4,2,2,2,4,1,0,0,1,1,3,2,0,4" &&
        items.map((d) => d.tabName).join() ===
@@ -201,7 +201,7 @@ async function editorMock() {
     ok(E.parse[E.CMD.MENU_DESC](await rq(E.req.menuDesc(25))).id === 127, "editor: MENU_DESC past the list answers id 127");
     let r = E.parse[E.CMD.MENU_SET](await rq(E.req.menuSet(4, 3)));
     ok(r.rc === 0 && r.id === 4 && r.value === 3 && E.parse[E.CMD.MENU_DESC](await rq(E.req.menuDesc(4))).value === 3,
-       "editor: MENU_SET round trip (LEDS INV)");
+       "editor: MENU_SET round trip (LEDS MAX)");
     const pal = m.state.palette;
     r = E.parse[E.CMD.MENU_SET](await rq(E.req.menuSet(0, 50)));
     ok(r.rc === 0 && r.value === 9 && E.parse[E.CMD.UI_STATE](await rq(E.req.uiState())).palette === 9,

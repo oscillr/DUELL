@@ -8,7 +8,8 @@
  * row says what is picked and its CC (ml_line). The map: midi_control.c (ML_N entries in favorites.factory[14], kept
  * with the settings, saved as each one changes); one CC sets one parameter, a parameter has one CC: learning one again
  * replaces both. The editor reads and edits it (editor_learn.c). Its state: ui.ml (ui.c) */
-typedef char ml_row_free[NENGINES <= 14 ? 1 : -1];   /* (factory[14]: no engine's favourites; favorites.c) */
+typedef char ml_row_free[NENGINES <= 15 && ENGI_WAVE == 14u ? 1 : -1];   /* (factory[14]: no engine's favourites: WAVE, engine 14, keeps
+                                                                                * its flags in row 1, favorites.c fav_byte) */
 static uint8_t *const ml_tab = favorites.factory[14];
 static volatile uint8_t *const ml_io = ui.ml.io;         /* (midi_control.c ml_arm, ml_heard) */
 

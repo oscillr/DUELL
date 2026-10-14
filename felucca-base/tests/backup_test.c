@@ -3,8 +3,6 @@
 /* The editor's full backup (editor_backup.c: LIST / GET / PUT) against simulated NOR flash:
  * CRC before any write, stale runtime copies, USB resets and timeouts, malformed objects, older
  * project formats, settings values and user preset banks kept byte for byte. */
-static unsigned char host_samples[3][0x14000];
-#define SMP_USER_XIP(k) host_samples[k]
 #define main hostsim_main
 #include "hostsim.c"
 #undef main
@@ -214,15 +212,15 @@ int main(void)
     bad += check("settings with an unknown HOLD value are refused, nothing written",
                  put_all(1, &ps, sizeof ps, st_crc32(&ps, sizeof ps)) == 2u && erases == before);
     ps.bold = 0;
-    ps.zoom = LEDS_TAG | LEDS_INV;                       /* LEDS INV */
-    bad += check("settings with LEDS INV restore",
+    ps.zoom = LEDS_TAG | LEDS_INV;                       /* LEDS MAX */
+    bad += check("settings with LEDS MAX restore",
                  put_all(1, &ps, sizeof ps, st_crc32(&ps, sizeof ps)) == 0 && settings_leds == LEDS_INV);
     ps.zoom = 1;                                         /* an older backup (its large readout): LEDS DIM */
     bad += check("settings of an older backup restore with LEDS DIM",
                  put_all(1, &ps, sizeof ps, st_crc32(&ps, sizeof ps)) == 0 && settings_leds == LEDS_DIM);
     before = erases;
-    ps.zoom = LEDS_TAG | LEDS_DIM_LO;                    /* LEDS DIM LO, OFF (appended) */
-    bad += check("settings with LEDS DIM LO restore",
+    ps.zoom = LEDS_TAG | LEDS_DIM_LO;                    /* LEDS LOW, OFF (appended) */
+    bad += check("settings with LEDS LOW restore",
                  put_all(1, &ps, sizeof ps, st_crc32(&ps, sizeof ps)) == 0 && settings_leds == LEDS_DIM_LO);
     ps.zoom = LEDS_TAG | LEDS_OFF;
     bad += check("settings with LEDS OFF restore",
@@ -286,6 +284,9 @@ int main(void)
         memset(old_bank, 0x5A, sizeof old_bank);
         bad += check("an old archive's FM6 patch bank (id 8): accepted and dropped, listed empty",
                      put_all(8, old_bank, 1024, st_crc32(old_bank, 1024)) == 0 && list(8, &len, &crc) == 0 && len == 0);
+        bad += check("the retired user sample slots (ids 32..34, DUELL 0.2.9): listed empty",
+                     list(32, &len, &crc) == 0 && len == 0 && list(33, &len, &crc) == 0 && len == 0 && list(34, &len, &crc) == 0 &&
+                     len == 0);
         bad += check("a Felucca user preset bank (ids 6, 7: another shape) is refused (2)",
                      put_all(6, old_bank, sizeof old_bank, st_crc32(old_bank, sizeof old_bank)) == 2u &&
                      put_all(7, old_bank, sizeof old_bank, st_crc32(old_bank, sizeof old_bank)) == 2u);

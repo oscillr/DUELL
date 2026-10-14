@@ -19,7 +19,7 @@ MU_MAGIC = b"MUL1"
 OBJ_SETTINGS, OBJ_UPRESET0, OBJ_UPFM6, OBJ_AUTOSAVE, OBJ_PATSLOT0, OBJ_MULTI0, OBJ_PATCH0, OBJ_COUNT = 0, 5, 8, 9, 10, 13, 21, 27
 ENGINES = ["ANALOG", "DIGITAL", "PHASE", "LOFI", "SAMPLE", "VOICE", "TRIO", "WHEEL", "GRAIN", "PHYS",
            "DRUM", "NOISE", "FM6", "SLICE"]
-MODES = ["SPLIT", "STEREO", "LAYER"]
+MODES = ["DUEL", "STEREO", "LAYER"]
 MB_N, PS_STEP, FM6_PACKED, MU_G_AT = 7, 9, 128, 20
 
 
@@ -165,7 +165,7 @@ def main():
                 with open(os.path.join(args.extract_multis, "M%02d.bin" % slot), "wb") as f:
                     f.write(rec)
     print("%d multi(s) stored" % used)
-    print("(an M01..M04 not listed above shows its factory multi, tools/factory_multis)")
+    print("(an M01..M10 not listed above shows its factory multi, tools/factory_multis)")
 
 
 if __name__ == "__main__":

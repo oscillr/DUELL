@@ -86,16 +86,16 @@ static uint32_t hold_to_stored(uint32_t old, uint32_t i)
 }
 static int hold_stored_ok(uint32_t v) { return v <= 1u || (v & ~3u) == HOLD_TAG; }
 
-/* LEDS (menu): OFF, DIM LO, DIM HI, INV. DIM HI (the default), the idle buttons and keys glow dim (~1/30) and the
- * active ones are lit (#35); DIM LO the same, darker (~1/60, hal/fm1_input.h FM1_LED_DIM_LO_NS); OFF no glow,
- * the active ones lit (as 1.0); INV the idle ones lit and the active ones dark, as the stock firmware (ui_input.c
+/* LEDS (menu): OFF, LOW, MEDIUM, MAX. MEDIUM (the default), the idle buttons and keys are lit 1 frame in 4 (25 %) and the
+ * active ones fully (#35); LOW a faint glow (~1/60, hal/fm1_input.h THE LED LEVELS); OFF no glow,
+ * the active ones lit (as 1.0); MAX the idle ones lit and the active ones dark, as the stock firmware (ui_input.c
  * ui_leds). Saved in the settings record's retired zoom field as LEDS_TAG | mode, the modes append-only: DIM 0
- * (now DIM HI) and INV 1 keep their values, OFF 2 and DIM LO 3 are new; any other value there (0 or 1 from older
- * firmware) is DIM HI. LEDS_MENU: the menu's order, darkest first */
+ * (now MEDIUM) and MAX 1 keep their values, OFF 2 and LOW 3 are new; any other value there (0 or 1 from older
+ * firmware) is MEDIUM. LEDS_MENU: the menu's order, darkest first */
 #define LEDS_TAG 0x4C454400u                    /* "LED" */
 enum { LEDS_DIM, LEDS_INV, LEDS_OFF, LEDS_DIM_LO, LEDS_COUNT };
 static const uint8_t LEDS_MENU[LEDS_COUNT] = {LEDS_OFF, LEDS_DIM_LO, LEDS_DIM, LEDS_INV};
-static const char *const LEDS_NAME[LEDS_COUNT] = {"DIM HI", "INV", "OFF", "DIM LO"};
+static const char *const LEDS_NAME[LEDS_COUNT] = {"MEDIUM", "MAX", "OFF", "LOW"};
 static uint8_t settings_leds = LEDS_DIM;
 static uint32_t leds_from_stored(uint32_t v) { return (v & ~3u) == LEDS_TAG && (v & 3u) < LEDS_COUNT ? v & 3u : LEDS_DIM; }
 static uint32_t leds_to_stored(uint32_t old, uint32_t m)

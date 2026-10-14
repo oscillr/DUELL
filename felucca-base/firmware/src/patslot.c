@@ -13,7 +13,7 @@
  * Where: each object has its A/B sector pair as every storage.c object (the commit record last, the newest valid copy
  * wins: a power cut during a write leaves the slot as it was). Flash 0xD6000..0xDBFFF (fm1_flash.h FL_PSLOT_*), the six
  * sectors at the end of the user sample region (storage.c's flash map; below them the MULTI store's second range, then USR3's
- * end, eng_sample.c SMP_USER_CAP),
+ * end; the sample slots are retired since DUELL 0.2.9),
  * just below the user preset banks. The stock firmware's "USR" region (0xEA000..0xFBFFF, tools/fm1pkg_make.py) is never
  * written. A payload ends at 0xEB8 < 0xF00: a sector's tail from 0xF00 stays erased (where the update loader and the SPL
  * look for update records, as fm6_vbank.c keeps it). Firmware without slots never reads these sectors; a stock firmware

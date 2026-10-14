@@ -126,7 +126,7 @@ static int track_ok(const proj_trk_t *n, const proj_trk_v2_t *o, uint32_t t, int
     for (k = 0; k <= P_DETUNE; k++)             /* (DUELL: an id DUELL took, core.h PL_*: its default) */
         ok &= n->p[k] == (param_retired(k) ? TP[k].def : drum && k == P_LEVEL ? lvl : drum && k == P_REV ? rev : oldv(t, k));
     for (k = P_FREEA; k <= P_FREED; k++)
-        ok &= n->p[k] == 0;                     /* the SLICER's ids, free (DUELL): 0 */
+        ok &= n->p[k] == TP[k].def;             /* the SLICER's ids (DUELL 0.2.9: the multimode filter's): their defaults, the bypass */
     for (k = P_M1SRC; k <= P_M4AMT; k++)
         ok &= n->p[k] == 0;                     /* every matrix slot OFF */
     for (k = 0; k < 8u; k++)
@@ -158,8 +158,8 @@ static int track_v3_ok(const proj_trk_t *n, const proj_trk_v3_t *o, uint32_t t)
     int ok = n->engine == o->engine && n->preset == o->preset && steps_same(n->step, o->step);
     for (k = 0; k <= P_DETUNE; k++)
         ok &= n->p[k] == (param_retired(k) ? TP[k].def : oldv3(t, k));   /* up to the SLICER: the same ids (DUELL's: defaults) */
-    for (k = P_FREEA; k <= P_FREED; k++)        /* the SLICER's values: the ids are DUELL's universal filter's CUT, RES and two free ones (0.2.2): */
-        ok &= n->p[k] == TP[k].def;             /* a store of Felucca's layout takes their defaults (core.h param_retired): CUT OFF */
+    for (k = P_FREEA; k <= P_FREED; k++)        /* the SLICER's values: the ids are DUELL's multimode filter's CUT RES MODE SLOPE (0.2.9): */
+        ok &= n->p[k] == TP[k].def;             /* a store of Felucca's layout takes their defaults (core.h param_retired): the bypass */
     for (k = P_M1SRC; k <= P_M4AMT; k++)
         ok &= n->p[k] == TP[k].def && TP[k].def == 0;
     for (k = 0; k < 8u; k++)
@@ -379,7 +379,7 @@ int main(void)
     ok = proj_import(&q, &buf, (int)sizeof v1) && proj_ok(&q) && track_ok(&q.t[0], &v1.t, 0, 0, 0, 0) && q.g[5] == 705 &&
          q.parts == NPART;
     for (t = 1; t < NTRK; t++)
-        ok &= q.t[t].preset == PROJ_DEF_SOUND && q.t[t].engine == trk_def_engine(t) && q.t[t].p[P_FREEA] == 0 && q.t[t].p[P_LEVEL] == TP[P_LEVEL].def &&
+        ok &= q.t[t].preset == PROJ_DEF_SOUND && q.t[t].engine == trk_def_engine(t) && q.t[t].p[P_FREEA] == UF_STEPS && q.t[t].p[P_LEVEL] == TP[P_LEVEL].def &&
               q.t[t].p[P_E0] == ENGINES[trk_def_engine(t)]->edit[0].def && q.t[t].step[0].time == ST_REST;
     bad += check("FUN1 -> FUN6: track 1 mapped, tracks 2..4 defaults", ok);
 

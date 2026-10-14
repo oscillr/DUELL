@@ -9,7 +9,7 @@
 #define UI_TEST_NO_MAIN 1
 #include "ui_test.c"
 
-enum { E_ANALOG = 0, E_PHASE = 2, E_LOFI = 3, E_WHEEL = 7, E_GRAIN = 8, E_PHYS = 9, E_NOISE = 11, E_FM6 = 12 };
+enum { E_ANALOG = 0, E_PHASE = 2, E_LOFI = 3, E_WHEEL = 7, E_PHYS = 9, E_NOISE = 11, E_FM6 = 12 };
 typedef struct {
     const char *name;
     uint8_t eng[2], idx[2];
@@ -18,7 +18,7 @@ typedef struct {
     uint8_t rate;                                /* the arp's RATE (N_DIV index) */
 } scn_t;
 /* sound indexes: duell_sounds.py (engine, factory index): WHEEL 3 JAZZ CLUB, ANALOG 9 SILK CHORUS, PHASE 5 CRYSTAL CAVE, FM6 4 TINE ROOM,
- * NOISE 2 SEA ORGAN, LOFI 2 WOW FLUTTER (PHYS and GRAIN have 3 voices per part: they cannot fill the 8) */
+ * NOISE 2 SEA ORGAN, LOFI 2 WOW FLUTTER (PHYS has 3 voices per part: it cannot fill the 8) */
 static const scn_t SC[4] = {
     {"TEST 1 BASE",  {E_WHEEL, E_ANALOG}, {3, 9}, DM_LAYER, 2, 0, {6, 8}, {40, 40, 40}, 2},
     {"TEST 2 PHASE", {E_PHASE, E_ANALOG}, {5, 9}, DM_LAYER, 2, 0, {6, 8}, {40, 40, 40}, 2},

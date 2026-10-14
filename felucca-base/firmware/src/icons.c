@@ -114,6 +114,8 @@ static int32_t cv_icon_mid(int32_t x, int32_t cy, uint32_t size, uint32_t id, ui
     GFX_HOOK_ALIGN(0, 0, 0, 2 * cy, AL_V | AL_PASS, "header icon on its middle");
     return cv_icon_in(x, 0, 0, 2 * cy, size, id, fg, bg);
 }
+#define ICON_X_QUICK ICON_ACCENT          /* DUELL 0.2.9: the QUICK layers' header mark, a lightning bolt (Fukiai symbol_thunder_f, the ACCENT
+                                           * icon's glyph, drawn at 12 px: no new cell, ui_draw.c head_msg) */
 #define ICON_NONE 0xFFu                   /* no icon (empty column) */
 #define ICON_AUTO 0xFEu                   /* draw_column: look the label up */
 #define ICON_GAP 2                        /* px between the icon and the label */
@@ -155,13 +157,13 @@ static const icon_map_t ICON_MAP[] = {
     {"R3", ICON_RATIO}, {"R4", ICON_RATIO}, {"IDX", ICON_MOD}, {"MDEC", ICON_DECAY},
     {"FB", ICON_FEEDBACK}, {"CHIP", ICON_CHIP}, {"DUTY", ICON_PULSE}, {"CRSH", ICON_BITS},
     {"SWP", ICON_SWEEP}, {"VIB", ICON_VIBRATO}, {"ARP", ICON_ARP}, {"TONE", ICON_TONE},
-    {"SET", ICON_SAMPLE}, {"BITS", ICON_BITS}, {"LOOP", ICON_LOOP}, {"WAVE2", ICON_WAVE},
+    {"SET", ICON_SAMPLE}, {"BITS", ICON_BITS}, {"WAVE2", ICON_WAVE},
     {"DCW", ICON_SHAPE}, {"ENV", ICON_ENV}, {"LINE", ICON_MIX}, {"SUB", ICON_SUB},
     {"FOLD", ICON_FOLD}, {"WAV#", ICON_WAVE}, {"DCY", ICON_DECAY}, {"INT2", ICON_TRANSPOSE},
     {"INT3", ICON_TRANSPOSE}, {"PW", ICON_PULSE},
     {"REG", ICON_DRAWBAR}, {"BODY", ICON_LEVEL}, {"TOP", ICON_TONE}, {"PERC", ICON_DECAY},
     {"CLICK", ICON_ATTACK}, {"ROTR", ICON_VIBRATO},
-    {"SRC", ICON_SAMPLE}, {"START", ICON_STEPS}, {"PTCH", ICON_PITCH}, {"DCAY", ICON_DECAY},
+    {"SRC", ICON_SAMPLE},
     {"POS", ICON_PHASE}, {"DENS", ICON_GRAIN}, {"SPRD", ICON_NOISE},
     {"MODEL", ICON_PHYS}, {"STRC", ICON_SHAPE}, {"BRIT", ICON_TONE}, {"BOW", ICON_SUSTAIN}, {"EXC", ICON_MIX},   /* PHYS */
     {"HARM", ICON_RATIO}, {"BEND", ICON_SWEEP}, {"CHRD", ICON_SCALE}, {"SYMP", ICON_MIX}, {"DECY", ICON_DECAY},
@@ -212,8 +214,8 @@ static uint32_t param_icon(const param_desc_t *d, int32_t v)
         return ICON_DIVISION;                 /* the arp's RATE is a note division, not Hz */
     if (d->names == N_TRIO_MODE)
         return ICON_CUTOFF;                   /* TRIO's MODE is the filter type, not the arp mode */
-    if (d == &TP[P_FTYPE])
-        return ICON_CUTOFF;                   /* ANALOG's filter TYPE (1.5): "TYPE" is also the reverb's */
+    if (d == &TP[P_FTYPE] || d == &TP[P_FREEC] || d == &TP[P_FREED])
+        return ICON_CUTOFF;                   /* ANALOG's filter TYPE (1.5): "TYPE" is also the reverb's; the multimode filter's MODE, SLOPE (0.2.9) */
     if (d == &TP[P_DKRATE])
         return ICON_DIVISION;                 /* DUCK 1: PUMP's RATE, a note division */
     if (d == &TP[P_DKSRC])
@@ -226,14 +228,6 @@ static uint32_t param_icon(const param_desc_t *d, int32_t v)
         return ICON_NOISE;                    /* NOISE's MODE is the source; its CLK the register clock */
     if (d == &NOISE_CLK)
         return ICON_RATE;
-#if FELUCCA_SLICE
-    if (d->names == N_SLC_DIV)
-        return ICON_SLICE;                    /* SLICE: DIV is the slicing, MODE the gate, REV the direction */
-    if (d->names == N_SLC_MODE)
-        return ICON_GATE;
-    if (d->names == N_SLC_REV)
-        return ICON_ORDER;
-#endif
     return icon_for_label(d->label);
 }
 
@@ -257,7 +251,9 @@ static uint32_t mod_dst_icon(const track_t *t, int32_t d)
         return ICON_RATE;
     if (d < MD_E1)
         return I[d];
-    id = P_E0 + (uint32_t)(d - MD_E1);
+    if (d >= MD_BUS)                                    /* (0.2.7) a bus value: its effect's */
+        return d <= MD_CDEP ? ICON_CHORUS : d <= MD_DMRATE ? ICON_DELAY : ICON_REVERB;
+    id = mod_param((uint32_t)d);                        /* an engine parameter, (0.2.7) a part's: its own */
     return param_icon(track_desc(t, id), t->p[id]);
 }
 
@@ -270,9 +266,7 @@ static uint32_t engine_icon(const char *name)
         {"DIGITAL", ICON_ALGORITHM},
 #endif
         {"PHASE", ICON_PHASE}, {"LOFI", ICON_BITS},
-        {"SAMPLE", ICON_SAMPLE}, {"VOICE", ICON_MOUTH}, {"TRIO", ICON_TRIO}, {"WHEEL", ICON_DRAWBAR},
-        {"SLICE", ICON_SLICE},
-        {"GRAIN", ICON_GRAIN},
+        {"VOICE", ICON_MOUTH}, {"TRIO", ICON_TRIO}, {"WHEEL", ICON_DRAWBAR},
         {"PHYS", ICON_PHYS},
         {"DRUM", ICON_DRUM},
         {"NOISE", ICON_NOISE},

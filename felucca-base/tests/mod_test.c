@@ -88,6 +88,8 @@ static void fresh(uint32_t e, uint32_t pi)        /* the boot state (no FX tails
     lim_env = LIM_T;
     memset(trk, 0, sizeof trk);
     memset(&mod, 0, sizeof mod);
+    memset(mod_goff, 0, sizeof mod_goff);           /* (0.2.7: no bus offset, DUCK flag or written bus value left over) */
+    mod_gon = mod_dk = mod_gw = 0;
     host_tracks_init();
     for (k = 0; k < NPART; k++)
         host_preset(&trk[k], k ? 0u : e, k ? 0u : pi);
@@ -462,7 +464,8 @@ static double cost(const uint8_t parts[NPART][3], int on)
         t->p[P_AMODE] = 0;
         t->mw = 90;
         if (on && parts[p][2]) {
-            slot(t, 0, MS_LFO, MD_CUT, 30);
+            /* (the universal-filter engines: a route to CUT now runs their filter even at CUT OFF, costing what uf_test measures; the matrix's own cost is measured on SHP there) */
+            slot(t, 0, MS_LFO, ENGINES[t->engine]->ufilt ? MD_SHP : MD_CUT, 30);
             slot(t, 1, MS_VEL, MD_AMP, 40);
             slot(t, 2, MS_MODW, MD_VIB, 8);
             slot(t, 3, MS_LFO, MD_E1 + 2, 20);
@@ -759,6 +762,363 @@ static void test_part2_modes(void)
     check("LAYER: LFO 1 -> PAN, DIST, CHO, an engine parameter and CUT all change part 2's sound (>= 7 %)", ok);
 }
 
+/* ------------------------------------------------------------------ 6 --- */
+/* DUELL 0.2.7: the destinations added (owner: "the matrix does not have enough destinations") */
+static int32_t want_off(uint32_t s, int32_t x, int32_t a, int32_t range)   /* mod_begin's per-block offset */
+{
+    return (((x * a) >> (MS_BIPOLAR(s) ? 7 : 6)) * range) >> 15;
+}
+/* fork()ed: SPLIT / STEREO, both parts a held note into all three sends, part p's slot 0 SRC -> DST AMT (routes: n of
+ * {part, src, dst, amt}); the hash of the left and the right channel apart */
+static void lr_child(uint32_t mode, const int16_t (*r)[4], uint32_t n, uint64_t *hl, uint64_t *hr)
+{
+    int fd[2];
+    uint64_t h[2] = {0, 0};
+    pid_t pid;
+    if (pipe(fd))
+        return;
+    fflush(stdout);
+    if (!(pid = fork())) {
+        uint32_t b, i, k;
+        uint64_t x[2] = {0xCBF29CE484222325ull, 0xCBF29CE484222325ull};
+        fresh(0, 0);
+        duell_mode_force(mode);
+        for (k = 0; k < 2u; k++) {
+            trk[k].p[P_CHOR] = 70;
+            trk[k].p[P_DLY] = 70;
+            trk[k].p[P_REV] = 90;
+            trk[k].p[P_SUS] = 127;
+            trk[k].p[P_LTRIG] = trk[k].p[P_L2TRIG] = 1;
+            trk[k].mw = 127;
+        }
+        song.g[G_DMDEP] = 20;
+        for (k = 0; k < n; k++)
+            slot(&trk[r[k][0]], k, r[k][1], r[k][2], r[k][3]);
+        trk_note_on(&trk[0], 57, 110);
+        trk_note_on(&trk[1], 64, 110);
+        for (b = 0; b < 3u * FS / CTL; b++) {
+            mix_block(out_buf, CTL);
+            for (i = 0; i < 2u * CTL; i++) {
+                x[i & 1u] ^= (uint32_t)out_buf[i];
+                x[i & 1u] *= 0x100000001B3ull;
+            }
+            if (b == FS / CTL)
+                trk_note_off(&trk[0], 57), trk_note_off(&trk[1], 64);
+        }
+        h[0] = x[0];
+        h[1] = x[1] ^ (uint64_t)(mod_gw != 0) ^ (uint64_t)(song.g[G_RSIZE] != GP[G_RSIZE].def) << 1;   /* (nothing left written) */
+        if (write(fd[1], h, sizeof h) != sizeof h)
+            _exit(1);
+        _exit(0);
+    }
+    close(fd[1]);
+    if (read(fd[0], h, sizeof h) != sizeof h)
+        h[0] = h[1] = 0;
+    close(fd[0]);
+    waitpid(pid, 0, 0);
+    *hl = h[0];
+    *hr = h[1];
+}
+
+/* fork()ed: engine e's first sound, MODW (127) -> DST d by AMT a on slot 1 (d 0: no route), a phrase: its hash */
+static uint64_t route_child(uint32_t e, int32_t d, int32_t a)
+{
+    int fd[2];
+    uint64_t h = 0;
+    pid_t pid;
+    if (pipe(fd))
+        return 0;
+    fflush(stdout);
+    if (!(pid = fork())) {
+        fresh(e, 0);
+        if (e == ENGI_WAVE)
+            wave_build_now(&trk[0]);
+        trk[0].mw = 127;
+        if (d)
+            slot(&trk[0], 0, MS_MODW, d, a);
+        h = phrase();
+        if (write(fd[1], &h, sizeof h) != sizeof h)
+            _exit(1);
+        _exit(0);
+    }
+    close(fd[1]);
+    if (read(fd[0], &h, sizeof h) != sizeof h)
+        h = 0;
+    close(fd[0]);
+    waitpid(pid, 0, 0);
+    return h;
+}
+
+static void test_dest027(void)
+{
+    static const char *const OLD[MD_N_026] = {"OFF", "PITCH", "CUT", "SHP", "AMP", "PAN", "DIST", "CHO", "DLY", "REV", "RAT1", "VIB",
+                                              "E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8", "DEP1", "RAT2", "DEP2"};
+    static const uint8_t PART[] = {MD_LEVEL, MD_INSA, MD_INSB, MD_INSC, MD_IMIX, MD_EQLO, MD_EQMID, MD_EQHI, MD_DUCK, MD_E2ATK,
+                                   MD_E2DEC, MD_E2SUS, MD_E2REL, MD_E2FLT, MD_E2SHP, MD_RES};
+    track_t *t = &trk[0];
+    uint32_t k, ok, e_phase = eng_by_name("PHASE");
+    int16_t keep[P_COUNT];
+    uint64_t l0, r0, l1, r1;
+
+    for (k = 0, ok = MD_N == 46 && MD_N_026 == 23 && MD_DEPTH == 20 && MD_DEPTH2 == 22; k < MD_N_026; k++)
+        ok &= str_eq(N_MDST[k], OLD[k]);
+    check("0.2.7: DST 0..22 are 0.2.6's (a stored matrix means what it meant); 23 new ones appended (46)", ok);
+    check("  the editor's DESC lists every DST name (the limit is 64 now)", MD_N <= 64);
+    {   /* no new DST name is an engine's EDIT label: gen_duell_sounds.py reads a sound's MOD route "RES" (ANALOG's E6) by N_MDST
+         * first, so a DST called RES moved ANALOG SQUELCH's route to the universal filter's RES (its golden changed) */
+        uint32_t e, j, d;
+        for (d = MD_N_026, ok = 1; d < MD_N; d++)
+            for (e = 0; e < NENGINES; e++)
+                for (j = 0; j < 8u; j++)
+                    if (ENGINES[e]->edit[j].label && str_eq(N_MDST[d], ENGINES[e]->edit[j].label)) {
+                        printf("mod:   DST %u \"%s\" is engine %u's EDIT label\n", d, N_MDST[d], e);
+                        ok = 0;
+                    }
+        check("  no new DST name is an engine knob's label (the factory sounds name engine slots by label)", ok);
+    }
+    {   /* the DEST line: every destination has words (none empty), a few by name */
+        char b[32];
+        const char *more;
+        int32_t v;
+        fresh(0, 0);
+        duell_mode_force(DM_STEREO);
+        duell_mode_req = DM_STEREO;
+        for (v = 0, ok = 1; v < MD_N; v++) {
+            mod_dst_line(&trk[0], v, b, &more);
+            ok &= str_len(b) > 6u && (v < MD_BUS || more);   /* (a bus value: always which bus; a faded one: why) */
+        }
+        mod_dst_line(&trk[0], MD_RDAMP, b, &more);
+        ok &= str_eq(b, "DEST: REVERB DAMP") && str_eq(more, "SHARED BUS: BOTH PARTS ADD");
+        mod_dst_line(&trk[0], MD_LEVEL, b, &more);
+        ok &= str_eq(b, "DEST: PART LEVEL");
+        mod_dst_line(&trk[0], MD_DEPTH, b, &more);
+        ok &= str_eq(b, "DEST: LFO 1 DEPTH");
+        mod_dst_line(&trk[0], MD_E1 + 2, b, &more);
+        ok &= str_eq(b, "DEST: ANALOG ") == 0 && b[13] != 0;
+        duell_mode_req = DM_SPLIT;
+        mod_dst_line(&trk[1], MD_CRATE, b, &more);
+        ok &= str_eq(b, "DEST: CHORUS RATE") && str_eq(more, "MOVES BUS B ONLY (PART 2)");
+        duell_mode_req = DM_STEREO;
+        check("  the MATRIX page's DEST line names every destination in words (\"DEST: REVERB DAMP\", which bus it moves)", ok);
+    }
+
+    /* every per-block part destination moves its own parameter by the rule (MODW 127 at AMT +40), in the block only */
+    for (k = 0, ok = 1; k < sizeof PART; k++) {
+        uint32_t d = PART[k], id = mod_param(d);
+        const param_desc_t *pd = &TP[id];
+        int32_t base = (pd->min + pd->max) / 2, w;
+        fresh(e_phase, 0);
+        t->mw = 127;
+        t->p[P_ITYPE] = 4;                          /* (INSERT FUZZ: A B C mean DRIVE TONE LEVEL) */
+        t->p[id] = (int16_t)base;
+        slot(t, 0, MS_MODW, (int32_t)d, 40);
+        memcpy(keep, t->p, sizeof keep);
+        w = clamp(base + want_off(MS_MODW, 127 * 258, 40, pd->max - pd->min), pd->min, pd->max);
+        mod_begin(t);
+        ok &= t->p[id] == w && w != base;
+        if (t->p[id] != w || w == base)
+            printf("mod:   DST %u (%s, id %u): %d, want %d\n", d, N_MDST[d], id, t->p[id], w);
+        mod_end(t);
+        ok &= !memcmp(keep, t->p, sizeof keep);
+    }
+    check("LEVEL, INSERT A B C MIX, EQ LOW MID HIGH, DUCK DEPTH, ENV 2 ATK..REL FLT SHP, RES: each moves its own value, by the rule", ok);
+
+    /* the engine slots: WAVE's POS moves, its TABLE never (no rebuild), an unused slot, FM6's SLOT: skipped */
+    fresh(ENGI_WAVE, 0);
+    wave_build_now(t);
+    t->mw = 127;
+    slot(t, 0, MS_MODW, MD_E1 + 1, 40);
+    slot(t, 1, MS_MODW, MD_E1, 63);
+    slot(t, 2, MS_MODW, MD_E1 + 6, 63);
+    {
+        int16_t pos = t->p[P_E1], tab = t->p[P_E0];
+        const wv_mem_t *w = (const wv_mem_t *)ENG_MEM(0);
+        uint32_t want = w->h.want, b;
+        mod_begin(t);
+        ok = t->p[P_E1] == clamp(pos + want_off(MS_MODW, 127 * 258, 40, 127), 0, 127) && t->p[P_E1] != pos && t->p[P_E0] == tab &&
+             t->p[P_E6] == 0;
+        mod_end(t);
+        trk_note_on(t, 60, 100);
+        for (b = 0; b < 200u; b++)
+            mix_block(out_buf, CTL);
+        ok &= w->h.want == want && w->h.have == want && !w->h.fade && t->p[P_E0] == tab;
+        check("WAVE: MODW -> POS moves POS; -> TABLE (REBUILD) and -> E7 (UNUSED) do nothing: no table change, no rebuild", ok);
+        check("  the MATRIX page: TABLE faded REBUILD, E7 faded UNUSED, POS live; its line \"DEST: WAVE POS\"",
+              str_eq(mod_dst_why(t, MD_E1), "REBUILD") && str_eq(mod_dst_why(t, MD_E1 + 6), "UNUSED") && !mod_dst_why(t, MD_E1 + 1));
+        {
+            char b2[32];
+            const char *more;
+            mod_dst_line(t, MD_E1 + 1, b2, &more);
+            ok = str_eq(b2, "DEST: WAVE POS") && !more;
+            mod_dst_line(t, MD_E1 + 6, b2, &more);
+            check("  .. \"DEST: WAVE POS\"; the unused slot \"DEST: WAVE EDIT 2 KNOB 3\" + NOT USED BY THIS ENGINE",
+                  ok && str_eq(b2, "DEST: WAVE EDIT 2 KNOB 3") && more && str_eq(more, "NOT USED BY THIS ENGINE"));
+        }
+    }
+    {   /* a faded slot does nothing: the phrase bit for bit as with no route (FM6 SLOT, a retired engine's slot (SAMPLE, GRAIN, SLICE:
+         * DUELL 0.2.9, silent, every slot "-"), WAVE TABLE and E7) */
+        static const uint8_t EK[6][2] = {{ENGI_FM6, 7}, {ENGI_SLICE, 0}, {ENGI_SAMPLE, 0}, {ENGI_GRAIN, 3}, {ENGI_WAVE, 0}, {ENGI_WAVE, 6}};
+        static const char *const WHY[6] = {"LOADS", "UNUSED", "UNUSED", "UNUSED", "REBUILD", "UNUSED"};
+        for (k = 0, ok = 1; k < 6u; k++) {
+            uint64_t h0 = route_child(EK[k][0], 0, 0), h1 = route_child(EK[k][0], MD_E1 + EK[k][1], 63);
+            fresh(EK[k][0], 0);
+            ok &= h0 && h0 == h1 && mod_dst_why(t, MD_E1 + EK[k][1]) && str_eq(mod_dst_why(t, MD_E1 + EK[k][1]), WHY[k]);
+            if (h0 != h1)
+                printf("mod:   engine %u slot %u: the route changes the sound\n", EK[k][0], EK[k][1]);
+        }
+        check("faded engine slots do nothing (FM6 SLOT, a retired engine's (SAMPLE GRAIN SLICE: UNUSED), WAVE TABLE, WAVE E7: bit for bit)", ok);
+    }
+
+    /* a slot keeps its destination over an engine change: then it is the new engine's slot of that index (named, or faded) */
+    fresh(0, 0);
+    slot(t, 0, MS_LFO, MD_E1 + 6, 30);
+    ok = !mod_dst_why(t, MD_E1 + 6);
+    host_preset_req(t, ENGI_WAVE, 0);
+    {
+        uint32_t b;
+        for (b = 0; b < 20u; b++) {
+            memcpy(keep, t->p, sizeof keep);
+            mix_block(out_buf, CTL);
+            ok &= !memcmp(keep, t->p, sizeof keep);  /* (no value left modulated after any block, across the switch) */
+        }
+    }
+    ok &= t->engine == ENGI_WAVE && t->p[MSLOT_ID(0) + 1u] == MD_E1 + 6 && str_eq(mod_dst_why(t, MD_E1 + 6), "UNUSED");
+    check("an engine change: the slot keeps E7 (ANALOG's, live) and shows it faded UNUSED on WAVE; no value left modulated", ok);
+
+    /* the bus values: per part offsets; STEREO / LAYER add them, DUEL keeps them on the part's own bus */
+    fresh(0, 0);
+    trk[0].mw = trk[1].mw = 127;
+    slot(&trk[0], 0, MS_MODW, MD_RSIZE, 16);
+    slot(&trk[1], 0, MS_MODW, MD_RSIZE, 20);
+    slot(&trk[1], 1, MS_MODW, MD_DFB, -32);
+    mod_begin(&trk[0]);
+    mod_end(&trk[0]);
+    mod_begin(&trk[1]);
+    mod_end(&trk[1]);
+    {
+        int16_t rs = song.g[G_RSIZE], fb = song.g[G_DFDBK];
+        int32_t o0 = want_off(MS_MODW, 127 * 258, 16, 127), o1 = want_off(MS_MODW, 127 * 258, 20, 127);
+        int32_t of = want_off(MS_MODW, 127 * 258, -32, 120);
+        mod_bus(~0u);
+        ok = song.g[G_RSIZE] == clamp(rs + o0 + o1, 0, 127) && song.g[G_DFDBK] == clamp(fb + of, 0, 120);
+        mod_bus(1u);                                 /* (bus A: part 1's alone) */
+        ok &= song.g[G_RSIZE] == clamp(rs + o0, 0, 127) && song.g[G_DFDBK] == fb;
+        mod_bus(2u);
+        ok &= song.g[G_RSIZE] == clamp(rs + o1, 0, 127) && song.g[G_DFDBK] == clamp(fb + of, 0, 120);
+        mod_bus_end();
+        ok &= song.g[G_RSIZE] == rs && song.g[G_DFDBK] == fb && !mod_gw;
+        check("bus values: STEREO / LAYER both parts' offsets add, DUEL bus A part 1's, bus B part 2's; the stored values back", ok);
+        slot(&trk[0], 0, 0, 0, 0);
+        slot(&trk[1], 0, 0, 0, 0);
+        slot(&trk[1], 1, 0, 0, 0);
+        mix_block(out_buf, CTL);
+        check("  a route taken away: no offset left after one block (mod_gon 0), song.g never left written",
+              !mod_gon && !mod_gw && song.g[G_RSIZE] == rs);
+    }
+    {
+        static const int16_t NONE[1][4] = {{0, 0, 0, 0}};
+        static const int16_t P1[4][4] = {{0, MS_LFO, MD_RSIZE, 63}, {0, MS_MODW, MD_DFB, 40}, {0, MS_LFO, MD_CDEP, -50}, {0, MS_LFO, MD_DMDEP, 63}};
+        static const int16_t P2[2][4] = {{1, MS_LFO, MD_RDAMP, 63}, {1, MS_MODW, MD_CRATE, 50}};
+        lr_child(DM_SPLIT, NONE, 0, &l0, &r0);
+        lr_child(DM_SPLIT, P1, 4, &l1, &r1);
+        ok = l0 && r0 && l1 != l0 && r1 == r0;
+        lr_child(DM_SPLIT, P2, 2, &l1, &r1);
+        check("DUEL: part 1's routes to SIZE FDBK CDP DMDEP change the left (bus A) only, the right bit for bit; part 2's the right only",
+              ok && l1 == l0 && r1 != r0);
+        lr_child(DM_STEREO, NONE, 0, &l0, &r0);
+        lr_child(DM_STEREO, P2, 2, &l1, &r1);
+        check("STEREO: part 2's routes move the shared buses (both channels change)", l1 != l0 && r1 != r0);
+    }
+
+    /* DUCK DEPTH from 0: the matrix alone ducks the pump (a stored 0 is no reason for it to do nothing) */
+    fresh(0, 0);
+    t->p[P_DKSRC] = 0;
+    t->p[P_DKDEP] = 0;
+    t->p[P_SUS] = 127;
+    t->mw = 127;
+    slot(t, 0, MS_MODW, MD_DUCK, 63);
+    trk_note_on(t, 60, 100);
+    {
+        uint32_t b;
+        int32_t dn = 0;
+        for (b = 0; b < FS / CTL; b++) {
+            mix_block(out_buf, CTL);
+            dn = duck_st[0].dn > dn ? duck_st[0].dn : dn;
+        }
+        check("DUCK DEPTH 0 + MODW -> DUCK +63: the pump ducks (the matrix's depth starts it)", dn > 30000 && t->p[P_DKDEP] == 0);
+    }
+
+    /* the morph: WILD rolls a route only among 0.2.6's destinations (saved seeds roll the same); a route into a new one rolls its AMT */
+    {
+        int8_t o[P_COUNT], end[P_COUNT];
+        uint32_t sd, nn = 0, kept = 1, newd = 0;
+        uint8_t sv = mrc;
+        memset(o, 0, sizeof o);
+        for (sd = 0; sd < 400u; sd++) {
+            uint32_t rs = morph_state(sd, 0);
+            o[MSLOT_ID(0)] = MS_LFO;
+            o[MSLOT_ID(0) + 1u] = (int8_t)(sd & 1u ? MD_CUT : MD_RSIZE);
+            o[MSLOT_ID(0) + 2u] = 40;
+            memcpy(end, o, sizeof end);
+            mrc = MC_WILD | MC_PIT;
+            morph_slot(&rs, ENGINES[0], o, end, 0, 100, 1);
+            newd += (sd & 1u) && (uint8_t)end[MSLOT_ID(0) + 1u] >= MD_N_026;
+            nn += end[MSLOT_ID(0) + 1u] != o[MSLOT_ID(0) + 1u];
+            rs = morph_state(sd, 1);
+            mrc = MC_PIT;
+            memcpy(end, o, sizeof end);
+            morph_slot(&rs, ENGINES[0], o, end, 0, 100, 1);
+            kept &= end[MSLOT_ID(0)] == o[MSLOT_ID(0)] && end[MSLOT_ID(0) + 1u] == o[MSLOT_ID(0) + 1u];
+        }
+        mrc = sv;
+        check("MORPH WILD: a rolled route never lands on a new destination; SMART: a route into REVERB SIZE keeps SRC and DST",
+              !newd && nn > 100u && kept);
+    }
+}
+
+/* 8 slots, every kind (per voice, per block, an engine slot, the part's mix, a bus value): instructions per sample over the matrix off,
+ * slot by slot. The EQ and the INSERT are run in both (a stored EQ MID gain, INSERT SOFT): what a route switches ON costs what that
+ * effect costs (eq / insert tests), the matrix's own cost is the rest; PHYS has no filter of its own, so slot 1 is SHP, not CUT (a CUT
+ * route runs the universal filter, +122 / sample here: uf_test's cost, as test_cost notes) */
+static void test_cost8(void)
+{
+    static const int16_t R[8][3] = {{MS_LFO, MD_SHP, 30}, {MS_VEL, MD_AMP, 40}, {MS_MODW, MD_VIB, 8}, {MS_LFO, MD_E1 + 2, 20},
+                                    {MS_LFO2, MD_LEVEL, 20}, {MS_ENV, MD_EQMID, 20}, {MS_LFO, MD_RSIZE, 20}, {MS_MODW, MD_DFB, 20}};
+    uint32_t e_phys = eng_by_name("PHYS"), pp = preset_by_name(e_phys, "BOWED METAL"), b, rep, i, k;
+    double c[9];
+    if (!instr_now())
+        return;
+    for (i = 0; i < 9u; i++) {
+        double best = 1e30;
+        fresh(e_phys, pp);
+        trk[0].p[P_VOICE] = V_POLY;
+        trk[0].p[P_SUS] = 127;
+        trk[0].p[P_EQMG] = 3;
+        trk[0].p[P_ITYPE] = 1;
+        trk[0].p[P_REV] = 40;
+        trk[0].mw = 90;
+        for (k = 0; k < i; k++)
+            slot(&trk[0], k, R[k][0], R[k][1], R[k][2]);
+        for (b = 0; b < 4u; b++)
+            trk_note_on(&trk[0], 48 + 7 * b, 100);
+        blocks(FS / 2u / CTL);
+        for (rep = 0; rep < 3u; rep++) {
+            uint64_t i0 = instr_now();
+            double ipc;
+            blocks(FS / CTL);
+            ipc = (double)(instr_now() - i0) / FS;
+            best = ipc < best ? ipc : best;
+        }
+        c[i] = best;
+    }
+    printf("mod: cost: PHYS 4 voices (EQ, INSERT, reverb on), slots added one by one, instructions / sample:");
+    for (i = 0; i < 9u; i++)
+        printf(" %.0f", c[i]);
+    printf("\nmod: cost: 8 slots of every kind (SHP AMP VIB E3 LEVEL EQ MID REVERB SIZE DELAY FDBK): +%.0f / sample (+%.1f %%), "
+           "%.0f per %u-sample block\n", c[8] - c[0], (c[8] - c[0]) * 100 / c[0], (c[8] - c[0]) * CTL, (unsigned)CTL);
+    check("cost: 8 slots of every kind add at most MOD_COST_MAX % to the part", (c[8] - c[0]) * 100 / c[0] <= MOD_COST_MAX);
+}
+
 int main(int argc, char **argv)
 {
     test_off();
@@ -766,7 +1126,9 @@ int main(int argc, char **argv)
     test_pan_lfo();
     test_part2_modes();
     test_midi();
+    test_dest027();
     test_cost();
+    test_cost8();
     if (argc > 1)
         check("demos written", demos(argv[1]));
     printf("%s\n", bad ? "MOD MATRIX TEST FAILED" : "mod matrix test passed");

@@ -340,4 +340,5 @@ static const engine_t ENG_ANALOG = {
     .knob = {P_E4, P_E5, P_ATK, P_REL},
     .keep = 0x03,                /* the filter */
     .atgt = ATG_ANALOG,          /* ARP TARGET: OSC A, OSC B (SPEC 2.3) */
+    .ufilt = 2,                  /* its own filter stays; the multimode filter (the FILTER page, ids 45..48) runs in series after it (DUELL 0.2.9, voice.c) */
 };

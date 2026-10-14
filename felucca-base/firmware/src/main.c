@@ -125,8 +125,8 @@ static void felucca_init(void)
 /* The power-on LED sweep (1.1, hal/fm1_led_anim.h: a soft light over the keys left to right, then the buttons swell
  * and settle on the glow; ~0.70 s), started before the scan and run by it: nothing waits for it, the splash's 430 ms
  * and the first ~0.27 s of the UI go by under it (the UI's LEDs from its end, or at once on a key or a button down).
- * Every LEDS setting: it is no idle glow; with DIM HI / DIM LO it ends on that glow (and is drawn over that glow
- * level), with OFF / INV dark. Not with MENU > ANIM OFF (no motion: the LEDs as the UI has them at once), not after a crash (a crash record newer than the last boot saw: the crash screen's
+ * Every LEDS setting: it is no idle glow; with MEDIUM / LOW it ends on that glow (and is drawn over that glow
+ * level), with OFF / MAX dark. Not with MENU > ANIM OFF (no motion: the LEDs as the UI has them at once), not after a crash (a crash record newer than the last boot saw: the crash screen's
  * reset), a hang (a WDT reset) or a failed boot (bootguard: the last one died within its first 30 s): straight to the
  * UI. The UBOOT paths never get here. */
 static uint32_t crash_seen __attribute__((section(".noinit")));   /* fm1_crash.count at the last boot */
@@ -159,6 +159,7 @@ static void fm1_main(void)
     }
     felucca_dbg.boots++;
     felucca_dbg.max_us = 0;
+    felucca_dbg.erase_max_us = felucca_dbg.erase_last_us = felucca_dbg.prog_max_us = felucca_dbg.erases = 0;   /* (0.2.11: since this boot) */
     felucca_dbg.in_audio = 0;                       /* .noinit: a reset inside the audio ISR left it set, and
                                                        TIMER5 would treat every tick as nested (no USB poll) */
     felucca_dbg.prev_stage = felucca_dbg.stage;     /* a WDT reset leaves the last breadcrumb here */
@@ -269,6 +270,8 @@ static void fm1_main(void)
         felucca_dbg.home = ui.home;
         felucca_dbg.stage = 1;
         ui_input();
+        wave_service();                               /* DUELL WAVE: a frame of a table build, if one waits (eng_wave.c) */
+        vcap_poll();                                  /* DUELL 0.2.11: the parts' VOICE CAP (voice.c) */
         settings_poll();                              /* queued settings save: only while stopped */
         autosave_poll();                              /* (1.2) the music, stopped and idle: project.c */
         felucca_dbg.stage = 2;
@@ -277,6 +280,7 @@ static void fm1_main(void)
         felucca_dbg.stage = 9;
         while (fm1_ms - m < 15u) {                               /* ~60 UI frames/s at most */
             ui_input();
+            wave_service();                     /* (the table builds use the wait: ~0.3 ms a frame) */
 #if FELUCCA_OTA
             ed_service();                       /* editor replies without waiting for the next frame */
 #endif

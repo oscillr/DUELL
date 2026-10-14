@@ -19,6 +19,7 @@ struct felucca_dbg {
     uint32_t last_us, cpu_q8, boots;
     uint32_t stage, page, home;           /* where the main loop is (breadcrumbs) */
     uint32_t prev_stage, prev_page, prev_home, prev_rst, prev_frames;   /* as found at boot */
+    uint32_t erase_max_us, erase_last_us, prog_max_us, erases;   /* DUELL 0.2.11: the flash driver's own times (storage_hw.c), since boot */
 } felucca_dbg __attribute__((section(".noinit")));
 static volatile uint32_t audio_halves, audio_max_us;
 static volatile uint32_t t5_nested_ticks;              /* TIMER4 ticks TIMER5 spent nested in this ISR (main.c) */
@@ -50,7 +51,7 @@ static void audio_block(int32_t *out, uint32_t n)       /* mix (fx.c), then Q15 
 #if FELUCCA_UAC
     uac_tap(out, n);                                    /* the USB audio input: the same master output */
 #endif
-    if (fx_usb_fixed)                                   /* USB LEVEL FIXED: USB took the full level, the DAC */
+    if (fx_usb_fixed)                                   /* USB LEVEL FIXED: USB took the default-MASTER level, the DAC */
         usb_fixed_dac(out, n);                          /* (speaker, headphones) gets MASTER's (fx.c) */
     if (!scope_mix)                                     /* the HOME scope (SCOPE OUT): the music, before the click */
         for (i = 1; i < n; i += 2u)                     /* (MIX: fx.c mix_block took it) */
@@ -62,12 +63,57 @@ static void audio_block(int32_t *out, uint32_t n)       /* mix (fx.c), then Q15 
     }
 }
 
+/* DUELL 0.2.11, the flash duck (SPEC 6.3): a flash erase keeps the interrupts off for its whole time (~40 ms; the device's own
+ * figure: felucca_dbg.erase_max_us, the TEST screen), and the DMA loops abuf meanwhile, so the buffer must hold silence. Before
+ * an erase (and a long program burst) the main loop asks for a duck (audio_duck): the ISR fades the DAC output to 0 over one half
+ * (2.9 ms, linear), then renders on in silence (voices, envelopes and effects run as ever: what sounded keeps sounding after) and
+ * counts the silent halves; after two, both halves of abuf are 0 and the erase may stop the interrupts. audio_unduck: the next
+ * half fades back in over one half. A soft dip instead of the old step to silence and back (two clicks). USB (uac_tap) is not ducked */
+#define DUCK_STEP (32768u / HALF_FRAMES)               /* Q15 a frame: 1 .. 0 over one half */
+static volatile uint8_t duck_on;                       /* main loop: 1 fade out and stay silent, 0 fade back in */
+static volatile uint8_t duck_zero;                     /* ISR: whole silent halves since the fade ended (up to 2: all of abuf) */
+static uint32_t duck_g = 32768u;                       /* ISR: the gain, Q15 */
+static __attribute__((noinline)) void duck_half(int32_t *o)   /* the half just rendered (24 bit) */
+{
+    uint32_t i, g0 = duck_g;
+    for (i = 0; i < 2u * HALF_FRAMES; i += 2u) {
+        if (duck_on)
+            duck_g = duck_g > DUCK_STEP ? duck_g - DUCK_STEP : 0u;
+        else
+            duck_g = duck_g + DUCK_STEP < 32768u ? duck_g + DUCK_STEP : 32768u;
+        o[i] = (int32_t)((int64_t)o[i] * duck_g >> 15);
+        o[i + 1u] = (int32_t)((int64_t)o[i + 1u] * duck_g >> 15);
+    }
+    if (!duck_on)
+        duck_zero = 0;
+    else if (!g0 && duck_zero < 2u)
+        duck_zero++;
+}
+#ifndef AUDIO_DUCK_IDLE
+#define AUDIO_DUCK_IDLE() ((void)0)                    /* (host tests: their simulated ISR runs here) */
+#endif
+#define DUCK_WAIT_TICKS (20000u * FM1_TICKS_PER_US)    /* 20 ms at most (the audio not running yet, the IRQs off: go on as before) */
+static void audio_duck(void)                           /* main loop: fade out, wait until both halves of abuf are silent */
+{
+    uint32_t t0 = fm1_ticks();
+    duck_on = 1;
+    while (duck_zero < 2u && audio_halves && fm1_ticks() - t0 < DUCK_WAIT_TICKS)
+        AUDIO_DUCK_IDLE();
+}
+static void audio_unduck(void) { duck_on = 0; }       /* the next half fades back in */
+
 /* Overload: two halves in a row above 85 % (the render plus TIMER5 nested in it), fade one voice over the
  * next block, and one more each half while it lasts. Keep each part's
- * lowest POLY note and MONO / LEGATO / UNISON lead, as the shared budget does. */
+ * lowest POLY note and MONO / LEGATO / UNISON lead, as the shared budget does.
+ * DUELL 0.2.11 (SPEC 6.3): a single half over 100 % (it missed) sheds at once, without waiting for a second one: the
+ * SHED_FAST_N oldest released voices (their tails) fade over the next block; held notes only by the rule above */
+#define SHED_HELD 1u                                   /* shed_req bits: the 85 % rule (shed_voice) */
+#define SHED_FAST 2u                                   /* .. a half over 100 %: released voices at once (shed_released) */
+#define SHED_FAST_N 2u
 static volatile uint8_t shed_req;
 static uint8_t shed_over;                              /* bit k: the half k halves ago was over 85 % */
 #define SHED_TICKS ((HALF_FRAMES * 1000000u / FS) * 85u / 100u * FM1_TICKS_PER_US)   /* 85 % of a half */
+#define SHED_FULL_TICKS ((HALF_FRAMES * 1000000u / FS) * FM1_TICKS_PER_US)                 /* the whole half */
 static uint32_t shed_count;
 
 /* end of a half: all = its ticks, TIMER5 nested in it included -> the render alone in us. The deadline sees
@@ -76,8 +122,29 @@ static __attribute__((noinline)) uint32_t shed_check(uint32_t all)
 {
     shed_over = (uint8_t)(shed_over << 1 | (all > SHED_TICKS));
     if ((shed_over & 3u) == 3u)
-        shed_req = 1;
+        shed_req |= SHED_HELD;
+    if (all > SHED_FULL_TICKS)
+        shed_req |= SHED_FAST;
     return (all - t5_nested_ticks) / FM1_TICKS_PER_US;
+}
+
+static uint32_t shed_released(uint32_t n)             /* the n oldest released voices fade out; returns how many */
+{
+    uint32_t p, i, k;
+    for (k = 0; k < n; k++) {
+        voice_t *best = 0;
+        for (p = 0; p < NPART; p++)
+            for (i = 0; i < NVOICE; i++) {
+                voice_t *v = &trk[p].v[i];
+                if (v->active && !v->gate && v->stage != 4u && (!best || v->age < best->age))
+                    best = v;
+            }
+        if (!best)
+            break;
+        voice_kill(best);
+        shed_count++;
+    }
+    return k;
 }
 
 static void shed_voice(void)
@@ -126,8 +193,10 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
         uint32_t half = fm1_audio_free_half(), b, us, late;
         int32_t *o = &abuf[half * HALF_WORDS];
         if (shed_req) {
+            uint32_t r = shed_req;
             shed_req = 0;
-            shed_voice();
+            if (!((r & SHED_FAST) && shed_released(SHED_FAST_N)) && (r & SHED_HELD))
+                shed_voice();
         }
 #if FELUCCA_UAC
         uac_render_start();
@@ -138,6 +207,8 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
 #endif
             audio_block(o + 2u * b, CTL);
         }
+        if (duck_on || duck_g < 32768u)                 /* (the flash duck: only around a flash write) */
+            duck_half(o);
         fm1_audio_ack_half();
         audio_halves++;
         us = shed_check(fm1_ticks() - t0);

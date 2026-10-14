@@ -51,34 +51,48 @@
  * follows FM1_LED_DIM_NS (one bit up or down a tick: the widths straddle the target by a bit's time). Only
  * if the whole shift were shorter than the pulse would the rest be waited (console `inp`: dim_pulse_ns,
  * dim_bits). An LED in both is fully lit. FM1_LED_DIM_DIV > 1 also skips frames (keep >= 200 Hz).
- * Two glows (MENU > LEDS): fm1_led_dim_level(0) FM1_LED_DIM_NS (DIM HI, the default), (1) FM1_LED_DIM_LO_NS
- * (DIM LO, ~1/60). The tick reads the target from fm1__dim_t (TIMER4 ticks, set here only, never divided):
+ * The glow (0.2.5: one minimum, ~1/60, for every mode; the LEVEL TABLE above): fm1_led_dim_level(0) FM1_LED_DIM_NS,
+ * (1) FM1_LED_DIM_LO_NS (LOW; both 1600 ns now, the breath's peak and the mid N differ). The tick reads the target from fm1__dim_t (TIMER4 ticks, set here only, never divided):
  * both are shorter than the shift (~3-5 us measured, dim_pulse_ns 3125 at 14 of 16 bits), so neither waits.
  * Levels: a column has one pulse, so per LED there are three: dark, the glow, lit; the pulse cannot grow towards
  * lit without a wait in the ISR (~95 us). But a second set can end inside the pulse, and a frame can be lit or
  * not: a breath (#119). fm1_led_breath[col] breathe, dark .. ~60 % of lit and back, all in step
  * (FM1_LED_BREATH_FRAMES ~1.1 s). The frame's level B (of a lit LED, /65536) is a smoothstep squared x the peak
- * (FM1_LED_BREATH_PK, /256; DIM LO FM1_LED_BREATH_PK_LO ~30 %: fm1_led_dim_level sets both). Two ranges, one curve:
- *   B <= the glow G (the pulse's share of a lit frame, FM1_LED_DIM_NS / FM1_LED_TICK_US, ~1/31): lit with the
+ * (FM1_LED_BREATH_PK, /256; LOW FM1_LED_BREATH_PK_LO ~30 %: fm1_led_dim_level sets both). Two ranges, one curve:
+ *   B <= the glow G (the pulse's share of a lit frame, FM1_LED_DIM_NS / FM1_LED_TICK_US, ~1/60): lit with the
  *     pulse and dark again after the first kb of its k bits (one more line write in the shift), kb = k x B / G,
  *     dithered over 8 frames to 1/8 bit (~114 Hz, a ripple of one bit, ~1/400 of lit);
  *   B > G: whole frames lit as a lit LED (its tick and its pulse), the others the full glow; which ones a first
  *     order sigma-delta picks (one accumulator for all, lit share s = (B - G) / (1 - G)): the lit frames as evenly
  *     spread as can be, a dark run between two at most ~1 / s frames (input_test: at the peak 1 frame; over half
  *     the peak <= 3 frames, ~300 Hz and up; over a quarter <= 8, ~100 Hz). Only the bottom of the range, just over
- *     the glow (s < ~0.1, ~0.1 s of each fade, ~0.15 s with DIM LO), is slower than ~100 Hz: a lit frame every
+ *     the glow (s < ~0.1, ~0.1 s of each fade, ~0.15 s with LOW), is slower than ~100 Hz: a lit frame every
  *     10..40 frames over the glow. No finer step exists without a wait: a frame of a column is lit or not.
  * Both from constants: no division in the ISR. While any LED breathes every pulse has that write (the same width
  * on every column; fm1__dim_k measures it with the rest); with none the tick is as before (the same writes). A
  * breath starting from none starts at its peak (shown at once). An LED lit or in the glow does not breathe.
  * Cost: the level once a frame (11 bytes ORed, a few multiplies, an add), a multiply and one line write a pulse,
  * an AND / OR on the two lit writes.
- * A steady mid level (1.1, the DRUM grid's beats): fm1_led_mid[col] are lit as a lit LED on 1 frame in N, in step
+ * A steady mid level (1.1, the DRUM grid's beats; 0.2.5 also LEDS MEDIUM's idle LEDs, lit 1 frame in 4): fm1_led_mid[col] are lit as a lit LED on 1 frame in N, in step
  * (fm1__mid_ph, counted when column 0 comes round), and are dark in the others unless also in fm1_led_dim (the glow
- * then: the caller sets both, ui_input.c ui_leds). N = FM1_LED_MID_N (8: ~12.5 % + the glow ~3 %, a lit frame every
- * ~8.8 ms, ~114 Hz) or with DIM LO FM1_LED_MID_N_LO (12: ~8 % + ~1.6 %, ~76 Hz); fm1_led_dim_level sets it. No breath,
+ * then: the caller sets both, ui_input.c ui_leds). N = FM1_LED_MID_N (4: 25 %, the idle LEDs of MEDIUM, no glow under
+ * them, ~227 Hz) or with LOW FM1_LED_MID_N_LO (12: ~8 % + ~1.7 %, ~76 Hz, the DRUM beats); fm1_led_dim_level sets it. No breath,
  * no sigma-delta: a fixed frame count, the same frames for every column. An LED lit does not need it; one breathing
  * and mid is lit on the mid frames as well.
+ * A steady high level (0.2.5, the DRUM beats with LEDS MEDIUM): fm1_led_hi[col] are lit as a lit
+ * LED on FM1_LED_HI_ON frames of every FM1_LED_HI_OF (1 of 2; fm1__hi_ph, counted with the mid phase), dark on the rest and no
+ * glow under it: ~50 % of lit (~455 Hz, a dark run of one frame, no flicker). No breath.
+ * The keyboard's levels (0.2.9 rev. 2, owner: MENU > LEDS is one brightness for everything, the keys too; the root must
+ * stand out): four sets, each lit on whole frames by its own first order sigma-delta of a level /FM1_LED_KL_FULL (240:
+ * every N of 2, 3, 4, 5, 6, 8, 10, 12 exact), dark on the rest, no glow under them: fm1_led_kout[col] (the keys out of the
+ * scale with OFF-SCALE PLAY, where a mode lights them on frames), fm1_led_scl[col] (the scale's keys), fm1_led_root[col]
+ * (the root's keys, STEADY), fm1_led_ktop[col] (a key held or sounding: it PULSES). The levels come
+ * from the UI, per LEDS mode (fm1_led_key_levels; the table: ui_input.c KEY_LV). The lit frames as evenly spread as can
+ * be: a dark run at most ~FULL / level frames (1/10: 9 frames, ~91 Hz; 1/4: 3). The root's keys are steady (0.2.11, owner: no
+ * pulse on the root). The keys held or sounding pulse (0.2.11): their level goes from the peak (the "held" level) down to the
+ * trough (fm1_led_key_levels' 5th level) and back, ~0.9 Hz (FM1_LED_PULSE_FRAMES ~1.13 s by default, or the notes' beat: fm1_led_pulse; the breath's smoothstep of a
+ * triangle); one starting from none starts at the peak (fm1__pu_ph 0).
+ * fm1__keys_frame once a frame (with the mid phase): 11 bytes ORed, the dip's multiplies, four adds and compares.
  * The power-on sweep (1.1, hal/fm1_led_anim.h: a light running over the keys, then the buttons): a level per LED,
  * 0..64 /64 of lit, as whole lit frames, each LED its own first order sigma-delta (lit when its sum passes 64: the
  * lit frames as evenly spread as can be, a dark run at most 64 / level frames, <= 16 (~18 ms, ~57 Hz) from the
@@ -108,28 +122,55 @@
 #define FM1_DEB_RELEASE 8u        /* frames open in a row: a release (~9 ms) */
 #define FM1_INPUT_LAT 1           /* the press latency stats below (seq.c, console `inp`) */
 #define FM1_SETTLE_US 10u
+/* ---- THE LED LEVELS: tune the brightness here (ONE table; each level is a share of a fully lit LED, lit = 100 %) ----
+ *   level               constant(s)                     duty (idle)
+ *   dark                                                0
+ *   LOW (the minimum)   FM1_LED_DIM_NS / _DIM_LO_NS     a pulse of 1.6 us in a ~95 us lit frame: ~1/60 = ~1.7 %
+ *                       (the glow of the LOW idle LEDs, the OFF-SCALE PLAY keys of the scale display, and under a breath)
+ *   MEDIUM              FM1_LED_MID_N                   lit 1 frame in 4 = 25 %   (the idle LEDs of LEDS MEDIUM)
+ *   beats / LOW's beats FM1_LED_MID_N_LO                lit 1 frame in 12 = ~8 % over the glow (the DRUM grid, LEDS LOW)
+ *   the keyboard        fm1_led_key_levels (ui_input.c KEY_LV, per LEDS mode, /240 of lit): the keys out of the scale
+ *                       (PLAY), the scale's keys, the root's (steady), a held key (pulsing peak..trough)
+ *                         mode     out (PLAY)   scale         root (steady)   played: peak .. trough
+ *                         OFF      the glow     1/4   25 %    lit 100 %       100 % .. 70 %
+ *                         LOW      the glow     1/6   17 %    1/2  50 %       50 % .. 35 %
+ *                         MEDIUM   the glow     1/2   50 %    lit 100 %       100 % .. 70 %
+ *                         MAX      1/8  12.5 %  7/10  70 %    lit 100 %       25 % .. dark (MAX: the active dark)
+ *                       (the keys out of the scale with SNAP: dark in every mode)
+ *   high                FM1_LED_HI_ON of FM1_LED_HI_OF  lit 1 frame in 2 = ~50 %  (the DRUM beats, MEDIUM)
+ *   lit (MAX idle, a held key)                          100 %
+ *   breath peak         FM1_LED_BREATH_PK / _PK_LO      ~60 % (MEDIUM, OFF, MAX), ~30 % (LOW)
+ * A level above is either a pulse (the glow) or a number of whole frames lit of a cycle (cycle length: its N or OF). */
 #ifndef FM1_LED_DIM_NS
-#define FM1_LED_DIM_NS 3200u      /* a dim LED's pulse per frame (ns; a lit one ~95 us): ~1/30 the brightness */
+#define FM1_LED_DIM_NS 1600u      /* the glow's pulse per frame (ns; a lit one ~95 us): ~1/60, the minimum level */
 #endif
 #ifndef FM1_LED_DIM_LO_NS
-#define FM1_LED_DIM_LO_NS 1600u   /* the darker glow (MENU > LEDS DIM LO): ~1/60 */
+#define FM1_LED_DIM_LO_NS 1600u   /* the same minimum for LEDS LOW (kept apart: a different glow could be set for it) */
 #endif
 #ifndef FM1_LED_DIM_DIV
 #define FM1_LED_DIM_DIV 1u        /* a dim LED: the pulse on 1 frame in DIV (1: every frame, ~910 Hz) */
 #endif
 #define FM1_LED_BREATH_FRAMES 1024u   /* a breath: frames dark -> the peak -> dark (~1.13 s; a power of 2) */
 #ifndef FM1_LED_BREATH_PK
-#define FM1_LED_BREATH_PK 154u        /* the breath's peak, /256 of lit: ~60 % (DIM HI, OFF, INV) */
+#define FM1_LED_BREATH_PK 154u        /* the breath's peak, /256 of lit: ~60 % (MEDIUM, OFF, MAX) */
 #endif
 #ifndef FM1_LED_BREATH_PK_LO
-#define FM1_LED_BREATH_PK_LO 77u      /* with DIM LO: ~30 % */
+#define FM1_LED_BREATH_PK_LO 77u      /* with LOW: ~30 % */
 #endif
 #ifndef FM1_LED_MID_N
-#define FM1_LED_MID_N 8u              /* the steady mid level: lit 1 frame in N (DIM HI, OFF, INV) */
+#define FM1_LED_MID_N 4u              /* the steady mid level, lit 1 frame in N: MEDIUM's idle LEDs (25 %) */
 #endif
 #ifndef FM1_LED_MID_N_LO
-#define FM1_LED_MID_N_LO 12u          /* with DIM LO */
+#define FM1_LED_MID_N_LO 12u          /* with LOW: the DRUM grid's beats (over the glow) */
 #endif
+#ifndef FM1_LED_HI_ON
+#define FM1_LED_HI_ON 1u              /* the high level: lit this many frames ... */
+#endif
+#ifndef FM1_LED_HI_OF
+#define FM1_LED_HI_OF 2u              /* ... of every this many (1 of 2, ~50 %) */
+#endif
+#define FM1_LED_KL_FULL 240u          /* the keyboard's levels (fm1_led_key_levels): /240 of lit (240: lit every frame) */
+#define FM1_LED_PULSE_FRAMES 1024u    /* the played keys' pulse: frames peak -> trough -> peak (~1.13 s, ~0.9 Hz; a power of 2) */
 #ifndef FM1_LED_TICK_US
 #define FM1_LED_TICK_US 100u          /* fm1_input_tick's period (TIMER5, 10 kHz): a lit LED's time a frame */
 #endif
@@ -183,6 +224,11 @@ static uint8_t fm1_led[FM1_NCOL];
 static uint8_t fm1_led_dim[FM1_NCOL];
 static uint8_t fm1_led_breath[FM1_NCOL];   /* breathing LEDs (see top): dark .. ~60 % of lit, in step */
 static uint8_t fm1_led_mid[FM1_NCOL];      /* a steady mid level (see top): lit 1 frame in FM1_LED_MID_N */
+static uint8_t fm1_led_hi[FM1_NCOL];       /* a steady high level (see top): lit 1 frame in 2, ~50 % of lit */
+static uint8_t fm1_led_kout[FM1_NCOL];     /* the keyboard (see top): the keys out of the scale (PLAY), at their level */
+static uint8_t fm1_led_scl[FM1_NCOL];      /* .. the scale's keys, at theirs */
+static uint8_t fm1_led_root[FM1_NCOL];     /* .. the scale's root keys, at theirs, steady (0.2.11: no pulse on the root) */
+static uint8_t fm1_led_ktop[FM1_NCOL];     /* .. a key held or sounding: pulses peak..trough at ~0.9 Hz (0.2.11) */
 
 /* scan diagnostics (console `inp`, read and cleared by the main loop): the gap between ticks
  * = the on-time of the column lit in it, in TIMER4 ticks (24 MHz) */
@@ -406,7 +452,13 @@ static uint16_t fm1__dim_t = FM1__DIM_T(FM1_LED_DIM_NS);   /* the pulse the tick
 #define FM1__BR(pk, ns) {(pk), FM1__BR_G(ns), (1u << 24) / FM1__BR_G(ns), (1u << 30) / (65536u - FM1__BR_G(ns))}
 static const uint32_t FM1__BR_K[2][4] = {FM1__BR(FM1_LED_BREATH_PK, FM1_LED_DIM_NS),
                                          FM1__BR(FM1_LED_BREATH_PK_LO, FM1_LED_DIM_LO_NS)};
-static uint8_t fm1__br_sel;                       /* FM1__BR_K[it]: 0 DIM HI (OFF, INV), 1 DIM LO */
+static uint8_t fm1__br_sel;                       /* FM1__BR_K[it]: 0 MEDIUM (OFF, MAX), 1 LOW */
+static uint8_t fm1__hi_ph;                        /* the high level: lit while this frame's phase (0..OF-1) is below ON */
+static uint8_t fm1__kl[5] = {0u, 120u, FM1_LED_KL_FULL, FM1_LED_KL_FULL, 168u};   /* the keyboard's levels /240: out, scale, root, played peak, trough (MEDIUM's) */
+static uint8_t fm1__ka[4];                        /* .. their sigma-delta sums */
+static uint8_t fm1__kon;                          /* .. this frame lit: bit 0 out, 1 scale, 2 root, 3 held */
+static uint16_t fm1__pu_per = FM1_LED_PULSE_FRAMES;   /* .. its period in frames (default ~1.13 s; fm1_led_pulse) */
+static uint16_t fm1__pu_ph;                       /* the played keys' pulse: frames into it (0: at the peak) */
 static uint8_t fm1__mid_n = FM1_LED_MID_N, fm1__mid_ph;   /* the mid level: 1 frame lit in fm1__mid_n; this frame's */
 /* the glow (main loop, any time; fm1__dim_k follows it in a few frames): 0 FM1_LED_DIM_NS, 1 FM1_LED_DIM_LO_NS;
  * and the breath's peak with it: 0 FM1_LED_BREATH_PK, 1 FM1_LED_BREATH_PK_LO */
@@ -416,9 +468,70 @@ static void fm1_led_dim_level(uint32_t lo)
     fm1__br_sel = lo != 0u;
     fm1__mid_n = (uint8_t)(lo ? FM1_LED_MID_N_LO : FM1_LED_MID_N);
 }
-/* column c's lit lines this frame: lit, a breath's lit frame (not dim), the mid level's lit frame */
+/* the keyboard's levels (main loop, any time; see top): out of the scale (PLAY), the scale's keys, the root's (steady), a key
+ * held or sounding: its peak and its trough (the pulse between them; MAX: dim and dark); each /FM1_LED_KL_FULL, 0 never lit */
+static void fm1_led_key_levels(uint32_t out, uint32_t scl, uint32_t root, uint32_t top, uint32_t low)
+{
+    fm1__kl[4] = (uint8_t)(low < FM1_LED_KL_FULL ? low : FM1_LED_KL_FULL);
+    fm1__kl[0] = (uint8_t)(out < FM1_LED_KL_FULL ? out : FM1_LED_KL_FULL);
+    fm1__kl[1] = (uint8_t)(scl < FM1_LED_KL_FULL ? scl : FM1_LED_KL_FULL);
+    fm1__kl[2] = (uint8_t)(root < FM1_LED_KL_FULL ? root : FM1_LED_KL_FULL);
+    fm1__kl[3] = (uint8_t)(top < FM1_LED_KL_FULL ? top : FM1_LED_KL_FULL);
+}
+/* the played keys' pulse follows the notes (0.2.11, main loop, any time): ms = its period (0: the default, free-running, ~1.13 s;
+ * else clamped to 150..2000 ms), phase16 = where the notes are in it, 0..65535 (0 = a note starts: the peak), or 0xFFFFFFFF to
+ * run free. The pulse is set to the phase only when it is more than 1/16 of a period off (the UI calls this ~60 times a second) */
+#define FM1_LED_FRAME_HZ (1000000u / (FM1_NCOL * FM1_LED_TICK_US))
+static void fm1_led_pulse(uint32_t ms, uint32_t phase16)
+{
+    uint32_t per, want, ph, err;
+    if (!ms) {
+        fm1__pu_per = FM1_LED_PULSE_FRAMES;
+        return;
+    }
+    ms = ms < 150u ? 150u : ms > 2000u ? 2000u : ms;
+    per = ms * FM1_LED_FRAME_HZ / 1000u;
+    fm1__pu_per = (uint16_t)(per < 2u ? 2u : per);
+    if (phase16 > 0xFFFFu)
+        return;
+    want = phase16 * per >> 16;
+    ph = fm1__pu_ph;
+    err = ph > want ? ph - want : want - ph;
+    err = err > per / 2u ? per - err : err;
+    if (err > per / 16u)
+        fm1__pu_ph = (uint16_t)want;
+}
+/* the keyboard's sets this frame (a new frame, before column 0 lights): the played keys' pulse, then each set's sigma-delta */
+static void fm1__keys_frame(void)
+{
+    uint32_t c, any = 0, x, i, lv, on = 0;
+    for (c = 0; c < FM1_NCOL; c++)
+        any |= fm1_led_ktop[c];
+    x = any ? fm1__pu_ph + 1u : 0u;
+    if (x >= fm1__pu_per)
+        x = 0;   /* (none: the next pulse starts at the peak) */
+    fm1__pu_ph = (uint16_t)x;
+    x = x * 512u / fm1__pu_per;                    /* 0..511 */
+    x = x & 256u ? 511u - x : x;                   /* a triangle 0..255 */
+    x = x * x * (768u - 2u * x) >> 16;             /* smoothstep, 0..255 */
+    for (i = 0; i < 4u; i++) {
+        lv = fm1__kl[i];
+        if (i == 3u)
+            lv -= (lv - fm1__kl[4]) * x >> 8;     /* a played key: the peak less the way down to the trough (0..255 /256) */
+        lv += fm1__ka[i];
+        if (lv >= FM1_LED_KL_FULL) {
+            lv -= FM1_LED_KL_FULL;
+            on |= 1u << i;
+        }
+        fm1__ka[i] = (uint8_t)lv;
+    }
+    fm1__kon = (uint8_t)on;
+}
+/* column c's lit lines this frame: lit, a breath's lit frame (not dim), the mid and high levels' lit frames, the keyboard's sets' */
 #define FM1__LIT(c) (fm1_led[c] | (fm1__br_lit ? fm1_led_breath[c] & ~fm1_led_dim[c] : 0u) | \
-                     (!fm1__mid_ph ? fm1_led_mid[c] : 0u))
+                     (!fm1__mid_ph ? fm1_led_mid[c] : 0u) | (fm1__hi_ph < FM1_LED_HI_ON ? fm1_led_hi[c] : 0u) | \
+                     (fm1__kon & 1u ? fm1_led_kout[c] : 0u) | (fm1__kon & 2u ? fm1_led_scl[c] : 0u) | \
+                     (fm1__kon & 4u ? fm1_led_root[c] : 0u) | (fm1__kon & 8u ? fm1_led_ktop[c] : 0u))
 #if FM1_LED_DIM_DIV > 1
 static uint8_t fm1__dim_ph;
 #endif
@@ -494,7 +607,7 @@ static __attribute__((noinline)) void fm1__anim_frame(void)
                                                                                    * the UI to take over) */
     fm1__led_lines(FM1__LIT(0u));                  /* column 0, lit a moment ago with the last frame's: this one's */
 }
-/* start the sweep (main loop, before the scan runs or with it): `glow` the idle glow is on (MENU > LEDS DIM HI / LO);
+/* start the sweep (main loop, before the scan runs or with it): `glow` the idle glow is on (MENU > LEDS MEDIUM / LO);
  * idle: the idle animation (fm1_led_idle_start) */
 static void fm1__anim_begin(uint32_t glow, uint32_t idle)
 {
@@ -507,7 +620,8 @@ static void fm1__anim_begin(uint32_t glow, uint32_t idle)
     for (i = 0; i < FM1_NKEY; i++)
         fm1__an_acc[i] = FM1_ANIM_FULL / 2u;
     for (c = 0; c < FM1_NCOL; c++)
-        fm1_led[c] = fm1_led_dim[c] = fm1_led_breath[c] = fm1_led_mid[c] = 0;
+        fm1_led[c] = fm1_led_dim[c] = fm1_led_breath[c] = fm1_led_mid[c] = fm1_led_hi[c] = fm1_led_scl[c] = fm1_led_root[c] =
+            fm1_led_kout[c] = fm1_led_ktop[c] = 0;
     fm1__an_glow = glow != 0u;
     fm1__an_idle = idle != 0u;
     fm1__an_f = 1;
@@ -575,7 +689,11 @@ static void fm1_input_tick(void)
     fm1__sr_bits(w, k, 16u);
     fm1__sr_latch();                               /* column n, the lines dark */
     if (n == 0u)                                   /* (a new frame: the mid level's turn, before column 0 lights) */
+    {
         fm1__mid_ph = (uint8_t)(fm1__mid_ph + 1u >= fm1__mid_n ? 0u : fm1__mid_ph + 1u);
+        fm1__hi_ph = (uint8_t)(fm1__hi_ph + 1u >= FM1_LED_HI_OF ? 0u : fm1__hi_ph + 1u);
+        fm1__keys_frame();
+    }
     fm1__led_lines(FM1__LIT(n));
     fm1__tick_col = (uint8_t)n;
     fm1__keys(p);                                  /* its keys now: no wait for the frame's end */

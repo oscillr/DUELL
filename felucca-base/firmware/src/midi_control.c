@@ -266,8 +266,9 @@ static int midi_track_held(uint32_t track)
 /* The standard CC map (#103): always on, these CCs only, on the track the channel plays (ROUT as notes). A CC
  * sets its parameter as a knob would, 0..127 over the parameter's range (64: the middle of a bipolar one), and
  * AUTOMATION records it as a knob move (motion_capture: the selected track, armed and playing). CC74 / CC71 are
- * the engine's own cutoff / resonance (MIDI_CC_ENG); an engine without one ignores them. DUELL 0.2.2: on the engines with no filter
- * of their own (engine_t.ufilt) they are the universal filter's CUT (64 = the centre, OFF) and RES (MCC_UF). CC121 resets none
+ * the engine's own cutoff / resonance (MIDI_CC_ENG); an engine without one ignores them. On the engines with no filter
+ * of their own (engine_t.ufilt) they are the multimode filter's CUT and RES (MCC_UF; DUELL 0.2.9: CC74 0..127 over the whole CUT dial, 30 Hz
+ * .. the open end; 0.2.2's 64 = OFF is gone: a MIDI LEARN map on CUT spans the new dial the same way). CC121 resets none
  * of them (RP-015: they are the sound's) */
 #define MCC_CUT 0xFEu
 #define MCC_RES 0xFFu
@@ -276,15 +277,14 @@ static const uint8_t MIDI_CC_MAP[][2] = {
     {91, P_REV}, {93, P_CHOR}, {94, P_DLY},
 };
 /* per engine (ENGINES[] order): CC74's E index + 1 in the high nibble, CC71's in the low one, 0 = none; MCC_UF (0xFF): the engine's
- * universal filter, CC74 its CUT and CC71 its RES (DUELL 0.2.2) */
+ * multimode filter, CC74 its CUT and CC71 its RES (DUELL 0.2.2) */
 #define MCC_UF 0xFFu
 static const uint8_t MIDI_CC_ENG[NENGINES] = {
-    0x56, 0x00, MCC_UF, MCC_UF, 0x50, MCC_UF, 0x67, MCC_UF,   /* ANALOG CUT RES, -, PHASE UF, LOFI UF, SAMPLE CUT, VOICE UF,
+    0x56, 0x00, MCC_UF, MCC_UF, 0x00, MCC_UF, 0x67, MCC_UF,   /* ANALOG CUT RES, -, PHASE UF, LOFI UF, - (SAMPLE: retired), VOICE UF,
                                                        * TRIO CUT RES, WHEEL UF */
-    MCC_UF, MCC_UF, 0x30, 0x34, MCC_UF,               /* GRAIN UF, PHYS UF, DRUM TONE (hidden), NOISE FREQ RES, FM6 UF */
-#if FELUCCA_SLICE
-    MCC_UF,                                           /* SLICE UF */
-#endif
+    0x00, MCC_UF, 0x30, 0x34, MCC_UF,                 /* - (GRAIN: retired), PHYS UF, DRUM TONE (hidden), NOISE FREQ RES, FM6 UF */
+    0x00,                                             /* - (13, SLICE: retired in DUELL 0.2.9) */
+    MCC_UF,                                           /* WAVE UF (DUELL) */
 };
 /* a CC sets parameter id of track t as a knob would: 0..127 over its range */
 static void midi_cc_set(track_t *t, uint32_t id, uint32_t value)
@@ -357,14 +357,15 @@ static void __attribute__((noinline)) midi_cc_map(track_t *t, uint32_t cc, uint3
         e = MIDI_CC_ENG[eng_idx(t->eng_req)] >> (id == MCC_CUT ? 4 : 0) & 15u;
         if (!e)
             return;
-        id = e == 15u ? (id == MCC_CUT ? P_FREEA : P_FREEB) : P_E0 + e - 1u;   /* (15: the universal filter's CUT, RES) */
+        id = e == 15u ? (id == MCC_CUT ? P_FREEA : P_FREEB) : P_E0 + e - 1u;   /* (15: the multimode filter's CUT, RES) */
     }
     midi_cc_set(t, id, value);
 }
 
 /* DUELL 4b, SPEC 4.4 / 3.4a: the MORPH's CCs, on each part's channel (the part the channel plays, as its notes: ROUT
  * CH1-4 channel 1 part 1, channel 2 part 2, the hidden parts' channels ignored; SEL the selected part):
- *   CC 20 the fader 0..127; CC 25 AMOUNT 0..127 -> 0..100 %; CC 111 TARGET 0-42 PART 1, 43-85 PART 2, 86-127 BOTH (global);
+ *   CC 20 the fader 0..127; CC 25 AMOUNT 0..127 -> 0..100 %; CC 111 TARGET 0-42 PART 1, 43-85 PART 2, 86-127 BOTH (global; 0.2.9:
+ *   ALGORITHM's selector, ui_input.c algo_step: BOTH keeps the selected part as the edit target);
  *   CC 21 ROLL A, 22 ROLL B: a value >= 64 fires once; the channel's CC re-arms below 64. CC 23 UNDO: 1..63 undoes End A once,
  *   64..127 End B once (the knob's left / right), 0 re-arms. CC 24 (KEEP, removed in
  *   SPEC 3.5) is unassigned; CC 113 SMART, 114 ARP, 115 PITCH: 0-63 off, 64-127 on (global).
@@ -372,7 +373,7 @@ static void __attribute__((noinline)) midi_cc_map(track_t *t, uint32_t cc, uint3
  * morph_mask). None of these numbers is in the standard map (#103) or a MIDI-defined controller (20-31, 102-119 are
  * undefined in MIDI 1.0); MIDI LEARN can still take one (a learned CC is the user's, as for the standard map). Queued
  * for the main loop (morph.c morph_push: a roll is no work for the audio ISR).
- * The MOD WHEEL (CC1) moves the fader too, always (no switch: MORPH SET has no free knob), as CC 20 does (same queue, same
+ * The MOD WHEEL (CC1) moves the fader too, always (no switch), as CC 20 does (same queue, same
  * TARGET rules), while it stays the matrix's MODW source (mod.c mod_midi); in LAYER it moves both parts' faders */
 #define MQ_PART_ALL 0x7Fu                                  /* (morph_push's part: every shown part, ui_input.c morph_poll) */
 static uint8_t midi_morph_fired[16];                      /* bit k: CC 21 + k at or above 64 on the channel (fired) */

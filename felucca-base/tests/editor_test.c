@@ -2,8 +2,7 @@
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
 /* The firmware editor handler, USB framing and UART recovery against RAM flash.
  * Build with the generated tables and the same flags as hostsim.c. */
-static unsigned char host_samples[3][0x14000];
-#define SMP_USER_XIP(k) host_samples[k]
+static unsigned char host_samples[3][0x14000];   /* RAM flash at 0xA0000 (the user sample region until 0.2.9: nothing may write it now) */
 #define FELUCCA_OTA 1
 #define FELUCCA_FLASH 0
 #define FELUCCA_VERSION "TEST"
@@ -50,7 +49,7 @@ static void panel_setup(void) {}
 static uint32_t flash_ok = 1;
 static void audio_silence(void) {}
 static void fl_inval(uint32_t off, uint32_t n) { (void)off; (void)n; }
-static uint8_t *host_flash_ptr(uint32_t off) { return &host_samples[0][0] + off - SMP_USER_BASE; }
+static uint8_t *host_flash_ptr(uint32_t off) { return &host_samples[0][0] + off - 0xA0000u; }
 static int fl_erase4k(uint32_t off, uint32_t *took)
 {
     memset(host_flash_ptr(off), 0xFF, 4096); *took = 0; host_erases++; return 0;
@@ -76,7 +75,7 @@ static void reset(void)
     memset(&song, 0, sizeof song); memset(trk, 0, sizeof trk);
     memset(&ed_w, 0, sizeof ed_w); memset(&ui, 0, sizeof ui);
     memset(&favorites, 0, sizeof favorites); memset(&settings, 0, sizeof settings); settings_init();
-    memset(&um, 0, sizeof um); memset(usr_nz, 0, sizeof usr_nz);
+    memset(&um, 0, sizeof um);
     pt_boot();                                          /* (DUELL: the PATCH store empty again: no stored patch) */
     host_progress = 1; host_erases = host_writes = host_wire_n = 0;
     transport_req = panic_req = 0; sx_ready = sx_collect = sx_busy = 0;
@@ -180,7 +179,7 @@ static int preferences(void)
         host_wire[n - 30] == 0 &&                        /* (no bank since 1.0.3) */
         host_wire[n - 29] == 0x53 && host_wire[n - 28] == 1 && host_wire[n - 27] == 3 &&
         host_wire[n - 26] == 0x50 && host_wire[n - 25] == 1 && host_wire[n - 24] == 3 &&   /* FM6 v2: no bank, preset patches */
-        host_wire[n - 23] == 0x4E && host_wire[n - 22] == 1 && host_wire[n - 21] == 20 &&   /* MENU settings: 20 items (DUELL 0.2.2: STYLE, LARGE, FX LATCH, HELP retired too) */
+        host_wire[n - 23] == 0x4E && host_wire[n - 22] == 1 && host_wire[n - 21] == 22 &&   /* MENU settings: 22 items (DUELL 0.2.2: STYLE, LARGE, FX LATCH, HELP retired too; 0.2.9: CPU METER, id 26; 0.2.11: MODE RECALL, id 27) */
         host_wire[n - 20] == 0x52 && host_wire[n - 19] == 1 && host_wire[n - 18] == 4 &&   /* RATCH */
         host_wire[n - 17] == 0x4C && host_wire[n - 16] == 1 && host_wire[n - 15] == 1 &&   /* 1.1 parameter locks */
         host_wire[n - 14] == 0x41 && host_wire[n - 13] == 1 && host_wire[n - 12] == 0 && host_wire[n - 11] == 1 &&   /* 1.2: 128 */
@@ -362,46 +361,36 @@ static int steps(void)
     return bad;
 }
 
+/* DUELL 0.2.9: no user sample slots (the sample engines are retired). The commands keep their numbers and reply shapes and never
+ * touch flash or the transport: BEGIN / WRITE / END rc 6 (unsupported), ERASE rc 0 (nothing to erase), INFO no slots */
 static int samples(void)
 {
-    uint8_t a[640] = {0}, data[257], short_group[] = {0, 0, 4, 0, 1};
+    uint8_t a[640] = {0}, data[256];
     uint32_t n, i;
     int bad = 0;
-    smp_user_hdr_t h;
     reset(); memset(host_samples, 0, sizeof host_samples);
     for (i = 0; i < sizeof data; i++) data[i] = (uint8_t)(i * 37u);
-    song.playing = 1; host_progress = 0;
-    bad += check("sample erase waits for STOP and refuses a stalled audio ISR",
-                 request(ED_SMP_BEGIN, a, 1) == 8u && host_wire[6] != 0 && !host_erases && song.playing);
-    host_progress = 1;
-    bad += check("sample erase stops transport before touching flash",
-                 request(ED_SMP_BEGIN, a, 1) == 8u && !host_wire[6] && host_erases == 1 && !song.playing);
-    a[0] = 0; a[1] = 0; a[2] = 4; a[3] = 0;
-    n = pack7(data, 257, a + 4) + 4u;
-    bad += check("257 decoded sample bytes are rejected without a truncated write",
-                 request(ED_SMP_WRITE, a, n) == 11u && host_wire[9] == 1 && !host_writes);
-    bad += check("a dangling packed-data mask is rejected",
-                 request(ED_SMP_WRITE, short_group, sizeof short_group) == 11u && host_wire[9] == 1 && !host_writes);
+    song.playing = 1;
+    bad += check("SMP_BEGIN: rc 6 (unsupported), no erase, the transport left alone",
+                 request(ED_SMP_BEGIN, a, 1) == 8u && host_wire[5] == 0 && host_wire[6] == 6 && !host_erases && song.playing);
+    a[0] = 1; a[1] = 0; a[2] = 4; a[3] = 0;
     n = pack7(data, 256, a + 4) + 4u;
-    transport_req = 1;
-    bad += check("sample writes cancel a pending PLAY before flash access",
-                 request(ED_SMP_WRITE, a, n) == 11u && !host_wire[9] && transport_req != 1u && host_writes == 1);
-    memset(&h, 0, sizeof h); h.magic = SMP_USER_MAGIC; h.version = 1; h.nz = 1;
-    h.data_len = 256; h.crc = st_crc32(data, 256); h.zone[0].n = 512; h.zone[0].le = 511;
-    h.zone[0].rate = 65536; h.zone[0].hi = 127;
-    a[0] = 0; n = pack7((const uint8_t *)&h, sizeof h, a + 1) + 1u;
-    a[n] = 0; a[n + 1u] = 0;
-    bad += check("an oversized sample header is rejected without programming flash",
-                 request(ED_SMP_END, a, n + 2u) == 8u && host_wire[6] == 1 && host_writes == 1);
-    bad += check("complete sample header and CRC publish a valid slot",
-                 request(ED_SMP_END, a, n) == 8u && !host_wire[6] && usr_nz[0] == 1 && host_writes == 2);
-    bad += check("repeated END of the same published header does not rewrite live zones",
-                 request(ED_SMP_END, a, n) == 8u && !host_wire[6] && host_writes == 2);
-    h.zone[0].rate = 131072;
-    n = pack7((const uint8_t *)&h, sizeof h, a + 1) + 1u;
-    bad += check("END cannot change published sample zones without BEGIN",
-                 request(ED_SMP_END, a, n) == 8u && host_wire[6] == 2 && host_writes == 2 &&
-                 usr_zone[0][0].rate == 65536u);
+    bad += check("SMP_WRITE: rc 6, the offset echoed, nothing written",
+                 request(ED_SMP_WRITE, a, n) == 11u && host_wire[5] == 1 && host_wire[7] == 4 && host_wire[9] == 6 && !host_writes &&
+                 song.playing);
+    a[0] = 0; n = pack7(data, 200, a + 1) + 1u;
+    bad += check("SMP_END: rc 6, nothing written", request(ED_SMP_END, a, n) == 8u && host_wire[6] == 6 && !host_writes);
+    a[0] = 2;
+    bad += check("SMP_ERASE (an archive's empty slot, USR3 too): rc 0, nothing erased",
+                 request(ED_SMP_ERASE, a, 1) == 8u && host_wire[5] == 2 && host_wire[6] == 0 && !host_erases && song.playing);
+    a[0] = 3;
+    bad += check("  a slot past USR3: no reply", request(ED_SMP_ERASE, a, 1) == 0u);
+    bad += check("SMP_INFO: no slots", request(ED_SMP_INFO, a, 0) == 8u && host_wire[5] == 0 && host_wire[6] == 0);
+    for (i = 0; i < sizeof host_samples; i++)
+        if ((&host_samples[0][0])[i])
+            break;
+    bad += check("the old sample region is untouched", i == sizeof host_samples && !host_erases && !host_writes);
+    host_progress = 1;
     song.playing = 1; host_progress = 0; a[0] = 0; a[1] = 0;
     bad += check("user-preset STORE does not mutate RAM when audio cannot stop",
                  request(ED_UP_STORE, a, 2) == 8u && host_wire[6] == 2 && !up_used(0));
@@ -810,20 +799,23 @@ static uint32_t menu_set(uint32_t id, int32_t v)            /* -> rc; host_wire[
 }
 static int menu_protocol(void)
 {
-    static const char *const WANT[20][2] = {
-        {"COLOR", 0}, {"ANIM", "ON,OFF,IDLE"}, {"LEDS", "OFF,DIM LO,DIM HI,INV"},
+    static const char *const WANT[22][2] = {
+        {"COLOR", 0}, {"ANIM", "ON,OFF,IDLE"}, {"LEDS", "OFF,LOW,MEDIUM,MAX"},
         {"HOLD", "0.3 s,0.4 s,0.5 s,0.6 s"}, {"KNOB ACCEL", "OFF,ON"},
         {"SPEAKER EQ", "FLAT,LOWCUT,BASS+"}, {"USB LEVEL", "MASTER,FIXED"}, {"USB SERIAL", "ON,OFF"},
         {"CLICK", "OFF,REC,ON"}, {"CLICK LEVEL", "LOW,MID,HIGH"}, {"COUNT-IN", "OFF,1 BAR,2 BARS"},   /* (1.1: appended) */
-        {"RESTORE LAST", "ON,OFF"}, {"SCALE LEDS", "OFF,ON"},                                        /* (1.2) */
+        {"RESTORE LAST", "ON,OFF"}, {"SCALE LEDS", "AUTO,OFF"},                                        /* (1.2) */
         {"SCREEN OFF", "NEVER,5 MIN,15 MIN,30 MIN,60 MIN"},
         {"SCOPE", "OUT,MIX"}, {"STEP PREVIEW", "OFF,ON"}, {"CHORD ENTRY", "HOLD,ADD"},                  /* (1.2) */
         {"TUNE", 0},   /* (1.2: the project's TUNE, a number; DUELL 0.1: MIDI IN, id 21, left MENU for GLO > CHANNELS) */
         {"OVERVIEW", "SCOPE,PARTS"},                                                           /* (1.3 HOME; DUELL 0.1: OVERVIEW, no LEVELS) */
-        {"HOME OPENS", "MORPH,MODE,MIXER,OVERVIEW"}};                                                /* (DUELL 0.1, id 25) */
-    static const uint8_t ID[20] = {0, 3, 4, 5, 6, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 22, 23, 25};   /* (1 STYLE, 2 LARGE, 7 FX LATCH, 8 BPM LOCK, 21 MIDI IN, 24 HELP: retired) */
-    static const int32_t DEF[20] = {-1, 0, 2, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};   /* (COLOR: the default palette) */
-    static const uint8_t TAB[20] = {0, 0, 0, 1, 1, 2, 2, 3, 2, 2, 2, 3, 1, 0, 0, 1, 1, 2, 0, 1};   /* DISPLAY CONTROL AUDIO
+        {"HOME OPENS", "MORPH,MODE,MIXER,OVERVIEW"},                                                 /* (DUELL 0.1, id 25) */
+        {"CPU METER", "ON,OFF"},
+        {"MODE RECALL", "OFF,ON"}};  /* (DUELL 0.2.11, id 27) */
+                                                                        /* (DUELL 0.2.9, id 26) */
+    static const uint8_t ID[22] = {0, 3, 4, 5, 6, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 22, 23, 25, 26, 27};   /* (1 STYLE, 2 LARGE, 7 FX LATCH, 8 BPM LOCK, 21 MIDI IN, 24 HELP: retired) */
+    static const int32_t DEF[22] = {-1, 0, 2, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};   /* (COLOR: the default palette) */
+    static const uint8_t TAB[22] = {0, 0, 0, 1, 1, 2, 2, 3, 2, 2, 2, 3, 1, 0, 0, 1, 1, 2, 0, 1, 0, 1};   /* DISPLAY CONTROL AUDIO
                                                                                                          * SYSTEM (DUELL 0.1: no MIDI tab) */
     static const char *const TABN[4] = {"DISPLAY", "CONTROL", "AUDIO", "SYSTEM"};
     int bad = 0, ok = 1;
@@ -834,7 +826,7 @@ static int menu_protocol(void)
     FILE *jf = json ? fopen(json, "w") : 0;
     reset();
     if (jf) fprintf(jf, "[");
-    for (i = 0; i < 20u; i++) {
+    for (i = 0; i < 22u; i++) {
         n = menu_desc(i, &it);
         joined[0] = 0;
         for (k = 0; k < it.nnames; k++) { if (k) strcat(joined, ","); strcat(joined, it.names[k]); }
@@ -856,7 +848,7 @@ static int menu_protocol(void)
         }
     }
     if (jf) { fprintf(jf, "]\n"); fclose(jf); }
-    bad += check("MENU_DESC: 20 items (STYLE (1), LARGE (2), FX LATCH (7) and HELP (24) retired in DUELL 0.2.2; was 24: 1.0.4's 11 in the menu's order, BPM LOCK (id 8) retired in DUELL, then 1.1's CLICK, CLICK LEVEL, COUNT-IN, 1.2's RESTORE LAST, SCALE LEDS, SCREEN OFF, 1.2's SCOPE, STEP PREVIEW, CHORD ENTRY, MIDI IN, TUNE, 1.3's HOME, 1.5's HELP), ids 0..25 but 1 2 7 8 21 24, names, defaults; TUNE a number -50..50 ct", ok);
+    bad += check("MENU_DESC: 22 items (0.2.11: MODE RECALL, id 27; was 20 (STYLE (1), LARGE (2), FX LATCH (7) and HELP (24) retired in DUELL 0.2.2; was 24: 1.0.4's 11 in the menu's order, BPM LOCK (id 8) retired in DUELL, then 1.1's CLICK, CLICK LEVEL, COUNT-IN, 1.2's RESTORE LAST, SCALE LEDS, SCREEN OFF, 1.2's SCOPE, STEP PREVIEW, CHORD ENTRY, MIDI IN, TUNE, 1.3's HOME, 1.5's HELP), ids 0..25 but 1 2 7 8 21 24, names, defaults; TUNE a number -50..50 ct", ok);
     bad += check("MENU_DESC (1.0.5): after the names (TUNE: the unit) each item's tab, index and name (DISPLAY CONTROL AUDIO SYSTEM)", ok);
     {   /* an older editor reads the names and stops: the tab is past them, nothing it reads moved */
         uint32_t m = menu_desc(2, &it), p = 14, q;   /* (LEDS, a DISPLAY row) */
@@ -866,12 +858,12 @@ static int menu_protocol(void)
         bad += check("MENU_DESC: the tab comes after every byte of the 1.0.4 reply (older editors ignore it)", ok);
     }
     ok = 1;
-    for (i = 0; i < 20u; i++) {
+    for (i = 0; i < 22u; i++) {
         menu_desc(i, &it);
         ok &= strcmp(it.name, "CALIBRATION") && strcmp(it.name, "ABOUT") && strcmp(it.name, "TEST");
     }
-    n = menu_desc(20, &it);
-    ok &= n == 2u && it.index == 20 && it.id == 127;
+    n = menu_desc(22, &it);
+    ok &= n == 2u && it.index == 22 && it.id == 127;
     n = menu_desc(127, &it);
     bad += check("MENU_DESC: no CALIBRATION / TEST / ABOUT; an index past the list answers index, 127 (no item)",
                  ok && n == 2u && it.index == 127 && it.id == 127);
@@ -900,7 +892,7 @@ static int menu_protocol(void)
     ok &= menu_set(13, 0) == 3 && click_lvl == 0u;
     ok &= menu_set(14, 2) == 3 && cin_bars == 2u;
     ok &= menu_set(15, 1) == 3 && (ui_prefs & PREF_RESTORE_OFF);
-    ok &= menu_set(16, 1) == 3 && (ui_rec_prefs & 0x40u) && click_mode == CLICK_ON && cin_bars == 2u;   /* (its own bit) */
+    ok &= menu_set(16, 1) == 3 && (ui_rec_prefs & 0x80u) && click_mode == CLICK_ON && cin_bars == 2u;   /* (its own bit) */
     ok &= menu_set(17, 0) == 3 && scr_get() == 0u && menu_set(17, 9) == 3 && scr_get() == 4u &&   /* (clamped) */
           menu_set(17, 2) == 3 && scr_get() == 2u && ui_scr == 1u;
     ok &= menu_set(18, 1) == 3 && ui_prefs2 == 1u && scope_mix;                                    /* (1.2: their own byte) */
@@ -909,14 +901,17 @@ static int menu_protocol(void)
                                                          * project's, rc 0: in the music, no settings record) */
     ok &= menu_set(23, 1) == 3 && ui_home_view == HV_TRACKS && ui_prefs2 == 7u && ui_scr == 1u;   /* (1.3: its own byte) */
     ok &= menu_set(25, 2) == 3 && ui_home_pg == HP_MIXER && ui_prefs2 == 7u;                      /* (DUELL 0.1: HOME OPENS, its own byte) */
-    for (i = 0; i < 20u; i++) {                         /* MENU_DESC reads them back */
-        static const int32_t SET[20] = {2, 1, 1, 3, 1, 2, 1, 0, 2, 0, 2, 1, 1, 2, 1, 1, 1, -13, 1, 2};
+    ok &= menu_set(26, 1) == 3 && (ui_prefs2 & 0x10u) && ui_prefs2 == 0x17u && ui_home_pg == HP_MIXER;   /* (DUELL 0.2.9: CPU METER OFF, bit 4 of its byte; set = OFF, clear = ON) */
+    ok &= menu_set(27, 1) == 3 && (ui_prefs2 & 0x40u) && ui_prefs2 == 0x57u;                     /* (DUELL 0.2.11: MODE RECALL ON, bit 6 of its byte; set = LOAD, clear = KEEP) */
+    for (i = 0; i < 22u; i++) {                         /* MENU_DESC reads them back */
+        static const int32_t SET[22] = {2, 1, 1, 3, 1, 2, 1, 0, 2, 0, 2, 1, 1, 2, 1, 1, 1, -13, 1, 2, 1, 1};
         menu_desc(i, &it);
         ok &= it.value == SET[i];
     }
     bad += check("MENU_SET: every setting applied as the menu does (palette, EQ, USB LEVEL, CLICK, COUNT-IN at once, RESTORE LAST, SCALE LEDS, SCREEN OFF, SCOPE, STEP PREVIEW, CHORD ENTRY, HOME), read back", ok);
     ok = menu_set(3, 0) == 3 && !(ui_prefs & PREF_ANIM_OFF) && (ui_prefs & PREF_ACCEL) && menu_set(10, 0) == 3 &&
-         !fx_usb_fixed;
+         !fx_usb_fixed && menu_set(26, 0) == 3 && !(ui_prefs2 & 0x10u) && ui_prefs2 == 0x47u &&   /* (CPU METER back to ON: its bit clears, the others stay) */
+         menu_set(27, 0) == 3 && ui_prefs2 == 7u;   /* (MODE RECALL back to KEEP) */
     bad += check("MENU_SET: a flag back to its default leaves the other flags", ok);
 
     /* clamping: the reply carries the device's value */
@@ -937,7 +932,7 @@ static int menu_protocol(void)
         static uint8_t fav0[sizeof favorites], set0[sizeof settings];
         uint8_t hold0 = settings_hold, leds0 = settings_leds;
         memcpy(fav0, &favorites, sizeof favorites); memcpy(set0, &settings, sizeof settings);
-        ok = menu_set(26, 1) == 1 && host_wire[6] == 26 && ed_rv(host_wire + 7) == 1;
+        ok = menu_set(28, 1) == 1 && host_wire[6] == 28 && ed_rv(host_wire + 7) == 1;
         ok &= menu_set(126, -3) == 1 && host_wire[6] == 126 && ed_rv(host_wire + 7) == -3;
         ok &= menu_set(127, 0) == 1 && host_wire[6] == 127;
         ok &= !memcmp(fav0, &favorites, sizeof favorites) && !memcmp(set0, &settings, sizeof settings) &&

@@ -135,6 +135,7 @@ static void host_preset(track_t *t, uint32_t e, uint32_t pi)
     host_preset_req(t, e, pi);
     t->engine = t->eng_req;                       /* (DIGITAL without FELUCCA_FM4: FM6) */
     eng_mem_claim(t);                             /* (voice.c engine_block would at the next block) */
+    wave_build_now(t);                            /* (WAVE: its table built, as the main loop does after a load) */
 }
 
 /* DUELL factory sound k of engine e (firmware/src/sounds.c) as ui.c apply_preset_to loads it: INIT (TP's defaults, the
@@ -158,10 +159,11 @@ static void host_ds_load(track_t *t, uint32_t e, uint32_t k)
     fm6_track_loaded(t);
     t->engine = t->eng_req;
     eng_mem_claim(t);
+    wave_build_now(t);                            /* (WAVE: its table built, as the main loop does after a load) */
 }
 
 /* A saved SAMPLE PERC sound, as 1.0.2 and earlier stored it (SET 4, the GM kit; retired since: every load
- * turns it into DRUM, core.h drum_from_perc). Put straight into a track it plays SET 4's alias (PIANO): only
+ * turns it into DRUM, core.h drum_from_perc). Put straight into a track it plays silent (SAMPLE is retired, 0.2.9): only
  * for the migration tests, which pass it through a load */
 static void host_legacy_sample_perc(track_t *t)
 {

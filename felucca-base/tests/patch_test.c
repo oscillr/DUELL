@@ -157,6 +157,18 @@ int main(void)
             ok &= up_value(r, i) == was[i];
     }
     ck("after a power cycle: the same name, category, every value, End B block; still one record", ok);
+    /* 0.2.7: the matrix's new destinations (stored as their DST numbers 23..45, appended) come back as they were */
+    trk[0].p[P_M1SRC] = MS_LFO, trk[0].p[P_M1DST] = MD_RDAMP, trk[0].p[P_M1AMT] = -20;
+    trk[0].p[P_M5SRC] = MS_ENV2, trk[0].p[P_M5DST] = MD_INSC, trk[0].p[P_M5AMT] = 33;
+    trk[0].p[P_M8SRC] = MS_MODW, trk[0].p[P_M8DST] = MD_E2REL, trk[0].p[P_M8AMT] = 63;
+    trk[0].p[P_M7SRC] = MS_LFO2, trk[0].p[P_M7DST] = MD_E1 + 5, trk[0].p[P_M7AMT] = -64;
+    for (i = 0; i < P_COUNT; i++)
+        was[i] = motion_base_value(&trk[0], i);
+    ok = up_store_trk(&trk[0], 7u, "TEST A", CAT_BASS) == 0;
+    power_cycle();
+    for (i = 0; i < P_COUNT; i++)
+        ok &= up_value(up_rec(7), i) == was[i];
+    ck("  a matrix routed to REVERB DAMP, INSERT C, ENV 2 REL and an engine slot: stored and back after a power cycle", ok && up_count() == 1u);
     set_engine_of(&trk[1], ENGI_FM6);
     apply_preset_to(&trk[1], 2u);
     fm6_patch[1][5] = (uint8_t)((fm6_patch[1][5] + 11u) % 99u);
@@ -710,6 +722,30 @@ int main(void)
         }
         up_put(50u, 0);
         up_put(51u, 0);
+    }
+
+    /* 1d: DUCK CURVE (DUELL 0.2.5): EXP is the default, but the sparse store keeps LIN as its own default (upreset.c up_def): a LIN patch
+     * stores no CURVE value (the bytes of a patch stored before), so an old patch still loads LIN; an EXP patch stores it and loads EXP */
+    {
+        track_t *t = &trk[0];
+        set_engine_of(t, 0u);
+        apply_preset_to(t, 3u);
+        ck("CURVE: a factory sound loads with the ducker's EXP release (the default)", t->p[P_DKCRV] == 1 && TP[P_DKCRV].def == 1);
+        t->p[P_DKCRV] = 0;
+        ck("CURVE: a LIN patch stores", up_store_trk(t, 52u, "CURVE LIN", 0) == 0);
+        t->p[P_DKCRV] = 1;
+        ck("CURVE: an EXP patch stores", up_store_trk(t, 53u, "CURVE EXP", 0) == 0);
+        power_cycle();
+        t = &trk[0];
+        set_engine_of(t, 0u);
+        t->p[P_DKCRV] = 1;
+        up_load(52u);
+        ck("  after a power cycle the LIN patch loads LIN (an old patch does not change)", t->p[P_DKCRV] == 0);
+        up_load(53u);
+        ck("  and the EXP patch loads EXP", t->p[P_DKCRV] == 1);
+        ck("  the decoded LIN record reads LIN, the EXP one EXP (up_rec)", up_value(up_rec(52u), P_DKCRV) == 0 && up_value(up_rec(53u), P_DKCRV) == 1);
+        up_put(52u, 0);
+        up_put(53u, 0);
     }
 
     printf(bad ? "patch: FAILED (%d)\n" : "patch: all ok\n", bad);

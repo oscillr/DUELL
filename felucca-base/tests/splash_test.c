@@ -39,6 +39,7 @@ int main(void)
     expect("the version is DUELL " DUELL_VERSION " beta (the VERSION file)", !strcmp(FELUCCA_VERSION, "DUELL " DUELL_VERSION " beta") && !strcmp(FELUCCA_VERSION, DUELL_VERSION_STR));
 
     ui_power_on();
+    ui_prefs2 |= (uint8_t)(PREF_GUIDE_SEEN >> 16);     /* (DUELL 0.2.11: the GUIDE seen, so the splash is the plain one; the first start's: guide_test.c) */
     frames(200);
     page0 = ui.page;
     splash_begin();

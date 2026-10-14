@@ -33,7 +33,7 @@ static int project_info(uint32_t slot, char *b);
 static int project_rename(uint32_t slot, const char *name);
 static void project_cur_name(char *b);
 static uint32_t project_cur_slot(void);           /* .. the multi the music came from (0..15; 0xFF none) */
-static int project_factory(uint32_t slot);         /* .. M01..M04 not overwritten: shows its factory multi */
+static int project_factory(uint32_t slot);         /* .. M01..M10 not overwritten: shows its factory multi */
 static int project_erase(uint32_t slot);           /* DUELL: SAVE > MULTI's ERASE (project.c multi.c) */
 static int erase_data_run(void);                   /* DUELL 0.2.2: MENU > SYSTEM > ERASE DATA (erase_data.c) */
 static void mu_label(char *b, uint32_t k);         /* .. "M01" .. "M16" */
@@ -63,7 +63,7 @@ static uint32_t up_shadow_slot(uint32_t e, uint32_t p);
                                                /* (1: retired, was MENU > FX LATCH ON; the FX hold layer is removed in DUELL 0.2.2: keep it clear, never reused) */
 #define PREF_ANIM_OFF 2u                       /* MENU > ANIM OFF (#46): values snap (no rolling digits, no glide) */
 #define PREF_ACCEL 4u                          /* MENU > KNOB ACCEL ON (#52): fast turns of wide values x2..x8 */
-#define PREF_USB_FIXED 8u                      /* MENU > USB LEVEL FIXED: USB audio at the full level, MASTER after */
+#define PREF_USB_FIXED 8u                      /* MENU > USB LEVEL FIXED: USB audio at the default MASTER level, MASTER after */
                                                /* (16: retired, was BPM LOCK; SELECT is no tempo any more: keep it clear) */
                                                /* (32: retired, was MENU > LARGE ON; DUELL 0.2.2 removed the view: the bit is ignored, never reused) */
 #define PREF_SERIAL_OFF 64u                    /* MENU > USB SERIAL OFF (#67): no serial console, the device enumerates as
@@ -73,20 +73,27 @@ static uint32_t up_shadow_slot(uint32_t e, uint32_t p);
 /* MENU > AUDIO CLICK, CLICK LEVEL, COUNT-IN (1.1, Discussion #131; click.c, seq.c): two bits each in another byte no
  * engine uses, saved with the settings: bits 0-1 CLICK (OFF REC ON), 2-3 CLICK LEVEL (stored 0 MID, 1 LOW, 2 HIGH),
  * 4-5 COUNT-IN (OFF, 1 BAR, 2 BARS); 0 in older settings = OFF / MID / OFF, so nothing clicks or counts in that did
- * not; 3 (unknown) reads as 0 (settings_persist.c puts it back). Bit 6 (1.2): MENU > SCALE LEDS ON (Discussion #127,
- * ui_input.c scale_leds; 0 in older settings = OFF). Bit 7 free (append-only) */
+ * not; 3 (unknown) reads as 0 (settings_persist.c puts it back). Bit 6 (1.2): was MENU > SCALE LEDS ON (Discussion #127):
+ * retired in 0.2.5, whatever it holds is ignored, never reused. Bit 7 (0.2.5): MENU > SCALE LEDS OFF (ui_input.c scale_leds); clear in every
+ * older setting and a new unit = AUTO, so the scale shows by itself (an old ON or OFF alike) */
 #define ui_rec_prefs (favorites.factory[15][28])
 #define PREF_REC 0xFF00u                       /* (menu_items.c MENU_FLAGS: a bit of ui_rec_prefs, << 8) */
-#define PREF_SCALE_LEDS (0x40u << 8)
+#define PREF_SCALE_LEDS_OFF (0x80u << 8)
 /* 1.2: three more two-valued MENU settings, bits of another byte no engine uses, saved with the settings; 0 in older
  * settings = today's behaviour (append-only, as ui_prefs): bit 0 DISPLAY > SCOPE MIX (Discussion #165, fx.c scope_mix),
  * bit 1 CONTROL > STEP PREVIEW ON (Discussion #169, ui_input.c step_preview), bit 2 CONTROL > CHORD ENTRY ADD (#155,
- * ui_input.c seq_entry). 1.5: bit 3 SYSTEM > HELP ON (Discussion #156; removed in DUELL 0.2.2: the bit is ignored, never reused). Bits 4-7 free */
+ * ui_input.c seq_entry). 1.5: bit 3 SYSTEM > HELP ON (Discussion #156; removed in DUELL 0.2.2: the bit is ignored, never reused). Bit 4: CPU METER OFF (DUELL 0.2.9).
+ * Bit 5: the first-start GUIDE seen (DUELL 0.2.11, ui_guide.c; no MENU row, no editor id). Bit 6: MODE RECALL ON (0.2.11, multi.c project_load). Bit 7 free */
 #define ui_prefs2 (favorites.factory[15][24])
 #define PREF_X 0xFF0000u                       /* (menu_items.c MENU_FLAGS: a bit of ui_prefs2, << 16) */
 #define PREF_SCOPE_MIX (0x01u << 16)
 #define PREF_PREVIEW (0x02u << 16)
 #define PREF_CHORD_ADD (0x04u << 16)
+#define PREF_MODE_RECALL (0x40u << 16)         /* DUELL 0.2.11: CONTROL > MODE RECALL ON (multi.c project_load): a multi load also sets the MODE saved in it; clear in every older setting = OFF (a load leaves the MODE as it is) */
+#define PREF_CPU_OFF (0x10u << 16)             /* DUELL 0.2.9: DISPLAY > CPU METER OFF (ui_draw.c cpu bar under the battery); clear in every older setting = ON (bit 3 was HELP: retired) */
+#define PREF_GUIDE_SEEN (0x20u << 16)          /* DUELL 0.2.11: the first-start GUIDE was left (ui_guide.c); clear on a new unit and in every older setting (never
+                                                * written before 0.2.11): the guide shows once after the splash. Not a MENU_FLAGS row: MENU > SYSTEM > GUIDE only replays it */
+#define GUIDE_N 6u                             /* .. its pages (ui_guide.c GUIDE_TXT) */
 /* 1.3 (Discussions #112, #134): MENU > DISPLAY > HOME, what the HOME page shows under its four cards: 0 SCOPE (the
  * oscilloscope, as before), 1 TRACKS (the four tracks as rows: ui_graph.c draw_home_tracks), 2 LEVELS (1.5, #134: the
  * rows of TRACKS, and KNOB 1..4 the LEVEL of T1..T4 in place of the engine's four: home_param). A byte of its own no
@@ -132,7 +139,8 @@ static void rp_put(uint32_t f, uint32_t v)
 }
 /* (favorites.factory[15][29]: the retired MENU > STYLE byte, FLAT or LINE; DUELL 0.2.2: FLAT only, the byte is ignored and kept as it is) */
 /* DUELL 4b: the MORPH's settings (SPEC 3.4 AMOUNT, 3.4a TARGET), kept with the settings (not the patch, not a project) in
- * two bytes no engine uses: [15][12] bit 7 TARGET BOTH (0 SELECTED), bits 0-6 part 1's AMOUNT, [15][13] bits 0-6 part 2's
+ * two bytes no engine uses: [15][12] bit 7 TARGET BOTH (0 SELECTED; 0.2.9: reserved, kept as stored and never read:
+ * ALGORITHM's BOTH is not saved), bits 0-6 part 1's AMOUNT, [15][13] bits 0-6 part 2's
  * AMOUNT (bit 7 free, 0); an AMOUNT as 1 + its percent, 0 = the default (MORPH_AMOUNT_DEF, 15 % since 2026-10-11, 25 % before: every older setting, and the default
  * state writes nothing). An unknown code (> 101) reads as the default. The ends, seeds and faders are not kept
  * (ui_input.c morph_settings) */
@@ -156,7 +164,7 @@ static void rp_put(uint32_t f, uint32_t v)
  * reads as the default and is kept as saved until changed: ui_input.c midi_ch_get). Not in the MULTIs (the device's, like the clock) */
 #define ui_midi_p1 (favorites.factory[15][0])
 #define ui_midi_p2 (favorites.factory[15][1])
-static const char *const DM_NAME[DM_N] = {"SPLIT", "STEREO", "LAYER"};
+static const char *const DM_NAME[DM_N] = {"DUEL", "STEREO", "LAYER"};
 static void draw_gaps(uint32_t y, uint32_t h);        /* (ui_draw.c) */
 
 static uint8_t sync_reload;                  /* engine / preset / project / user preset loaded: editor RELOAD push */
@@ -193,6 +201,8 @@ static struct {
                                   * go, unless the key was held for a lock (its accent: plk_acc) */
     uint8_t hot_col, hot_t;      /* column whose knob was just turned (drawn white) */
     uint8_t menu;                /* 0 off, 1 list, 2 about + credits, 3 info (1.2) (HOME held) */
+    uint8_t guide;               /* DUELL 0.2.11: the GUIDE's page shown (1..GUIDE_N), over everything but UPDATE MODE; 0 = none (ui_guide.c) */
+    uint8_t guide_menu;          /* .. opened from MENU > SYSTEM > GUIDE (the bit untouched, back to the menu at its end) */
     uint8_t menu_sel;            /* MENU: the row (menu_items.c MI_*; its tab MI_TAB), kept while the device runs */
     uint8_t menu_row[5];         /* MENU: the row last picked in each tab, from its first (ALGORITHM comes back to it) */
     uint16_t menu_scroll;        /* continuous ABOUT + CREDITS position, pixels */
@@ -203,6 +213,11 @@ static struct {
     uint8_t act;                 /* action pages: the column whose action OCT+ does, + 1; 0 = none (act_col) */
     uint32_t rec_t0;             /* REC press time: a tap arms (btn_hold, no hold: held, REC opens its layer) */
     uint32_t save_t0;           /* SAVE press time (btn_hold: held = UNDO) */
+    uint32_t fx_t0;             /* FX press time (btn_hold: held 0.7 s = PERFORM on / off, ui_perform.c perf_input) */
+    uint8_t perf;               /* DUELL 0.2.5: PERFORM is on (its page shown over ui.page: cur_page) */
+    uint8_t perf_home;          /* .. OVERVIEW (ui.home) was shown when it opened (a tap of FX goes back there) */
+    uint32_t perf_seen;         /* .. the PERFORM keys seen held last pass (a new press: its message) */
+    uint8_t perf_rolls[2];      /* .. ROLL A / B presses done (perf_roll_n's count) */
     uint8_t confirm;             /* the OCT- / OCT+ dialog: CF_*, 0 = none */
     uint8_t confirm_trk;         /* the track it clears, the slot it overwrites */
     uint8_t pe;                  /* SAVE > PATCHES: an EMPTY place is selected (its number among the empty ones, + 1; 0 = the
@@ -246,7 +261,7 @@ static struct {
     uint8_t noid;                /* DUELL save flow: bit i, track i's sound is no patch (INIT SOUND, its stored sound erased):
                                   * SAVE held stores it in a free slot. Cleared by every sound load (preset, stored, project) */
     uint8_t mix_seen[3], mix_ok; /* .. and the three of KNOB 2..4 (BALANCE, XFADE, SPLIT) */
-    uint32_t play_t0, play_last;  /* PLAY STOP: its press time | 1 while down and not fired; the last press (double press: ui_input.c play_hold) */
+    uint8_t play_go; uint32_t play_t0, play_last;  /* PLAY STOP: its press time | 1 while down and not fired; the last press (double press: ui_input.c play_hold) */
     uint8_t mode_seen, mode_ok;  /* DUELL step 5: the MODE's settings byte as last synced (mode_settings; its save: mset_*) */
     struct {                     /* MIDI LEARN (midi_learn.c; here, not loose globals: the audio ISR's data keeps its
                                   * layout and its cost, tests/target_budget.py) */
@@ -390,11 +405,34 @@ static void scr_shown(void)                            /* after the frame: the r
 }
 
 static const page_t *page_over;   /* a quick layer's own four knobs (ui_layer.c), while it edits or draws them */
-static const page_t *cur_page(void) { return page_over ? page_over : &PAGES[ui.page]; }
+static const page_t *cur_page(void) { return page_over ? page_over : ui.perf ? &PERF_PAGE : &PAGES[ui.page]; }
+/* PERFORM (ui_perform.c) ends: every way off its page (another page, HOME, the menu's HOME) comes here; FILTER back to its
+ * neutral place (SPACE and DEPTH stay) */
+static void perf_off(void)
+{
+    if (!ui.perf)
+        return;
+    ui.perf = 0;
+    perf_filt = 0;                                     /* (SPACE stays: a global value, also the MIXER's) */
+    ui.force = 1;
+}
+static void perf_cards(void);                         /* (ui_perform.c: the PERFORM page's parts, drawn by ui_draw.c and ui_graph.c) */
+static void graph_perf(void);
+static void space_turn(uint32_t role, int32_t s);      /* (ui_perform.c: SPACE, PERFORM's K2 and the MIXER's K3) */
+static void space_card(uint32_t col);
+static uint32_t perf_sig(void);
+static int perf_foot(char *l, char *r);
+static uint32_t perf_key_leds(uint32_t *mid);
+static void perf_input(uint32_t pressed, uint32_t now, uint32_t lay);   /* (ui_perform.c: ui_input's) */
+static void perf_knob(uint32_t slot, int32_t s);
+static void perf_presets(int32_t s);
+static void presets_turn(int32_t s);
 
 
 /* the quick layers (ui_layer.c): a button held, the keys and KNOB 1..4 are its shortcuts, its map over the page */
-enum { LAYER_NONE, LAYER_RES, LAYER_GLO, LAYER_SCL, LAYER_EDIT, LAYER_SEQ, LAYER_REC, LAYER_N };
+enum { LAYER_NONE, LAYER_RES, LAYER_GLO, LAYER_SCL, LAYER_EDIT, LAYER_SEQ, LAYER_REC,
+       LAYER_LFO, LAYER_ENV, LAYER_ARP,               /* DUELL 0.2.9: the QUICK EDIT layers of LFO, ENV, ARP (the keys stay notes) */
+       LAYER_N };
 static void draw_layer(void);
 static int glo_pg(void);                              /* (ui_layer.c: GLO's main page shown) */
 static uint32_t midi_ch_get(uint32_t k);              /* (ui_input.c: part k's MIDI channel, 0..15) */
@@ -404,23 +442,21 @@ static void layer_foot_title(char *nm, char *ct);   /* the footer's page name an
 static uint32_t layer_leds(uint32_t *br);
 static uint32_t layer_btn(void);
 
-/* SLICES: a SLICE track's (ui_slice.c); FILTER an ANALOG track's (or, DUELL 0.2.2, the universal filter's, on an engine with ufilt); OPERATOR, OP ENV, OPERATOR 2 an FM6 track's (its patch's
- * operators, ui_fm6op.c). (DUELL: DIGITAL's OP ENV pages and DRUM's LANES are gone, their ids hold DUELL's parameters) */
+/* FILTER the multimode filter's (every engine with ufilt), VCF ANALOG's own, TRIO FILTER, NOISE FILT their own; OPERATOR, OP ENV, OPERATOR 2 an FM6 track's (its patch's
+ * operators, ui_fm6op.c). (DUELL: DIGITAL's OP ENV pages and DRUM's LANES are gone, their ids hold DUELL's parameters; 0.2.9: SLICE's
+ * SLICES page is gone with the engine) */
 static int page_visible(uint32_t i)
 {
-    if (PAGES[i].id[0] == P_FTYPE)                    /* FILTER (1.5, #104): ANALOG's */
+    if (PAGES[i].id[0] == P_FTYPE)                    /* VCF (1.5, #104): ANALOG's own filter */
         return ENGINES[TSEL->eng_req % NENGINES] == &ENG_ANALOG;
-    if (PAGES[i].id[0] == P_FREEA)                    /* FILTER (DUELL 0.2.2): the universal filter's, on the engines with no filter of their own */
+    if (PAGES[i].id[0] == P_FREEA)                    /* FILTER (DUELL 0.2.2): the multimode filter's, on every engine that has it (ufilt) */
         return ENGINES[TSEL->eng_req % NENGINES]->ufilt;
+    if (PAGES[i].scope == SC_TRACK && PAGES[i].id[0] == P_E4)   /* TRIO FILTER: TRIO's own */
+        return ENGINES[TSEL->eng_req % NENGINES] == &ENG_TRIO;
+    if (PAGES[i].scope == SC_TRACK && PAGES[i].id[0] == P_E2)   /* NOISE FILT: NOISE's own */
+        return ENGINES[TSEL->eng_req % NENGINES] == &ENG_NOISE;
     if (PAGES[i].graph >= GR_FMOP && PAGES[i].graph <= GR_FMENV)
         return TSEL->eng_req % NENGINES == ENGI_FM6;
-#if FELUCCA_SLICE
-    if (PAGES[i].graph == GR_SLICES)
-        return ENGINES[TSEL->eng_req % NENGINES] == &ENG_SLICE;
-#else
-    if (PAGES[i].graph == GR_SLICES)
-        return 0;
-#endif
     return 1;
 }
 
@@ -447,9 +483,9 @@ static void ui_say(const char *a, const char *b)
 static void ui_message(const char *s) { ui_say(s, ""); }
 /* a message led by an icon: its first byte (ui_draw.c draw_head draws the icon, then the words) */
 #define MSG_NOFILE "\x01"                      /* the no-file icon (ICON_X_NOFILE) */
-/* a missing sample (ui_input.c sample_notice): NO SAMPLE (SAMPLE NOT FOUND, the SLICES page's, is 4 px too wide
- * for the header's 130 px after the icon) */
-#define MSG_NO_SAMPLE MSG_NOFILE "NO SAMPLE"
+/* a part on a retired engine (DUELL 0.2.9: a stored SAMPLE / GRAIN / SLICE sound, silent; ui_input.c gone_notice): NO ENGINE (fits the
+ * header's 130 px after the icon, as the NO SAMPLE it replaces) */
+#define MSG_NO_ENGINE MSG_NOFILE "NO ENGINE"
 
 /* Main loop only, with interrupts enabled. PLAY may be consumed between reads;
  * take one coherent snapshot before a flash operation. */
@@ -485,7 +521,9 @@ static uint32_t lock_id(uint32_t k)
 static void ev_enter(void);
 static void page_entered(void)
 {
-    const page_t *pg = cur_page();
+    const page_t *pg;
+    perf_off();                                  /* (a page entered: PERFORM is over) */
+    pg = cur_page();
     if (!ui.home && pg->graph == GR_EVENTS)      /* AUTOMATION: + ADD on the SEQ cursor's step */
         ev_enter();
     if (!ui.home && lock_page_ok(ui.page))
@@ -669,6 +707,7 @@ static void open_family(uint32_t fam)
 
 static void go_home(void)
 {
+    perf_off();
     ui.home = 1;
     ui.plk_src = 0;                              /* (parameter locks: HOME's four) */
     ui.entry_open = 0;
@@ -707,6 +746,8 @@ static void go_main(void) { go_main_to(ui_home_pg < HP_COUNT ? ui_home_pg : HP_M
 static void page_select(int32_t dir)
 {
     uint32_t i;
+    if (ui.perf)                                      /* PERFORM: one page, no other to turn to (a stray turn never ends it) */
+        return;
     if (ui.home || cur_page()->fam == FAM_TRK) {
         uint8_t pg[8];
         uint32_t m = 0, at = 0;
@@ -856,39 +897,11 @@ static void load_motion_hold(track_t *t, uint32_t what)
     motion_set_enabled(t, 0);
 }
 
-/* MOMENTARY (ui_input.c mom_turn: LFO held, the knobs' changes go back when it is let go): the values turned, where
- * they are (a track's p[], song.g[]) and what they were. In the main loop's pool (no .bss) */
-#define MOM_N 8u
-static struct {
-    uint8_t n;                                    /* values held, 0 = none */
-    int16_t *vp[MOM_N];
-    int16_t v[MOM_N];
-} mom __attribute__((section(".pool")));
-static void mom_restore(void)                     /* LFO let go: every value back */
-{
-    while (mom.n) {
-        mom.n--;
-        *mom.vp[mom.n] = mom.v[mom.n];
-    }
-}
-static void mom_back(const track_t *t)            /* a sound load into t (0: a project): its values back first */
-{
-    uint32_t i, k = 0;
-    for (i = 0; i < mom.n; i++)
-        if (!t || (mom.vp[i] >= t->p && mom.vp[i] < t->p + P_COUNT) || (mom.vp[i] >= song.g && mom.vp[i] < song.g + G_COUNT)) {
-            *mom.vp[i] = mom.v[i];                /* (a global: back too, before the load's undo copy) */
-        } else {
-            mom.vp[k] = mom.vp[i];
-            mom.v[k++] = mom.v[i];
-        }
-    mom.n = (uint8_t)k;
-}
 static void load_begin(track_t *t, uint32_t what)
 {
     uint32_t i = trk_index(t);
     if (what & UNDO_SOUND) {
         ui.pe = 0;                                /* (PATCHES: a sound is loaded, no empty place selected) */
-        mom_back(t);                              /* (MOMENTARY: the sound as it was, then the load) */
         drum_mute[i] = 0;                         /* (1.4.1: the lanes' mutes go with the sound) */
     }
     if (undo_depth++)
@@ -998,6 +1011,7 @@ static void scale_sync(void)
 {
     uint32_t ram = scale_pack(), by = (ui_scale_set & 0x80u) ? (ui_scale_set & 0xCFu) | (uint32_t)ui_root_set << 8 : 0x80u;   /* (unflagged: the defaults) */
     if (ram != scale_last && scale_last != 0xFFFFFFFFu) {           /* changed here */
+        scale_gen++;
         ui_scale_set = (uint8_t)(ram & 0xFFu);
         ui_root_set = (uint8_t)(ram >> 8);
         ui.mset_dirty = 1;
@@ -1006,6 +1020,7 @@ static void scale_sync(void)
         scale_g = (int16_t)(by & 15u);
         offscale_g = (uint8_t)((by & 0x40u) ? OS_PLAY : OS_SNAP);
         root_g = (int16_t)((by >> 8) % 12u);
+        scale_gen++;
     }
     scale_last = scale_pack();
 }
@@ -1402,8 +1417,9 @@ static void set_engine_of(track_t *t, uint32_t ei)
         return;
     }
 #endif
-    if (!eng_ok(ei % NENGINES) && ei % NENGINES == ENGI_DRUM)   /* DRUM (hidden in DUELL): ANALOG, its first preset */
-        ei = eng_safe(ENGI_DRUM);
+    /* DRUM (hidden in DUELL), a retired engine (SAMPLE GRAIN SLICE, 0.2.9: INIT on such a part, the editor's ENG): ANALOG, its first preset */
+    if (!eng_ok(ei % NENGINES) && (ei % NENGINES == ENGI_DRUM || ENGI_RETIRED(ei % NENGINES)))
+        ei = 0u;
     e = ENGINES[ei % NENGINES];
     load_begin(t, UNDO_SOUND);
     fm1_irq_off();
@@ -1792,12 +1808,11 @@ static void track_select(uint32_t i)
     ui.force = 1;
 }
 
-#include "ui_slice.c"                             /* EDIT > SLICES: SLICE's slices by hand (an action page too) */
 #include "ui_events.c"                            /* SEQ > AUTOMATION: locks, events, CHANCE, RATCH as a list (an action page) */
 #include "midi_learn.c"                           /* MIDI LEARN (1.5): GLO + D4, a knob, a CC */
 
 /* ---------------------------------------------------- action pages --- */
-/* Pages whose purpose is an action (SAVE > USER, PATTERNS, PROJECT, TOOLS, EDIT > SLICES, SEQ > AUTOMATION): the knobs pick,
+/* Pages whose purpose is an action (SAVE > USER, PATTERNS, PROJECT, TOOLS, SEQ > AUTOMATION): the knobs pick,
  * OCT+ does it, OCT- cancels the picked action or goes HOME (ui_input.c). There OCT- / OCT+ do not
  * shift the octave */
 static int go_id(uint32_t id) { return id == G_LOAD || id == G_SAVE || id == G_CLRSEQ || id == G_INITSND; }
@@ -1814,8 +1829,6 @@ static uint32_t act_cols(void)                   /* the columns that are actions
         return 14u;                              /* LOAD ERASE SAVE (ERASE, SAVE: a pattern slot P1..P16) */
     if (pg->graph == GR_SLOTS)
         return 14u;                              /* LOAD ERASE SAVE (MULTI: a multi M01..M16) */
-    if (pg->graph == GR_SLICES)
-        return slice_page_ok() ? 12u : 0u;       /* SPLIT JOIN (a SLICE track only) */
     if (pg->scope == SC_GLOBAL)
         for (c = 0; c < 4u; c++)
             if (go_id(pg->id[c]))
@@ -1832,7 +1845,7 @@ static uint32_t act_col(void)
 
 static const char *act_name(uint32_t c)          /* column c's action (the footer hint) */
 {
-    static const char *const UP_GO[3] = {"LOAD", "ERASE", "SAVE"};
+    static const char *const UP_GO[3] = {"ON", "ERASE", "SAVE"};
     uint32_t id = cur_page()->id[c & 3u];
     if (cur_page()->graph == GR_EVENTS) return ev_act_name();
     if (cur_page()->graph == GR_TOOLS) {
@@ -1841,9 +1854,7 @@ static const char *act_name(uint32_t c)          /* column c's action (the foote
     }
     if (cur_page()->graph == GR_PATS || cur_page()->graph == GR_SLOTS)
         return UP_GO[(c + 2u) % 3u];
-    if (cur_page()->graph == GR_SLICES)
-        return c == 3u ? "JOIN" : "SPLIT";
-    return id == G_CLRSEQ ? "CLEAR" : id == G_INITSND ? "INIT" : id == G_LOAD ? "LOAD" : "SAVE";
+    return id == G_CLRSEQ ? "CLEAR" : id == G_INITSND ? "INIT" : id == G_LOAD ? "ON" : "SAVE";
 }
 
 /* the picked action would do something now (OCT+ breathes): another pattern, a saved slot, stopped for
@@ -1863,10 +1874,6 @@ static int act_ready(void)
     }
     if (cur_page()->graph == GR_SLOTS)                  /* MULTI: LOAD a used one (playing too), ERASE / SAVE stopped */
         return c == 3u ? !song.playing : project_used((uint32_t)song.g[G_SLOT] - 1u) && (c == 1u || (!song.playing && !(c == 2u && project_factory((uint32_t)song.g[G_SLOT] - 1u))));
-#if FELUCCA_SLICE
-    if (cur_page()->graph == GR_SLICES)
-        return slice_act_ready(c);
-#endif
     id = cur_page()->id[c & 3u];
     if (id == G_LOAD)
         return project_used((uint32_t)song.g[G_SLOT] - 1u);

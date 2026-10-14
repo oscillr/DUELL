@@ -2,8 +2,8 @@
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
 /* Complete musical archive: no raw addresses are accepted. Small objects are staged
  * in main-loop RAM and fully validated before the existing A/B commit path writes.
- * Sample restore uses SMP_BEGIN/WRITE/END and its existing CRC/header-last commit.
- * A disconnected sample restore can lose that sample; the exported file is retained.
+ * Ids 32..34 were the user sample slots USR1..USR3: DUELL 0.2.9 retired the sample engines and their slots, so they are listed empty
+ * (the archive keeps its 16 ids); an archive's sample objects are not restored (SMP_BEGIN answers rc 6, unsupported: editor.c).
  * DUELL: ids 6, 7, 9, 10, 11 and 12 are the six chunks of the PATCH store (upreset.c: sparse records, FM6 patches inside them), ids
  * 6, 7, 9, 10, 11, 12 = OBJ_PATCH0 .. +5 (ed_bk_chunk); an archive of Felucca's banks (another shape) is refused (2). Id 8 (the FM6 patch bank of
  * 1.0..1.0.2) is listed empty and a PUT of it is accepted and dropped.
@@ -51,13 +51,8 @@ static const uint8_t *ed_bk_object(uint32_t id, uint32_t *len)
     }
     if (id == 8u)                                   /* the retired FM6 patch bank: always empty */
         return ED_BK_RAW;
-    if (id >= 32u && id < 32u + SMP_USER_SLOTS) {
-        uint32_t k = id - 32u;
-        const smp_user_hdr_t *h = (const smp_user_hdr_t *)smp_user_xip(k);
-        if (usr_nz[k] && h->magic == SMP_USER_MAGIC && h->data_len <= SMP_USER_CAP(k) - SMP_USER_DATA)
-            *len = SMP_USER_DATA + h->data_len;
-        return smp_user_xip(k);
-    }
+    if (id >= 32u && id <= 34u)                     /* the retired user sample slots (DUELL 0.2.9): always empty */
+        return ED_BK_RAW;
     return 0;
 }
 static uint32_t ed_bk_capture(void)

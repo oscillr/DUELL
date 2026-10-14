@@ -198,11 +198,11 @@ static void test_filter(void)
     {
         uint32_t i, k = 0;
         for (i = 0; i < NPAGES; i++)
-            if (str_eq(PAGES[i].title, "FILTER"))
+            if (str_eq(PAGES[i].title, "VCF"))
                 k = i + 1u;
-        check("EDIT > FILTER: TYPE CUT RES KTR (ANALOG's), after EDIT 2",
+        check("EDIT > VCF: TYPE CUT RES KTR (ANALOG's own filter), after EDIT 2 and the multimode FILTER",
               k && PAGES[k - 1u].fam == FAM_EDIT && PAGES[k - 1u].id[0] == P_FTYPE && PAGES[k - 1u].id[1] == P_E4 &&
-              PAGES[k - 1u].id[2] == P_E5 && PAGES[k - 1u].id[3] == P_E7 && str_eq(PAGES[k - 2u].title, "EDIT 2"));
+              PAGES[k - 1u].id[2] == P_E5 && PAGES[k - 1u].id[3] == P_E7 && str_eq(PAGES[k - 2u].title, "FILTER") && str_eq(PAGES[k - 3u].title, "EDIT 2"));
     }
     /* every engine but ANALOG ignores TYPE; ANALOG's LP is the golden renders' (regress.c) */
     for (e = 1; e < NENGINES; e++) {

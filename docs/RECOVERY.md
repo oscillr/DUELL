@@ -2,7 +2,7 @@
 
 **DUELL beta**, MultiMorphing Bitimbral Synthesizer by OSCILL/R
 
-Plain version: **DUELL 0.2.4 beta has run on only one real FM-1 (the author's), the way back to the official firmware (V15) has worked about three times on that unit and has not been tried on others, and nobody can promise that a failed flash is fixable.** You install at your own risk. This page says what we know, what we do not know, and what to try if you end up in this situation anyway.
+Plain version: **DUELL 0.2.13 beta has run on only one real FM-1 (the author's), the way back to the official firmware (V15) has worked about three times on that unit and has not been tried on others, and nobody can promise that a failed flash is fixable.** You install at your own risk. This page says what we know, what we do not know, and what to try if you end up in this situation anyway.
 
 ## What is known
 - The FM-1 has a **single-bank layout**: there is one copy of the firmware, not a spare. We know of **no rollback** built into the unit.

@@ -43,7 +43,15 @@
  *     follows the note's envelope. A DEPTH slot whose source is the LFO takes it unscaled
  *   RATE2, DEPTH2 (DUELL): LFO 2's rate (P_L2RATE, per block as RATE) and depth (as DEPTH, on the LFO2 source). DEPTH and
  *     DEPTH2 read both LFOs unscaled, RATE / RATE2 move the rate from the next tick: LFO to LFO in a fixed order, a block
- *     late, no loop
+ *     late, no loop. (No feedback anywhere: every source a per-block destination reads is the value the block before left
+ *     (LFO 1 / 2, ENV, ENV 2, DUCK), so a source on its own LFO's RATE / DEPTH or ENV 2 on its own times is heard a block
+ *     later, never within the block that computes it)
+ *   DUELL 0.2.7, per block as PAN: LEVEL (the part's), the INSERT's A B C and MIX, the EQ's LOW MID HIGH gains, DUCK DEPTH,
+ *     ENV 2's ATK DEC SUS REL and its FLT / SHP depths, RES (the multimode filter's: the engines with no filter of their
+ *     own). The bus values CHORUS RATE / DEPTH, DELAY FDBK, the delay modulation's DEPTH / RATE, REVERB SIZE / DAMP: an
+ *     offset per part on a global value (mod_bus: in DUEL each part moves its own bus, in STEREO / LAYER the parts add).
+ *     An engine slot the matrix cannot move (mod_e_why: unused, WAVE's TABLE, FM6's SLOT, read only at a note-on) does
+ *     nothing (TABLE is skipped, the rest is never read in the block); the MATRIX page shows it faded with the reason
  * A per-voice source on a per-block destination takes the latest note-on's value (VEL, KEY, RAND), ENV the
  * envelope of the latest note-on's voice (one block late, 0 when it has ended).
  *
@@ -62,8 +70,19 @@ enum { MS_OFF, MS_LFO, MS_ENV, MS_VEL, MS_KEY, MS_RAND, MS_MODW, MS_AT, MS_EXPR,
 enum { MD_OFF, MD_PITCH, MD_CUT, MD_SHP, MD_AMP, MD_PAN, MD_DIST, MD_CHO, MD_DLY, MD_REV, MD_RATE, MD_VIB, MD_E1,
        MD_DEPTH = MD_E1 + 8,
        MD_RATE2, MD_DEPTH2,                       /* DUELL: LFO 2's RATE (P_L2RATE, per block) and DEPTH (as DEPTH) */
+       /* DUELL 0.2.7 (owner: "more destinations"), per block as PAN: the part's LEVEL, the INSERT's A B C (named by its TYPE)
+        * and MIX, the EQ's three gains, the DUCK's DEPTH, ENV 2's ATK DEC SUS REL and its FLT / SHP depths, the multimode
+        * filter's RES (the engines without a filter of their own) */
+       MD_LEVEL, MD_INSA, MD_INSB, MD_INSC, MD_IMIX, MD_EQLO, MD_EQMID, MD_EQHI, MD_DUCK,
+       MD_E2ATK, MD_E2DEC, MD_E2SUS, MD_E2REL, MD_E2FLT, MD_E2SHP, MD_RES,
+       /* .. and the effect buses' values (global parameters: mod_bus below): CHORUS RATE DEPTH, DELAY FDBK, the delay
+        * modulation's DEPTH RATE, REVERB SIZE DAMP */
+       MD_BUS, MD_CRATE = MD_BUS, MD_CDEP, MD_DFB, MD_DMDEP, MD_DMRATE, MD_RSIZE, MD_RDAMP,
        MD_N };                                    /* (append-only: the stored values keep their meaning) */
+#define MD_N_026 (MD_DEPTH2 + 1)                  /* 0.2.6's destinations: the morph's WILD roll picks among these only (morph.c) */
+#define MG_N (MD_N - MD_BUS)                      /* the bus values */
 _Static_assert(NELEM(N_MSRC) == MS_N && NELEM(N_MDST) == MD_N, "N_MSRC / N_MDST == MS_* / MD_*");
+_Static_assert(MD_LEVEL == 23 && MD_BUS == 39 && MD_N == 46 && MD_N < 128, "matrix DST: 0.2.6's 0..22 unchanged, appended after");
 #define NMSLOT 8u
 #define MSLOT_ID(k) (P_M1SRC + 3u * (k))                         /* slot k's SRC; DST + 1, AMT + 2 */
 _Static_assert(P_M2SRC == P_M1SRC + 3 && P_M4AMT == P_M1SRC + 11 && P_M5SRC == P_M4AMT + 1 && P_M8AMT == MSLOT_ID(NMSLOT) - 1,
@@ -75,12 +94,88 @@ _Static_assert(P_M2SRC == P_M1SRC + 3 && P_M4AMT == P_M1SRC + 11 && P_M5SRC == P
 #define MS_GAIN(p, s) (((s) == MS_LFO && (p)[P_LPOL]) || ((s) == MS_LFO2 && (p)[P_L2POL]) ? MS_ENV : (s))
 #define MD_ENGINE(d) ((d) >= MD_E1 && (d) < MD_E1 + 8)           /* E1..E8: P_E0..P_E7 */
 
-/* the track parameter of a per-block destination */
+/* the track parameter of a per-block destination (not a bus value) */
 static uint32_t mod_param(uint32_t d)
 {
-    static const uint8_t ID[MD_E1] = {[MD_PAN] = P_PAN, [MD_DIST] = P_DIST, [MD_CHO] = P_CHOR, [MD_DLY] = P_DLY,
-                                      [MD_REV] = P_REV, [MD_RATE] = P_LRATE, [MD_VIB] = P_LD_PIT};
-    return d == MD_RATE2 ? P_L2RATE : MD_ENGINE(d) ? P_E0 + d - MD_E1 : ID[d];
+    static const uint8_t ID[MD_BUS] = {[MD_PAN] = P_PAN, [MD_DIST] = P_DIST, [MD_CHO] = P_CHOR, [MD_DLY] = P_DLY,
+                                       [MD_REV] = P_REV, [MD_RATE] = P_LRATE, [MD_VIB] = P_LD_PIT, [MD_RATE2] = P_L2RATE,
+                                       [MD_LEVEL] = P_LEVEL, [MD_INSA] = P_IA, [MD_INSB] = P_IB, [MD_INSC] = P_IC,
+                                       [MD_IMIX] = P_IMIX, [MD_EQLO] = P_EQLG, [MD_EQMID] = P_EQMG, [MD_EQHI] = P_EQHG,
+                                       [MD_DUCK] = P_DKDEP, [MD_E2ATK] = P_E2ATK, [MD_E2DEC] = P_E2DEC, [MD_E2SUS] = P_E2SUS,
+                                       [MD_E2REL] = P_E2REL, [MD_E2FLT] = P_E2FLT, [MD_E2SHP] = P_E2SHP, [MD_RES] = P_FREEB};
+    return MD_ENGINE(d) ? P_E0 + d - MD_E1 : ID[d];
+}
+
+/* Engine slot k (P_E0 + k) of engine e: why the matrix does not move it, 0 = it does. A slot the engine does not use ("-");
+ * WAVE's TABLE (a change builds a new table, the notes silent meanwhile: not a modulation); FM6's SLOT (the main loop loads
+ * the patch, the audio never reads it); a value the engine reads only as a note starts (AT NOTE: SAMPLE SET, SLICE SRC DIV START
+ * REV until DUELL 0.2.9 retired both engines; none today). The MATRIX page shows such a route faded with the reason (<= 8
+ * characters, a card's); it does nothing: mod_begin skips TABLE (the one an engine would act on in the block: wave_block),
+ * the others have no reader between mod_begin and mod_end (the value written there is put back unread) */
+static __attribute__((noinline)) const char *mod_e_why(uint32_t e, uint32_t k)
+{
+    const char *l = ENGINES[e % NENGINES]->edit[k & 7u].label;
+    if (!l || !l[0] || l[0] == '-')
+        return "UNUSED";
+    if (e == ENGI_WAVE && !k)
+        return "REBUILD";
+    if (e == ENGI_FM6 && k == 7u)
+        return "LOADS";
+    return 0;
+}
+
+/* The bus values (DUELL 0.2.7): CHORUS RATE / DEPTH, the delay's FDBK and its modulation's DEPTH / RATE, REVERB SIZE / DAMP
+ * are global parameters (song.g, one per instrument) while the matrix is a part's. Each part's routes make an OFFSET in the
+ * value's own units (AMT 64 at a full source = the whole range, as on the per-block destinations), kept per part
+ * (mod_goff, mod_begin). mod_bus writes stored value + the offsets of the parts a bus carries into song.g just before the
+ * buses run (fx.c mix_block), clamped to the range, and mod_bus_end puts the stored values back after them: DUEL (SPLIT) has
+ * a bus per part, so part 1's routes move bus A's value and part 2's bus B's, never the other's; STEREO and LAYER share one
+ * set of buses, so both parts' offsets ADD. As with t->p, all of it runs inside the audio ISR: the UI, the editor and the
+ * stores never see a modulated value. Not a bus value: the delay's TIME (a note value: a step moves the read point, a
+ * click; the delay modulation's DEPTH is the smooth wobble) */
+static const uint8_t MG_ID[MG_N] = {G_CRATE, G_CDEPTH, G_DFDBK, G_DMDEP, G_DMRATE, G_RSIZE, G_RDAMP};
+static int16_t mod_goff[NLIVE][MG_N];    /* per part, its offsets (mod_begin) */
+static uint8_t mod_gon;                  /* bit per part: an offset is not 0 */
+static uint8_t mod_dk;                   /* bit per part: an active slot moves DUCK DEPTH (fx.c duck_pump / duck_note let it start) */
+static int16_t mod_gkeep[MG_N];          /* the stored values mod_bus wrote over */
+static uint8_t mod_gw;                   /* bit per bus value: written (mod_bus_end puts it back) */
+static __attribute__((noinline)) void mod_bus(uint32_t mask)       /* the offsets of the parts in mask (bit per part) onto song.g */
+{
+    uint32_t g, p;
+    for (g = 0; g < MG_N; g++) {
+        int32_t o = 0;
+        const param_desc_t *gd = &GP[MG_ID[g]];
+        for (p = 0; p < NLIVE; p++)
+            o += (int32_t)((mask >> p) & 1u) * mod_goff[p][g];
+        if (!((mod_gw >> g) & 1u)) {
+            if (!o)
+                continue;
+            mod_gkeep[g] = song.g[MG_ID[g]];
+            mod_gw |= (uint8_t)(1u << g);
+        }
+        song.g[MG_ID[g]] = (int16_t)clamp(mod_gkeep[g] + o, gd->min, gd->max);
+    }
+}
+static __attribute__((noinline)) void mod_bus_end(void)
+{
+    uint32_t g;
+    for (g = 0; g < MG_N; g++)
+        if ((mod_gw >> g) & 1u)
+            song.g[MG_ID[g]] = mod_gkeep[g];
+    mod_gw = 0;
+}
+/* part t's bus offsets (off: MG_N of them, 0 = none) and its DUCK flag, from mod_begin */
+static __attribute__((noinline)) void mod_part_put(const track_t *t, const int32_t *off, uint32_t dk)
+{
+    uint32_t p = (uint32_t)(t - trk), g, b = 1u << p;
+    if (p >= NLIVE)
+        return;
+    mod_dk = (uint8_t)((mod_dk & ~b) | (dk ? b : 0u));
+    if (!off && !(mod_gon & b))
+        return;
+    for (g = 0; g < MG_N; g++)
+        mod_goff[p][g] = (int16_t)(off ? clamp(off[g], -255, 255) : 0);
+    mod_gon = (uint8_t)((mod_gon & ~b) | (off ? b : 0u));
 }
 
 static struct {                  /* the part in mix_part (one at a time) */
@@ -193,8 +288,8 @@ static __attribute__((noinline)) int32_t mod_depth(const track_t *t, int32_t lfo
 static __attribute__((noinline)) int mod_begin(track_t *t)
 {
     const int16_t *p = t->p;
-    int32_t lfo, off[NMSLOT];
-    uint32_t k, j, act = 0, dep = 0, dep2 = 0;
+    int32_t lfo, off[NMSLOT], goff[MG_N];
+    uint32_t k, j, act = 0, dep = 0, dep2 = 0, dk = 0, gb = 0;
     mod.on = 0;
     mod.e2 = mod.l2 = 0;
     for (k = 0; k < NMSLOT; k++) {                      /* the active slots (SRC, DST and AMT set), once a block */
@@ -203,12 +298,16 @@ static __attribute__((noinline)) int mod_begin(track_t *t)
             act |= 1u << k;
             dep |= (uint32_t)(q[1] == MD_DEPTH) << k;
             dep2 |= (uint32_t)(q[1] == MD_DEPTH2) << k;
+            dk |= q[1] == MD_DUCK;
             mod.e2 |= q[0] == MS_ENV2;
             mod.l2 |= q[0] == MS_LFO2;
         }
     }
-    if (!act)
+    if (!act) {
+        if (mod_gon | mod_dk)
+            mod_part_put(t, 0, 0);                      /* (no bus offset, no DUCK flag left from a block before) */
         return 0;
+    }
     lfo = mulq15(t->lfo_val, t->lfo_fade);              /* (the LFO of the block before: track_render ticks it) */
     mod.lfo2 = mod.l2 ? mulq15(t->lfo2.val, t->lfo2.fade) : 0;   /* (LFO 2's of the block before, the same way) */
     mod.on = 1;
@@ -242,10 +341,23 @@ static __attribute__((noinline)) int mod_begin(track_t *t)
             }
             continue;
         }
+        x = mod_tsrc(t, s, lfo);
+        if (d >= MD_BUS) {                              /* a bus value (0.2.7): this part's offset, mod_bus applies it */
+            const param_desc_t *gd = &GP[MG_ID[d - MD_BUS]];
+            if (!gb)
+                for (j = 0; j < MG_N; j++)
+                    goff[j] = 0;
+            gb = 1;
+            goff[d - MD_BUS] += (((x * a) >> (MS_BIPOLAR(MS_GAIN(p, s)) ? 7 : 6)) * (gd->max - gd->min)) >> 15;
+            continue;
+        }
         {                                               /* per block: AMT 64 = the whole range */
             uint32_t id = mod_param(d);
-            const param_desc_t *pd = id >= P_E0 ? &ENGINES[t->engine]->edit[id - P_E0] : &TP[id];
-            x = mod_tsrc(t, s, lfo);
+            const param_desc_t *pd;
+            if (id == P_E0 && t->engine == ENGI_WAVE)
+                continue;                               /* (WAVE's TABLE: a change would build a new table. The other slots mod_e_why
+                                                         * fades, unused, FM6's SLOT, read at a note-on, have no reader in the block) */
+            pd = id >= P_E0 ? &ENGINES[t->engine]->edit[id - P_E0] : &TP[id];
             for (j = 0; j < mod.nk && mod.kid[j] != id; j++)
                 ;
             if (j == mod.nk) {
@@ -265,6 +377,8 @@ static __attribute__((noinline)) int mod_begin(track_t *t)
         const param_desc_t *pd = id >= P_E0 ? &ENGINES[t->engine]->edit[id - P_E0] : &TP[id];
         t->p[id] = (int16_t)clamp(mod.keep[j] + off[j], pd->min, pd->max);
     }
+    if (gb | dk | mod_gon | mod_dk)
+        mod_part_put(t, gb ? goff : 0, dk);
     return 1;
 }
 
@@ -331,15 +445,84 @@ static __attribute__((noinline)) void mod_midi(track_t *t, uint32_t st, uint32_t
     }
 }
 
-/* the name of destination value v for track t (UI, <= 5 characters): E1..E8 by the engine's labels (of the
- * engine the UI shows), "E5" for a parameter the engine does not use */
-static const char *mod_dst_name(const track_t *t, int32_t v)
+/* the name of destination value v for track t (UI, <= 5 characters: the MATRIX page's DEST card and rows): E1..E8 by the
+ * engine's labels (of the engine the UI shows), "E5" for a parameter the engine does not use; the INSERT's A B C by its
+ * TYPE's labels (DRIVE TONE LEVEL, BITS RATE LPF, RATE DEPTH FDBK; "INS A" while it is OFF) */
+static __attribute__((noinline)) const char *mod_dst_name(const track_t *t, int32_t v)
 {
     v = clamp(v, 0, MD_N - 1);
-    if (MD_ENGINE(v)) {
-        const char *l = track_desc(t, P_E0 + (uint32_t)(v - MD_E1))->label;
+    if (MD_ENGINE(v) || (v >= MD_INSA && v <= MD_INSC)) {
+        const char *l = track_desc(t, MD_ENGINE(v) ? P_E0 + (uint32_t)(v - MD_E1) : P_IA + (uint32_t)(v - MD_INSA))->label;
         if (l && l[0] && l[0] != '-')
             return l;
     }
     return N_MDST[v];
+}
+
+/* why destination v does nothing for track t now, 0 = it works (a card's reason, <= 8 characters). Only what a selection
+ * makes impossible (owner rule): the engine slot (mod_e_why: UNUSED, REBUILD, LOADS, AT NOTE), PAN in DUEL (each part on
+ * its own side), the INSERT's values while its TYPE is OFF, FRES on an engine with no multimode filter at all (DRUM; on
+ * ANALOG, TRIO, NOISE, whose own RES is an E slot, it is the multimode filter's RES since 0.2.9: ufilt 2). Never a value at 0 */
+static __attribute__((noinline)) const char *mod_dst_why(const track_t *t, int32_t v)
+{
+    v = clamp(v, 0, MD_N - 1);
+    if (MD_ENGINE(v)) {
+        const char *l = track_desc(t, P_E0 + (uint32_t)(v - MD_E1))->label;
+        return !l || !l[0] || l[0] == '-' ? "UNUSED" : mod_e_why(eng_idx(t->eng_req), (uint32_t)(v - MD_E1));
+    }
+    if (v == MD_PAN && duell_mode_req == DM_SPLIT)
+        return "DUEL";
+    if (v >= MD_INSA && v <= MD_IMIX && !t->p[P_ITYPE])
+        return "INS OFF";
+    if (v == MD_RES && !ENGINES[eng_idx(t->eng_req)]->ufilt)
+        return "ENGINE";
+    return 0;
+}
+
+/* the MATRIX page's DEST line for destination v of track t: "DEST: WAVE POS", "DEST: INSERT DRIVE", "DEST: REVERB SIZE"
+ * (b: 32 bytes), and in more (0: nothing to add) what the card's reason or a bus value means in words */
+static __attribute__((noinline)) void mod_dst_line(const track_t *t, int32_t v, char *b, const char **more)
+{
+    /* every destination's name in full, one after the other (none for E1..E8 and the INSERT's A B C: named by their owner) */
+    static const char FULL[] =
+        "NONE\0""PITCH\0""FILTER CUTOFF\0""SHAPE (TIMBRE)\0""VOICE AMP (TREMOLO)\0""PAN\0""DISTORTION\0""CHORUS SEND\0"
+        "DELAY SEND\0""REVERB SEND\0""LFO 1 RATE\0""LFO 1 PITCH DEPTH\0""\0""\0""\0""\0""\0""\0""\0""\0""LFO 1 DEPTH\0"
+        "LFO 2 RATE\0""LFO 2 DEPTH\0""PART LEVEL\0""\0""\0""\0""INSERT MIX\0""EQ LOW GAIN\0""EQ MID GAIN\0""EQ HIGH GAIN\0"
+        "DUCK DEPTH\0""ENV 2 ATTACK\0""ENV 2 DECAY\0""ENV 2 SUSTAIN\0""ENV 2 RELEASE\0""ENV 2 FILTER DEPTH\0"
+        "ENV 2 SHAPE DEPTH\0""FILTER RESONANCE\0""CHORUS RATE\0""CHORUS DEPTH\0""DELAY FEEDBACK\0""DELAY MOD DEPTH\0"
+        "DELAY MOD RATE\0""REVERB SIZE\0""REVERB DAMP\0";
+    const char *f = FULL;
+    const char *why;
+    uint32_t n;
+    int32_t k;
+    v = clamp(v, 0, MD_N - 1);
+    for (k = v; k; k--)
+        f += str_len(f) + 1u;
+    why = mod_dst_why(t, v);
+    str_cpy(b, "DEST: ", 32);
+    n = str_len(b);
+    if (MD_ENGINE(v) || (v >= MD_INSA && v <= MD_INSC)) {   /* whose: the engine's (its name), the INSERT's */
+        str_cpy(b + n, MD_ENGINE(v) ? ENGINES[eng_idx(t->eng_req)]->name : "INSERT", 32 - n);
+        n = str_len(b);
+        str_cpy(b + n, " ", 32 - n);
+        if (MD_ENGINE(v) && why && why[0] == 'U') {     /* an unused slot: where it is ("WAVE EDIT 2 KNOB 3"), not "E7" */
+            char where[14];
+            str_cpy(where, "EDIT 1 KNOB 1", sizeof where);
+            where[5] = (char)('1' + (v - MD_E1) / 4);
+            where[12] = (char)('1' + (v - MD_E1) % 4);
+            str_cpy(b + n + 1u, where, 32 - n - 1u);
+        } else {                                        /* (the INSERT OFF: "INSERT A") */
+            const char *nm = mod_dst_name(t, v);
+            str_cpy(b + n + 1u, nm == N_MDST[v] && !MD_ENGINE(v) ? nm + 4 : nm, 32 - n - 1u);
+        }
+    } else {
+        str_cpy(b + n, f, 32 - n);
+    }
+    *more = !why ? 0 : why[0] == 'U' ? "NOT USED BY THIS ENGINE" : why[0] == 'R' ? "A TABLE CHANGE IS A REBUILD"
+          : why[0] == 'L' ? "SLOT LOADS A WHOLE PATCH" : why[0] == 'A' ? "READ ONLY AS A NOTE STARTS"
+          : why[0] == 'D' ? "DUEL: EACH PART ON ITS SIDE" : why[0] == 'I' ? "THE INSERT TYPE IS OFF"
+          : "THIS ENGINE HAS ITS OWN FILTER";
+    if (!why && v >= MD_BUS)                            /* a bus value: whose bus it moves */
+        *more = duell_mode_req == DM_SPLIT ? (t == trk ? "MOVES BUS A ONLY (PART 1)" : "MOVES BUS B ONLY (PART 2)")
+                                           : "SHARED BUS: BOTH PARTS ADD";
 }

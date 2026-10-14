@@ -9,7 +9,9 @@
 static __attribute__((noinline)) void BUS_FN(rev_room)(const int32_t *rev_in, int32_t *out, uint32_t n)
 {
     uint32_t i, k;
-    int32_t size = 25000 + song.g[G_RSIZE] * 50, damp = 32767 - song.g[G_RDAMP] * 200;
+    int32_t size = 25000 + SV_RSIZE * 50, damp = 32767 - song.g[G_RDAMP] * 200;   /* (SV_RSIZE: song.g's, or PERFORM's SPACE: fx.c sv) */
+    if (size > 32300)
+        size = 32300;                                   /* (SPACE's largest: 0.986, the combs' loop below 1) */
     for (i = 0; i < n; i++) {
         int32_t a = 0;
         int16_t *c = BUS_COMB;
@@ -37,20 +39,75 @@ static __attribute__((noinline)) void BUS_FN(rev_room)(const int32_t *rev_in, in
     }
 }
 
+/* SPRING's loop and taps while SIZE glides (0.2.9; rev_spring): the loop's length moves dq (Q8) a sample from s0 + dq (the block's first
+ * sample) on, and every read (the loop's end, the far end, the second pickup) is between two samples. Before, the length stepped a whole
+ * sample once a block (the loop's end and the second pickup read at whole samples): a click a block while SIZE moved (PERFORM's SPACE
+ * moves it over ~600 samples: ~0.45 s of clicks). At rest (SIZE still) rev_spring's own loop runs, as ever */
+static __attribute__((noinline)) void BUS_FN(spring_glide)(const int32_t *rev_in, int32_t *out, uint32_t n, int32_t g, int32_t kl,
+                                                          int32_t s0, int32_t dq, int32_t wob)
+{
+    uint32_t i, k;
+    int16_t *ln = BUS_COMB;
+    int32_t *ap = BUS_U.sp, q = s0;
+    for (i = 0; i < n; i++) {
+        uint32_t wp = BUS_FX.sp_w, j = (wp & 3u) * (SP_N + 1u), d, d2, d3;
+        int32_t x = mulq15(rev_in[i], 2580), r, p, o, w, l3, f, f2, f3, a, b;
+        q += dq;
+        d = (uint32_t)q >> 8, f = q & 255;              /* the loop's end, between samples */
+        a = ln[(wp - d) & SP_MASK], b = ln[(wp - d - 1u) & SP_MASK];
+        r = a + (((b - a) * f) >> 8);
+        w = (q >> 1) + wob;                             /* the far end (with the block's wobble) */
+        d2 = (uint32_t)w >> 8, f2 = w & 255;
+        l3 = (q * 3) >> 2;                              /* the second pickup */
+        d3 = (uint32_t)l3 >> 8, f3 = l3 & 255;
+        BUS_FX.sp_lp += mulq15(r - BUS_FX.sp_lp, kl);
+        o = BUS_FX.sp_lp * g;
+        x += (o + ((o >> 31) & 32767)) >> 15;
+        o = x - BUS_FX.sp_hp + BUS_FX.sp_he;
+        BUS_FX.sp_he = o & 63;
+        BUS_FX.sp_hp += o >> 6;
+        x -= BUS_FX.sp_hp;
+        p = ap[j];
+        ap[j] = x;
+        for (k = 1; k <= SP_N; k++) {
+            int32_t v = (x - ap[j + k]) * SP_A;
+            o = ap[j + k];
+            x = ((v + ((v >> 31) & 4095)) >> 12) + p;
+            p = o;
+            ap[j + k] = x;
+        }
+        ln[wp & SP_MASK] = (int16_t)clamp(x, -32768, 32767);
+        BUS_FX.sp_w = (uint16_t)(wp + 1u);
+        a = ln[(wp - d2) & SP_MASK], b = ln[(wp - d2 - 1u) & SP_MASK];
+        o = ln[(wp - d3) & SP_MASK];
+        out[i] += (a + (((b - a) * f2) >> 8)) * 4 + (o + (((ln[(wp - d3 - 1u) & SP_MASK] - o) * f3) >> 8)) * 2;
+    }
+}
+
 /* SPRING (see the top), added to out */
 static __attribute__((noinline)) void BUS_FN(rev_spring)(const int32_t *rev_in, int32_t *out, uint32_t n)
 {
-    uint32_t i, k, s = (uint32_t)song.g[G_RSIZE];
+    uint32_t i, k, s = (uint32_t)SV_RSIZE;
     int32_t g = 19661 + (int32_t)s * 85;                /* the loop's gain: 0.6 .. 0.93 */
+    if (g > 31800)
+        g = 31800;                                      /* (SPACE's largest: 0.97) */
     int32_t kl = 26000 - song.g[G_RDAMP] * 160;         /* its low-pass: ~9 kHz .. ~1.3 kHz */
     int32_t len = (int32_t)(1323u + ((s * 1323u) >> 7)) << 8, L, L2, L3, f, w;
     int16_t *ln = BUS_COMB;
     int32_t *ap = BUS_U.sp;
     if (!BUS_FX.sp_size)
         BUS_FX.sp_size = len;
-    BUS_FX.sp_size += clamp(len - BUS_FX.sp_size, -256, 256);   /* SIZE glides (a sample a block at most) */
-    L = BUS_FX.sp_size >> 8;
     BUS_FX.sp_ph += 2u * LFO_INC[24];                       /* the wobble: a slow sine, 1.5 samples deep */
+    {   /* SIZE glides (a sample a block at most), between samples a sample at a time (spring_glide); the last 1/8 sample at once */
+        int32_t s0 = BUS_FX.sp_size, dq = clamp(len - s0, -256, 256) / (int32_t)CTL;   /* (towards 0) */
+        if (dq && n == CTL) {
+            BUS_FX.sp_size = s0 + dq * (int32_t)CTL;
+            BUS_FN(spring_glide)(rev_in, out, n, g, kl, s0, dq, (osc_sine(BUS_FX.sp_ph) * 3) >> 8);
+            return;
+        }
+        BUS_FX.sp_size = len;
+    }
+    L = BUS_FX.sp_size >> 8;
     w = (BUS_FX.sp_size >> 1) + ((osc_sine(BUS_FX.sp_ph) * 3) >> 8);   /* the far end, Q8 */
     L2 = w >> 8;
     f = w & 255;
@@ -106,8 +163,8 @@ static __attribute__((noinline)) void BUS_FN(rev_hall)(const int32_t *rev_in, in
     int32_t kd = HL_KD(song.g[G_RDAMP]);
     int32_t xp = BUS_HL.x, hp = BUS_HL.hp, he = BUS_HL.he, mp = BUS_HL.m, sp = BUS_HL.s;
     (void)n;
-    if (BUS_HL.sz != song.g[G_RSIZE] + 1)
-        BUS_FN(hall_gains)(song.g[G_RSIZE]);
+    if (BUS_HL.sz != SV_RSIZE + 1)
+        BUS_FN(hall_gains)(SV_RSIZE);                   /* (SPACE: its SIZE; the lines' gains stay at most 0.99) */
     for (i = 0; i < HL_NC; i++) {
         int32_t x = (xp + 2 * rev_in[2u * i] + rev_in[2u * i + 1u]) >> 2, v;   /* every other sample, 1 2 1 */
         xp = rev_in[2u * i + 1u];
@@ -224,7 +281,7 @@ static __attribute__((noinline)) void BUS_FN(rev_reso)(const int32_t *rev_in, in
 {
     uint32_t i, k, per[4], mask, s, k0 = BUS_SPLITB, k1 = (BUS_SPLITB || dm_split) ? k0 + 1u : (uint32_t)NTRK;
     const track_t *t = &trk[k0];
-    int32_t rt, sz = song.g[G_RSIZE], dk = 32767 - song.g[G_RDAMP] * 200, note[4], deg = 0, nn;
+    int32_t rt, sz = SV_RSIZE, dk = 32767 - song.g[G_RDAMP] * 200, note[4], deg = 0, nn;
     int32_t fb = sz <= 100 ? 26000 + sz * 52 : clamp(31200 + (sz - 100) * 58, 0, 32740);   /* 0.79 .. 0.9992 */
     for (k = k0; k < k1; k++)
         if (ENGINES[eng_idx(trk[k].eng_req)] != &ENG_DRUM) { t = &trk[k]; break; }
@@ -305,6 +362,113 @@ static __attribute__((noinline)) void BUS_FN(rev_switch)(const int32_t *rev_in, 
     BUS_FX.rtype = (uint8_t)rt;
 }
 
+/* the chorus's DEPTH over a block (0.2.9): from the depth the last block reached (*cdq, Q8) to this block's (cdepth), *cst a sample
+ * (the read point's sweep is (sine + 1) x depth: a depth that jumped at a block's start jumped the read point, up to ~3 samples a block
+ * while PERFORM's SPACE or the matrix moved it: a click a block, a buzz at 1.4 kHz). The loops read (sine + 32768) x (cdq >> 4) >> 12: a
+ * depth that holds (cst 0, cdq = cdepth << 8) gives (sine + 32768) x cdepth >> 8 exactly, as before (bit for bit). What a block cannot
+ * reach (under 32 / 256 of a sample of depth) the next one starts from */
+static inline void BUS_FN(cho_glide)(int32_t cdepth, int32_t *cdq, int32_t *cst)
+{
+    int32_t t = cdepth << 8, q = BUS_FX.cho_on ? BUS_FX.cho_dq : t;
+    *cdq = q;
+    *cst = (t - q) >> CTL_LOG2;
+    BUS_FX.cho_dq = t;
+    BUS_FX.cho_on = 1;
+}
+
+/* The delay's MODULATION (DUELL 0.2.5, SPEC 5c.2): the delay time wobbles, a tape / chorus-like movement, with its own small LFO (not
+ * LFO 1 / 2, not the matrix): G_DMDEP DEPTH (0 off .. 100: the time swings +- 10 ms, never more than a quarter of the delay time, so a short
+ * delay keeps its feel) and G_DMRATE RATE (the chorus's rates, 0.05 .. 3.4 Hz). DEPTH 0 and at rest: fx_buses_m runs the loop below it
+ * as ever (bit for bit, no cost); this runs while DEPTH > 0 and while the depth glides back to 0.
+ * Two taps read the line at dl + oL and dl + oR (linear interpolation, dly_tap): oL = dev sin(pl), oR = dev sin(pr + 1/2 turn), pr
+ * running 1/16 faster than pl, so they start in opposite phase and drift: the two channels never wobble together. In STEREO and LAYER
+ * (dsd given) the return is their mid, and half their difference goes to the left and from the right of the dry mix (the side, as
+ * PING-PONG's, added here: mix_l, mix_r), the image widens; the line is fed back from the mid (every repeat is chorused again). In DUEL
+ * (dsd 0: a part's own side) the left tap alone, bus B a quarter turn behind bus A. PING-PONG: the left return reads at dl + oL, the
+ * loop's end at 2 dl + oR (its side goes through dsd as ever, SPREAD applies).
+ * Per sample one or two interpolated reads (the read positions run on, one add each); the LFOs once a block: the offsets run on a
+ * straight line between the block's two sine values from where they were (so a change of DEPTH, RATE or the delay time never jumps),
+ * and the depth reached glides at most half a sample a block (0.6 s from 0 to the top): no click turning DEPTH. State per bus (fxs_t
+ * dm_*): the buses never share it. */
+#define DM_STEP 128                                     /* the depth glides at most 0.5 sample (Q8) a block */
+static __attribute__((noinline)) void BUS_FN(dly_mod)(uint32_t dmask, uint32_t dl, const int32_t *cho_in, const int32_t *dly_in,
+                                                      int32_t *wet, uint32_t n, uint32_t pp, int32_t *dsd)
+{
+    uint32_t i, st = dsd != 0, pl = BUS_FX.dm_pl + (BUS_SPLITB ? 0x40000000u : 0u), pr = BUS_FX.dm_pr + 0x80000000u;
+    uint32_t inc = LFO_INC[clamp(song.g[G_DMRATE], 0, 127)], w = BUS_FX.dly_w, ppos, qpos, pstep, qstep;
+    int32_t fb = SV_DFB, col = 2000 + song.g[G_DCOLOR] * 240, dmix = song.g[G_DMIX] * 258;
+    int32_t cdepth = SV_CDEP, dev = clamp(song.g[G_DMDEP], 0, 100) * 1129, cap = (int32_t)(dl << 6);
+    int32_t xl = BUS_FX.dm_xl, xr = BUS_FX.dm_xr, el, er, sl, sr, cdq, cst;
+    uint32_t cinc = LFO_INC[song.g[G_CRATE] & 127] / CTL;
+    int32_t room = (int32_t)(dmask - 2u - (pp ? dl << 1 : dl)) << 8;   /* the line's end: a tap never reads past the oldest sample */
+    cap = cap > room ? (room > 0 ? room : 0) : cap;
+    dev = dev > cap ? cap : dev;                        /* (the target, Q8 samples: 100 % = 441 samples = 10 ms, 1129 a percent) */
+    BUS_FX.dm_dev += clamp(dev - BUS_FX.dm_dev, -DM_STEP, DM_STEP);
+    dev = BUS_FX.dm_dev > cap ? cap : BUS_FX.dm_dev;
+    BUS_FX.dm_dev = dev;
+    BUS_FN(cho_glide)(cdepth, &cdq, &cst);
+    el = ((sine_i(pl + inc) * (dev >> 3)) >> 12) << 8;  /* where the offsets are to be at the block's end (Q16) */
+    er = ((sine_i(pr + inc + (inc >> 4)) * (dev >> 3)) >> 12) << 8;
+    sl = (el - xl) >> CTL_LOG2;
+    sr = (er - xr) >> CTL_LOG2;
+    BUS_FX.dm_pl += inc;
+    BUS_FX.dm_pr += inc + (inc >> 4);
+    /* the read positions (Q16): w - delay; a sample on they move by 1 less the offset's step */
+    ppos = (w << 16) - (dl << 16) - (uint32_t)(xl + sl);
+    pstep = 65536u - (uint32_t)sl;
+    qpos = (w << 16) - ((pp ? dl << 1 : dl) << 16) - (uint32_t)(xr + sr);
+    qstep = 65536u - (uint32_t)sr;
+    for (i = 0; i < n; i++) {
+        int32_t y = 0, a, b, r, x;
+        /* chorus: as fx_buses_m's */
+        BUS_CHO[BUS_FX.cho_w & (CHO_LEN - 1u)] = (int16_t)clamp(cho_in[i] >> 1, -32768, 32767);
+        BUS_FX.cho_ph += cinc;
+        cdq += cst;
+        r = (400 << 8) + (((osc_sine(BUS_FX.cho_ph) + 32768) * (cdq >> 4)) >> 12);
+        {
+            uint32_t ri = (uint32_t)r >> 8;
+            int32_t f = r & 255, c0 = BUS_CHO[(BUS_FX.cho_w - ri) & (CHO_LEN - 1u)];
+            int32_t c1 = BUS_CHO[(BUS_FX.cho_w - ri - 1u) & (CHO_LEN - 1u)];
+            y += (c0 + (((c1 - c0) * f) >> 8)) << 1;
+        }
+        BUS_FX.cho_w++;
+        if (pp) {                                       /* PING-PONG (STEREO / LAYER): the left return and the loop's end, each its own tap */
+            int32_t yl, yr;
+            a = dly_tap(BUS_DLY, dmask, ppos);
+            b = dly_tap(BUS_DLY, dmask, qpos);
+            BUS_FX.dly_lp += mulq15(b - BUS_FX.dly_lp, col);
+            r = mulq15(BUS_FX.dly_lp, fb);
+            BUS_DLY[w & dmask] = (int16_t)clamp((dly_in[i] >> 1) + mulq15(r, fb), -32768, 32767);
+            yl = mulq15(a << 1, dmix);
+            yr = mulq15(r << 1, dmix);
+            y += (yl + yr) >> 1;
+            dsd[i] = (yl - yr) >> 1;
+        } else if (st) {                                /* two taps: the mid is the return, half the difference the side */
+            a = dly_tap(BUS_DLY, dmask, ppos);
+            b = dly_tap(BUS_DLY, dmask, qpos);
+            x = (a + b) >> 1;
+            BUS_FX.dly_lp += mulq15(x - BUS_FX.dly_lp, col);
+            BUS_DLY[w & dmask] = (int16_t)clamp((dly_in[i] >> 1) + mulq15(BUS_FX.dly_lp, fb), -32768, 32767);
+            y += mulq15(x << 1, dmix);
+            r = mulq15(a - b, dmix);
+            mix_l[i] += r;
+            mix_r[i] -= r;
+        } else {                                        /* DUEL: the one tap */
+            x = dly_tap(BUS_DLY, dmask, ppos);
+            BUS_FX.dly_lp += mulq15(x - BUS_FX.dly_lp, col);
+            BUS_DLY[w & dmask] = (int16_t)clamp((dly_in[i] >> 1) + mulq15(BUS_FX.dly_lp, fb), -32768, 32767);
+            y += mulq15(x << 1, dmix);
+        }
+        w++;
+        ppos += pstep;
+        qpos += qstep;
+        wet[i] = y;
+    }
+    BUS_FX.dly_w = w;
+    BUS_FX.dm_xl = xl + sl * (int32_t)n;
+    BUS_FX.dm_xr = xr + sr * (int32_t)n;
+}
+
 /* process the three buses for one block (the delay line BUS_DLY[0 .. dmask], the delay dl); sends in, wet stereo-equal out.
  * pp (DUELL, SPEC 5c.2; STEREO and LAYER only, the callers of SPLIT pass 0 and the branch is gone): the delay PING-PONGs. The
  * mono send goes into one line of 2 x dl that feeds back from its end with the square of the feedback (the same decay in
@@ -312,21 +476,23 @@ static __attribute__((noinline)) void BUS_FN(rev_switch)(const int32_t *rev_in, 
  * right the loop's own feedback tap (the repeats 2, 4, 6 ...: the line's end, low-passed, times FDBK). One line, no second
  * one. The delay's return is then no longer stereo-equal: wet gets its mid ((L + R) / 2) and dsd its side ((L - R) / 2,
  * added to the left and taken from the right: rev_side_mix does the same for HALL's). pp 0: the plain delay, bit for bit.
- * dl is at most half the line (the caller: delay_split) */
+ * dl is at most half the line (the caller: delay_split). While the delay's modulation runs, fx_buses_mod (above) is called instead */
 static inline void BUS_FN(fx_buses_m)(uint32_t dmask, uint32_t dl, const int32_t *cho_in, const int32_t *dly_in,
                                       const int32_t *rev_in, int32_t *wet, uint32_t n, uint32_t pp, int32_t *dsd)
 {
     uint32_t i;
-    int32_t fb = song.g[G_DFDBK] * 230, col = 2000 + song.g[G_DCOLOR] * 240;
+    int32_t fb = SV_DFB, col = 2000 + song.g[G_DCOLOR] * 240;   /* (SV_*: song.g's, or PERFORM's SPACE: fx.c sv) */
     int32_t dmix = song.g[G_DMIX] * 258;
-    int32_t cdepth = song.g[G_CDEPTH] * 6, rt;
+    int32_t cdepth = SV_CDEP, rt, cdq, cst;
     uint32_t cinc = LFO_INC[song.g[G_CRATE] & 127] / CTL;
+    BUS_FN(cho_glide)(cdepth, &cdq, &cst);
     for (i = 0; i < n; i++) {
         int32_t y = 0, x, r;
         /* chorus: modulated short delay, 5..15 ms */
         BUS_CHO[BUS_FX.cho_w & (CHO_LEN - 1u)] = (int16_t)clamp(cho_in[i] >> 1, -32768, 32767);
         BUS_FX.cho_ph += cinc;
-        r = (400 << 8) + ((osc_sine(BUS_FX.cho_ph) + 32768) * cdepth >> 8);   /* Q8 delay: read between samples */
+        cdq += cst;
+        r = (400 << 8) + (((osc_sine(BUS_FX.cho_ph) + 32768) * (cdq >> 4)) >> 12);   /* Q8 delay: read between samples */
         {
             uint32_t ri = (uint32_t)r >> 8;
             int32_t f = r & 255, c0 = BUS_CHO[(BUS_FX.cho_w - ri) & (CHO_LEN - 1u)];
@@ -359,6 +525,22 @@ static inline void BUS_FN(fx_buses_m)(uint32_t dmask, uint32_t dl, const int32_t
     }
     rt = song.g[G_RTYPE];
     rt = rt >= 1 && rt <= 4 ? rt : 0;                   /* (an unknown value: ROOM) */
+    BUS_HL.side = 0;
+    if (rt != BUS_FX.rtype)
+        BUS_FN(rev_switch)(rev_in, wet, n, rt);
+    else
+        BUS_FN(rev_run)((uint32_t)rt, rev_in, wet, n);
+}
+
+/* the same as fx_buses_m while the delay's MODULATION runs (dly_mod for the chorus and the delay, then the reverb as fx_buses_m's tail): a
+ * function of its own, so the plain path above is not touched by it (DEPTH 0: bit for bit and the same cost as before) */
+static __attribute__((noinline)) void BUS_FN(fx_buses_mod)(uint32_t dmask, uint32_t dl, const int32_t *cho_in, const int32_t *dly_in,
+                                                           const int32_t *rev_in, int32_t *wet, uint32_t n, uint32_t pp, int32_t *dsd)
+{
+    int32_t rt;
+    BUS_FN(dly_mod)(dmask, dl, cho_in, dly_in, wet, n, pp, dsd);
+    rt = song.g[G_RTYPE];
+    rt = rt >= 1 && rt <= 4 ? rt : 0;
     BUS_HL.side = 0;
     if (rt != BUS_FX.rtype)
         BUS_FN(rev_switch)(rev_in, wet, n, rt);

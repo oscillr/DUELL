@@ -163,18 +163,20 @@ static int lfo(void)
         t->p[P_M1SRC] = t->p[P_M1DST] = t->p[P_M1AMT] = 0;
         t->p[P_LPOL] = 0;
     }
-    bad += check("LFO 2 is no automation (motion_param), its page SYNC TRIG POL after LFO (LFO's family)",
+    bad += check("LFO 2 is no automation (motion_param), its page TRIG PHS POL after LFO (LFO's family)",
                  !motion_param(P_LSYNC) && !motion_param(P_LTRIG) && !motion_param(P_LPOL) && !motion_param(P_SQNT) &&
-                 !motion_param(PL_LN7) && motion_param(P_E0) && PAGES[5].id[0] == P_LSYNC && !strcmp(PAGES[5].title, "LFO 1 SYNC") &&
+                 !motion_param(PL_LN7) && motion_param(P_E0) && PAGES[5].id[0] == P_LTRIG && !strcmp(PAGES[5].title, "LFO 1 TRIG") &&
                  PAGES[5].fam == FAM_LFO && PAGES[4].graph == GR_LFO && !strcmp(PAGES[6].title, "LFO 1 DEST"));   /* (DUELL:
                                                           * ENV 2, ENV 2 DEST before them; Felucca's "LFO 2" page is LFO SYNC) */
     go_page(GR_LFO);
-    ui.page++;                                       /* LFO 2 */
     page_entered();
     frame();
-    turn(EN_K1, 3);
+    turn(EN_K3, 3);                                  /* LFO 1: WAVE RATE SYNC FADE */
+    ui.page++;                                       /* LFO 1 TRIG: TRIG PHS POL */
+    page_entered();
+    frame();
     turn(EN_K3, 1);
-    bad += check("  LFO 2's knobs: SYNC (4BAR 2BAR 1/1 ..), POL", t->p[P_LSYNC] == 3 && t->p[P_LPOL] == 1 &&
+    bad += check("  LFO's knobs: SYNC (4BAR 2BAR 1/1 ..) on LFO 1 K3, POL on LFO 1 TRIG K3", t->p[P_LSYNC] == 3 && t->p[P_LPOL] == 1 &&
                  !strcmp(N_LSYNC[3], "1/1"));
     return bad;
 }

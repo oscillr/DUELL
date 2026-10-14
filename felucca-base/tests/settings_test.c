@@ -119,7 +119,7 @@ int main(void)
         assert(leds_stored_ok(0u) && leds_stored_ok(1u) && !leds_stored_ok(2u) && leds_stored_ok(LEDS_TAG | 2u) &&
                leds_stored_ok(LEDS_TAG | 3u) && !leds_stored_ok(LEDS_TAG + 4u) && leds_from_stored(LEDS_TAG + 4u) == LEDS_DIM &&
                leds_from_stored(7u) == LEDS_DIM && leds_from_stored(2u) == LEDS_DIM);
-        /* the modes appended (append-only: DIM 0, INV 1 as before): OFF 2, DIM LO 3, each saved and read back,
+        /* the modes appended (append-only: DIM 0, MAX 1 as before): OFF 2, LOW 3, each saved and read back,
          * twice the same */
         {
             uint32_t m;

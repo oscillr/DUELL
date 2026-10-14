@@ -338,7 +338,7 @@ static int arp_ext_clock_test(void)
     /* the stored steps of a multi are the user's content: an external Start plays them (INT PLAY does the same); the ARP itself stays silent */
     {
         uint32_t ms = 100, i, started = 0, arp_on = 0; uint8_t last = 0;
-        midi_test_reset(); project_load(0); events_block(CTL);
+        midi_test_reset(); project_load(2); events_block(CTL);   /* (M03 EERIE SIGNAL since 0.2.13, M01 before: part 2 holds steps) */
         song.g[G_CLOCK] = 1; events_block(CTL);
         clock_packet(1, 0xFA, ms);
         for (i = 0; i < 96u; i++) {
@@ -347,7 +347,7 @@ static int arp_ext_clock_test(void)
             last = trk[1].seq_n ? trk[1].seq_notes[0] : 0;
             arp_on += trk[0].arp_note != 0 || trk[1].arp_note != 0;
         }
-        bad += check("M01 on USB Start, no keys: the stored steps of part 2 play (16 notes in 96 pulses), the ARPs play nothing",
+        bad += check("M03 EERIE SIGNAL on USB Start, no keys: the stored steps of part 2 play (16 notes in 96 pulses), the ARPs play nothing",
                      started == 16u && !arp_on && !trk[0].nheld && !trk[1].nheld);
     }
     return bad;
@@ -370,14 +370,53 @@ static int usb_burst_test(void)
         midi_in_event(0x0Bu | 0xB1u << 8 | 1u << 16 | e << 24);
     bad += check("TRS MIDI into a ring full of USB still fits (no overflow)", !midi_in_overflow && mi_w - mi_r == 56u);
     events_block(CTL);
-    bad += check("the ring drains with no panic: the held note keeps sounding", gate_note(&trk[0], 48) && mi_r == mi_w);
-    bad += check("the refused packet is taken once the ring has room", ep1_take(pkt, sizeof pkt) && mi_w - mi_r == 16u);
-    events_block(CTL);
+    bad += check("0.2.11: one block takes 16 events (MIDI_DRAIN), the other 40 wait", gate_note(&trk[0], 48) && mi_w - mi_r == 40u);
+    bad += check("the refused packet is taken once the ring has room", ep1_take(pkt, sizeof pkt) && mi_w - mi_r == 56u);
+    for (k = 0; k < 4; k++) events_block(CTL);
+    bad += check("the ring drains with no panic (4 blocks): the held note keeps sounding", gate_note(&trk[0], 48) && mi_r == mi_w && !midi_in_overflow);
     bad += check("the held note survives all 88 events", gate_note(&trk[0], 48) && !midi_in_overflow);
     for (k = 0; k < 3; k++) ep1_take(pkt, sizeof pkt);
     midi_in_event(0x09u | 0x90u << 8 | 50u << 16 | 100u << 24);   /* one more event: 49 used, 15 free */
     bad += check("free space below one packet refuses a whole packet", !ep1_take(pkt, sizeof pkt) && !midi_in_overflow);
     events_block(CTL);
+    return bad;
+}
+/* DUELL 0.2.11 (SPEC 6.3): the MIDI-in drain takes at most MIDI_DRAIN (16) events a block, the rest the next block in order; real-time
+ * bytes are taken at once (in their order, once), an All Notes Off pulls the drain up to it (in order) */
+static int drain_test(void)
+{
+    int bad = 0; uint32_t i; int16_t ref[P_COUNT], got[P_COUNT];
+    midi_test_reset();
+    queued(0xB0, 74, 16, 1);                         /* the reference: CC74 = 16 alone */
+    memcpy(ref, trk[0].p, sizeof ref);
+    midi_test_reset();
+    for (i = 1; i <= 40u; i++) midi_enqueue(0x0Bu | 0xB0u << 8 | 74u << 16 | i << 24, 1);
+    events_block(CTL);
+    memcpy(got, trk[0].p, sizeof got);
+    bad += check("0.2.11 drain: 40 CC74 in the ring: the first block takes the first 16, in order (as CC74 = 16 alone)",
+                 mi_w - mi_r == 24u && !memcmp(ref, got, sizeof ref));
+    events_block(CTL); events_block(CTL);
+    bad += check("0.2.11 drain: the 24 others in the next two blocks (16 + 8), the ring empty (CC74 = 40 now: the CC does move a value)",
+                 mi_r == mi_w && !midi_in_overflow && memcmp(ref, trk[0].p, sizeof ref));
+    clock_setup(1);                                  /* real time: Start and 3 clocks behind 20 CCs */
+    for (i = 0; i < 20u; i++) midi_enqueue(0x0Bu | 0xB0u << 8 | 74u << 16 | i << 24, 1);
+    fm1_ms = 10;
+    midi_enqueue(0xFu | 0xFAu << 8, 1);
+    for (i = 0; i < 3u; i++) midi_enqueue(0xFu | 0xF8u << 8, 1);
+    events_block(CTL);
+    bad += check("0.2.11 drain: real time behind the limit: Start and the clocks taken in the same block", song.playing && midi_clock.tempo_valid && midi_clock.tempo_n == 2u && mi_w - mi_r == 8u);
+    events_block(CTL);
+    bad += check("0.2.11 drain: .. and never twice (the next block skips them), the ring empty", song.playing && midi_clock.tempo_n == 2u && mi_r == mi_w);
+    midi_test_reset();                               /* All Notes Off behind the limit: in order, at once */
+    queued(0x90, 60, 100, 1);
+    for (i = 0; i < 20u; i++) midi_enqueue(0x0Bu | 0xB0u << 8 | 74u << 16 | i << 24, 1);
+    midi_enqueue(0x0Bu | 0xB0u << 8 | 123u << 16, 1);
+    midi_enqueue(0x09u | 0x90u << 8 | 62u << 16 | 100u << 24, 1);
+    events_block(CTL);
+    bad += check("0.2.11 drain: All Notes Off behind the limit ends the note before it in the same block; the note after it waits",
+                 !gate_note(&trk[0], 60) && !gate_note(&trk[0], 62) && mi_w - mi_r == 1u);
+    events_block(CTL);
+    bad += check("0.2.11 drain: .. and plays the next block", gate_note(&trk[0], 62) && mi_r == mi_w);
     return bad;
 }
 /* MENU > MIDI > MIDI IN (ROUT; up to 1.1.5 GLO > SYSTEM, #68): CH1-4 listens to channels 1..4 only, channels 5..16 are free for other instruments
@@ -458,28 +497,28 @@ static int cc_map_test(void)
     queued(0xB0, 74, 127, 1); queued(0xB0, 71, 0, 1);
     bad += check("CC74 / CC71 on ANALOG: CUT / RES", trk[0].p[P_E4] == 127 && trk[0].p[P_E5] == 0);
     queued(0xB1, 74, 64, 1);
-    ok = trk[1].p[P_FREEA] == 0;
+    ok = trk[1].p[P_FREEA] == 41;
     queued(0xB1, 74, 127, 1);
-    bad += check("CC74 on FM6 (channel 2, no filter of its own): the universal filter's CUT, bipolar (64: OFF, 127: +63)",
-                 ok && trk[1].p[P_FREEA] == 63 && trk[1].p[P_E2] == 0);
+    bad += check("CC74 on FM6 (channel 2, no filter of its own): the multimode filter's CUT over its dial (0: 30 Hz, 64: step 41, 127: the open end 82)",
+                 ok && trk[1].p[P_FREEA] == UF_STEPS && trk[1].p[P_E2] == 0);
     queued(0xB1, 71, 99, 1);
-    bad += check("CC71 on FM6: the universal filter's RES (0..127)", trk[1].p[P_FREEB] == 99);
+    bad += check("CC71 on FM6: the multimode filter's RES (0..127)", trk[1].p[P_FREEB] == 99);
     queued(0xB0, 74, 20, 1); queued(0xB0, 71, 20, 1);
-    bad += check("  ANALOG (a filter of its own): CC74 / CC71 leave the universal ids alone", trk[0].p[P_FREEA] == 0 && trk[0].p[P_FREEB] == 0);
+    bad += check("  ANALOG (a filter of its own): CC74 / CC71 leave the multimode filter's ids alone", trk[0].p[P_FREEA] == TP[P_FREEA].def && trk[0].p[P_FREEB] == 0);
     queued(0xB0, 74, 127, 1); queued(0xB0, 71, 0, 1);
     for (e = 0, ok = 1; e < NENGINES; e++) {   /* the table names a continuous EDIT value of every engine */
         uint32_t m = MIDI_CC_ENG[e], k;
         for (k = 0; k < 2u; k++) {
             uint32_t n = (m >> (k ? 0 : 4)) & 15u;
             const param_desc_t *d = n ? &ENGINES[e]->edit[n - 1u] : 0;
-            ok &= (n <= 8u && (!d || (d->fmt != F_ENUM && d->max - d->min >= 24))) || (n == 15u && ENGINES[e]->ufilt);
+            ok &= (n <= 8u && (!d || (d->fmt != F_ENUM && d->max - d->min >= 24))) || (n == 15u && ENGINES[e]->ufilt == 1u);
         }
-        ok &= !ENGINES[e]->ufilt || m == 0xFFu;       /* (an engine with the universal filter: CUT, RES both) */
+        ok &= ENGINES[e]->ufilt != 1u || m == 0xFFu;       /* (an engine with the multimode filter in place of its own: CUT, RES both; ufilt 2 keeps its own filter's) */
     }
-    bad += check("every engine's CC74 / CC71 target is a continuous EDIT value (or none), or the universal filter's (engines with ufilt)", ok);
+    bad += check("every engine's CC74 / CC71 target is a continuous EDIT value (or none), or the multimode filter's (engines with ufilt 1)", ok);
     trk[1].eng_req = trk[1].engine = 7u;               /* WHEEL: no filter of its own: the universal one */
     queued(0xB1, 74, 3, 1); queued(0xB1, 71, 4, 1);
-    bad += check("CC74 / CC71 on WHEEL: CUT -61 (3 - 64), RES 4", trk[1].p[P_FREEA] == -61 && trk[1].p[P_FREEB] == 4);
+    bad += check("CC74 / CC71 on WHEEL: CUT 2 (3 x 82 / 127), RES 4", trk[1].p[P_FREEA] == 2 && trk[1].p[P_FREEB] == 4);
     trk[1].eng_req = trk[1].engine = ENGI_FM6;
     memcpy(before, trk[0].p, sizeof before);
     queued(0xB0, 121, 0, 1);
@@ -503,7 +542,7 @@ static int cc_map_test(void)
     bad += check("armed and playing: CC74 records a motion event of CUT on the selected track", motion.count == 1u &&
                  motion.event[0].param == P_E4 && motion.event[0].value == 20 && (motion.event[0].place >> 6) == 0u);
     queued(0xB1, 74, 20, 1);
-    bad += check("  another track (channel 2, not selected): not recorded", motion.count == 1u && trk[1].p[P_FREEA] == -44);
+    bad += check("  another track (channel 2, not selected): not recorded", motion.count == 1u && trk[1].p[P_FREEA] == 13);
     seq_stop(); events_block(CTL);
     bad += check("  stopped: the patch's own CUT comes back", trk[0].p[P_E4] == cut0);
     song.rec = 0;
@@ -725,10 +764,25 @@ static int stop_all_test(void)
     press(B_PLAY); events_block(CTL);
     bad += check("PLAY STOP: a short press starts, another (500 ms later) stops: the toggle, no STOP ALL", ok && !song.playing && !msg_is("STOP ALL"));
     midi_test_reset();
-    press(B_PLAY);
-    ok = transport_req == 1u;                             /* (the first press acts at once: no waiting for a second) */
+    btn_down(B_PLAY); frames(160);                        /* stopped: held, nothing starts on the press */
+    ok = transport_req == 0u && !song.playing;
     events_block(CTL);
-    bad += check("  the first press starts the transport at once", ok && song.playing);
+    ok = ok && !song.playing;
+    btn_up(B_PLAY); frame();                              /* a short press (under 0.6 s): starts on the release */
+    bad += check("  stopped: a short press does not start on the press, it starts on the release", ok && transport_req == 1u);
+    events_block(CTL);
+    bad += check("  .. and the transport runs", song.playing);
+    frames(500);
+    press(B_PLAY); events_block(CTL);
+    bad += check("  running: a press stops at once", !song.playing && !msg_is("STOP ALL"));
+
+    sound_up();
+    midi_test_reset(); song.playing = 0; transport_req = 0;
+    btn_down(B_PLAY); frames(700);                        /* stopped, held 0.6 s: STOP ALL, nothing ever starts */
+    ok = transport_req == 4u || msg_is("STOP ALL");
+    events_block(CTL);
+    btn_up(B_PLAY); frame(); events_block(CTL);
+    bad += check("  stopped, held 0.6 s: STOP ALL, the transport never started, the release starts nothing", ok && !song.playing && transport_req == 0u);
 
     sound_up();
     ok = voices_up() >= 1u && trk[0].nheld;
@@ -744,11 +798,18 @@ static int stop_all_test(void)
     ok = transport_req == 0u && !song.playing;
     press(B_PLAY); events_block(CTL);
     bad += check("  and the next short press starts again", ok && song.playing);
+    midi_test_reset(); song.playing = 0; transport_req = 0;
+    sound_up();
+    press(B_PLAY);                                        /* stopped: the first tap (starts on its release) .. */
+    ok = transport_req == 1u;
+    press(B_PLAY);                                        /* .. and the second within 300 ms: STOP ALL */
+    bad += check("  stopped, double press: the first tap starts on release, the second is STOP ALL", ok && transport_req == 4u);
+    bad += stop_all_check("  .. and everything is stopped");
     return bad;
 }
 int main(void)
 {
     int bad = controls_test() + sustain_test() + ownership_test() + clock_test(1) + clock_test(2) + clock_arp_and_boundaries() +
-              arp_ext_stop_test() + arp_ext_clock_test() + usb_burst_test() + route_test() + cc_map_test() + learn_test() + stop_all_test();
+              arp_ext_stop_test() + arp_ext_clock_test() + usb_burst_test() + drain_test() + route_test() + cc_map_test() + learn_test() + stop_all_test();
     printf("%s\n", bad ? "MIDI CONTROL/CLOCK TEST FAILED" : "MIDI control/clock integration tests passed"); return bad != 0;
 }

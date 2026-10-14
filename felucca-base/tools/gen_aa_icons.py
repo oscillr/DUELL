@@ -88,7 +88,7 @@ EXTRA = {
     # OCT UP / OCT DN (the harmonizer): stand-ins until Fukiai has a pitch-shift glyph;
     # the first of each tuple the font has
     "x_oct_up": ("symbol_pitch_up", "control_arrow_up"), "x_oct_dn": ("symbol_pitch_down", "control_arrow_down"),
-    # a missing sample (the header message, the SLICES page): SAMPLE NOT FOUND
+    # the header message NO ENGINE (DUELL 0.2.9: a part on a retired engine; was NO SAMPLE)
     "x_nofile": "symbol_document_disabled",
     # the MENU's tabs (ui_menu.c, 1.0.5): DISPLAY (CONTROL x_knob, AUDIO x_speaker, 1.2 MIDI midi, SYSTEM x_cog)
     "x_eye": "symbol_eye",
@@ -109,7 +109,7 @@ SMALL_EXTRA = ["x_star", "x_lock", "x_cog", "x_usb", "x_warn", "x_folder", "x_le
                "x_mixer", "x_pattern", "x_song", "x_motion", "x_motion_rec", "x_motion_del",
                "x_hpf", "x_repeat", "x_reverse", "x_tstop", "x_freeze"]
 # legacy names no screen draws (1.1): kept in the enum (assets/icons.json's order), not rasterised (no cell)
-NOT_DRAWN = ["tape"]
+NOT_DRAWN = ["tape", "slice", "loop"]   # (slice, loop: the SLICE and SAMPLE engines, retired in DUELL 0.2.9)
 
 # the 24 px set: the header battery (Fukiai's battery is a wide, short glyph: at 16 px its body was 12 x 6)
 # (up to 1.1.5 also the FX map's effect cells; 1.2's map names the 16 keys' effects instead, ui_layer.c layer_fx)

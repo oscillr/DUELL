@@ -80,7 +80,13 @@ records) is unchanged. **The meaning of these ids changed** (an editor must take
 | 83..85 | LFO 2: `SYNC2` (as SYNC 91) `TRIG2` (NOTE FREE) `POL2` (BI UNI) | DRUM lane levels KICK SNARE CLAP |
 | 86..90 | `-` free (fmt INT, 0..0) | DRUM lane levels HATCL .. BELL |
 
-**DUELL 0.2.2: the universal filter (ids 45 and 46, still 127 parameters).** Ids 45..48 were the SLICER's SLCR PAT RATE DEPTH in Felucca and `-` free (fmt INT, 0..0) in DUELL up to 0.2.1. Now 45 is **`CUT`** (fmt 23 `FILT`, -64..63, default 0: 0 OFF, negative a low-pass, positive a high-pass; fmt values 0..22 are as in the table of the `fmt` values, 23 is new and an editor that does not know it can show the number) and 46 **`RES`** (fmt PCT, 0..127, default 0); 47, 48 stay `-` free. They act on the engines with no filter of their own (PHASE LOFI VOICE WHEEL GRAIN PHYS FM6 SLICE: engine bytes 2 3 5 7 8 9 12 13); on the others (ANALOG SAMPLE TRIO NOISE) they are stored and do nothing. Take the labels and ranges from `DESC`. Automation (`MOTION`) records both like any knob move. `CC` 74 / 71 are CUT / RES on those engines. A store of Felucca's layout (projects FUN10 and before, user preset records of versions 1..5) reads 45..48 as the defaults.
+**DUELL 0.2.9: the multimode filter (ids 45..48, still 127 parameters).** Ids 45..48 were the SLICER's SLCR PAT RATE DEPTH in Felucca, `-` free in DUELL up to 0.2.1, and 0.2.2 .. 0.2.8 used 45 (a bipolar `CUT`, -64..63, 0 OFF, negative a low-pass, positive a high-pass) and 46 (`RES`). Since 0.2.9 they are the four knobs of EDIT > FILTER:
+45 **`CUT`** (fmt 23 `FILT`, 0..82, default 82: a dial step shown as its cutoff, step d = table index (40 + 396 d) / 256 of the 30 Hz .. 16 kHz cutoff table, so 0 is 30 Hz and 82 16 kHz, the open end; each step is 0.2.2's step),
+46 **`RES`** (fmt PCT, 0..127, default 0),
+47 **`MODE`** (fmt 24 `FMODE`, 0..127, default 0: 0 LP, 64 BP, 127 HP and every blend between; shown LP, LP>BP, BP, BP>HP, HP),
+48 **`SLOPE`** (fmt ENUM, **1..2**, default 1: 12dB, 24dB; the first enum whose range does not start at 0: `DESC` sends the names of min .. max).
+They act on the engines with no filter of their own (PHASE LOFI VOICE WHEEL PHYS FM6 WAVE: engine bytes 2 3 5 7 9 12 14), where the ENV / LFO FLT depths, the matrix's CUT and `CC` 74 / 71 drive them. Since the same release they also run on ANALOG, TRIO and NOISE (engine bytes 0 6 11) **in series after the engine's own filter** (the device's page `FILTER`, as on every engine; their own filters are on the pages VCF (ANALOG), TRIO FILTER and NOISE FILT; an editor lists the same four ids as a page of those engines): there the engine's filter, its routes and `CC` 74 / 71 are exactly what they were, the multimode filter's effective cut is its CUT alone, and the matrix destination 38 FRES is its RES (live there, no longer faded; the DEST line reads "FILTER RESONANCE"). They are bypassed by default there too, so every sound of before is bit for bit the same. On the retired engines (4 8 13) and DRUM they are stored and do nothing. They are the SOUND's (a sound load sets them), not the track's. Take the labels and ranges from `DESC`. Automation (`MOTION`) records CUT and RES like any knob move (MODE and SLOPE are not automated). The MORPH rolls all four (SPEC 2.5, rule 3g). `CC` 74 / 71 are CUT / RES on those engines: CC74 0..127 spans the whole CUT dial (0.2.2's "64 = OFF" is gone); a MIDI LEARN map on CUT spans it the same way. The effective cut is CUT plus every modulation (ENV 1 / ENV 2 / LFO 1 / LFO 2 FLT depths and the matrix destination CUT, 1/256 dial steps as before), clamped to 0..82. **The BYPASS: MODE LP (0) with the effective cut at the open end: the filter is not run and the sound is bit for bit as without it (the defaults; RES and SLOPE do not matter there).** Over the last 4 dial steps at a closed end the output fades to silence (LP / BP at 0, HP / BP at 82). No card is faded for a value of 0.
+**Old stores:** SLOPE is never 0 in 0.2.9; a stored sound with 48 at 0 (or without 48: a patch record of before) holds 0.2.2's bipolar CUT at 45, and the device converts it when it loads (patch records, projects, multis, the autosave, `UP_PUT`): OFF -> CUT 82, MODE LP (the bypass); a low-pass c (-64..-1) -> CUT 82 + c, MODE LP (the same cutoff exactly); a high-pass c (1..63) -> CUT c, MODE HP (0.16 of a table step higher); SLOPE 12 dB. Its CUT automation goes with it. An editor that sends a sound of before with `SET`s should convert it the same way first (web/editor.html `ufLegacy`); one that sends it whole (`UP_PUT`) need not. On ANALOG, TRIO and NOISE nothing was ever meant by 45..48, so a stored sound of before with 48 at 0 there takes the bypass whatever it holds (CUT 82, RES 0, MODE LP, SLOPE 12 dB; a leftover from another engine must not switch the filter on), and its CUT automation goes to the open end; the editor's `ufLegacy(p, serial)` does the same. A store of Felucca's layout (projects FUN10 and before, user preset records of versions 1..5) reads 45..48 as the defaults (the bypass).
 
 ENV 2 and LFO 2 have no destination amounts of their own: they reach the sound only through the matrix. The matrix's
 SRC lists grew (append-only): 11 ENV2, 12 LFO2; DST: 21 RATE2 (LFO 2's rate), 22 DEPTH2 (LFO 2's depth). Automation
@@ -116,7 +122,7 @@ watches (v2, `WATCH`), the device also sends push frames (cmds 23, 24, 26) at an
 | string | ASCII bytes, ended by a 0 byte |
 | scope | 0 = parameter of the selected track (`P_*`, 0..P_COUNT−1); 1 = global parameter (`G_*`, 0..G_COUNT−1) |
 | track | 0..3: tracks 1..4 (synth parts) |
-| engine byte | 0..NENGINES−1 (firmware before 1.0: NENGINES = its drum track, no engine). The numbers are fixed, new engines are appended: 0 ANALOG, 1 reserved (DIGITAL before 1.0: see below), 2 PHASE, 3 LOFI, 4 SAMPLE, 5 VOICE, 6 TRIO, 7 WHEEL, 8 GRAIN, 9 PHYS, 10 DRUM, 11 NOISE, 12 FM6, 13 SLICE (NENGINES 14; a build with `FELUCCA_SLICE=0` has 13). The device and the editor list them in another order (ANALOG FM6 PHASE LOFI SAMPLE VOICE TRIO WHEEL GRAIN PHYS NOISE SLICE DRUM: `ENGINE_ORDER`); the numbers stay |
+| engine byte | 0..NENGINES−1 (firmware before 1.0: NENGINES = its drum track, no engine). The numbers are fixed, new engines are appended: 0 ANALOG, 1 reserved (DIGITAL before 1.0: see below), 2 PHASE, 3 LOFI, 4 reserved (SAMPLE until DUELL 0.2.8), 5 VOICE, 6 TRIO, 7 WHEEL, 8 reserved (GRAIN until 0.2.8), 9 PHYS, 10 DRUM, 11 NOISE, 12 FM6, 13 reserved (SLICE until 0.2.8), 14 WAVE (DUELL 0.2.5: NENGINES 15; before it 14). **DUELL 0.2.9 retired SAMPLE, GRAIN and SLICE:** INFO still lists 15 names, theirs are `-` (as DIGITAL's); `DESC` of their E slots gives `-` (fmt INT, -64..127, so a stored value is kept); a part or patch that names one plays silent and keeps its values; `SET G_ENGSEL` or `PRESET` with one gives ANALOG's first sound. The device and the editor list the pickable ones in another order (ANALOG FM6 PHASE LOFI VOICE TRIO WHEEL PHYS NOISE WAVE, DRUM hidden: `ENGINE_ORDER`, 10 shown); the numbers stay |
 
 The engine parameters are `P_E0..P_E7`: P_COUNT−8 .. P_COUNT−1 (103..110 since 1.5; 96..103 in 1.2 .. 1.4; 91..98 in
 1.1), and `INFO` gives `P_E0`.
@@ -130,11 +136,17 @@ slots; Felucca had 12 at 49..60 since P_COUNT 69): slot k (1..8) is `SRCk`, `DST
 | id | label | values |
 | --- | --- | --- |
 | 49, 52, 55, 58 | SRC1..SRC4 | enum: 0 OFF, 1 LFO, 2 ENV, 3 VEL, 4 KEY, 5 RAND, 6 MODW (CC1), 7 AT (channel aftertouch), 8 EXPR (CC11), 9 S&H (a random value held for one cycle of the track LFO), 10 SLEW (S&H gliding from the cycle before's value), 11 ENV2 (the voice's ENV 2, DUELL), 12 LFO2 (the track's LFO 2, DUELL) |
-| 50, 53, 56, 59 | DST1..DST4 | enum (23 names): 0 OFF, 1 PITCH, 2 CUT, 3 SHP, 4 AMP (per voice); 5 PAN, 6 DIST, 7 CHO, 8 DLY, 9 REV, 10 RATE (LFO rate), 11 VIB (LFO pitch depth), 12..19 E1..E8 = `P_E0..P_E7`, 20 DEPTH (the track LFO's depth: a gain on LFO DEST and the matrix's LFO source), 21 RATE2 (LFO 2's rate), 22 DEPTH2 (LFO 2's depth) (per block) |
+| 50, 53, 56, 59 | DST1..DST4 | enum (46 names since DUELL 0.2.7; 23 before): 0 OFF, 1 PITCH, 2 CUT, 3 SHP, 4 AMP (per voice); 5 PAN, 6 DIST, 7 CHO, 8 DLY, 9 REV, 10 RATE (LFO rate), 11 VIB (LFO pitch depth), 12..19 E1..E8 = `P_E0..P_E7`, 20 DEPTH (the track LFO's depth: a gain on LFO DEST and the matrix's LFO source), 21 RATE2 (LFO 2's rate), 22 DEPTH2 (LFO 2's depth) (per block); DUELL 0.2.7, appended (per block, the part's own ids): 23 LEVEL (id 0), 24 INS A, 25 INS B, 26 INS C (ids 97..99, named by the INSERT TYPE as `DESC` of those ids does), 27 IMIX (100), 28 EQLOW (8), 29 EQMID (88), 30 EQHI (103), 31 DUCK (DEPTH, 107), 32 ATK2, 33 DEC2, 34 SUS2, 35 REL2 (73..76), 36 E2FLT (114), 37 E2SHP (115), 38 FRES (46, the multimode filter's RES); bus values (an offset per part on a global value: in DUEL on the part's own bus, in STEREO / LAYER both parts' offsets add): 39 CRT (global 10), 40 CDP (11), 41 FDBK (5), 42 DMDEP (13, the delay modulation's DEPTH), 43 DMRAT (12, its RATE), 44 RSIZE (8), 45 RDAMP (9). The delay's TIME is no destination |
 | 51, 54, 57, 60 | AMT1..AMT4 | −64..63 (fmt BIPCT) |
 
 `DESC` names E1..E8 as such; the device shows the engine's label of that parameter instead (`DESC` of
-`P_E0 + n`), and so does the editor. A slot with SRC, DST or AMT at 0 does nothing; every default is 0
+`P_E0 + n`), and so does the editor. (DUELL 0.2.7) So it does for INS A..C (`DESC` of ids 97..99, the INSERT TYPE's labels), and
+the MATRIX page names the selected destination in full ("DEST: WAVE SYNC", "DEST: REVERB SIZE"). A destination the part cannot
+move with its current choices does nothing and the device shows it faded with the reason: an engine slot labelled "-" (UNUSED),
+WAVE's TABLE (REBUILD), FM6's SLOT (LOADS), (until 0.2.8: SAMPLE SET and SLICE SRC DIV START REV, AT NOTE: read only as a note starts), PAN in
+DUEL, INS A..C and IMIX while the INSERT TYPE is OFF, RES on an engine with a filter of its own; an editor may do the same. A
+stored DST keeps its number (append-only): a sound saved with 0.2.6 means the same; a sound with DST 23..45 loaded by older
+firmware is outside that firmware's list (it does not have them). A slot with SRC, DST or AMT at 0 does nothing; every default is 0
 (a factory preset sets all twelve to 0). The modulation never changes the stored values: `GET`,
 `DUMP` and the pushes report what was set.
 
@@ -187,16 +199,17 @@ sets them back to 127, user presets and projects store them (older ones load at 
 
 Other enums that grew: `P_SDIV` (DIV, id 30) has 10 names (1/4, 1/8, 1/16, 1/32, 8T, 16T, 1/2, 1/1, 2BAR,
 4BAR; the first six keep their numbers), `P_AMODE` (id 17) 15 (OFF, UP, DN, UPDN, RND, ORD, REPEAT, and since 1.2 DNUP, UP+8, CONV, DIVG, PINKY, THUMB, WALK,
-CHORD: values 7..14, appended; an editor that knows only 7 names shows the value by `DESC`'s name) and the
-global `G_CLOCK` (id 2, label "CLK") 3 (INT, USB, TRS). `G_MIDI` (id 12) is an enum of USB / TRS that nothing reads.
+CHORD: values 7..14, appended; an editor that knows only 7 names shows the value by `DESC`'s name), `P_AHOLD` (HOLD, id 22; DUELL 0.2.9) 3 (OFF, ARP, ALL: 0 and 1 are the old OFF / ON, so stored data stays valid; ALL, value 2, latches the keys even with the arp off; max 2, not morphed or rolled) and the
+global `G_CLOCK` (id 2, label "CLK") 3 (INT, USB, TRS). `G_MIDI` (id 12) was an enum of USB / TRS that nothing read; since DUELL 0.2.5 it is the delay modulation's RATE (`DESC`: label "RATE", LFOHZ, 0..80, default 44) and `G_SYNC` (id 13, was the one-name placeholder "--") is its DEPTH (label "DEPTH", PCT, 0..100, default 0; 0 = off). Both are global parameters on the device's DELAY 2/2 page, stored with the project and a multi; an old store holds 0 (or, for id 12, 0/1) there, which is DEPTH 0 = no change.
 
 **Retired enum values (aliases).** A value that no longer exists keeps its number, so stored sounds stay valid:
 `DESC` names it like the value it now plays (an alias), the device never holds it (a `SET` of it lands on that value
 and the reply says so) and its knob steps over it. Of a repeated name, the original is the first value when that has
 the name, else the last one with it; an editor should list only the originals and show an alias by its name when
-it ever sees one. Today: SAMPLE SET and GRAIN SRC 1 and 4 (once TRANH, PERC) = 0 PIANO; DRUM KIT (engine 10, E1)
+it ever sees one. Today: DRUM KIT (engine 10, E1)
 1, 2, 3 (once HAND, CYM, H+CYM; 1.0.5) = 6 (66), 5 (10), 8 (77): its names are STD 66 10 77 80 10 66 55 77, the
-device's knob steps STD 80 10 66 55 77. An editor of before 1.0.5 (first of a name = original) offers 66 10 77
+device's knob steps STD 80 10 66 55 77. (SAMPLE SET and GRAIN SRC 1 and 4, once TRANH, PERC, were aliases of 0 PIANO until DUELL
+0.2.9 retired both engines.) An editor of before 1.0.5 (first of a name = original) offers 66 10 77
 at 1..3 and hides 6 5 8: what it sets still plays the right kit, and the device answers with 6 5 8.
 
 ## Commands
@@ -207,17 +220,17 @@ at 1..3 and hides 6 5 8: what it sets still plays the right kit, and the device 
 | 2 GET | scope, id | scope, id, v14 |
 | 3 SET | scope, id, v14 | scope, id, v14 (the value after clamping). Setting global `G_ENGSEL` (id from DESC label "ENG") changes the engine: its defaults, then its first preset (as on the device) |
 | 4 DUMP | — | engine, preset, then P_COUNT × v14 (the selected track), then G_COUNT × v14 (globals) |
-| 5 DESC | scope, id | scope, id, fmt, min v14, max v14, def v14, label string, unit string, then for an enum (fmt 8) one name string per value (at most 24; firmware before the matrix: at most 16) |
+| 5 DESC | scope, id | scope, id, fmt, min v14, max v14, def v14, label string, unit string, then for an enum (fmt 8) one name string per value (at most 64 since DUELL 0.2.7, the matrix DST has 46; before: at most 24; firmware before the matrix: at most 16) |
 | 6 STEP_GET | index 0..NSTEP−1 | index, n (0..4 notes), note0..note3, time (0 NOTE, 1 TIE, 2 REST), flags (1 accent, 2 slide), vel, then (v5) hits (3 bytes, below), then (v7) chance 0..100, then (`52 01`) ratchet 1..4, then (`54 01`, 1.2) nudge + 8 (0..15: −8..+7 sixteenths of the step) |
 | 7 STEP_SET | index, n, note0..3, time, flags, vel [, hits (3 bytes, v5) [, chance 0..100 (v7) [, ratchet 1..4 [, nudge + 8, 0..15 (1.2)]]]] | same as STEP_GET (after the write). Without the hits the step keeps its own; without the chance, the ratchet or the nudge it keeps its own. The chance can only follow the hits, the ratchet the chance, the nudge the ratchet; a nudge byte above 15: no reply, nothing written |
 | 8 PRESET | engine, preset | engine, preset (applies the preset's sound to the selected track and sends; the steps and the track's own parameters stay, see "Sound loads and undo"). For another track, select it with `TRACK` first |
 | 9 PROJECT | op (0 load, 1 save, 2 query), slot 0..3 (DUELL: 0..15, the multis M01..M16 of SAVE > MULTI) | op, slot, used (1/0). Save writes flash: allow ~2 s; it stops the transport first (see "Saves while playing") |
 | 10 NAMES | engine | engine, count, count preset-name strings, then the two edit-page titles |
-| 11 SMP_BEGIN | slot 0..2 | slot, rc (0 ok). Erases the slot's header sector: the slot is empty from now on |
-| 12 SMP_WRITE | slot, offset (3 × 7 bit, LSB first), pack7 data (≤ 256 bytes) | slot, offset, rc: 0 ok, 1 arguments, 2 erase, 3 write, 4 slot in use (send SMP_BEGIN first). Offset ≥ 512 and a multiple of 256; writes go in increasing order (a write at a 4 KiB boundary erases that sector) |
-| 13 SMP_END | slot, pack7 header (480 bytes) | slot, rc: 0 ok, 1 size, 2 header, 3 data CRC, 4 flash, 5 zones |
-| 14 SMP_ERASE | slot | slot, rc (erases the whole slot, ~1 s) |
-| 15 SMP_INFO | — | slots, slot KiB (the largest), then per slot: zone count (0 = empty), name string, data KiB; then per slot its own size in KiB (80, 80, 24: USR3 is smaller; absent on older firmware: all slot KiB) |
+| 11 SMP_BEGIN | slot 0..2 | slot, rc **6 (unsupported)**. DUELL 0.2.9 has no user sample slots (the SAMPLE, GRAIN and SLICE engines are retired); nothing is written. (Before: erased the slot's header sector, rc 0 ok) |
+| 12 SMP_WRITE | slot, offset (3 × 7 bit, LSB first), pack7 data (≤ 256 bytes) | slot, offset, rc **6 (unsupported)**; nothing is written. (Before: rc 0 ok, 1 arguments, 2 erase, 3 write, 4 slot in use) |
+| 13 SMP_END | slot, pack7 header (480 bytes) | slot, rc **6 (unsupported)**; nothing is written. (Before: rc 0 ok, 1 size, 2 header, 3 data CRC, 4 flash, 5 zones) |
+| 14 SMP_ERASE | slot 0..2 | slot, rc **0**: there is nothing to erase and nothing is written (so a backup archive's empty sample slot restores as before) |
+| 15 SMP_INFO | — | **0, 0**: no slots, slot KiB 0 (DUELL 0.2.9). (Before: slots, slot KiB (the largest), then per slot: zone count, name string, data KiB; then per slot its own size in KiB) |
 | 16 UP_LIST | start, count (1..16) | start, count, total slots, then per slot: used (0/1), engine, name string ("" if unused); 1.2: then one category byte per slot listed (below; 0 if unused) |
 | 17 UP_GET | slot | slot, used, engine, name, P_COUNT × v14, 16 × (note, flags), then (v5) kind (0 a note pattern, 1 a drum grid) and for kind 1 16 × hi; 1.2: then the category |
 | 18 UP_PUT | slot, engine, name, P_COUNT × v14, 16 × (note, flags) [, kind 0 or 1, 16 × hi (v5) [, category (1.2)]] | slot, rc (0 ok, 1 args, 2 flash). Writes flash: allow 1 s |
@@ -249,31 +262,18 @@ at 1..3 and hides 6 5 8: what it sets still plays the right kit, and the device 
 | 66 BACKUP_GET | id, offset u32, count lo, count hi (≤ 256) | id, rc, offset u32, count lo, count hi, pack7 data |
 | 67 BACKUP_PUT | op 0 begin: 0, id, size u32, crc u32; op 1 data: 1, id, offset u32, pack7 data; op 2 commit: 2, id; op 3 abort: 3, id | op, id, rc |
 
-Without flash (no flash part found at boot) `SMP_BEGIN`, `SMP_WRITE`, `SMP_END` and `SMP_ERASE` get no
-reply.
+A slot number above 2 (or a request too short) gets no reply. (Before DUELL 0.2.9, without flash `SMP_BEGIN`, `SMP_WRITE`, `SMP_END`
+and `SMP_ERASE` got no reply.)
 
 **pack7:** groups of up to 7 bytes, each preceded by one byte holding their top bits
 (bit j = bit 7 of byte j). A mask must have at least one following data byte;
 unused mask bits in the last group must be zero. Oversized or incomplete transfers
-are rejected; SMP_WRITE decodes at most 256 bytes, SMP_END exactly 480 bytes.
+are rejected; BACKUP_PUT decodes at most 256 bytes a piece.
 
-**User sample slot** (USR1, USR2: 80 KiB; USR3: 24 KiB, the rest of its 80 KiB stride is the device's multis and pattern slots; SAMPLE engine sets USR1..USR3; reference uploader
-`tools/fm1_sample_upload.py`, slot builder `sampleio.user_slot`; the editor's port of it is
-checked byte for byte by `web/test_web.mjs`): header at 0, ADPCM data at 512.
-
-| Offset | Field |
-| --- | --- |
-| 0 | magic `"FSMP"` (u32 0x504D5346), u16 version 1, u8 zone count 1..16, u8 0 |
-| 8 | name, 8 ASCII bytes (0-padded) |
-| 16 | u32 data length (bytes), u32 CRC-32 (zlib) of the data, 8 bytes 0 |
-| 32 | 16 zones × 28 bytes: u32 off (in the data), n (samples), loop start, loop end, rate (Hz / 44100 × 65536); i16 root × 16 (MIDI note), ADPCM predictor at the loop start; u8 step index at the loop start, lo note, hi note, looped (0/1) |
-
-Data is IMA ADPCM, 4 bit, low nibble first, starting from predictor 0 and step index 0.
-All little endian.
-
-The slot's last 4 KiB sector (offset 0x13000; USR3: 0x5000) holds SLICE's slices set by hand on the device (`src/slice_store.c`:
-magic `"SLM1"`, the sample's length and data CRC, the slice starts) when the data leaves it free (at most 77,312
-bytes; USR3: 19,968). An upload writes over it like any other data; a record that is not the slot's sample's is ignored.
+**User sample slots (retired, DUELL 0.2.9).** The sample engines and their slots are gone; the slot format (header "FSMP" at 0, IMA
+ADPCM data at 512, SLICE's hand-set slices "SLM1" in the last sector) is no longer read or written, and the flash it used
+(0xA0000..0xC7FFF) is left unused, free for future WAVE user wavetable slots. The reference uploader `tools/fm1_sample_upload.py` is
+removed; `tools/sampleio.py` stays as a WAV helper of the host tests.
 
 `fmt` values (`firmware/src/core.h`):
 
@@ -284,7 +284,7 @@ bytes; USR3: 19,968). An upload writes over it like any other data; a record tha
 | 2 | BIPCT | 7 | SEMI | 12 | OCT |
 | 3 | TIME | 8 | ENUM | 13 | STEPS |
 | 4 | LFOHZ | 9 | BPM | | |
-| 14..22 | EQDB, EQLO, EQMID, EQHI, EQQ, DKCH, DKNOTE, DKRLS, DKHLD (DUELL's EQ and DUCK) | 23 | FILT (DUELL 0.2.2: CUT, 0 OFF, else the share of the dial and LP / HP) | | |
+| 14..22 | EQDB, EQLO, EQMID, EQHI, EQQ, DKCH, DKNOTE, DKRLS, DKHLD (DUELL's EQ and DUCK) | 23 | FILT (DUELL 0.2.9: the multimode filter's CUT, a dial step 0..82 shown as its cutoff in Hz / kHz; 0.2.2 .. 0.2.8: the bipolar CUT, 0 OFF) | 24 | FMODE (DUELL 0.2.9: the filter's MODE, LP LP>BP BP BP>HP HP) |
 
 The editor should show the value with the unit; formatting it exactly like the device does
 is not required.
@@ -508,7 +508,8 @@ grid lives in the steps themselves, so every engine has it:
 - **Sound loads and undo.** A load that changes a track's sound (`PRESET`, `SET` of `G_ENGSEL`, `UP_LOAD`,
   and the same on the device) changes the sound only: the engine and the parameters of the sound. It
   never changes the steps, nor the track's own parameters: `P_LEVEL`, `P_PAN`, `P_MUTE` (0, 39, 40), the
-  ARP pages, SCL and LEN / DIV / SWING / GATE (17..32), the SLICER (45..48). It does drop the track's recorded
+  ARP pages, SCL and LEN / DIV / SWING / GATE (17..32) (Felucca: also the SLICER, 45..48; in DUELL those ids are the
+  sound's filter, since 0.2.2). It does drop the track's recorded
   motion (the device's SAVE held brings it back). (Before 1.0 a preset also
   set the arp and replaced the steps with its pattern; a factory preset turned the SLICER off.) The byte
   layout of every command is unchanged. Patterns are loaded on the device (SAVE > PHRASES) or written by
@@ -522,16 +523,15 @@ grid lives in the steps themselves, so every engine has it:
   copy.
 - **Saves while playing.** A flash erase silences the audio and stalls the sequencer for a moment. The
   device refuses its own saves while the transport plays ("STOP TO SAVE"); `PROJECT` save, `UP_PUT`,
-  `UP_STORE`, `UP_ERASE`, `BACKUP_LIST`, `BACKUP_PUT` and sample BEGIN / WRITE / END / ERASE from the editor stop the transport
+  `UP_STORE`, `UP_ERASE`, `BACKUP_LIST` and `BACKUP_PUT` from the editor stop the transport (the sample commands did too until 0.2.9; now they touch nothing)
   first (`BACKUP_GET` does not: it answers rc 3 while the transport runs). If it does not stop within 100 ms, no flash operation starts: user-preset commands
   return rc 2, sample commands a nonzero rc, backup commands rc 3. PROJECT retains its existing reply shape
   (op, slot, used); a failed PROJECT save gets no reply, allowing the editor to report
   a timeout instead of confirming the previous used slot. The previous slot is kept.
   A pending PLAY or SONG start also prevents a device save.
-- **Published samples.** SMP_END repeated with an identical committed header succeeds without
-  another write or zone scan. A different header is rejected (rc 2) until SMP_BEGIN,
-  so sounding sample voices cannot see their zone table change.
-- **Safety.** `PROJECT` save, sample-slot commands, `UP_PUT` / `UP_STORE` / `UP_ERASE`, and the tagged preference writes below write flash, and only in
+- **Published samples** (until DUELL 0.2.8; no sample slots since 0.2.9). SMP_END repeated with an identical committed header
+  succeeded without another write; a different header was rejected (rc 2) until SMP_BEGIN.
+- **Safety.** `PROJECT` save, `UP_PUT` / `UP_STORE` / `UP_ERASE`, and the tagged preference writes below write flash, and only in
   Felucca's own storage; never the app or the update area.
 
 
@@ -814,7 +814,7 @@ this firmware sends 3. Requests name objects, never flash addresses.
 | 6, 7 | user preset banks (slots 1..16, 17..32) | the bank's size, or 0 if empty |
 | 8 | the FM6 patch bank of 1.0..1.0.2 (B1..B27). Since 1.0.3 always listed empty (see below) | 3472, or 0 if empty |
 | 9 | the user presets' FM6 patches (1.0.3; `up_fm6.c`: per slot a tag and the packed patch) | 3728, or 0 if none |
-| 32..34 | user sample slots 1..3: header (512 bytes) then ADPCM data | 512 + data length, or 0 if empty |
+| 32..34 | user sample slots 1..3 (DUELL 0.2.9: retired, always listed empty; the archive keeps its ids) | 0 |
 
 Reading: `BACKUP_LIST` (no arguments) stops the transport, then takes a snapshot of the runtime object and
 answers `1, rc, count` (13 since 1.0.3, 12 with FM6 up to 1.0.2, 11 before) and, per object in the order above, `id, size u32, crc u32` (CRC-32, zlib). The other objects are read as
@@ -822,8 +822,9 @@ they are in RAM or flash. Then `BACKUP_GET` reads an object in pieces: `id, offs
 (count 1..256, LSB first 7 bit pair) answers `id, rc, offset u32, count lo, count hi` and the data as pack7. Check each object's CRC
 against the list; if it differs the device changed, so start again.
 
-Restoring: `BACKUP_PUT` takes ids 0..9 (firmware before 1.0.3: 0..8, id 9 answers rc 1 at begin and nothing is written) (the samples are written with `SMP_BEGIN` / `SMP_WRITE` / `SMP_END`,
-or `SMP_ERASE` for an empty slot). Begin: `0, id, size u32, crc u32`: size is 3840 (FUN10), 3648 (FUN9), 3584 (FUN8) or 3388 (FUN7, FUN6) for id 0,
+Restoring: `BACKUP_PUT` takes ids 0..9 (firmware before 1.0.3: 0..8, id 9 answers rc 1 at begin and nothing is written) (the samples were written with `SMP_BEGIN` / `SMP_WRITE` / `SMP_END`, or `SMP_ERASE` for an empty slot; since DUELL 0.2.9 an
+empty slot's `SMP_ERASE` answers rc 0 and a slot with data gets rc 6 at `SMP_BEGIN`: the web editor's restore then skips it and
+restores the rest). Begin: `0, id, size u32, crc u32`: size is 3840 (FUN10), 3648 (FUN9), 3584 (FUN8) or 3388 (FUN7, FUN6) for id 0,
 the settings record's size for id 1, 3840, 3648, 3584, 3388 or 0 (empty the slot) for ids 2..5, the bank's size or 0 for 6 and 7,
 3472 or 0 for 8 (the FM6 bank: its magic, layout and every byte below 128 are checked), 3728 or 0 for 9 (its magic,
 version and slot count checked; 0 clears the patches). FUN9, FUN8, FUN7 and FUN6 become FUN10 (1.2; firmware before
@@ -977,8 +978,8 @@ F7` (rc 0, 16 entries, the first CC74 on T4 id 98).
 
 The same erase as the device's MENU > SYSTEM > ERASE DATA, for the installer's optional "Erase my saved data after installing".
 It erases the settings (theme, scale, MIDI channels and learn map, favourites, preferences, panel table), the autosave, the patch
-store (every stored patch and factory shadow copy), the multis and the pattern slots; the user sample slots, the FM6 voice bank
-and the firmware stay. The unit then restarts by itself about 0.7 s after the reply (USB drops and comes back) and starts as a
+store (every stored patch and factory shadow copy), the multis and the pattern slots; the FM6 voice bank and the firmware stay
+(the user sample slots are gone since 0.2.9; their flash is not touched). The unit then restarts by itself about 0.7 s after the reply (USB drops and comes back) and starts as a
 new unit (VIOLET, LAYER, factory multi M01). Order and power cuts: see `src/erase_data.c`; the settings go last, each object is
 erased copy by copy, so a cut leaves every object whole or empty and a unit that still boots. Not advertised in INFO (id 80 is the
 next free id; all earlier ids are unchanged); firmware without it does not answer, so a client treats a timeout as "not erased".
@@ -991,6 +992,25 @@ rc: 0 erased (the restart follows), 1 refused: any other payload or length (noth
 (nothing touched; the op does not stop it), 4 the flash failed (some objects may be gone, the settings are not: send it again).
 Allow up to 5 s for the reply (up to 38 sectors are erased, about 45 ms each, skipping the empty ones). Example:
 `F0 7D 46 4C 50 45 52 41 53 45 20 41 4C 4C F7`.
+
+## WAVE (engine 14; DUELL 0.2.5)
+
+The wavetable engine (firmware `src/eng_wave.c`, SPEC.md 2.6). `INFO` lists its name `WAVE` as engine 14; `DESC` (scope 0) of
+`P_E0..P_E7` on a track playing it gives:
+
+| E | id (`P_E0` + E) | label | fmt | range, default | meaning |
+| --- | --- | --- | --- | --- | --- |
+| 0 | 119 | TABLE | 8 ENUM | 0..25, 0: SAWSQ PWM HARM ODD ORGAN VOWEL BRASS BOWED RESO COMB DIGI GLASS CHIME ROUGH BAND DUAL THIN PIPE REESE HOOVR GROWL WOBBL YELL METAL STEPS AIR (append-only; 14..25 since 0.2.7) | which table; a change builds the table: the track's notes fade out, are silent for the build (a few hundredths of a second), fade in |
+| 1 | 120 | POS | 1 PCT | 0..127, 0 | the place in the table's scan |
+| 2 | 121 | BEND | 1 PCT | 0..127, 0 | the read's warp (0: none) |
+| 3 | 122 | SYNC | 1 PCT | 0..127, 0 | hard sync, 1 .. 8 x (0: none) |
+| 4 | 123 | SUB | 1 PCT | 0..127, 0 | a sine an octave below |
+| 5 | 124 | DTN | 0 INT, unit `ct` | 0..127, 0 | a second read DTN cents up (0: none) |
+| 6, 7 | 125, 126 | `-` | 0 INT | 0..0 | unused |
+
+The multimode filter (45..48: CUT RES MODE SLOPE, 0.2.9) applies to WAVE (as to PHASE). The SHP depths (ENV 1 / ENV 2 / LFO 1 / LFO 2
+DEST SHP, the matrix's SHP) move POS. Its factory sounds are listed by `FAV_GET` / the browser under engine 14 (factory index
+0..10). Nothing else in the protocol changed: no new command, no new id; only NENGINES (15) and the engine-name list in `INFO`.
 
 ## Tagged device preferences v1
 
@@ -1016,7 +1036,8 @@ HI-CON NIGHT MONO; 1.0.2: GREY is the MONO of 1.0.1, MONO a new black and white 
 fields are 127.
 Both u28 signatures are four least-significant-first 7-bit bytes; compare them
 to refresh changed favorites and user slots. Factory references use stable
-engine/preset ids; engine NENGINES denotes a user slot. An empty user slot
+engine/preset ids; engine NENGINES denotes a user slot (15 since DUELL 0.2.5, which added engine 14 WAVE; 14 before: take it
+from `INFO`, never as a constant). An empty user slot
 cannot be marked. Factory DRUM sounds use the same favorite path.
 
 rc 0 = applied and saved; 1 = invalid arguments; 2 = unsupported feature;
@@ -1081,7 +1102,7 @@ before MIDI IN the first 21, 1.2 the first 23, 1.3 / 1.4 the first 24):
 | ~~1~~ | | ~~STYLE~~ | | retired in DUELL 0.2.2 (FLAT is the only look; a stored LINE is ignored). The id is never reused. | | |
 | ~~2~~ | | ~~LARGE~~ | | retired in DUELL 0.2.2 (the LARGE view was removed; a stored ON is ignored). The id is never reused. | | |
 | 3 | 3 | ANIM | 0 | 0 ON, 1 OFF, 2 IDLE (1.2: ON plus the LEDs' idle animation; firmware before: max 1) | ON | 0 DISPLAY |
-| 4 | 4 | LEDS | 0 | 0 OFF, 1 DIM LO, 2 DIM HI, 3 INV (darkest first, as the menu steps them) | DIM HI | 0 DISPLAY |
+| 4 | 4 | LEDS | 0 | 0 OFF, 1 LOW, 2 MEDIUM, 3 MAX (darkest first, as the menu steps them) | MEDIUM | 0 DISPLAY |
 | 5 | 5 | HOLD | 0 | 0 "0.3 s", 1 "0.4 s", 2 "0.5 s", 3 "0.6 s" | 0.4 s | 1 CONTROL |
 | 6 | 6 | KNOB ACCEL | 0 | 0 OFF, 1 ON | OFF | 1 CONTROL |
 | ~~7~~ | | ~~FX LATCH~~ | | retired in DUELL 0.2.2 (the FX hold layer was removed; a stored ON is ignored). The id is never reused. | | |
@@ -1103,8 +1124,10 @@ before MIDI IN the first 21, 1.2 the first 23, 1.3 / 1.4 the first 24):
 | 23 | 23 | HOME (DUELL 0.1: named OVERVIEW) | 0 | 0 SCOPE, 1 TRACKS (1.3; DUELL 0.1: PARTS), 2 LEVELS (1.5; DUELL 0.1: no such value, max 1) | SCOPE | 0 DISPLAY |
 | ~~24~~ | | ~~HELP~~ | | retired in DUELL 0.2.2 (the on-device hints were removed for now; a stored ON is ignored). The id is never reused. | | |
 | 25 | 25 | HOME OPENS (DUELL 0.1) | 0 | 0 MORPH, 1 MODE, 2 MIXER, 3 OVERVIEW | MORPH | 1 CONTROL |
+| 26 | 26 | CPU METER (DUELL 0.2.9) | 0 | 0 ON, 1 OFF: the thin CPU load bar under the header's battery (stored as a bit that is clear = ON, so every older settings record reads ON) | ON | 0 DISPLAY |
+| 27 | 27 | MODE RECALL (DUELL 0.2.11) | 0 | 0 OFF, 1 ON: ON = loading a multi (the page, MIDI program change, the editor) also sets the output MODE saved in it; OFF = a load keeps the unit's current MODE (stored as bit 6 of settings byte [15][24], clear = OFF, so every older record reads OFF). The CPU TEST multis M13..M16 (developer builds) always set theirs | OFF | 1 CONTROL |
 
-**DUELL 0.2.2: ids 1 (STYLE), 2 (LARGE), 7 (FX LATCH) and 24 (HELP) are retired: `MENU_DESC` no longer lists them (the count in `4E 01 count` is 20 on this firmware, the list walks ids 0, 3..6, 9..20, 22, 23, 25 in index order) and a `MENU_SET` to one of them answers rc 1 (unknown id) and changes nothing. Their bits in the settings record stay where they were (older records import unchanged; the firmware ignores them).** Every other id keeps its meaning.
+**DUELL 0.2.2: ids 1 (STYLE), 2 (LARGE), 7 (FX LATCH) and 24 (HELP) are retired: `MENU_DESC` no longer lists them (the count in `4E 01 count` was 20 on DUELL 0.2.2 and is 22 since DUELL 0.2.11, which appended id 27 (21 since 0.2.9, id 26); the list walks ids 0, 3..6, 9..20, 22, 23, 25, 26, 27 in index order) and a `MENU_SET` to one of them answers rc 1 (unknown id) and changes nothing. Their bits in the settings record stay where they were (older records import unchanged; the firmware ignores them).** Every other id keeps its meaning.
 
 DUELL 0.1: the MENU has four tabs (0 DISPLAY, 1 CONTROL, 2 AUDIO, 3 SYSTEM: the MIDI tab is gone, SYSTEM's tab index 4 became 3; a tab's index is no id), so the table's tab column holds Felucca's numbering for the rows above; the device's reply is authoritative. The list MENU_DESC walks is 24 items (index order: ids 0..7, 9..20, 22, 23, 24, 25).
 
@@ -1152,8 +1175,8 @@ notes it held, as the knob did; TUNE: the next block of sound).
 
 Example (bytes in hex): `F0 7D 46 4C 48 04 F7` asks for index 4; the reply
 `F0 7D 46 4C 48 04 04 00 02 40 00 40 03 40 4C 45 44 53 00 4F 46 46 00 44 49 4D 20 4C 4F 00 44 49 4D 20 48 49 00 49 4E 56 00 00 44 49 53 50 4C 41 59 00 F7`
-is index 4, id 4, kind 0, value 2 (`02 40`), min 0 (`00 40`), max 3 (`03 40`), "LEDS", then "OFF" "DIM LO"
-"DIM HI" "INV", then tab 0 "DISPLAY" (1.0.4 firmware: the same reply without `00 44 49 53 50 4C 41 59 00`). `F0 7D 46 4C 49 04 03 40 F7` sets LEDS to INV and answers `F0 7D 46 4C 49 00 04 03 40 F7` (rc 0).
+is index 4, id 4, kind 0, value 2 (`02 40`), min 0 (`00 40`), max 3 (`03 40`), "LEDS", then "OFF" "LOW"
+"MEDIUM" "MAX", then tab 0 "DISPLAY" (1.0.4 firmware: the same reply without `00 44 49 53 50 4C 41 59 00`). `F0 7D 46 4C 49 04 03 40 F7` sets LEDS to MAX and answers `F0 7D 46 4C 49 00 04 03 40 F7` (rc 0).
 `F0 7D 46 4C 49 00 32 40 F7` (COLOR 50) answers `F0 7D 46 4C 49 00 00 09 40 F7` (clamped to 9, MONO).
 `F0 7D 46 4C 49 0E 01 40 F7` sets COUNT-IN to 1 BAR and answers `F0 7D 46 4C 49 00 0E 01 40 F7` (1.1).
 `F0 7D 46 4C 49 16 74 3F F7` (TUNE -12) answers `F0 7D 46 4C 49 00 16 74 3F F7` (rc 0, 1.2).

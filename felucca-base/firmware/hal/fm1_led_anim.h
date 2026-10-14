@@ -14,8 +14,8 @@
  * back, ~35 % two, ~21, ~12, ~7 %, then the glow: 4..6 keys), 2.5 ahead (a soft front over ~2 keys). Levels, /64
  * of lit (FM1_ANIM_FULL): from 4 /64 up (~6 %) lit frames, fewer down to the glow (the glow under them as well);
  * below that the glow (hal/fm1_input.h fm1_led_dim, ~1/30 of lit) down to ~2 % of lit, dark under it. With `glow`
- * (MENU > LEDS DIM HI / DIM LO: the idle glow) the keys the head has passed keep the glow, the buttons settle on it:
- * the last frame is the idle picture's glow; without (LEDS OFF / INV) all goes dark. A frame at or past
+ * (MENU > LEDS MEDIUM / LOW: the idle glow) the keys the head has passed keep the glow, the buttons settle on it:
+ * the last frame is the idle picture's glow; without (LEDS OFF / MAX) all goes dark. A frame at or past
  * FM1_ANIM_FRAMES is that last picture. */
 #pragma once
 #include <stdint.h>
@@ -78,8 +78,8 @@ static uint32_t fm1_anim_level(uint32_t f, uint32_t id, uint32_t glow)
  * the second (a smoothstep of a triangle, as the breath: it slows down at either end, ~4.5 s a way); a key's
  * brightness 2^-(e / 16) of lit, e = 24 + 16 per half white key from the light (~35 % of lit on it, half that a half
  * white key away: two or three keys softly lit, never a bright one). The buttons, all together, from 1/64 of lit (the
- * light at F3) up to 1/8 (at G5) and down again. With `glow` (MENU > LEDS DIM HI / DIM LO) every LED keeps the glow
- * under it; without (OFF / INV) the rest is dark. The same levels as the power-on sweep (fm1_anim_q: lit frames /64,
+ * light at F3) up to 1/8 (at G5) and down again. With `glow` (MENU > LEDS MEDIUM / LOW) every LED keeps the glow
+ * under it; without (OFF / MAX) the rest is dark. The same levels as the power-on sweep (fm1_anim_q: lit frames /64,
  * FM1_ANIM_GLOW): the scan draws them the same way. No division: shifts */
 #define FM1_IDLE_FRAMES 8192u    /* a cycle (a power of 2), frames (~9.0 s) */
 #define FM1_IDLE_E0 24           /* the light: 2^-1.5 of lit at its place */

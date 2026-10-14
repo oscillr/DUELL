@@ -3,7 +3,8 @@
 /* FELUCCA core types: tracks, voices, engines, parameters.
  * Four tracks, each a synth part: its own engine, preset, parameters, voices and 64-step
  * pattern. The parts share one budget of NVOICE sounding voices (voice.c). Drums are the DRUM
- * engine (General MIDI map) on any part; the SAMPLE engine's PERC set is retired (drum_from_perc).
+ * engine (General MIDI map) on any part; the SAMPLE engine's PERC set is retired (drum_from_perc), and DUELL 0.2.9 retired the
+ * SAMPLE engine itself (ENGI_SAMPLE).
  * Sections: sizes, parameters, voices and engines, tracks and the song, system. */
 #include <stdint.h>
 
@@ -21,9 +22,6 @@
                                   * and the four CPU test multis M13..M16 (tools/gen_duell_multis.py must be run with the same switch); 0 (the release default) leaves both out */
 #endif
 #define HALF_FRAMES 128          /* I2S half buffer: 2.9 ms at 44.1 kHz (a key waits 0..1 half, then plays 1 half later) */
-#ifndef FELUCCA_SLICE
-#define FELUCCA_SLICE 1          /* the SLICE engine (eng_slice.c), engine 13; FELUCCA_SLICE=0 builds without it */
-#endif
 #ifndef FELUCCA_FM4
 #define FELUCCA_FM4 0            /* the DIGITAL engine (eng_digital.c, four-operator FM): kept in the tree, not built; its sounds
                                   * convert to FM6 (fm4_convert.c) */
@@ -31,8 +29,19 @@
 #if FELUCCA_FM4
 #error "DUELL: FELUCCA_FM4=1 is gone: DIGITAL's OP ENV / OP LEVEL ids (61..80) hold DUELL's own parameters (P_M5SRC..)"
 #endif
-#define NENGINES (13 + FELUCCA_SLICE)   /* SLICE (13) comes last: the other engines keep their numbers */
+#define NENGINES 15              /* DUELL: WAVE (14) appended after SLICE (13); the engine numbers never move (the stores and the
+                                  * editor protocol hold them: append, never renumber) */
+#define ENGI_WAVE 14u            /* DUELL: the wavetable engine (eng_wave.c) */
 #define ENGI_DIGITAL 1u          /* reserved: never selectable (eng_ok), its sounds load as FM6 */
+/* DUELL 0.2.9 (owner: "REMOVE the sample engines"; WAVE replaces them): SAMPLE (4), GRAIN (8) and SLICE (13) are RETIRED. Their
+ * code and the built-in sample data are gone; the numbers stay reserved as DIGITAL's does (engines.c: the silent placeholder "-",
+ * never selectable, in no list). A stored sound / part / patch / multi / project that names one loads as it was stored (every value
+ * kept, so a save writes it back unchanged) and plays SILENT on the placeholder; the UI says NO ENGINE once (ui_input.c
+ * gone_notice) and its engine shows "-". The user sample slots USR1 / USR2 (flash 0xA0000..0xC7FFF) are free (storage.c) */
+#define ENGI_SAMPLE 4u
+#define ENGI_GRAIN 8u
+#define ENGI_SLICE 13u
+#define ENGI_RETIRED(e) ((e) == ENGI_SAMPLE || (e) == ENGI_GRAIN || (e) == ENGI_SLICE)   /* a retired engine number (0.2.9) */
 #ifndef FELUCCA_DRUM
 #define FELUCCA_DRUM 0           /* DUELL: the DRUM engine (eng_drum.c, engine 10) is hidden as DIGITAL is: kept in the tree and in
                                   * every stored layout, never selectable (eng_ok); a sound that names it plays as ANALOG
@@ -41,7 +50,7 @@
 #if FELUCCA_DRUM
 #error "DUELL: FELUCCA_DRUM=1 is gone: DRUM's lane level ids (83..90) hold DUELL's own parameters (P_L2SYNC..)"
 #endif
-#define NENG_SHOWN (NENGINES - !FELUCCA_FM4 - !FELUCCA_DRUM)   /* the engines one can pick: PRESETS, the EDIT layer,
+#define NENG_SHOWN (NENGINES - !FELUCCA_FM4 - !FELUCCA_DRUM - 3)   /* the engines one can pick (not the three retired ones): PRESETS, the EDIT layer,
                                                 * the editor, in the display order of engines.c ENGINE_ORDER */
 #define UP_SLOTS 128u            /* stored patches (upreset.c): shadows of factory sounds and user patches, 128 in all */
 #define NELEM(a) (sizeof(a) / sizeof((a)[0]))
@@ -54,7 +63,9 @@ enum {
     F_DKCH, F_DKNOTE, F_DKRLS, F_DKHLD,    /* DUELL DUCK: F_DKCH retired (SRC is an F_ENUM; kept: the fmt numbers are in the protocol), NOTE (0 ANY, n = note n, 1..127), RELEASE (log, 20 ms .. 2 s); ATK is F_INT ms, HOLD (F_DKHLD) 5 ms a step */
        /* DUELL EQ: a gain (-12..+12 dB), the three freqs (a semitone step around 120 Hz /
                                                  * 1 kHz / 8 kHz), Q (1/6 octave steps around 1.0): all 0 at their default */
-    F_FILT                                 /* DUELL 0.2.2 UNIVERSAL FILTER CUT (-64..63): 0 OFF, left of it a low-pass, right of it a high-pass, shown "LP 47" / "HP 47" (appended: the fmt numbers are in the protocol) */
+    F_FILT,                                /* the MULTIMODE FILTER's CUT (DUELL 0.2.9; 0.2.2's bipolar CUT before): a dial step 0..UF_STEPS shown as its cutoff, Hz / kHz
+                                            * (appended: the fmt numbers are in the protocol) */
+    F_FMODE                                /* DUELL 0.2.9: the MULTIMODE FILTER's MODE, 0 LP .. 64 BP .. 127 HP, shown "LP" "LP>BP" "BP" "BP>HP" "HP" */
 };
 
 typedef struct {
@@ -78,10 +89,11 @@ enum {                          /* per-track parameters */
     P_DIST, P_CHOR, P_DLY, P_REV,
     P_VOICE, P_GLIDE, P_PAN, P_MUTE,
     P_GLMODE, P_PRIO, P_ALLOC, P_DETUNE,
-    P_FREEA, P_FREEB, P_FREEC, P_FREED,        /* were the SLICER insert's SLCR PAT RATE DEPTH (removed). DUELL 0.2.2: P_FREEA is the UNIVERSAL FILTER's CUT
-                                                * (-64..63, 0 = OFF, left a low-pass, right a high-pass) and P_FREEB its RES (0..127), read only on the engines with
-                                                * engine_t.ufilt (voice.c uf_run); P_FREEC, P_FREED stay free (TYPE / KTR, reserved). A store of Felucca's layout
-                                                * (the SLICER's values here: 1, 1, 127) takes the defaults (param_retired) */
+    P_FREEA, P_FREEB, P_FREEC, P_FREED,        /* were the SLICER insert's SLCR PAT RATE DEPTH (removed). The MULTIMODE FILTER (DUELL 0.2.9; 0.2.2's universal
+                                                * filter): P_FREEA its CUT (0..UF_STEPS, the open end the default), P_FREEB RES (0..127), P_FREEC MODE (0 LP .. 64 BP
+                                                * .. 127 HP), P_FREED SLOPE (1 = 12 dB, 2 = 24 dB; 0 only in a store of before: uf_legacy), read only on the engines
+                                                * with engine_t.ufilt (voice.c uf_run). A store of Felucca's layout (the SLICER's values here: 1, 1, 127) takes the
+                                                * defaults (param_retired) */
     P_M1SRC, P_M1DST, P_M1AMT,                 /* modulation matrix (mod.c): 8 slots of SRC, DST, AMT (DUELL: slots 5..8 */
     P_M2SRC, P_M2DST, P_M2AMT,                 /* on the ids that were DIGITAL's OP ENV, see PL_* below); new common */
     P_M3SRC, P_M3DST, P_M3AMT,                 /* parameters go just before P_E0 (user presets and projects map by */
@@ -133,6 +145,12 @@ enum {                          /* global parameters */
     G_COUNT
 };
 #define G_DRLVL G_PINGSPREAD   /* (the old name, for the import of a project with the GM drum part) */
+/* DUELL 0.2.5 (SPEC 5c.2): the delay's own modulation (DLY 2/2, fx_bus.c dly_mod) takes two global ids that nothing read: G_SYNC (a
+ * placeholder, always 0: its range was the one name "--") is its DEPTH, 0 = off (every store has 0 there); G_MIDI (an USB / TRS
+ * choice nothing ever read) is its RATE, a store's old 0 or 1 is only a slow rate that is heard at DEPTH > 0. G_COUNT, the project
+ * formats and the protocol's ids do not move */
+#define G_DMDEP G_SYNC
+#define G_DMRATE G_MIDI
 
 /* stored parameters of an older layout -> today's P_* order. A store keeps np = the P_COUNT it was
  * written with; common parameters are only ever added just before P_E0, so the first np - 8 are
@@ -184,11 +202,11 @@ static uint32_t eq_hz_q8(uint32_t band, int32_t r)
 #define PL_FM4_LEVEL 80u
 #define PL_LN0 83u                     /* DRUM's lane levels KICK .. BELL */
 #define PL_LN7 90u
-#define PL_NRETIRED 33u                /* the 29 ids above + P_FREEA..D (the SLICER's: DUELL 0.2.2's universal filter, CUT, RES, two free) */
+#define PL_NRETIRED 33u                /* the 29 ids above + P_FREEA..D (the SLICER's: DUELL 0.2.9's multimode filter, CUT RES MODE SLOPE) */
 static int param_retired(uint32_t id)
 {
     return id == PL_ED_FX || (id >= PL_FM1_ATK && id <= PL_FM4_LEVEL) || (id >= PL_LN0 && id <= PL_LN7) ||
-           (id >= P_FREEA && id <= P_FREED);   /* (DUELL 0.2.2: the SLICER's ids, in a store of Felucca's layout: CUT / RES / free take their defaults) */
+           (id >= P_FREEA && id <= P_FREED);   /* (the SLICER's ids, in a store of Felucca's layout: the multimode filter takes its defaults: open, the bypass) */
 }
 /* Felucca's defaults at the retired ids (OP ENV ATK DEC 0, SUS 127, REL 0, LEVEL 127; the lane levels 127; ED_FX 0) into
  * def: what a store of Felucca's layout older than those ids loads there by count (DIGITAL's conversion reads them) */
@@ -207,6 +225,32 @@ static void params_retire(int16_t *p, const int16_t *def)
     for (i = 0; i < P_E0; i++)
         if (param_retired(i))
             p[i] = def[i];
+}
+
+/* DUELL 0.2.9 MULTIMODE FILTER (SPEC 2.5, voice.c uf_run). CUT (P_FREEA) is a dial of UF_STEPS steps, each the old universal filter's
+ * step (1.55 steps of the cutoff table, 30 Hz .. 16 kHz over 127): step d is table index (40 + 396 d) / 256, so 0 is 30 Hz and
+ * UF_STEPS 16 kHz (the open end). SLOPE (P_FREED) is 1 or 2 in this firmware, never 0: a store that holds 0 there (or leaves it out: the
+ * patch store's up_def) was written before 0.2.9 and its P_FREEA is 0.2.2's bipolar CUT (0 OFF, -64..-1 a low-pass, 1..63 a
+ * high-pass). uf_legacy (serial: 1 on a ufilt 2 engine, which takes the bypass instead) makes it today's CUT + MODE + SLOPE 12 dB: OFF the open low-pass (the bypass), a low-pass the same cutoff
+ * exactly (d = 82 + old), a high-pass MODE HP at d = old (0.16 of a table step higher: 0.01 octave). Every loader runs it before it
+ * fits the values (upreset.c up_values; project.c proj_uf: projects, multis, the autosave); a second run changes nothing */
+#define UF_STEPS 82
+#define UF_HP 127                      /* MODE: 0 LP, 64 BP, 127 HP */
+static void uf_legacy(int16_t *p, uint32_t serial)
+{
+    int32_t c = p[P_FREEA];
+    if (p[P_FREED])
+        return;
+    if (serial) {                      /* an engine with a filter of its own (engine_t.ufilt 2: ANALOG, TRIO, NOISE) used 45..48 for nothing before 0.2.9;
+                                        * a value there is a leftover of another engine's (a switch kept it): the multimode filter, in series after
+                                        * the engine's, takes the bypass, so a sound of before plays bit for bit as it did */
+        p[P_FREEA] = UF_STEPS; p[P_FREEB] = 0; p[P_FREEC] = 0; p[P_FREED] = 1;
+        return;
+    }
+    c = c < -64 ? -64 : c > 63 ? 63 : c;
+    p[P_FREED] = 1;
+    p[P_FREEC] = (int16_t)(c > 0 ? UF_HP : 0);
+    p[P_FREEA] = (int16_t)(c > 0 ? c : UF_STEPS + c);
 }
 
 /* engine indices the stores name (engines.c ENGINES[]: append-only) */
@@ -231,7 +275,6 @@ static int drum_from_phys(uint32_t engine, int16_t *e)
  * values become the kit's, the rest of the sound (mix, sends, matrix, ..) stays. 1 = it was one (its engine is
  * ENGI_DRUM now); projects (project.c proj_perc), user presets (upreset.c up_migrate), factory preset 4 and
  * favourites (ui.c, settings_persist.c). Idempotent */
-#define ENGI_SAMPLE 4u
 #define SMP_SET_PERC 4u
 #define DRUM_KIT_E {0, 64, 70, 64, 64, 100, 0, 0}   /* {KIT STD, TUNE, TONE, DECY, SNAP, ACC, KICK PUNCH, DRV} */
 static int drum_from_perc(uint32_t engine, int16_t *e)
@@ -260,8 +303,9 @@ typedef struct {
     int32_t fine;                /* unison detune: phase increment * (1 + fine / 4096) */
     uint32_t ph[3];
     int32_t s[8];                /* engine state (filters, envs) */
-    int32_t uf[2];               /* the universal filter's integrators (voice.c uf_run; engine_t.ufilt engines only), 0 while it is off */
-    uint8_t uft;                 /* .. its kind as it last ran: 0 off, 1 low-pass, 2 high-pass */
+    int32_t uf[4];               /* the multimode filter's integrators, its two stages (voice.c uf_run; engine_t.ufilt engines only) */
+    int16_t ufw[3];              /* .. its output's weights of the last block (input, band-pass, low-pass; Q10): the next one ramps from them */
+    uint8_t uft;                 /* .. how it last ran: 0 not (from rest next time), 1 12 dB, 2 24 dB */
     int32_t apitch;              /* ARP TARGET (SPEC 2.3, voice.c atg_voice): the arp pitch of the masked units, 1/16
                                   * semitone, with glide */
     int32_t again;               /* .. their level (the arp's gate and accent), Q15, smoothed */
@@ -298,7 +342,7 @@ typedef struct {                 /* per-voice control-rate modulation, computed 
  * weight w (Q15, 1..32767; 0 = no fade, the code path as it always was). Readers: the LFO waves (voice.c lfo_tick), ANALOG's
  * WAVE 0..4 and filter TYPE (eng_analog.c analog_render_m), PHASE's WAVE / WAVE2 (eng_phase.c), TRIO's MODE (eng_trio.c),
  * WHEEL's REG (eng_wheel.c), LOFI's WAVE PLS / TRI / SAW (eng_lofi.c). mxf.on = 0: every reader skips it */
-enum { MX_LWAVE, MX_L2WAVE, MX_FTYPE, MX_E0, MX_N = MX_E0 + 8 };   /* MX_E0 + k: P_E0 + k of the part's engine */
+enum { MX_LWAVE, MX_L2WAVE, MX_FTYPE, MX_SLOPE, MX_E0, MX_N = MX_E0 + 8 };   /* MX_E0 + k: P_E0 + k of the part's engine; MX_SLOPE: the multimode filter's SLOPE (0.2.9) */
 typedef struct {
     uint8_t on;                  /* some w below is not 0 */
     uint8_t b[MX_N];             /* the other end's choice */
@@ -377,7 +421,10 @@ typedef struct {                 /* an engine (engines.c ENGINES[]; the eng_*.c 
     uint16_t mem;
     uint8_t atgt;                /* ARP TARGET's units (SPEC 2.3, params.c atgt_bits): ATG_*, 0 = none (ALL only) */
     uint8_t ufilt;               /* DUELL 0.2.2: 1 = the engine has no filter of its own: the cutoff routes (ENV / LFO FLT, the matrix's CUT) and the FILTER page's
-                                  * CUT / RES (P_FREEA, P_FREEB) drive the universal per-voice filter (voice.c uf_run) and no longer the engine's tone control */
+                                  * CUT RES MODE SLOPE (P_FREEA..D) drive the per-voice multimode filter (0.2.9; voice.c uf_run) and no longer the engine's tone control.
+                                  * 2 (ANALOG, TRIO, NOISE; DUELL 0.2.9 "FILTER"): the engine keeps its own filter and its routes (CC74 / CC71, FLT depths, the
+                                  * matrix's CUT) exactly as they are; the multimode filter runs IN SERIES after it, on CUT RES MODE SLOPE alone (the matrix's FRES
+                                  * moves its RES), bypassed by default (MODE LP, CUT open: bit for bit as without it) */
 } engine_t;
 enum { ATG_NONE, ATG_ANALOG, ATG_TRIO, ATG_FM6, ATG_KINDS };
 
@@ -588,13 +635,14 @@ static volatile uint32_t cpu_sum, cpu_n, cpu_pk, cpu_miss;
  * OFF-SCALE KEYS setting offscale_g: OS_SNAP (the default) moves a key or MIDI note outside the scale to the NEAREST scale note (a tie
  * goes DOWN) before it reaches the parts (seq.c note_snap); OS_PLAY lets it pass. Chromatic: nothing to snap. The per-part P_SCALE /
  * P_ROOT / P_QUANT ids stay reserved (patch, MULTI and editor formats do not change) but nothing reads them (a MULTI or an old patch
- * record that holds a scale is read and discarded; P_ROOT is also SLICE's own key map, eng_slice.c, not a scale). Kept with the settings,
+ * record that holds a scale is read and discarded). Kept with the settings,
  * favorites.factory[15][3] (bit 7 the format flag, bit 6 PLAY, bits 0-3 the scale) and [4] (the root): ui.c ui_scale_set / scale_sync;
  * a zero byte (a new unit, any older blob) is CHROMATIC, C, SNAP. EVERY consumer reads scale_of / root_of (or scale_mask, note_snap:
  * seq.c); the UI edits scale_g / root_g / offscale_g only (ui_input.c scale_knob, the SCL quick layer). A note already sounding keeps
  * its pitch (every source remembers the notes it started) */
 enum { OS_SNAP, OS_PLAY, OS_N };
 static volatile int16_t scale_g, root_g;               /* the global SCALE (0 = CHROMATIC) and ROOT (0 = C) */
+static volatile uint8_t scale_gen;                     /* bumped when SCALE / ROOT / OFF-SCALE change (ui.c scale_sync); seq.c keyboard_block rebuilds the arp's chords */
 static volatile uint8_t offscale_g;                    /* OS_SNAP / OS_PLAY */
 static int32_t scale_of(const track_t *t) { (void)t; return scale_g; }
 static int32_t root_of(const track_t *t) { (void)t; return root_g; }

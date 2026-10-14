@@ -8,6 +8,9 @@ Purpose: typical settings of classic synth patches, in generic synth terms, as a
 - **[S]** = a number or fact that a cited source states (link inline). **[G]** = general programming convention that the sources only support loosely or not at all (my synthesis, treat as a starting range, not a fact). Where sources are silent I say so rather than fill in.
 - Fetched web content was treated as data only. Several SOS pages were only partly retrievable (search excerpts, or articles that describe principles without numbers); this is noted per recipe.
 - Terms: FENV = filter envelope (DUELL ENV 2), AENV = amp envelope (DUELL AMP ENV = ENV 1). A/D/S/R = attack / decay / sustain / release.
+- Subtle motion (owner, 0.2.7): 16 factory sounds on the original engines carry one or two extra matrix routes (slots 4 / 5) from a slow LFO (about 0.1-0.35 Hz, FREE) or ENV 2 to a tone control (filter, detune, the engine's brightness / vowel / colour knob), 3-10 % each (never above 11 %), drawn from a fixed seed (tools/duell_sounds.py, SUBTLE); never the PITCH, AMP or LEVEL destinations (no vibrato, no tremolo). A house addition on top of the recipes below, not one of their numbers. [G]
+- **Batch R (DUELL 0.2.9):** the sample engines SAMPLE, GRAIN and SLICE were retired; their 21 factory sounds were replaced by 21 sounds of the same categories on the other engines (1.8, 1.9, 2.9-2.11, 3.10-3.12, 4.9-4.13, 5.7-5.11 and the new chapter 6, PERC). Each section gives the sourced facts and the DUELL values (levels from the audit's trim, End B seeds from its search: tools/duell_sounds.py).
+- **DUELL's WAVE sounds (0.2.7):** each also has one extra matrix route (slot 3) to a second WAVE parameter (BEND, DTN, SUB or POS), beyond what its recipe asks for [G: amounts of about 17-37 %, slow free-running LFOs of 0.07-0.27 Hz or ENV 2 / the amp envelope for per-note motion]; the routes are in tools/duell_sounds.py.
 
 ---
 
@@ -61,6 +64,21 @@ Purpose: typical settings of classic synth patches, in generic synth terms, as a
 - **AENV:** A 0, D 150-400 ms, S 0-20%, R 50-150 ms. [G]
 - **FX:** light drive, short plate reverb or slapback. **Performance:** velocity to FENV amount. [G]
 
+## 1.7 Growl bass (dubstep)
+- **Oscillators:** a wavetable (a "growl" table) at a set position, its warp (Serum's Bend +/-) and position moved by one LFO: in one walkthrough LFO 1 at a rate of 1/2 (tempo-synced), retriggered with each note, to the wavetable position by about 27-38 % and to the warp by 19-41 %; a second oscillator under it. [S: [Bass Gorilla, Serum super growl bass](https://bassgorilla.com/serum-tutorial-super-growl-bass-in-ableton-live/)]
+- **Filter / FX:** a notch filter and a formant filter both moved by the same LFO, distortion (Diode, drive 20 %), flanger, phaser, multiband compression; reverb low and short. [S: same]
+- **Not stated:** envelopes, unison, sub, glide, mono. A sine sub and mono legato are the usual bass practice [G, 1.3 / 1.5]. A growl is the vowel moving ("wow", "yoi"): a formant table scanned by the LFO does that directly. [G]
+- **DUELL's GROWL BASS (WAVE):** the GROWL table (a saw under a man's vowels U -> AH -> AE) at POS 40, LFO 2 synced at 1/2 on POS (+-19 steps, the gentle end of the source's range), free-running as every factory LFO (the house rule; synced to the tempo it still lands on the beat), SUB 40 %, DIST 20 %, mono with a short glide. [S for the LFO and drive; the rest G]
+
+## 1.8 Electric bass, fingered (PLUCK BASS, batch R)
+- **String:** a plucked string; the fingertip acts as a low-pass on the pluck, and a pluck at 1/n of the length cancels the n-th harmonic. [S 4.6: [SOS, Synthesizing plucked strings](https://www.soundonsound.com/techniques/synthesizing-plucked-strings)]
+- **Sustain:** a solid-body bass rings on for many seconds; the key's release damps it (the player's fretting hand). [G]
+- **DUELL's PLUCK BASS (PHYS, STRNG):** STRC 61, BRIT 47 (dark: the fingertip), DAMP 118 (a long ring), POS 41 (about a third along), ACC 127, EXC 11 (a little finger thump), REL 110 ms; the HF shelf down and a subtle PUMP ducker (the house bass rule); a SOFT insert as a limiter: a plucked string's strike peaks far over its body, the limiter lets LEVEL bring the body up under the peak cap. [S / G as marked]
+
+## 1.9 Fretless bass (FRETLESS, batch R)
+- **Character:** with no frets the player slides between notes ("more fluid slides between notes"). [S: [Wikipedia, Fretless bass](https://en.wikipedia.org/wiki/Fretless_bass)] The vocal "mwah", the tone opening a moment after the pluck as the string buzzes along the fingerboard, is common player knowledge, not stated by that page. [G]
+- **DUELL's FRETLESS (FM6):** the ROUND BASS patch (F3, the 1.4 layout) with its modulators slower (MEG +21: the index opens after the pluck, the "mwah"), rounder (MLVL -11), velocity to brightness 2, FB +1; mono legato with a 90 ms glide; the house bass EQ and ducker. [S / G as marked]
+
 ---
 
 # 2. LEAD
@@ -110,13 +128,35 @@ Purpose: typical settings of classic synth patches, in generic synth terms, as a
 - **Operators:** carrier sine, one modulator at 1:1 or 2:1 ratio with moderate feedback; modulator envelope with slow decay and level that follows velocity, giving a singing lead; light vibrato. [G; the Plugin Boutique "80s Brass" recipe (triangle carrier and modulator, modulator envelope peaks at the attack then reduces, darker at low velocity) is the closest sourced example: [Plugin Boutique](https://www.pluginboutique.com/articles/1873-FM-Synthesis-Cookbook-Five-Classic-FM-Sounds-and-How-They-Work)]
 - **Brightness:** modulator output level is the "cutoff" of FM. [G, standard FM practice]
 - **AENV:** A 0-10 ms, S 100%, R 80-200 ms. **FX:** chorus + delay. [G]
-- **DUELL's brass solo (#19 HORN SOLO):** the BRASS SECT patch on ALG 16 (a single carrier, OP 1, with three modulator branches: the classic FM brass tree). The patch's own attack swells the note, ENV 2 on MLVL (the modulator level) rises with it over ~120 ms and settles high, VMOD makes it darker at low velocity. Three detuned carriers (the patch's own ALG 5) beat once in a few seconds at C3 and dropped the level by 15 dB, so they are not used for a solo. [G]
+- **DUELL's brass solo (#22 HAN SOLO):** the BRASS SECT patch on ALG 16 (a single carrier, OP 1, with three modulator branches: the classic FM brass tree). The patch's own attack swells the note, ENV 2 on MLVL (the modulator level) rises with it over ~120 ms and settles high, VMOD makes it darker at low velocity. Three detuned carriers (the patch's own ALG 5) beat once in a few seconds at C3 and dropped the level by 15 dB, so they are not used for a solo. [G]
 
 ## 2.7 Formant / vocal lead
 - **Source:** a buzzy saw/pulse glottal-style source into 3-5 band-pass resonances at vowel formants; morph the vowel with LFO/envelope or pitch. Reference male values (Hz): /a/ 700/1200/2500, /e/ 410/2000/2570, /i/ 215/1900/2630, /o/ 440/750/2160, /u/ 290/750/2300 (F1/F2/F3). [S: Cantor Digitalis table via search ([PMC table](https://pmc.ncbi.nlm.nih.gov/articles/PMC6090560/table/T1) listed in results; I did not verify which of the listed tables holds these numbers)] DUELL's own VOICE engine uses Hillenbrand 1995 male means instead (/a/ 768/1333/2522, /i/ 342/2322/3000 ...), so the two sets differ by up to ~20%; vowel data vary by speaker. [S: eng_formant.c comment]
 - **Female/treble:** shift formants up, roughly in proportion. [S, search summary]
 - **Performance:** vowel on mod wheel or velocity; glide on; vibrato 5-6 Hz. [G]
 - **FX:** chorus, hall reverb for choir. [G]
+
+## 2.9 Flute lead (PURPLE FLUTE, batch R)
+- The SOS flute patch of 3.9 played as a lead: a single sawtooth into a low-pass at about 2 kHz with moderate resonance; attack neither instant nor slow, full sustain, a short release; no pitch vibrato but a 5-6 Hz modulation of the cutoff of about +-10 %, brought in after the onset; pressure to the cutoff (brighter, not louder). [S: [SOS, Practical Flute Synthesis](https://www.soundonsound.com/techniques/practical-flute-synthesis)]
+- **DUELL's PURPLE FLUTE (WAVE):** the AIR table low (POS 10: the soft flute with little breath), the multimode filter's low-pass at about 2 kHz (CUT 54) with RES 27 %, LFO 2 at 5.5 Hz on that cutoff (+-1 step) faded in over 500 ms, aftertouch to the cutoff; A 71 ms, R 170 ms, a light 40 ms glide (mono legato); ENV 2 adds a short breath at the onset (to POS). [S / G as marked]
+
+## 2.10 Clarinet (LICORICE, batch R)
+- **Waveform:** the clarinet's spectrum is dominated by the odd harmonics, much like a square wave ("square waves produce remarkably good clarinet tones"); even harmonics are weak, at least low down. [S: [Yamaha, MX study: more synth basics](https://yamahasynth.com/learn/synth-programming/more-synth-basics-mx-study/); [Tufts, clarinet spectra](https://mma.pages.tufts.edu/musiceng/research/clar_sum_02/SumA.htm), via search summaries]
+- **Vibrato:** a classical clarinet is played without vibrato. [G]
+- **DUELL's LICORICE (WAVE):** the ODD table (sine to square, the odd harmonics one by one) at POS 37 (about ten of them), a gentle low-pass of the multimode filter (CUT 65, RES 11 %), aftertouch to POS (blowing harder: more harmonics), ENV 2 opening a few more at the tongued onset; A 37 ms, R 110 ms, a short glide, mono; no vibrato. [S / G as marked]
+
+## 2.11 Oboe (OBOE-ISH, batch R)
+- **Waveform:** narrowing a pulse toward 10 % moves the tone from hollow to nasal; the oboe and the clavinet are the "pinched", nasal tones. [S: [Yamaha, MX study: more synth basics](https://yamahasynth.com/learn/synth-programming/more-synth-basics-mx-study/)]
+- **DUELL's OBOE-ISH (TRIO):** three pulses on one pitch (DTN 3 ct), PW 17 (about 13 %), a low-pass at 3.5 kHz with RES 27, a little ENV 2 on it; A 47 ms, R 120 ms, a short glide, mono; a delayed 5.1 Hz vibrato (the smallest step, faded in over 470 ms) that pressure deepens, as the other leads. [S for the pulse; the rest G]
+
+---
+
+## 2.8 Hoover (the Alpha Juno "What the..." lead)
+- **Oscillators:** three PWM sawtooths an octave apart (root, octave up, two octaves up), locked, not detuned; a PWM-saw shape where the synth has one, else a saw mixed with a pulse. [S: [Music Production Wiki, How to recreate the hoover sound](https://musicproductionwiki.com/articles/how-to-recreate-the-hoover-sound); a forum description of the Juno's PWM saw "cutting two holes into the saw", [Scope users forum](https://www.forums.scopeusers.com/viewtopic.php?p=80112), via a search summary]
+- **Modulation:** a fast LFO into the pulse width (rate and depth not given; the Alpha Juno's LFO is a triangle); optionally a little of it on pitch. [S: same, and [KVR, Alpha Juno-2 PWM sawtooth](https://www.kvraudio.com/forum/viewtopic.php?p=8367138) via a search summary]
+- **Pitch envelope:** the note starts slightly sharp and dives to its pitch over the first fraction of a second (the amount is not given). [S: Music Production Wiki]
+- **Filter / FX:** a resonant low-pass, high resonance, the top kept bright; a touch of drive; a rich, wide, fairly deep and fast chorus (two stacked or an ensemble). [S: same] Envelope times and glide are not given. [G]
+- **DUELL's HOOVER (WAVE):** the HOOVR table at POS 50, LFO 2 TRI 5 Hz on POS (+-16 steps) [G for the rate and depth], aftertouch on POS, ENV 2 -> PITCH about +1 semitone decaying in 150 ms [G for the amount], the universal filter at about 9 kHz with RES 55 %, DIST 10 %, the chorus send at 70 % (the chorus rate is the global one), no pitch LFO (no vibrato). [S / G as marked]
 
 ---
 
@@ -160,6 +200,28 @@ Purpose: typical settings of classic synth patches, in generic synth terms, as a
 - **Oscillators:** two detuned saws plus a sub sine, or a low pulse; filter cutoff 20-45, resonance 20-45 with a slow LFO (0.02-0.2 Hz) on cutoff, depth 15-30%. [G]
 - **AENV:** A 1-4 s, S 100%, R 3-8 s. **FX:** low-passed delay with high feedback, reverb 50-80%, slight drive. [G]
 - No fetched source gave numeric drone recipes; treat all as craft convention.
+
+## 3.8 Wavetable sweep pad (the PPG way)
+- **Principle:** on the PPG Wave 2.3 the oscillator plays one wave of a 64-wave wavetable; a knob assigns Env 1 to the wave played, so the envelope's attack rate sets the speed at which the sound cycles through the wavetable, and Waves-Sub sets the starting wave. The 24 dB/oct low-pass goes from "obviously digital" wide open to mellower, warmer tones. [S: [SOS, PPG Wave 2.3 and Waveterm B review](https://www.soundonsound.com/reviews/ppg-wave-23-waveterm-b)] The PPG's tables include resonant ones (harmonics 1-8 very strong, simulating a resonant filter) and sweeps from sine to saw or square. [S: search excerpts of [Preset Patch, PPG wavetable list](https://www.presetpatch.com/article/ppg-wavetable-list); the page itself could not be fetched]
+- No envelope times are given; a pad's: AENV A 200-800 ms, S 100 %, R 1-3 s; the sweep's envelope slower (A 1-3 s), settling part way. [G, 3.2]
+- **DUELL's DIGITAL PAD (WAVE):** the BAND table (a band of harmonics moving up, in the spirit of the resonant tables) from POS 10, ENV 2 SHP +60 % with A 2.5 s, D 3 s, S 50 % (the envelope carries the band up and settles half way), LFO 2 0.12 Hz on POS (+-6 steps), DTN 7 ct, the multimode filter's low-pass at about 6.4 kHz (CUT 70), chorus, reverb. [S for the principle; the numbers G]
+
+## 3.9 Breathy flute pad
+- **Flute patch (SOS):** a single sawtooth into a low-pass at about 2 kHz with moderate resonance (it adds edge without sounding synthetic) and a few percent of key tracking; one envelope for amplitude and filter, attack "neither instant nor slow", no decay, full sustain, a short release lengthened until notes join; no pitch vibrato or tremolo but a 5-6 Hz modulation of the cutoff of about +-10 % (blowing pressure), brought in after the onset; pressure (aftertouch) to the cutoff: harder blowing brighter, not louder. The author leaves out white noise. [S: [SOS, Practical Flute Synthesis](https://www.soundonsound.com/techniques/practical-flute-synthesis)]
+- **Breath:** a breath-noise component at a low level is the usual pad addition [G, 3.5]; a flute's first harmonics are weaker than a saw's [S via notes, [Synthesizing wind instruments](https://publish.obsidian.md/arendleejessurun/Atlas/Musicianship/Synthesis/Synthesizing+wind+instruments), not SOS].
+- **DUELL's BREATH PAD (WAVE):** the AIR table (a soft flute and a breath of random harmonics growing along the scan) at POS 30, aftertouch to POS (more breath, brighter), the multimode filter's low-pass at 2 kHz (CUT 54) with RES 25 %, LFO 2 5.5 Hz on that cutoff, +-1 step (about +-10 %), faded in over 600 ms, A 300 ms, R 900 ms (a pad's, 3.5), DTN 6 ct, chorus, hall reverb. [S for the filter, LFO and pressure; the times G]
+
+## 3.10 String machine (STRING MACH, batch R)
+- **Source:** string machines (Solina, ARP String Ensemble) used divide-down oscillators with a sawtooth-like wave that sounds thin raw; the ensemble effect (three modulated delay lines) makes the sound. [S: [SOS, Synthesizing Strings: String Machines](https://soundonsound.com/techniques/synthesizing-strings-string-machines); [Wikipedia, ARP String Ensemble](https://en.wikipedia.org/wiki/ARP_String_Ensemble)] A recreation: a pulse of 5-20 % width and a second oscillator 12 semitones up ("cellos" and "violins"), into a chorus (a second chorus after it for the vintage sound). [S: [MusicRadar, How to recreate the sound of the Solina String Ensemble](https://www.musicradar.com/how-to/synth-string-synth-choir)]
+- **DUELL's STRING MACH (TRIO):** PLS3, PW 17, osc 2 +12, osc 3 on the root, DTN 7, a low-pass at 5 kHz; A 270 ms, R 1.1 s (the machines' slow controls), the chorus send at 71 %, a hall; a slow free LFO 2 nudges the cutoff (the house subtle motion). [S / G as marked]
+
+## 3.11 Whisper pad (WHISPER PAD, batch R)
+- Felucca's own WHISPER preset on the formant engine: "ah" gliding toward "oh" (VOWL 0, VOWL2 95, TALK 88), the formants a little up (SHIFT 3), BUZZ 50, breath at the top (BRTH 120: the voicing fades to a whisper), Q 50. [S: `eng_formant.c` FORMANT_PRESETS, WHISPER] Pad envelope and effects as 3.5. [S/G 3.5]
+- **DUELL's WHISPER PAD (VOICE):** the preset's values, RAND 11, A 800 ms, R 1.5 s, chorus, a large hall, a little delay; a slow free LFO 2 on VOWL2 (the vowel it settles on). [S / G as marked]
+
+## 3.12 Brass pad (BRASS PAD, batch R)
+- The brass principle of 2.3 slowed into a pad: the harmonics grow as the note swells (the filter or the wave opened by an envelope), a section's power chords. [S 2.3 for the principle; G for the pad times]
+- **DUELL's BRASS PAD (WAVE):** the BRASS table (harmonics growing in along POS) from POS 31, ENV 2 SHP +37 % (A 600 ms, D 1.5 s, S 60 %) carrying the swell, A 370 ms, R 1.2 s, DTN 9 ct, chorus, a hall; chord keys POW (the power chord), OPEN voicing, as the retired BRASS CHOIR. [S / G as marked]
 
 ---
 
@@ -213,6 +275,26 @@ Purpose: typical settings of classic synth patches, in generic synth terms, as a
 - Supersaw/saw stack (two oscillators, detune 5-10 ct, optionally an octave stack); filter cutoff 30-60 with strong envelope (amount 60-90%, A 0-20 ms, D 150-350 ms, S 30-60%); AENV A 0-10 ms, D 200-400 ms, S 40-70%, R 80-200 ms; velocity to filter amount; chorus + short reverb. [G, extends the sourced brass principles in 2.3: sawtooth, filter envelope does the work, velocity to attack]
 - Stabs are typically layered chords (octave + fifth), and the 80s FM version: triangle carrier + triangle modulator whose envelope peaks at the attack and falls quickly, darker at low velocity. [S: Plugin Boutique]
 
+## 4.9 Harpsichord (FAUX HARPSI, batch R)
+- **Mechanism:** a key lifts a jack whose plectrum (quill or plastic) plucks the string; a note sounds equally loud however hard the key is pressed; on the key's return a felt damper stops the string; plucking closer to the nut emphasises the higher harmonics (a nasal quality). [S: [Wikipedia, Harpsichord](https://en.wikipedia.org/wiki/Harpsichord)] Staccato playing helps it cut through. [S: [E&MM Patchwork, Electric Harpsichord](https://www.muzines.co.uk/articles/patchwork/8013)]
+- **DUELL's FAUX HARPSI (PHYS, STRNG):** STRC 71 (thin strings, little stiffness), BRIT 107, POS 11 (plucked near the end), ACC 127, EXC 11 (the quill), DAMP 64, REL 70 ms (the felt damper), a small room; no velocity routes (the instrument has no touch dynamics); a SOFT insert as a limiter (as 1.8). [S / G as marked]
+
+## 4.10 Koto (FAKE KOTO, batch R)
+- A silk string plucked near the bridge with a pick: bright, the high harmonics dying first (4.6: a pluck near the end keeps them). [S 4.6] The string settles a little after the pluck (a slight pitch fall). [G]
+- **DUELL's FAKE KOTO (PHASE):** SAW with DCW 37 and the amp envelope's bend (ENV 71) closing with the decay, D 1.1 s, S 0, R 270 ms; ENV 2 to the pitch, a fraction of a semitone, 70 ms; reverb, a little delay. [S / G as marked]
+
+## 4.11 Toy piano (NURSERY KEYS, batch R)
+- **Mechanism:** hammers strike metal bars or rods fixed at one end (a celesta-like action). [S: [Wikipedia, Toy piano](https://en.wikipedia.org/wiki/Toy_piano)] A rod clamped at one end has strongly inharmonic overtones. [G]
+- **DUELL's NURSERY KEYS (PHYS, MODAL):** STRC 124 (the partials stretched far apart), BRIT 91 (metal), DAMP 71, POS 10 (struck near the end), ACC 107, EXC 21 (the hammer's knock), R 170 ms, reverb, a little delay. (The retired SAMPLE NURSERY KEYS played the piano sample an octave up; this one models the instrument.) [S / G as marked]
+
+## 4.12 Steel drum (ISLAND STEEL, batch R)
+- **Tuning:** a pan's note areas are tuned so the lowest three partials are the fundamental, the octave and the twelfth (or the double octave; the twelfth mellower, the double octave brighter). [S: [Hansen & Rossing, The Caribbean steelpan](https://www.hangblog.org/the-caribbean-steelpan-and-some-offsprings); [Rossing, ASA press room](https://acoustics.org/pressroom/httpdocs/139th/rossing.htm)]
+- **DUELL's ISLAND STEEL (FM6):** the NYLON PICK patch (F8): carriers at ratios 1 and 2 (an octave apart) with modulators at 3 and 1, all harmonic [G: the pan's 1 : 2 : 3]; the modulators a little slower (MEG +11) for the ring, a low index (MLVL -7), velocity to brightness 3, a slight carrier spread (DTUN 11 %); reverb, a little delay. [S / G as marked]
+
+## 4.13 Honky-tonk detune (SALOON KEYS, batch R)
+- A honky-tonk upright's unison strings are out of tune with each other: the beating is the sound. [G] Here applied to the DX7-style electric piano of 4.1 (not a piano model: the name says keys).
+- **DUELL's SALOON KEYS (FM6):** the TINE EP patch (F1) with the carriers spread far apart (DTUN 56 %), a harder strike (MLVL +7), velocity the expression (VMOD 3, S 4.1), dry with a small room and a little chorus. [S / G as marked]
+
 ---
 
 # 5. FX / OTHER
@@ -237,6 +319,97 @@ Purpose: typical settings of classic synth patches, in generic synth terms, as a
 
 ## 5.6 Slow-LFO drone
 - Two or three slightly detuned saws/pulses, resonant low-pass with very slow LFO (0.02-0.2 Hz) on cutoff and a second (incommensurate) one on pulse width, depth 10-30%, A 2-4 s, S 100%, R 4-8 s, reverb large, feedback delay. [G]; see 3.7.
+
+## 5.7 Frozen texture (FROZEN AIR, batch R; GRAIN's STRETCH role, DEAD BUFFER part 1: M03, M05 since 0.2.13)
+- A granular "freeze": the read position held in one region and moved slowly, a few overlapping grains, slow automation or a low-rate LFO on the position; long envelopes, a big reverb. [S 3.4]
+- **DUELL's FROZEN AIR (WAVE):** the AIR table read low (POS 20) and scanned slowly: ENV 2 on POS (+30 % over 4 s) and LFO 2, a 0.09 Hz triangle, on it (+-20 %), aftertouch moves it too; A 600 ms, R 3.5 s, reverb 80 %, delay 25 %, the low EQ down 3; a slow free LFO 1 drifts the second read (DTN). The multimode filter is a 12 dB low-pass at CUT 60 (about 3 kHz) with RES 31, and both LFOs move the cutoff a little through the matrix, each at +30 % depth (a swing of about 19 CUT steps each way): LFO 1 (0.13 Hz triangle) and LFO 2 (0.09 Hz triangle) with the same sign, at unrelated rates, both free-running, so the brightness drifts slowly and never repeats; LEVEL 107 (was 106) makes up for the darker top. Its envelopes, scan and effects are STRETCH's, so M03 keeps its shape. [S 3.4 / G]
+
+## 5.8 Reverse cymbal (REV CYMBAL, batch R)
+- A reversed crash: noise in a high band swelling up and cut off at the end, as a tape played backwards. [S 5.1: reversed hits / tails as risers; G for the band and times]
+- **DUELL's REV CYMBAL (NOISE):** white noise (ANLG, COLR 0) in a band at FREQ 107 with RES 21, the swell A 1.1 s with ENV 2 opening the band along with it, R 37 ms (the abrupt end), reverb 37 %. [S / G as marked]
+
+## 5.9 Sonar ping (SONAR PING, batch R)
+- A pure sine ping with a long ring and a long echo (the submarine sonar of films). [G]
+- **DUELL's SONAR PING (PHASE):** a sine (DCW 0) with a trace of bend at the strike (ENV 11), D 700 ms to a held 41 % (it rings on while held), R 1.7 s, delay 47 %, reverb 61 %. [G]
+
+## 5.10 Lofi drone (DUSTY DRONE, batch R; SAMPLE's DECK WARP role)
+- A crushed, dark, slowly moving drone (5.5 and 5.6): reduced bit depth, a low-pass, a very slow modulation of the tone, slow in, long out. [G 5.5 / 5.6] No pitch wobble (the house rule: no vibrato on a sound that is not a lead).
+- **DUELL's DUSTY DRONE (LOFI):** 8BIT SAW, CRSH 47, TONE 57, LFO 2 at 0.27 Hz on TONE, A 400 ms, R 1.7 s, delay, reverb. [G]
+
+## 5.11 Telephone dial tone (DIAL TONE, batch R)
+- North America's precise tone plan: the dial tone is 350 Hz and 440 Hz together, continuous (ringback 440 + 480 Hz, busy 480 + 620 Hz). [S: [Wikipedia, Precise tone plan](https://en.wikipedia.org/wiki/Precise_tone_plan)]
+- **DUELL's DIAL TONE (TRIO):** two triangles four semitones apart (1.260; 440 / 350 = 1.257) low-passed toward sines (CUT at 900 Hz); F4 plays 349 + 440 Hz. [S / G as marked]
+
+---
+
+# 6. PERC (batch R: the PERC sounds of the retired SLICE replaced)
+
+## 6.1 Analogue bass drum (DEEP KICK)
+- **TR-909:** a sawtooth through a waveshaper, "very close to a sine wave", its pitch set by an envelope with an instant attack and a slow decay; a click (a pulse) mixed in for the beater. **TR-808:** a bridged-T oscillator that decays by itself, dropping slightly in pitch as it decays. [S: [SOS, Practical Bass Drum Synthesis](https://www.soundonsound.com/techniques/practical-bass-drum-synthesis)]
+- **Physics:** a struck head is at a higher pitch at the start and falls as it decays, by "around 10 percent" (a couple of semitones), while the loudness falls by 100 %; one decay rate for the important partials. [S: [SOS, Synthesizing Drums: The Bass Drum](https://www.soundonsound.com/techniques/synthesizing-drums-bass-drum)]
+- **DUELL's DEEP KICK (PHASE):** a sine (SAW at DCW 0) with a short bend at the strike (ENV 20: the click), D 450 ms, S 0; ENV 2 (40 ms) throws the pitch up an octave at the strike [G], the amp envelope lets it settle by about 10 % (AMP PIT 9) [S]; pressure to the bend. A hit: trimmed on its peak. [S / G as marked]
+
+## 6.2 Tom (FLOOR THUD)
+- A struck membrane: the modes of a circular head (inharmonic for an ideal head, toms and timpani), the pitch falling by about 10 % after the strike, one decay. [S: [SOS, Synthesizing Drums: The Bass Drum](https://www.soundonsound.com/techniques/synthesizing-drums-bass-drum); `eng_phys.c` MEMB] Felucca's own TOMS preset is the starting point (MEMB, HARM 0, BRIT 52, DAMP 40, POS 30, BEND 40, EXC 30). [S: `eng_phys.c` PHYS_PRESETS]
+- **DUELL's FLOOR THUD (PHYS, MEMB):** HARM 0, BRIT 52, DAMP 71 (a floor tom rings longer), POS 30, ACC 100, BEND 17 (about 1.6 semitones: the 10 %), EXC 27 (the stick), R 170 ms; pressure to the drop. [S / G as marked]
+
+## 6.3 Cowbell (FIELD CLANK)
+- **TR-808 / CR-8000:** two of the pulse oscillators, about 587 Hz and 845 Hz (1 : 1.44), through a band-pass that removes the upper and lower partials, under one contour of two stages: a short, high-amplitude impact, then a longer tail. A recreation used a 2.64 kHz band-pass, 12 dB/oct, a little resonance. [S: [SOS, Synthesizing Cowbells & Claves](https://www.soundonsound.com/techniques/synthesizing-cowbells-claves)] The CB808 module: "two square wave oscillators ... band pass filtering". [S: [Tiptop Audio CB808](https://www.ctrl-mod.com/products/tiptop-audio-cb808)]
+- **DUELL's FIELD CLANK (TRIO):** PLS3 (squares), osc 2 six semitones up (1.414), osc 3 on osc 1, BP at 2.64 kHz with RES 27; the amp envelope's tail (D 300 ms) under ENV 2's 30 ms opening of the band (the impact) [times G]; it follows the key: around C5 it sits at the 808's pitch. [S / G as marked]
+
+---
+
+# 7. FACTORY MULTIS (DUELL 0.2.11: M05..M10; 0.2.12: driven by the keys; 0.2.13: in M01, M02, M07..M10)
+
+Six multis built from existing factory sounds (**0.2.13 order (owner): M01 REESE SWAMP, M02 WHISPER TIDE, M03..M06 the four older ones (EERIE SIGNAL, WIRED SNAIL, DEAD BUFFER, ACID ETHER), M07 COLD CHAPEL, M08 GARGLE ACID, M09 NIGHT ORGAN, M10 FINAL REEL**; a new unit starts with M01; no new sound; the numbers are PATCHES-list numbers, docs/PATCH_NUMBERS.md) with per-part settings on top. All six are in **LAYER** (the keys play both parts). **0.2.12 (owner): they are for performing from the keys.** Whatever is held, both parts answer it; nothing plays on its own and PLAY is not needed: there are no stored step patterns that play from fixed notes, every groove is an **arp on the held keys**, which runs on the internal clock from the key-down (SPEC 2.3). The riffs are SEQUENCER arps: one entry a step, a note **offset** in semitones from the held key (stored as C4 + the offset, what the SEQUENCER mode reads), so a riff follows the key; a SEQUENCER part's steps are the arp's alone (PLAY does not play them from C4 too, seq.c `seq_play`). The SEQUENCER arp has no slide (its gate is the arp's GATE, every step alike) and ties are rests, so the 0.2.11 slides are gone. Speeds (owner): the ambient and cinematic ones slow (1/2, 1/1 or held chords), 1/16 only for the short acid lines, the house one calmer (1/8, a half-time stab). The global SCALE is not stored in a multi; offsets are in semitones (moved onto the scale when one is set) and the chord keys use a fixed shape (MIN7), never DIA3 / DIA7. The global SWING is the step sequencer's: the arps have their own (ARP 2/3 SWG, 0 here). TEMPO is stored in a multi. Built by `felucca-base/tests/gen_factory_multis.c` (the values are in its table); loudness by its `loud` mode: each multi in its own MODE (as MODE RECALL ON: LAYER; 0.2.12: before, with MODE RECALL OFF, the keys played part 1 alone), K-weighted (BS.1770 filters, no gate) on the master output after MASTER at its default, seconds 2..10 of a 10 s run with C4 E4 G4 held (and C4 alone). The four older multis measure EERIE SIGNAL -11.4, WIRED SNAIL -19.4, DEAD BUFFER -17.7, ACID ETHER -19.7 dB (M03..M06 since 0.2.13); EERIE SIGNAL is the known loud one (its part 1), so the new six aim at the other three: with the chord held every one lands between -18.4 and -20.2 dB, the part LEVELs set for that (noted per part). Pattern notation: one entry per arp step, "." a rest, "+12" / "0" / "-5" the offset from the held key, (acc) an accent. CPU (`CPU_SCEN=N` of `tests/cpu_scenarios_test.c`, 4 + 4 notes or 8 on part 1, the MORPH fader at 63; 0.2.11 numbering): M05 60 / 66 %, M06 82 / 88 %, M07 38 / 30 %, M08 39 / 31 %, M09 42 / 49 %, M10 70 / 68 % (0.2.13, in the new slots: M07 COLD CHAPEL 70 / 86 %, M02 WHISPER TIDE 82 / 88 %, M08 GARGLE ACID 38 / 30 %, M01 REESE SWAMP 39 / 33 % with End B at 17 %, M09 42 / 49 %, M10 70 / 68 %) (that scenario holds 4 notes on part 2 without its arp: an arp part plays fewer).
+
+Sources for the playing styles (fetched 2026-10-14, data only):
+- Ambient pads and drones: slow attack, long release, lots of reverb and processing, very slow LFOs (about 0.01 Hz unsynced, or 8-bar synced) on the wavetable position and the filter. [S: [MusicRadar, ambient drone](https://musicradar.com/how-to/create-ambient-drone-dune-3), [MusicRadar, ambient pad](https://musicradar.com/how-to/how-to-create-an-ambient-synth-pad-from-scratch), [Future Music producer's guide](https://www.pressreader.com/australia/future-music-9629/20170309/281535110777069)] The latch (HOLD) is not covered by these sources: it is the owner's playing method for these two (keys and HOLD, no pattern). [G]
+- Acid line: 1.2 above (a 16-step pattern with accents and slides is the instrument; overdrive and a dotted delay). [S] Growl: 1.7 (an LFO synced to the tempo on the table and on a filter). [S] Reese: 1.5. [S] Wobble: an LFO synced to a note value on the low-pass is the same idea as 1.7's filters moved by the LFO. [G]
+- House organ stab: an organ (the Korg M1's organ patches are the classic source) as a minor-seventh chord from one key, short attack and decay, no sustain, on the off-beats between the kicks. [S: [MusicRadar, classic rave chord stab](https://musicradar.com/how-to/rave-chord-stab), [MusicRadar, classic dance sounds](https://musicradar.com/how-to/classic-dance-sounds), [The Producer School, chord stabs](https://theproducerschool.com/blogs/featured-blogs/how-to-make-chord-stabs-like-modern-rave-the-hard-house-and-uk-garage-sound)] House bass: on the off-beats between the kicks (16-step positions 3, 7, 11, 15), the "double off-beat" pairs (3-4, 7-8, ...), the root with octave or fifth moves; swing about 8-20 %. [S: [Violet Recording, house beats](https://violetrecording.com/how-to-make-house-beats/), [The Producer School, hard house bass patterns](https://theproducerschool.com/blogs/featured-blogs/5-essential-bass-patterns-that-define-hard-house-and-trance-music), [Amped Studio, house drum patterns](https://ampedstudio.com/blog/how-tomake-a-house-beat/)]
+
+## 7.1 M07 COLD CHAPEL (ambient, slow, LAYER, 71 BPM; M05 until 0.2.12)
+- **Part 1: #51 EVOLVING PAD** (WAVE; 3.4 / 5.6): the slow drone bed, its own two slow LFOs on the scan. Per part: HOLD ALL (the keys latch, the next chord replaces it), arp OFF, REV 81, DLY 37, LEVEL 90. Matrix slot 8 MORPH -> CUT +37 % (End B opens its low-pass) [G]; End B seed 38479. [G]
+- **Part 2: #46 SINGING BOWL** (PHYS; 3.7): the bowed metal texture, an octave up (TRN +12), its own chord keys POW / OPEN (fifths). **0.2.12: an arp on the latched chord**: MODE UP, RATE 1/2, GATE 115 (90 %: one bowl note rings into the next), OCT 1, HOLD ALL (it goes on after the keys are let go; the next chord replaces it), VOICE MONO (one bowl at a time: the PHYS voices were the CPU's 96 %). REV 87, DLY 27, LEVEL 93; slot 8 MORPH -> BRIT (E3) +27 % [G]; End B seed 19072. [G]
+- **Playing:** a chord: the pad holds it, the bowl walks up its notes (and their fifths) a half note each. End B opens both.
+- **Globals:** delay 1/4 dotted, FDBK 71, MIX 97, PING-PONG on, delay modulation 17 % (a slow tape-like drift); HALL, SIZE 117, DAMP 57 (3.7 / 5.6: a large reverb and a feedback delay [G]). No steps.
+- Loudness -20.2 dB (C4 E4 G4); End B -19.7 dB and brighter (x1.5 of the RMS frequency).
+
+## 7.2 M02 WHISPER TIDE (ambient, slow, LAYER, 77 BPM; M06 until 0.2.12)
+- **Part 1: #50 DIGITAL PAD** (WAVE; 3.8): the PPG-style sweep, the band of harmonics carried up by ENV 2 on each new chord. HOLD ALL, arp OFF, REV 77, DLY 31, LEVEL 96; slot 8 MORPH -> CUT +27 % [G]; its own End B.
+- **Part 2: #42 WHISPER PAD** (VOICE; 3.11): the breathy choir over it. **0.2.12: an arp on the latched chord**: MODE RANDOM, RATE 1/1 (a note a bar), GATE 120, OCT 2, HOLD ALL. REV 91, DLY 27, LEVEL 91; slot 8 MORPH -> SHP +27 % [G]; its own End B.
+- **Playing:** a chord: the pad holds it, the choir sings one of its notes a bar, over two octaves, and goes on after the release.
+- **Globals:** delay 1/2, FDBK 67, MIX 91, PING-PONG on, delay modulation 17 %; SHIM reverb (the shimmer of 3.6), SIZE 111, DAMP 61. No steps.
+- Loudness -19.9 dB; End B -19.6 dB, brighter (x1.6).
+
+## 7.3 M08 GARGLE ACID (bass, fast, LAYER, 127 BPM; M07 until 0.2.12)
+- **Part 1: #15 GROWL BASS** (WAVE; 1.7): **0.2.12: plays the held key**, two octaves down (TRN -24; LEGATO, its own), arp OFF, HOLD OFF. The moving vowel (LFO 2 at 1/2 on the table) plus a gargle: LFO 1 synced to 1/8 (it already warps the read) also opens the multimode low-pass through matrix slot 8 (LFO1 -> CUT +27 %), the low-pass at about 700 Hz (CUT 41), RES 31 % [S 1.7: the filters moved by the same LFO; the numbers G]. LEVEL 110.
+- **Part 2: #4 SQUELCH** (ANALOG; 1.2): the 303 line an octave above the bass (TRN -12) as a **SEQUENCER arp on the held key**: RATE 1/16, GATE 64 (50 %), HOLD OFF, LEVEL 92. Pattern (16, offsets from the key):
+  `0(acc) . +12 0 . +10 +12(acc) . 0 . +3 0 +7(acc) . +12 .` (root, octave jumps, the minor seventh and third, the fifth: the acid idiom of 1.2 [S]; the notes [G]).
+- **Globals:** delay 1/8 dotted, FDBK 37 (1.2: dotted, 30-40 % [G]), ROOM SIZE 51, PING-PONG off. A key: the bass holds it, the riff runs on it; let go and both stop.
+- Loudness -18.6 dB (C4 E4 G4), -19.2 dB (C4).
+
+## 7.4 M01 REESE SWAMP (bass, fast, LAYER, 124 BPM; M08 until 0.2.12; the first start's multi since 0.2.13)
+- **Part 1: #17 REESE BASS** (WAVE; 1.5): **0.2.12: plays the held key**, two octaves down (TRN -24), arp OFF. The detuned saws, the low-pass lowered to about 1.6 kHz (CUT 52) and wobbled at 1/4 (LFO 1 synced, slot 8 LFO1 -> CUT +33 %; it also moves the table's phasing) [G]. LEVEL 113.
+- **Part 2: #4 SQUELCH** (ANALOG; 1.2): an 8-step **SEQUENCER arp on the held key** (LEN 8: twice a bar), two octaves above the bass (TRN 0): RATE 1/16, GATE 61, HOLD OFF, LEVEL 87. Pattern (8):
+  `. 0 +12(acc) +10 . +3(acc) 0 +7`.
+- **Globals:** delay 1/8 dotted, FDBK 41, ROOM SIZE 57. **0.2.12: no key split** (it was applied only with MODE RECALL ON anyway).
+- Loudness -18.4 dB (C4 E4 G4), -20.0 dB (C4).
+- **0.2.13 (owner: "End B barely changes anything" at the sounds' AMOUNT 7 %): AMOUNT 17 % on both parts**, End B rolled again at 17 % (part 1 seed 11710, part 2 seed 41045; `gen_factory_multis search` / `eval`): End B is clearly brighter, its level the same. Measured (`eval 1`, both faders at B): C4 E4 G4 -18.4 dB / 411 Hz at End A, -18.6 dB / 638 Hz at End B (brightness +55 %); C4 -19.8 / 378 Hz, -19.6 / 550 Hz (+46 %); the Reese alone +91 % (part 1 at B: more DIST, its filter MODE and the table position moved, less detune), the acid line alone +18 %. Before (7 %, seeds 5220 / 17703): End B -19.3 dB and 18 % darker (334 Hz). CPU (`cpuscen` Q, 4 + 4 notes): 34.6 % at A, 39.0 % at the fader's middle, 39.1 % at B.
+
+## 7.5 M09 NIGHT ORGAN (house, calm, LAYER, 121 BPM)
+- **Part 1: #79 DRAWBARS** (WAVE; 4.5): the organ stab. Chord keys MIN7 / CLOSE (a held key plays a minor seventh, the classic house stab; MIN7 rather than DIA7, which needs the global scale). **0.2.12 (owner: the 16th stabs were too fast): a SEQUENCER arp of 8 steps at 1/8** that re-strikes the chord of the held key on the off-beats of beats 1 and 3 (a half-time feel), GATE 100 (78 % of an eighth, about 190 ms), HOLD OFF; DLY 17, REV 21, LEVEL 106. Pattern (8):
+  `. 0 . . . 0(acc) . .`.
+- **Part 2: #2 LADDER BASS** (ANALOG; 1.1): the off-beat house bass (SEQUENCER arp, 8 steps at 1/8, TRN -12), the key on every off-beat 8th, the last an octave up (SPEC 3.7's P03 OFFBEAT idiom [S]). GATE 80, HOLD OFF, LEVEL 99. Pattern (8):
+  `. 0 . 0 . 0 . +12`.
+- **Globals:** swing 17 % kept (it moves the step sequencer only; the arps run straight), delay 1/8 dotted FDBK 31, ROOM SIZE 71. The downbeats are left open for a kick from a drum machine. A key: the chord and the bass on its root; another key moves both.
+- Loudness -18.4 dB (C4 E4 G4: three MIN7 chords), -17.9 dB (C4).
+
+## 7.6 M10 FINAL REEL (slow cinematic, LAYER, 71 BPM)
+- **Part 1: #48 BRASS PAD** (WAVE; 3.12): the swelling brass section, its own power chords (POW / OPEN). **0.2.12: HOLD ALL** (the chord latches). REV 71, DLY 11, LEVEL 86; slot 8 MORPH -> SHP +27 % (End B pushes the brass table further up: a bigger swell) [G]; its own End B.
+- **Part 2: #44 STRING MACH** (TRIO; 3.10): the ensemble strings an octave above (TRN +12): brass low, strings high, the film-score spread [G]. **0.2.12: HOLD ALL**; a slower attack than the brass (ATK 97, about 1.1 s, against its own 77 and the brass's 82, about 0.4 s): the strings swell in behind. REV 67, DLY 11, LEVEL 71; its own End B.
+- **Globals:** HALL SIZE 117, DAMP 51, delay 1/4 FDBK 41 MIX 77, PING-PONG on. Both parts keyed and latched, no arp, no steps.
+- Loudness -18.6 dB.
 
 ---
 
@@ -299,12 +472,14 @@ Read from `felucca-base/firmware/src/eng_*.c` (headers, `edit[]` tables, render 
 - Suits: noise sweep/riser, wind (WIND), rain, texture, metallic hits (META), arcade noise (LFSR: ARCADE), glitch arps, snare/hat-like parts as percussion layers.
 
 ## GRAIN  [GRAN: SRC POS SIZE DENS | SPRY: PTCH SPRD RAND TONE]
+- **Retired in DUELL 0.2.9** (the engine, its built-in samples and the user sample slots are gone; its number stays reserved, a stored sound of it plays silent: SPEC 2.1). Kept below as a record of what its factory sounds used.
 - Granular over the SAMPLE sets. SRC = source set, POS = read position (0-100% of the zone), SIZE = grain length (10-390 ms), DENS = grains per second (1-98), PTCH = pitch +-24 st, SPRD = random spread of position, RAND = random detune and share of reversed grains, TONE = low-pass (FLT input adds).
 - Maps to: cutoff = TONE, resonance = none, osc mix = none.
 - **SHP:** POS (LFO scans, ENV 2 SHP sweeps).
 - Suits: evolving/granular pad (CLOUD PAD, FROZEN, SHIMMER), glitch (GLITCH), texture, wind-like drones, slow-LFO drones (LFO 2 SHP on POS). Matches the sourced pad guidance: SIZE 50-200 ms (the code comment states 10-390 ms; the knob-to-ms curve was not checked, so find the position by ear), DENS a few overlapping grains, a little SPRD.
 
 ## SAMPLE  [SET: SET TUNE BITS LOOP | TONE: CUT (-) DRV (-)]
+- **Retired in DUELL 0.2.9** (the engine, its built-in samples and the user sample slots are gone; its number stays reserved, a stored sound of it plays silent: SPEC 2.1). Kept below as a record of what its factory sounds used.
 - IMA ADPCM sets from flash plus USR1-3. TUNE +-24 st, BITS = bit reduction, LOOP on/off, CUT = low-pass (FLT input moves it), DRV = drive.
 - Maps to: cutoff = CUT, resonance = none, drive = DRV, lo-fi = BITS.
 - **SHP:** DRV (the drive).
@@ -318,17 +493,26 @@ Read from `felucca-base/firmware/src/eng_*.c` (headers, `edit[]` tables, render 
 - Suits: DX7 electric piano (TINE EP), FM bell (BELL), FM bass / slap (FM BASS), brass (BRASS), glass/FM pad (PAD), marimba, organ, pluck (factory F1-F8 as listed in the preset table); FM lead, sci-fi bell clusters (MRAT, DTUN).
 
 ## SLICE  [SLCE: SRC DIV START PTCH | PLAY: MODE REV DCAY TONE]
+- **Retired in DUELL 0.2.9** (the engine, its built-in samples and the user sample slots are gone; its number stays reserved, a stored sound of it plays silent: SPEC 2.1). Kept below as a record of what its factory sounds used.
 - Sliced sample playback: SRC (BREAK USR1-3 PIANO), DIV (4 8 16 32 AUTO MAN), START (slice), PTCH, MODE (ONE GATE LOOP), REV, DCAY (decay time), TONE = low-pass (FLT input moves TONE).
 - Maps to: cutoff = TONE; no resonance; no oscillators.
 - **SHP:** TONE (the same control FLT moves; DCAY acts before the render, so it is not modulated by SHP).
 - Suits: glitch/stutter arps (STUTTER, CHOP), rhythmic textures, reversed risers (REV + long slice), lofi chops. Not a pitched-instrument engine for the recipe list, except for PIANO as source (pluck/keys-like).
 
+## WAVE  [TABLE: TABLE POS BEND SYNC | OSC: SUB DTN (-) (-)]  (DUELL 0.2.5, `eng_wave.c`)
+- Wavetable: TABLE picks one of 26 tables built from recipes (SAWSQ PWM HARM ODD ORGAN VOWEL BRASS BOWED RESO COMB DIGI GLASS CHIME ROUGH, and since 0.2.7 BAND DUAL THIN PIPE REESE HOOVR GROWL WOBBL YELL METAL STEPS AIR: SPEC 2.6), POS scans it (adjacent frames mixed), BEND warps the read phase (a pulse width for any wave), SYNC hard sync 1..8x, SUB a sine an octave down, DTN a second read (ct).
+- Maps to: no filter of its own: cutoff / resonance = the universal filter (UF CUT / UF RES); the "filter envelope" of a recipe can be the scan itself on tables whose POS adds harmonics (HARM: the harmonic count; BRASS: harmonics growing in; RESO: a resonant cutoff baked in; DIGI: the FM index), driven by ENV 2 SHP or AMP SHP; osc mix = SUB, DTN.
+- **SHP:** POS (63 = the whole scan). The FLT depths and CUT routes drive the universal filter, as on the other universal-filter engines.
+- Suits: PWM pads (PWM), vowel / choir pads (VOWEL), glass and FM pads (GLASS), drawbar organ (ORGAN, SUB = the 16'), chimes and bells (CHIME), DX-style plucks (DIGI), hard-sync leads (SAWSQ + SYNC), basses (HARM + SUB), synth brass (BRASS), slow evolving pads and drones (COMB / VOWEL / RESO with slow LFOs on POS). Since 0.2.7: PPG-style sweep pads (BAND, DUAL with ENV 2 on POS), a church organ (PIPE), Reese and growl basses (REESE + DTN, GROWL or WOBBL with a synced LFO on POS), the hoover (HOOVR with a fast LFO on POS), screaming leads (YELL), metallic bells (METAL with the amp envelope on POS), lo-fi and stepped tones (STEPS), breathy flutes and pads (AIR with aftertouch on POS).
+- Factory sounds and their recipes: PWM PAD 3.3, VOWEL PAD 3.5, GLASS PAD 3.6, EVOLVING PAD 3.4 / 5.6, DRAWBARS 4.5, WAVE CHIMES 4.3, DIGI PLUCK 4.1 / 4.6, SYNC LEAD 2.2, HARM BASS 1.1, SYNTH BRASS 2.3 / 4.8, RESO SWEEP 5.6; 0.2.7: GROWL BASS 1.7, REESE BASS 1.5, HOOVER 2.8, DIGITAL PAD 3.8, BREATH PAD 3.9, PLATE BELL 4.3 / 4.4.
+
 ## Engines by recipe category (summary)
-- **BASS:** ANALOG (Moog, 303, sub, Reese, pluck), TRIO (fat chip bass), LOFI (wave bass), FM6 (FM bass), PHASE (resonant bass), VOICE (wow bass), WHEEL (organ bass).
-- **LEAD:** ANALOG (Moog mono, sync, brass, supersaw approx), TRIO (sync, chip), LOFI (chip), PHASE (brass), FM6 (FM lead), VOICE (formant lead).
-- **PAD:** ANALOG (Juno, PWM, Prophet-like, drone), PHASE (string), VOICE (choir), GRAIN (evolving/granular), FM6 (glass), NOISE (texture pad), SAMPLE (loop pads).
-- **PLUCK/KEYS:** FM6 (EP, bell, marimba), PHYS (marimba, kalimba, vibes, harp, pluck), WHEEL (organ), ANALOG (clav-like, pluck, brass stab), PHASE (bell/brass), SAMPLE/SLICE (piano).
-- **FX/OTHER:** NOISE (riser, wind, rain, metal), GRAIN (texture, glitch), SLICE (glitch), TRIO (ring/metallic arp), LOFI (bitcrushed arp), SAMPLE (BITS), ANALOG (drone/wind).
+- **BASS:** ANALOG (Moog, 303, sub, Reese, pluck), TRIO (fat chip bass), LOFI (wave bass), FM6 (FM bass, fretless), PHASE (resonant bass), VOICE (wow bass), WHEEL (organ bass), PHYS (fingered electric bass), WAVE (harmonic-count, growl, Reese).
+- **LEAD:** ANALOG (Moog mono, sync, brass, supersaw approx), TRIO (sync, chip, oboe), LOFI (chip), PHASE (brass), FM6 (FM lead), VOICE (formant lead), WAVE (hard sync, hoover, flute, clarinet).
+- **PAD:** ANALOG (Juno, PWM, Prophet-like, drone), PHASE (string), VOICE (choir, whisper), FM6 (glass), NOISE (texture pad), TRIO (string machine), WAVE (PWM, vowel, glass, evolving, wavetable sweep, breath, brass). (GRAIN and SAMPLE: retired in 0.2.9.)
+- **PLUCK/KEYS:** FM6 (EP, bell, marimba, steel drum), PHYS (marimba, kalimba, vibes, harp, pluck, harpsichord, toy piano), WHEEL (organ), ANALOG (clav-like, pluck, brass stab), PHASE (bell/brass, koto), WAVE (drawbars, chimes, DX pluck, brass, plate bell). (SAMPLE / SLICE's piano: retired in 0.2.9.)
+- **FX/OTHER:** NOISE (riser, wind, rain, metal, reverse cymbal), TRIO (ring/metallic arp, dial tone), LOFI (bitcrushed arp, drone), PHASE (sonar ping), ANALOG (drone/wind), WAVE (resonant sweep, frozen texture). (GRAIN, SLICE, SAMPLE: retired in 0.2.9.)
+- **PERC (0.2.9):** PHASE (analogue kick), PHYS (tom: MEMB), TRIO (cowbell), NOISE (hats, snare).
 
 ## Where the sources and the code disagree or are unsure
 - FM6: contradictory header statements about ENV/LFO routing (above).

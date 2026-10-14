@@ -97,11 +97,125 @@ static void lfo_tick(track_t *t, lfo_t *l, uint32_t r, uint32_t s, int lfo1)
 }
 static void track_lfo_tick(track_t *t) { lfo_tick(t, &t->lfo1, P_LRATE, P_LSYNC, 1); }
 
-/* voices the engine may use (POLY and UNISON): its cap, else all of them */
-static uint32_t trk_nvoice(const track_t *t)
+/* DUELL 0.2.11 VOICE CAP (owner, 2026-10-14; SPEC 6.3): a heavy combination gets fewer voices per part, so the predicted
+ * worst case of both parts stays under VC_BUDGET of the half (the loadcost scale of docs/CPU_ANALYSIS.md: model %, the device
+ * reads ~10-25 % lower). The cost of a voice (0.1 % of the half): the engine's (its heaviest factory sound, 8 voices held, minus the
+ * idle mix over the voices it holds, CPU_ANALYSIS 2a, measured again: tests/cpu_scenarios_test.c P), + the multimode filter
+ * 12 dB / 24 dB (2b: +14 / +28 % at 8 voices), and with the MORPH on that part:
+ * + VC_MORPH (the hook), the filter as the heaviest of the sound and both ends (a bypassed filter that an end switches on counts,
+ * SLOPE 12 / 24 dB that differ: 24, both stages run), + VC_FADE when an engine choice is cross-faded (both shapes made). The worst case: the
+ * dearer part takes all the voices its cap allows, the other the rest of the 8-voice pool, + the idle mix (LAYER: every note on
+ * both parts, 4 + 4: no cap of 4 or more changes it, so none is set). Over VC_BUDGET: the
+ * dearer part's cap down by one (never below VC_MIN), again. Only the dearer part's cap can lower the worst case: the pool stays
+ * 8 voices, so a cap moves voices to the cheaper part (a muted part costs 0, so a part played alone is capped to fit by itself).
+ * When even VC_MIN cannot bring the pair under VC_BUDGET (two dear parts: 4 + 4 is over), the caps cannot help the pair, and
+ * each part gets the cap that fits it alone (VC_BUDGET - VC_IDLE over its voice, VC_MIN at least) instead of 4. Computed
+ * every UI frame (vcap_poll: main loop; a load, an engine, filter or SLOPE change, a roll are seen at once), deterministic.
+ * It bites only for NEW notes: voice_alloc / UNISON take at most vcap voices (a note over the cap steals within the part, as
+ * at an engine's own cap); notes that sound beyond the cap keep sounding until they end. Shown only on the TEST screen */
+#define VC_IDLE 150u                                    /* the idle mix with power-on FX: 15 % */
+#define VC_BUDGET 850u                                  /* 85 % */
+#define VC_F12 18u                                      /* the multimode filter a voice: 12 dB */
+#define VC_F24 36u                                      /* .. 24 dB (24 dB HP, the dearest) */
+#define VC_MORPH 5u                                     /* the morph a voice (the hook, its blends: +0.3..0.5 %, measured) */
+#define VC_FADE 20u                                     /* .. an engine choice cross-faded (M04 WIRED SNAIL's ANALOG WAVE, M14 PHASE WAVE: +2..2.6 %) */
+#define VC_MIN 4u
+static uint8_t vcap[NTRK];                              /* the cap of each part, 0: none yet (all of the engine's) */
+static const struct { const engine_t *e; uint8_t c; } VCOST[] = {   /* (tests/cpu_scenarios_test.c CPU_SCEN=P: the heaviest sound, its voices) */
+    {&ENG_ANALOG, 51}, {&ENG_FM6, 61}, {&ENG_PHASE, 40}, {&ENG_LOFI, 24}, {&ENG_FORMANT, 60}, {&ENG_TRIO, 44}, {&ENG_WHEEL, 59},
+    {&ENG_PHYS, 144}, {&ENG_NOISE, 47}, {&ENG_WAVE, 52},   /* (FM6: 6 voices, PHYS 3, VOICE 4; WAVE: #50 DIGITAL PAD less its 12 dB filter) */
+};
+/* voices the engine may use (POLY and UNISON): its cap, else all of them; DUELL 0.2.11: and the part's VOICE CAP */
+static uint32_t trk_nvoice_eng(const track_t *t)
 {
     uint32_t c = ENGINES[t->engine]->poly;
     return c && c < NVOICE ? c : NVOICE;
+}
+static uint32_t trk_nvoice(const track_t *t)
+{
+    uint32_t c = trk_nvoice_eng(t), v = vcap[(t - trk) % NTRK];
+    return v && v < c ? v : c;
+}
+static uint32_t vc_eng_cap(const engine_t *e) { return e->poly && e->poly < NVOICE ? e->poly : NVOICE; }
+static uint32_t vcap_shown(uint32_t p)                  /* the TEST screen: the voices part p may use (its sound's engine, the cap) */
+{
+    uint32_t c = vc_eng_cap(ENGINES[eng_idx(trk[p].eng_req)]);
+    return vcap[p] && vcap[p] < c ? vcap[p] : c;
+}
+static uint32_t vc_filter(const engine_t *e, const int8_t *p)   /* the multimode filter's cost a voice in these values */
+{
+    if (!e->ufilt || (p[P_FREEA] >= UF_STEPS && p[P_FREEC] <= 0))
+        return 0;                                       /* (the bypass: MODE LP, CUT open) */
+    return p[P_FREED] == 2 ? VC_F24 : VC_F12;
+}
+static uint32_t vc_voice(const track_t *t)              /* a voice of part t, 0.1 % of the half (0: the part is muted) */
+{
+    const engine_t *e = ENGINES[eng_idx(t->eng_req)];   /* (the sound's engine: a switch fades first, eng_req leads) */
+    uint32_t i, c = 60u, f, pi = (uint32_t)(t - trk);   /* (an engine not in the table: as the dearest) */
+    int8_t v[P_COUNT];
+    if (t->p[P_MUTE])
+        return 0;
+    for (i = 0; i < NELEM(VCOST); i++)
+        if (VCOST[i].e == e)
+            c = VCOST[i].c;
+    for (i = 0; i < P_COUNT; i++)
+        v[i] = (int8_t)t->p[i];
+    f = vc_filter(e, v);
+    if (pi < NSHOWN && (mph[pi].nid || mph[pi].fnid) && !morph_stale(t, &mph[pi])) {
+        const morph_part_t *mp = &mph[pi];
+        uint32_t fa = vc_filter(e, morph_cur(mp, 0)), fb = vc_filter(e, morph_cur(mp, 1));
+        f = fa > f ? fa : f;
+        f = fb > f ? fb : f;
+        if (fa && fb && morph_cur(mp, 0)[P_FREED] != morph_cur(mp, 1)[P_FREED])
+            f = VC_F24;                                 /* (the slopes cross-fade: both stages run) */
+        for (i = 0; i < mp->nid; i++)
+            if ((mp->ent[i].kind & 0x7Fu) == MK_FADE && mp->ent[i].id >= P_E0 && mp->ent[i].id < P_E0 + 8u &&
+                morph_cur(mp, 0)[mp->ent[i].id] != morph_cur(mp, 1)[mp->ent[i].id]) {
+                c += VC_FADE;                           /* an engine choice cross-faded: both shapes */
+                break;
+            }
+        c += VC_MORPH;
+    }
+    return c + f;
+}
+/* the predicted worst case (0.1 %) of the per-voice costs k[0..1] with the caps c[0..1] */
+static uint32_t vc_worst(const uint32_t *k, const uint32_t *c)
+{
+    uint32_t h = k[1] > k[0], nh = c[h] < NVOICE ? c[h] : NVOICE, nl = c[!h] < NVOICE - nh ? c[!h] : NVOICE - nh;
+    return VC_IDLE + nh * k[h] + nl * k[!h];
+}
+/* the caps for the per-voice costs k[0..1] and the engines' own caps e[0..1] into cap[0..1]; returns the predicted worst case with them */
+static uint32_t vc_caps(const uint32_t *k, const uint32_t *e, uint32_t *cap, uint32_t layer)
+{
+    uint32_t w, h;
+    cap[0] = e[0];
+    cap[1] = e[1];
+    if (layer)                                          /* LAYER: every note on both parts, the pool split evenly (4 + 4): a cap of 4 or */
+        return VC_IDLE + (e[0] < NVOICE / 2u ? e[0] : NVOICE / 2u) * k[0] + (e[1] < NVOICE / 2u ? e[1] : NVOICE / 2u) * k[1];   /* more changes nothing */
+    h = k[1] > k[0];
+    while ((w = vc_worst(k, cap)) > VC_BUDGET && k[h] > k[!h] && cap[h] > VC_MIN)
+        cap[h]--;                                       /* (one voice of the dearer part goes to the cheaper one: the pool stays 8) */
+    if (w > VC_BUDGET) {                                /* the pair cannot get under it with caps of 4 or more: then each part as if it */
+        for (h = 0; h < 2u; h++) {                      /* played alone (a part on its own fits), never below VC_MIN */
+            uint32_t c = k[h] ? (VC_BUDGET - VC_IDLE) / k[h] : NVOICE;
+            c = c < VC_MIN ? VC_MIN : c;
+            cap[h] = c < e[h] ? c : e[h];
+        }
+        w = vc_worst(k, cap);
+    }
+    return w;
+}
+static uint32_t vcap_worst;                             /* the predicted worst case with the caps (0.1 %; the TEST screen) */
+static void vcap_poll(void)                             /* main loop, every frame */
+{
+    uint32_t k[2], e[2], cap[2], p;
+    for (p = 0; p < 2u; p++) {
+        k[p] = vc_voice(&trk[p]);
+        e[p] = vc_eng_cap(ENGINES[eng_idx(trk[p].eng_req)]);
+    }
+    vcap_worst = vc_caps(k, e, cap, duell_mode_req == DM_LAYER);
+    for (p = 0; p < 2u; p++)
+        vcap[p] = (uint8_t)cap[p];
 }
 
 /* the part's voice mode: P_VOICE, POLY for an engine of hits (engine_t.oneshot: DRUM) */
@@ -303,8 +417,7 @@ static void voice_start(track_t *t, voice_t *v, uint32_t note, uint32_t vel, int
         v->env = 0;
         v->env_out = 0;
         v->env2 = 0;
-        v->uf[0] = v->uf[1] = 0;                        /* the universal filter from rest (DUELL 0.2.2) */
-        v->uft = 0;
+        v->uft = 0;                                     /* the multimode filter from rest */
         v->side = t->sp_alt;                            /* SPREAD: left, right, left .. (UNISON: mono_play); a */
         t->sp_alt ^= 1u;                                /* sounding voice keeps its side (no jump) */
     }                                                   /* sounding: the attack starts from the current level */
@@ -713,48 +826,106 @@ static __attribute__((noinline)) void atg_voice(const track_t *t, voice_t *v, vm
     m->again = v->again;
 }
 
-/* DUELL 0.2.2 UNIVERSAL FILTER (SPEC 2.5): a per-voice 2-pole state-variable filter on the engines with no filter of their own
- * (engine_t.ufilt; the others keep theirs, unchanged). ONE bipolar CUT (P_FREEA, -64..63) whose centre is OFF: left of it a
- * low-pass, right of it a high-pass, both swept like the old master FILTER macro (the LP from 16 kHz at -1 down to 120 Hz at -64, the HP from 30 Hz at +1 up
- * to 3.8 kHz at +63, an even step of the cutoff table, SVF_G) and RES (P_FREEB, 0..127: the damping from 1.41, Q 0.71, to 0.145, Q 6.9).
- * CUT is the dial's position, the cutoff routes add to it (ENV 1 / ENV 2 / LFO 1 / LFO 2 FLT, the matrix's CUT, with the engine's
- * own cutoff index units: 63 steps = the whole dial, clamped to -64..63; the accent's opening does not apply). The filter runs
- * only while CUT is off-centre: at 0 the voice renders straight into the part's buffer as always (no work, bit for bit), the
- * routes are inert. m.cutoff is taken off the engine on these engines whatever CUT is: the engine's own tone control (PHASE DCW,
- * LOFI TONE, GRAIN / SLICE TONE, FM6 MLVL, PHYS BRIT, VOICE's vowel) is the engine's, no longer a cutoff route.
+/* DUELL 0.2.9 MULTIMODE FILTER (SPEC 2.5; 0.2.2's universal filter): a per-voice state-variable filter on the engines with no filter of
+ * their own (engine_t.ufilt 1; the others keep theirs, unchanged: ANALOG, TRIO and NOISE, ufilt 2, run it IN SERIES after their own filter, on their
+ * output, bypassed by default: their routes and CC74 / CC71 stay the engine's, the effective cut here is the CUT dial alone, the matrix's FRES moves RES). FILTER page: K1 CUT (P_FREEA, 0..UF_STEPS: 30 Hz .. 16 kHz, core.h),
+ * K2 RES (P_FREEB: the damping from 1.41, Q 0.71, to 0.145, Q 6.9), K3 MODE (P_FREEC: 0 LP, 64 BP, 127 HP and every blend between:
+ * the SVF's low-pass, band-pass and high-pass outputs summed with weights), K4 SLOPE (P_FREED: 12 dB, or 24 dB: a second stage of
+ * the same MODE, the two dampings a 4th-order Butterworth's, 1.848 and 0.765, RES narrowing the second down to 0.10).
+ * The EFFECTIVE cut = CUT + every cutoff route (ENV 1 / ENV 2 / LFO 1 / LFO 2 FLT, the matrix's CUT; 1/256 dial steps, 63 steps = the
+ * whole of an old dial: their depths as in 0.2.2), per voice and block, clamped to 0..UF_STEPS; the accent's opening does not apply.
+ * BYPASS: MODE LP with the effective cut at the open end (RES and SLOPE do not matter there): the voice renders straight into the
+ * part's buffer (no work, bit for bit as without a filter): the defaults, so every sound of before plays as it did. A store of before
+ * converts at its load (core.h uf_legacy): its low-pass has the same cutoff here exactly (the same formula: table index 40 + 396 x
+ * step, Q8), its high-pass MODE HP 0.16 of a table step higher.
+ * KILL ZONES: within the last 4 dial steps at an end the output's share that the end closes fades to 0 (the low-pass and band-pass
+ * shares to 30 Hz, the high-pass and band-pass ones to 16 kHz), so a filter fully closed is silent. The weights are worked out per
+ * block (Q10) and ramp over it from the last block's (a MODE turn, a route through a kill zone: no click).
  * The filter is the trapezoidal SVF of dsp.c (ANALOG's, TRIO's: unconditionally stable at any cutoff and resonance; the integrators
- * clamp at +-150000, the output goes through a soft knee at the voice's full level, 48000), run on the voice AFTER its amplitude,
- * in a scratch block (the engine renders into a cleared buffer, the filtered block is added to the part's). A kind change (LP <->
- * HP through the middle, off -> on) starts the state from rest (the LP charged with the block's first sample: no step);
- * near the middle both are transparent (LP -1: 14 kHz, HP +1: 33 Hz), so the switch is not heard */
-#define UF_SPAN 99                                      /* cutoff-table steps over the dial: 127 -> 28 (LP), 0 -> 99 (HP) */
-#define UF_K(res) (5793 - (res) * 5200 / 127)           /* damping, Q12 (dsp.c tsvf_coef_k) */
+ * clamp at +-150000, the second stage's input at +-65536, the output goes through a soft knee at the voice's full level, 48000), run on
+ * the voice AFTER its amplitude, in a scratch block (the engine renders into a cleared buffer, the filtered block is added to the
+ * part's). It starts from rest (the integrators charged with the block's first sample: no step) when a voice starts or after a
+ * bypass; the second stage starts charged with the first's low-pass state, and a SLOPE turned while it sounds fades the second stage
+ * in (out) over one block */
+#define UF_TOP (UF_STEPS << 8)                          /* the open end, Q8 dial steps */
+#define UF_KZ (4 << 8)                                  /* the kill zones: 4 dial steps (= 1.0 in Q10, the weights' unit) */
+#define UF_K(res) (5793 - (res) * 5200 / 127)           /* damping, Q12 (dsp.c tsvf_coef_k): 12 dB */
+#define UF_K24A 7568                                    /* 24 dB: the first stage's (1.848), the second's from 0.765 down with RES */
+#define UF_K24B(res) (3135 - (((res) * 2731) >> 7))   /* (0.765 down to 0.104) */
 #define UF_KNEE 48000
-static __attribute__((noinline)) void uf_run(voice_t *v, int32_t *buf, uint32_t n, int32_t c, int32_t k)
+static __attribute__((noinline)) void uf_coef(tsvf_t *f, int32_t idx, int32_t k) { tsvf_coef_k(f, idx, k); }   /* (one copy: a divide) */
+/* one voice's block through the filter, in place: uc the effective cut (Q8 dial steps), p the part's values (RES MODE SLOPE) */
+static __attribute__((noinline)) void uf_run(voice_t *v, int32_t *buf, uint32_t n, int32_t uc, const int16_t *p)
 {
-    tsvf_t f;
-    uint32_t i, hp = c > 0, kind = 1u + hp;
-    int32_t ic1 = v->uf[0], ic2 = v->uf[1];
-    if (v->uft != kind) {                               /* off, or the other kind: from rest */
-        ic1 = ic2 = 0;
-        v->uft = (uint8_t)kind;
+    tsvf_t f, g;
+    uint32_t i, s24 = p[P_FREED] == 2, run2, lp;
+    int32_t md = clamp(p[P_FREEC], 0, UF_HP), res = clamp(p[P_FREEB], 0, 127), k1 = s24 ? UF_K24A : UF_K(res), k2 = UF_K24B(res);
+    int32_t bl = 0, blend = 0;                           /* MORPH (0.2.9): the two ends' SLOPEs cross-faded, 0 (12 dB) .. 32 (24 dB) */
+    int32_t wb = md <= 64 ? md << 4 : ((UF_HP - md) * 65) >> 2, wl = md < 64 ? 1024 - wb : 0, wh = md > 64 ? 1024 - wb : 0;   /* MODE: LP .. BP
+                                                         * .. HP (Q10; 1024 / 63 a step above BP, no divide) */
+    int32_t gl = uc < UF_KZ ? uc : UF_KZ, gt = UF_TOP - uc < UF_KZ ? UF_TOP - uc : UF_KZ, idx = 40 + ((uc * 99) >> 6);
+    int32_t cx = (wh * gt) >> 10, cb = ((((wb * gl) >> 10) * gt) >> 10) - cx, cl = ((wl * gl) >> 10) - cx;   /* the output: cx x + cb band-pass
+                                                         * + cl low-pass (Q10; the kill zones in them), this block's */
+    int32_t a1 = v->uf[0], a2 = v->uf[1], b1 = v->uf[2], b2 = v->uf[3], ax, ab, al, dx, db, dl, fd = 0, xg;
+    if (mxf.on && mxf.w[MX_SLOPE]) {
+        int32_t b24 = mxf.b[MX_SLOPE] == 2u ? 32 : 0;
+        bl = s24 ? 32 : 0;
+        bl += ((b24 - bl) * (int32_t)mxf.w[MX_SLOPE]) >> 15;
+        s24 = bl >= 32;
+        blend = bl > 0 && bl < 32;
+        if (blend)
+            k1 = UF_K(res) + (((UF_K24A - UF_K(res)) * bl) >> 5);   /* (the first stage's damping between the two) */
     }
-    tsvf_coef_k(&f, hp ? (c * UF_SPAN) >> 6 : (127 << 8) + ((c * UF_SPAN) >> 6), k);
-    if (!hp && !ic1 && !ic2)
-        ic2 = buf[0] >> 1;                              /* (the low-pass charged with the signal: no step at the start) */
+    if (!v->uft) {                                      /* from rest: no ramp */
+        a1 = a2 = 0;
+        v->ufw[0] = (int16_t)cx; v->ufw[1] = (int16_t)cb; v->ufw[2] = (int16_t)cl;
+    } else if (!blend && v->uft != 1u + s24) {
+        fd = s24 ? 1 : -1;                              /* SLOPE turned while sounding: the second stage fades in (out) over the block */
+    }
+    if (!cx && !a1 && !a2)
+        a2 = buf[0] >> 1;                               /* (no high-pass share: the low-pass charged with the signal, no step at the start; 0.2.2's rule) */
+    if ((s24 || blend) && v->uft != 2u) {               /* the second stage starts: charged with the first's low-pass */
+        b1 = 0;
+        b2 = a2;
+    }
+    v->uft = (uint8_t)(1u + (s24 || blend));
+    run2 = s24 || blend || fd;
+    xg = fd > 0 ? 0 : 32;
+    uf_coef(&f, idx, k1);
+    if (run2)
+        uf_coef(&g, idx, k2);
+    ax = v->ufw[0] << 5; ab = v->ufw[1] << 5; al = v->ufw[2] << 5;   /* (CTL 32: the weights ramp, Q15, exactly onto this block's) */
+    dx = cx - v->ufw[0]; db = cb - v->ufw[1]; dl = cl - v->ufw[2];
+    lp = !(dx | db | dl | cx | cb) && cl == 1024;      /* a steady low-pass: its output is the low-pass itself (0.2.2's loop's cost) */
     for (i = 0; i < n; i++) {
-        int32_t x = buf[i] >> 1, v3 = x - ic2, v1 = (f.a1 * ic1 + f.a2 * v3) >> 13, v2 = ic2 + ((f.a2 * ic1 + f.a3 * v3) >> 13), y;
-        ic1 = clamp(2 * v1 - ic1, -150000, 150000);
-        ic2 = clamp(2 * v2 - ic2, -150000, 150000);
-        y = hp ? x - ((k * v1) >> 12) - v2 : v2;
+        int32_t x = buf[i] >> 1, v3 = x - a2, v1 = (f.a1 * a1 + f.a2 * v3) >> 13, v2 = a2 + ((f.a2 * a1 + f.a3 * v3) >> 13), y = v2;
+        a1 = clamp(2 * v1 - a1, -150000, 150000);
+        a2 = clamp(2 * v2 - a2, -150000, 150000);
+        if (!lp) {
+            ax += dx; ab += db; al += dl;
+            y = ((ax >> 5) * x + (ab >> 5) * ((k1 * v1) >> 12) + (al >> 5) * v2) >> 10;
+        }
+        if (run2) {                                     /* 24 dB: the same MODE again */
+            int32_t z = clamp(y, -65536, 65536), u3 = z - b2, u1 = (g.a1 * b1 + g.a2 * u3) >> 13, u2 = b2 + ((g.a2 * b1 + g.a3 * u3) >> 13);
+            b1 = clamp(2 * u1 - b1, -150000, 150000);
+            b2 = clamp(2 * u2 - b2, -150000, 150000);
+            u2 = lp ? u2 : ((ax >> 5) * z + (ab >> 5) * ((k2 * u1) >> 12) + (al >> 5) * u2) >> 10;
+            if (fd) {
+                xg += fd;
+                u2 = y + (((u2 - y) * xg) >> 5);
+            } else if (blend) {
+                u2 = y + (((u2 - y) * bl) >> 5);
+            }
+            y = u2;
+        }
         buf[i] = soft_knee(y << 1, UF_KNEE);
     }
-    v->uf[0] = ic1;
-    v->uf[1] = ic2;
+    v->ufw[0] = (int16_t)cx; v->ufw[1] = (int16_t)cb; v->ufw[2] = (int16_t)cl;
+    v->uf[0] = a1; v->uf[1] = a2; v->uf[2] = b1; v->uf[3] = b2;
 }
 /* one voice of a ufilt engine with the filter on: the engine into a cleared scratch block, filtered, added to dst */
 static __attribute__((noinline)) void uf_voice(const engine_t *e, track_t *t, voice_t *v, int32_t *dst, uint32_t n,
-                                               const vmod_t *m, int32_t c, int32_t k)
+                                               const vmod_t *m, int32_t uc)
 {
     int32_t tmp[CTL];
     uint32_t i;
@@ -763,14 +934,10 @@ static __attribute__((noinline)) void uf_voice(const engine_t *e, track_t *t, vo
     for (i = 0; i < n; i++)
         tmp[i] = 0;
     e->render(t, v, tmp, n, m);
-    uf_run(v, tmp, n, c, k);
+    uf_run(v, tmp, n, uc, t->p);
     for (i = 0; i < n; i++)
         dst[i] += tmp[i];
 }
-/* t's universal filter is off while its CUT is at the centre, or the engine (the UI's choice) has none: the cutoff routes then do nothing
- * (the FLT cards say so, ui_draw.c) */
-static int uf_idle(const track_t *t) { return ENGINES[eng_idx(t->eng_req)]->ufilt && !t->p[P_FREEA]; }
-
 /* render one block of a part into out (cleared here); returns the voices rendered */
 /* Channel bend is live performance state, outside projects/presets. Q8 semitones. */
 static int32_t midi_bend_q8[NTRK], midi_bend_target[NTRK];
@@ -802,7 +969,7 @@ static uint32_t track_render(track_t *t, int32_t *out, uint32_t n)
     bend16 = bend >= 0 ? bend / 16 : -((-bend + 15) / 16);
     bend_fine = (bend - bend16 * 16) * 2367 / 2560;
     uint32_t nr = 0, fade = t->xf_on && t->xf, abits = atgt_bits(t), uf = e->ufilt;
-    int32_t ucut0 = uf ? p[P_FREEA] : 0, uk = uf ? UF_K(p[P_FREEB]) : 0;   /* the universal filter's dial and damping (0 = off) */
+    int32_t ucut0 = uf ? clamp(p[P_FREEA], 0, UF_STEPS) << 8 : 0;   /* the multimode filter's dial (Q8) */
     int16_t pe_new[8];
     for (i = 0; i < n; i++)
         out[i] = 0;
@@ -879,7 +1046,7 @@ static uint32_t track_render(track_t *t, int32_t *out, uint32_t n)
             m.inc += (uint32_t)((int32_t)(m.inc >> 12) * (v->fine + tune_fine + bend_fine));
         m.cutoff = ((lfo * p[P_LD_FLT]) >> 7) + ((m.envq15 * p[P_ED_FLT]) >> 7) + ((lfo2 * p[P_L2FLT]) >> 7) +
                    (((v->env2 >> 9) * p[P_E2FLT]) >> 7); /* (ENV 2 / LFO 2 DEST: as ENV 1's and LFO 1's; 0 when unset) */
-        if (v->vel > 110 && !uf)                        /* accent opens the filter with the env (a universal-filter engine: below) */
+        if (v->vel > 110 && uf != 1u)                   /* accent opens the filter with the env (an engine whose filter the multimode one replaces: below) */
             m.cutoff += (m.envq15 * 24) >> 7;
         m.shape = (64 << 8) + ((lfo * p[P_LD_SHP]) >> 7) + ((m.envq15 * p[P_ED_SHP]) >> 7) + ((lfo2 * p[P_L2SHP]) >> 7) +
                   (((v->env2 >> 9) * p[P_E2SHP]) >> 7);
@@ -888,16 +1055,18 @@ static uint32_t track_render(track_t *t, int32_t *out, uint32_t n)
             atg_voice(t, v, &m);
         if (mod.on)                                     /* the modulation matrix (mod.c) */
             mod_voice(t, v, &m, v->fine + tune_fine + bend_fine);
-        if (uf) {                                       /* DUELL 0.2.2: no filter of its own: the cutoff routes are the universal filter's */
-            int32_t uc = ucut0 ? clamp((ucut0 << 8) + m.cutoff, -(64 << 8), 63 << 8) : 0;
-            m.cutoff = v->vel > 110 ? (m.envq15 * 24) >> 7 : 0;   /* the routes are the filter's, whatever CUT is; the accent's lift stays the engine's own (its tone control, as ever) */
-            if (uc) {
-                uf_voice(e, t, v, spread_on > v->side ? spread_buf : out, n, &m, uc, uk);
+        if (uf) {                                       /* no filter of its own: the cutoff routes are the multimode filter's */
+            int32_t uc = clamp(ucut0 + m.cutoff, 0, UF_TOP);   /* the effective cut: the dial plus every route */
+            if (uf == 1u)
+                m.cutoff = v->vel > 110 ? (m.envq15 * 24) >> 7 : 0;   /* the routes are the filter's, whatever CUT is; the accent's lift stays the engine's own (its tone control, as ever) */
+            else
+                uc = ucut0;                             /* the multimode filter (ANALOG, TRIO, NOISE): the routes stay the engine's own filter's (m.cutoff untouched, the accent's lift too); this one, in series after it, is CUT alone */
+            if (uc < UF_TOP || p[P_FREEC] > 0) {        /* (the bypass: MODE LP, the effective cut at the open end) */
+                uf_voice(e, t, v, spread_on > v->side ? spread_buf : out, n, &m, uc);
                 nr++;
                 continue;
             }
-            v->uf[0] = v->uf[1] = 0;                    /* off: from rest next time */
-            v->uft = 0;
+            v->uft = 0;                                 /* bypassed: from rest next time */
         }
         e->render(t, v, spread_on > v->side ? spread_buf : out, n, &m);   /* (SPREAD: the left ones) */
         nr++;

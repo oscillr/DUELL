@@ -84,26 +84,26 @@ static void test_open_and_order(void)
         expect("SELECT right: ENGINE again", on_engine_page());
     }
     {   /* the order spelled out for two engines (ANALOG: FILTER; FM6: OPERATOR pages) */
-        static const char *const A[] = {"ENGINE", "EDIT 1", "EDIT 2", "FILTER", "VOICE 1/3", "VOICE 2/3", "VOICE 3/3"};
-        static const char *const F[] = {"ENGINE", "EDIT 1", "EDIT 2", "FILTER", "OP TUNE", "OP ENV", "OP MODE", "VOICE 1/3", "VOICE 2/3", "VOICE 3/3"};
+        static const char *const A[] = {"ENGINE", "EDIT 1", "EDIT 2", "FILTER", "VCF", "VOICE 1/2", "VOICE 2/2"};
+        static const char *const F[] = {"ENGINE", "EDIT 1", "EDIT 2", "FILTER", "OP TUNE", "OP ENV", "OP MODE", "VOICE 1/2", "VOICE 2/2"};
         const char *got[16];
         uint32_t n, k, ok = 1;
         fresh(0);
         n = edit_pages(got, 16);
         for (k = 0; k < n && k < NELEM(A); k++) ok &= str_eq(got[k], A[k]);
-        expect("ANALOG: ENGINE EDIT 1 EDIT 2 FILTER VOICE VOICE 2 VOICE 3", ok && n == NELEM(A));
+        expect("ANALOG: ENGINE EDIT 1 EDIT 2 FILTER (multimode) VCF (its own) VOICE 1/2 VOICE 2/2", ok && n == NELEM(A));
         fresh(ENGI_FM6);
         n = edit_pages(got, 16);
         for (k = 0, ok = 1; k < n && k < NELEM(F); k++) ok &= str_eq(got[k], F[k]);
-        expect("FM6: ENGINE EDIT 1 EDIT 2 OPERATOR OP ENV OPERATOR 2 VOICE VOICE 2 VOICE 3", ok && n == NELEM(F));
+        expect("FM6: ENGINE EDIT 1 EDIT 2 OPERATOR OP ENV OPERATOR 2 VOICE 1/2 VOICE 2/2", ok && n == NELEM(F));
     }
     /* the engine changes on the ENGINE page: it stays there; on a parameter page that the new engine lacks: ENGINE */
     fresh(0);
-    tap_edit(); tap_edit(); tap_edit(); tap_edit();   /* ENGINE, EDIT 1, EDIT 2, FILTER (ANALOG's) */
-    expect("on FILTER", str_eq(cur_page()->title, "FILTER"));
+    tap_edit(); tap_edit(); tap_edit(); tap_edit(); tap_edit();   /* ENGINE, EDIT 1, EDIT 2, FILTER (multimode), VCF (ANALOG's own) */
+    expect("on VCF", str_eq(cur_page()->title, "VCF"));
     set_engine_of(TSEL, ENGI_FM6);
     frames(64);
-    expect("FILTER of a part that is no longer ANALOG: the family's first page, ENGINE", on_engine_page());
+    expect("VCF of a part that is no longer ANALOG: the family's first page, ENGINE", on_engine_page());
 }
 
 static void test_knob1(void)
@@ -225,13 +225,21 @@ static void test_knob4(void)
     expect("OCT+ does it: the engine's defaults, the engine kept", !ui.confirm && TSEL->p[P_E0] != 77 && TSEL->eng_req == eng_vis(0));
     expect("... the page stays ENGINE", on_engine_page());
     /* (the song chain and its 'STOP TO EDIT' lock were removed with the song mode) */
-    /* the hold-EDIT layer is still there as a shortcut (ENGINE keys, INIT) */
-    fresh(0);                                        /* the hold-EDIT layer is still there: KNOB 1 steps the engine in it */
-    btn_down(B_EDIT); frames(900);
-    expect("EDIT held: the layer opens", ui.layer == LAYER_EDIT || layer_open() == LAYER_EDIT);
-    turn(EN_K1, 1);
-    btn_up(B_EDIT); frames(64);
-    expect("... its KNOB 1 steps the engine", TSEL->eng_req == eng_vis(1));
+    /* the hold-EDIT layer (0.2.9: QUICK FILTER, K1..K4 CUT RES MODE REL; the engine is the ENGINE page's alone) */
+    fresh(0);
+    {
+        const page_t *qp;
+        int16_t c0;
+        uint32_t e0 = TSEL->eng_req;
+        btn_down(B_EDIT); frames(900);
+        expect("EDIT held: the layer opens", ui.layer == LAYER_EDIT || layer_open() == LAYER_EDIT);
+        qp = ly_page(LAYER_EDIT);
+        c0 = qp->id[0] != 0xFFu ? TSEL->p[qp->id[0]] : 0;
+        turn(EN_K1, -2);
+        btn_up(B_EDIT); frames(64);
+        expect("... its KNOB 1 is the filter's CUT, the engine stays", TSEL->eng_req == e0 && qp->id[0] != 0xFFu &&
+               TSEL->p[qp->id[0]] < c0);
+    }
 }
 
 static void test_parts(void)

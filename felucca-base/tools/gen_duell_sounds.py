@@ -36,15 +36,16 @@ ALIAS = {
     "ENV2 FLT": "E2FLT", "ENV2 SHP": "E2SHP",
     "AMP FLT": "ED_FLT", "AMP PIT": "ED_PIT", "AMP SHP": "ED_SHP",
     "LFO RATE": "LRATE", "LFO WAVE": "LWAVE", "LFO PHS": "LPHASE", "LFO FADE": "LFADE",
-    "LFO TRIG": "LTRIG", "LFO PIT": "LD_PIT", "LFO FLT": "LD_FLT", "LFO SHP": "LD_SHP", "LFO AMP": "LD_AMP",
+    "LFO TRIG": "LTRIG", "LFO POL": "LPOL", "LFO PIT": "LD_PIT", "LFO FLT": "LD_FLT", "LFO SHP": "LD_SHP", "LFO AMP": "LD_AMP",
     "LFO2 RATE": "L2RATE", "LFO2 WAVE": "L2WAVE", "LFO2 PHS": "L2PHASE", "LFO2 FADE": "L2FADE",
     "LFO2 SYNC": "L2SYNC", "LFO2 TRIG": "L2TRIG", "LFO2 POL": "L2POL",
     "LFO2 PIT": "L2PIT", "LFO2 FLT": "L2FLT", "LFO2 SHP": "L2SHP",
     "ARP MODE": "AMODE", "ARP RATE": "ARATE", "ARP OCT": "AOCT", "ARP GATE": "AGATE", "ARP SWING": "ASWING",
     "ARP PROB": "APROB", "ARP HOLD": "AHOLD", "ARP ORDER": "AORDER",
     "DST": "DIST", "CHO": "CHOR", "INSERT": "ITYPE", "INS A": "IA", "INS B": "IB", "INS C": "IC", "INS MIX": "IMIX",
-    "UF CUT": "FREEA", "UF RES": "FREEB",   # DUELL 0.2.2: the universal filter's CUT (-64..63, 0 OFF) and RES, on PHASE LOFI VOICE WHEEL GRAIN PHYS FM6 SLICE
-    "FILTER": "FTYPE", "STEREO SPRD": "SPRD", "REVERB": "REV",   # (GRAIN has an EDIT label SPRD: write E6 there)
+    "UF CUT": "FREEA", "UF RES": "FREEB", "UF MODE": "FREEC", "UF SLOPE": "FREED",   # DUELL 0.2.9: the multimode filter's CUT (0..82, 82 open: the default), RES, MODE
+                                                # (0 LP .. 64 BP .. 127 HP), SLOPE (1 12 dB, 2 24 dB), on PHASE LOFI VOICE WHEEL PHYS FM6 WAVE
+    "FILTER": "FTYPE", "STEREO SPRD": "SPRD", "REVERB": "REV",   # (GRAIN, retired in 0.2.9, had an EDIT label SPRD)
 }
 # a sound load leaves these to the track (ui.c param_kept), so a sound may not set them; P_LEVEL, the arp (AMODE..
 # AORDER) and the chord keys (CHRD VOIC) are the exceptions: a factory sound sets its level (its loudness trim)
@@ -101,7 +102,7 @@ def parse_tp(ids):
             try:
                 return int(x)
             except ValueError:
-                return {"NSTEP": 64}.get(x)
+                return {"NSTEP": 64, "UF_STEPS": 82, "UF_HP": 127}.get(x)
         tp[m.group(1)] = (m.group(2), num(m.group(3)), num(m.group(4)), num(m.group(5)), None)
     for m in re.finditer(r"\[(P_\w+)\]\s*=\s*PE\(\"([^\"]*)\",\s*(\w+),\s*(-?\d+)\)", body):
         n = names[m.group(3)]
@@ -145,8 +146,6 @@ def parse_engines():
                     except ValueError:
                         return None
                 lo_, hi_, df_ = num(lo), num(hi), num(df)
-                if hi_ is None and "SMP_NALL" in hi:
-                    hi_ = 7                           # SMP_NALL - 1: 5 built-in sets + USR1..3 (eng_sample.c)
                 if hi_ is None and nlist:
                     hi_ = len(nlist) - 1
                 rows.append((lab, lo_, hi_, df_, nlist))

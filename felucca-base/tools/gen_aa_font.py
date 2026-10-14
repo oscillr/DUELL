@@ -46,7 +46,7 @@ HUFF = [("M", "L")]
 # B_NAME / E_NAME) (until DUELL 0.2.2 also MENU > LARGE's card values and page titles: some glyphs of the set below were only for those, a later size trim): a sparse face of those glyphs, the
 # space as its range and the rest as extras
 # (ui_test.c checks that every L string is covered)
-L_CHARS = " #+-./0123456789ABCDEFGHIJKLMNOPQRSTUVWXY"
+L_CHARS = " #+-./0123456789<=>ABCDEFGHIJKLMNOPQRSTUVWXY"   # (DUELL 0.2.11: "<", "=", ">" for the GUIDE's MORPH A<>B and REC = HOLD)
 
 
 def preset(name):

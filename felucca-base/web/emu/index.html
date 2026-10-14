@@ -28,17 +28,18 @@ a { color: inherit; }
 .hit.knob { cursor: ns-resize; border-radius: 50%; }
 .hit:focus-visible { outline: 2px solid var(--lit); outline-offset: 2px; }
 .face { transition: fill .05s; }
-.dim .face.btn { fill: #3a3934; }
+.dim .face.btn { fill: #44423c; }   /* the glow: ~1/60 of lit, the minimum (hal/fm1_input.h THE LED LEVELS) */
 .lit .face.btn { fill: var(--lit); }
 .lit text { fill: #1d1d1f; }
 .green .face.btn { fill: var(--green); }
+.red .face.btn { fill: #ff5a4a; }
 .green text { fill: #0d2414; }
 .face.key { fill: #0c0c0d; stroke: var(--edge); stroke-width: 1.5; }
 .slit { fill: #3a3a3c; transition: fill .05s; }
-.dim .slit { fill: #77777b; }
+.dim .slit { fill: #424244; }
 .lit .slit { fill: #ececee; filter: drop-shadow(0 0 3px rgba(255, 255, 255, .6)); }
 /* #119: what can be pressed breathes, dark .. ~60 % of lit and back (hal/fm1_input.h fm1_led_breath, ~1.1 s; MENU >
- * LEDS DIM LO ~30 %): the peaks between dark and lit at ~0.8 / ~0.58 on screen (the LED's share, gamma-encoded) */
+ * LEDS LOW ~30 %): the peaks between dark and lit at ~0.8 / ~0.58 on screen (the LED's share, gamma-encoded) */
 @keyframes breath-btn { 0%, 100% { fill: #3a3934; } 50% { fill: #d8cfb6; } }
 @keyframes breath-slit { 0%, 100% { fill: #3a3a3c; } 50% { fill: #c8c8ca; } }
 @keyframes breath-btn-lo { 0%, 100% { fill: #3a3934; } 50% { fill: #aca592; } }
@@ -52,9 +53,22 @@ a { color: inherit; }
   .breath .face.btn { fill: #aca592; }
   .breath .slit { fill: #a1a1a3; }
 }
-/* the DRUM grid's beats (hal/fm1_input.h fm1_led_mid): a steady level between the glow and lit, ~15 % (DIM LO ~10 %) */
-.mid .slit { fill: #9a9a9e; }
-.dimlo .mid .slit { fill: #8a8a8e; }
+/* the mid level (hal/fm1_input.h fm1_led_mid): MEDIUM's idle buttons and keys, lit 1 frame in 4 = 25 %; with LOW only the
+   DRUM grid's beats, 1 in 12 over the glow, ~10 % */
+.mid .slit { fill: #858587; }
+.mid:not(.lit) .face.btn { fill: #8f8979; }
+.dimlo .mid .slit { fill: #626263; }
+/* the high level (fm1_led_hi): the DRUM grid's beats with LEDS MEDIUM, 1 frame in 2 = ~50 % of lit */
+.hi:not(.lit) .slit { fill: #dadadc; }
+/* 0.2.9 rev. 2 the keyboard's levels per LEDS mode (hal/fm1_input.h fm1_led_key_levels, ui_input.c KEY_LV): the keys out of the
+   scale (PLAY, MAX), the scale's keys, the root's (steady, 0.2.11), the keys held or playing (pulsing peak..trough, ~0.9 Hz); drawLights sets the
+   colours from the levels, mixed in linear light as the sweep's */
+.kout:not(.lit) .slit { fill: var(--kl-out, #626263); }
+.scl:not(.lit) .slit { fill: var(--kl-scl, #858587); }
+.root:not(.lit) .slit { fill: var(--kl-root, #f2f2f4); }
+@keyframes top-pulse { 0%, 100% { fill: var(--kl-top, #f2f2f4); } 50% { fill: var(--kl-low, #c8c8ca); } }
+.ktop:not(.lit) .slit { animation: top-pulse var(--kl-pms, 1130ms) ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .ktop:not(.lit) .slit { animation: none; } }
 .held .face { stroke: var(--lit); stroke-width: 3; }
 .latched .face { stroke: #79b8ff; stroke-width: 3; }
 .start { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 12px;
@@ -377,7 +391,7 @@ function drawScreen(fb) {
 // the power-on sweep (hal/fm1_led_anim.h): a level per LED, lit frames /64 (| 128: the glow under them), drawn as the
 // LED's share of lit between its dark (or glowing) colour and the lit one, mixed in linear light
 const lin = (h) => [1, 3, 5].map((i) => (parseInt(h.slice(i, i + 2), 16) / 255) ** 2.2);
-const ANIM = { btn: [lin("#3a3934"), lin("#3a3934"), lin("#fff4d6")], slit: [lin("#3a3a3c"), lin("#77777b"), lin("#ececee")] };
+const ANIM = { btn: [lin("#3a3934"), lin("#44423c"), lin("#fff4d6")], slit: [lin("#3a3a3c"), lin("#424244"), lin("#ececee")] };
 function animFill(kind, q) {
   const [dark, glow, lit] = ANIM[kind], s = Math.min(q & 127, 64) / 64, base = q & 128 ? glow : dark;
   const c = base.map((v, i) => Math.round(255 * (v + (lit[i] - v) * s) ** (1 / 2.2)));
@@ -387,21 +401,42 @@ function drawAnim(anim) {
   for (const b of buttons) b.g.querySelector(".face").style.fill = anim ? animFill("btn", anim[b.bit]) : "";
   keys.forEach((k, i) => { k.g.querySelector(".slit").style.fill = anim ? animFill("slit", anim[14 + i]) : ""; });
 }
-function drawLights([litB, litK, dimB, dimK, dimLo = 0, brB = 0, brK = 0, midK = 0], anim = null) {
+function klFill(lv) {   // a level /240 of lit, between dark and lit in linear light
+  const [dark, , lit] = ANIM.slit, s = Math.min(lv, 240) / 240;
+  return `rgb(${dark.map((v, i) => Math.round(255 * (v + (lit[i] - v) * s) ** (1 / 2.2))).join(",")})`;
+}
+function drawLights([litB, litK, dimB, dimK, dimLo = 0, brB = 0, brK = 0, midK = 0, hiK = 0, midB = 0, sclK = 0, puK = 0,
+                     outK = 0, topK = 0, kl = 0, klow = 0, puMs = 0], anim = null) {
   drawAnim(anim);
+  if (kl) {
+    const st = document.documentElement.style, b = (i) => (kl >>> (8 * i)) & 255;
+    st.setProperty("--kl-out", klFill(b(0)));
+    st.setProperty("--kl-scl", klFill(b(1)));
+    st.setProperty("--kl-root", klFill(b(2)));
+    st.setProperty("--kl-top", klFill(b(3)));
+    st.setProperty("--kl-low", klFill(klow));
+    st.setProperty("--kl-pms", Math.min(2000, Math.max(150, puMs || 1130)) + "ms");   // (the beat; not phase-locked here)
+  }
   document.documentElement.classList.toggle("dimlo", !!dimLo);   // (the breath's lower peak)
   for (const b of buttons) {
     const bit = 1 << b.bit, green = b.bit === B.PLAY && (litB & (1 << PLAY_GREEN));
-    b.g.classList.toggle("lit", !!(litB & bit) && !green);
+    b.g.classList.toggle("lit", !!(litB & bit) && !green && b.bit !== B.PLAY);
+    b.g.classList.toggle("red", !!(litB & bit) && !green && b.bit === B.PLAY);   /* 0.2.10: PLAY's own LED is red (running), the green one is stopped */
     b.g.classList.toggle("green", !!green);
     b.g.classList.toggle("dim", !!(dimB & bit));
     b.g.classList.toggle("breath", !!(brB & bit));
+    b.g.classList.toggle("mid", !!(midB & bit));
   }
   keys.forEach((k, i) => {
     k.g.classList.toggle("lit", !!(litK & (1 << i)));
     k.g.classList.toggle("dim", !!(dimK & (1 << i)));
     k.g.classList.toggle("breath", !!(brK & (1 << i)));
     k.g.classList.toggle("mid", !!(midK & (1 << i)));
+    k.g.classList.toggle("hi", !!(hiK & (1 << i)));
+    k.g.classList.toggle("scl", !!(sclK & (1 << i)));
+    k.g.classList.toggle("root", !!(puK & (1 << i)));
+    k.g.classList.toggle("kout", !!(outK & (1 << i)));
+    k.g.classList.toggle("ktop", !!(topK & (1 << i)));
   });
 }
 

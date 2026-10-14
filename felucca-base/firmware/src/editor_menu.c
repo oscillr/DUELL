@@ -34,6 +34,8 @@ static const uint8_t ED_MENU[][2] = {
     {MI_HOME, 23},                                     /* 1.3 (Discussions #112, #134): HOME SCOPE / TRACKS, DISPLAY (DUELL: OVERVIEW SCOPE / PARTS) */
                                                        /* (id 24, HELP, retired in DUELL 0.2.2: removed for now; never reused) */
     {MI_HOMEPG, 25},                                   /* DUELL 0.1: HOME OPENS MORPH / MODE / MIXER / OVERVIEW, CONTROL */
+    {MI_CPU, 26},                                      /* DUELL 0.2.9: CPU METER ON / OFF, DISPLAY (the CPU bar under the header's battery) */
+    {MI_MODERECALL, 27},                                /* DUELL 0.2.11: MODE RECALL OFF / ON, CONTROL (does a multi load set its saved MODE) */
 };
 #define ED_MENU_N NELEM(ED_MENU)
 

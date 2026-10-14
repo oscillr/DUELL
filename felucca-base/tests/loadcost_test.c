@@ -14,7 +14,7 @@
  *   Build: -O1 -fno-builtin (host_tests.sh does).
  * Default run (host_tests.sh "loadcost"): memset / memcpy and 64-bit division checked against the plain versions, then guards on a SHIM
  * reverb switch, the M15 load and the mode changes (each: extra, half and irq-off under a limit). LOADCOST_FULL=1 prints the whole
- * table (all sounds of all 12 engines, M01..M04 M13..M16, 5 reverbs, 8 inserts, EQ, ducker, delay / chorus, morph, modes);
+ * table (all sounds of all 12 engines, M03..M06 (M01..M04 before 0.2.13) M13..M16, 5 reverbs, 8 inserts, EQ, ducker, delay / chorus, morph, modes);
  * `loadcost_test trace mode 0 1 | multi 13 14 | roll 1 | rev 2 3 | patch 9 2` prints every block of one case.
  * Needs macOS (proc_pid_rusage); elsewhere it reports and passes.
  *   build/host/loadcost_test         (DUELL/host_tests.sh "loadcost") */
@@ -498,7 +498,7 @@ static void divcost(void)
 static void table(void)
 {
     divcost();
-    static const uint8_t MS[8] = {0, 1, 2, 3, 12, 13, 14, 15};
+    static const uint8_t MS[8] = {2, 3, 4, 5, 12, 13, 14, 15};   /* (the four emulator-made factory multis: M03..M06 since 0.2.13, M01..M04 before) */
     uint32_t e, k, from;
     printf("loadcost: steady scene = M15 TEST 3 HEAVY (SPLIT) with 4 + 4 notes held; extra = worst half (4 blocks) minus the steady half, "
            "of %.0f instr\n", HALF_BUDGET);
@@ -592,7 +592,7 @@ static void table(void)
     }
     for (from = 0; from < 3u; from++)
         for (k = 0; k < 3u; k++) {
-            static const char *const MD[3] = {"SPLIT", "STEREO", "LAYER"};
+            static const char *const MD[3] = {"DUEL", "STEREO", "LAYER"};
             case_t c = {0, 14, pre_mode, from, op_mode, k, 0};
             if (from == k)
                 continue;

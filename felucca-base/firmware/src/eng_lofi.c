@@ -271,5 +271,5 @@ static const engine_t ENG_LOFI = {
     .keep = 0x11,                /* the held sample and the low-pass */
     .amp = lofi_amp,
     .desc = lofi_desc,
-    .ufilt = 1,                 /* DUELL 0.2.2: no filter of its own: the universal filter (voice.c uf_run, P_FREEA CUT / P_FREEB RES) */
+    .ufilt = 1,                 /* no filter of its own: the multimode filter (DUELL 0.2.9; voice.c uf_run: CUT RES MODE SLOPE, P_FREEA..D) */
 };

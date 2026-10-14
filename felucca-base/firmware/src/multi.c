@@ -9,14 +9,15 @@
  * FM6 part only), the morph's AMOUNT and End B (the 7-byte block of a user preset, morph.c morph_blk_make: seed, AMOUNT, roll
  * bits; End B is rolled again from it on load); the parts' automation and parameter locks; the globals of the music
  * (MU_GLOBAL: TEMPO, SWING, CHORUS, DLY 1 / 2 with PING-PONG and its SPREAD, REVERB with its TYPE), the output MODE
- * (duell_mode), MORPH SET's TARGET and SMART / ARP / PITCH, the selected part, the name (12 characters). Not held (the
+ * (duell_mode), MORPH SET's SMART / ARP / PITCH (TARGET: written, not loaded, 0.2.9), the selected part, the name (12 characters). Not held (the
  * device's, MENU's and the settings'): the clock source (G_CLOCK), MIDI IN's routing (G_ROUTE), TUNE (G_TUNE), the colour
  * theme, MIDI channels, display, LEDs, USB. Loading replaces everything held; each part's MORPH starts at fader A with the
  * multi's End B (a patch load's rule). Loading while playing keeps the transport running: every note off, an engine change
  * fades as ever (project_restore_runtime with proj_keep_play).
  *
  * Record (version MU_VER 2 (1: without the last line below), little endian, variable length, at most MU_REC_MAX = 1916 bytes):
- *   0  version, np (P_COUNT when saved), ng (G_COUNT), the selected part, MODE, TARGET (1 BOTH), MORPH SET bits (morph.c
+ *   0  version, np (P_COUNT when saved), ng (G_COUNT), the selected part, MODE, TARGET (1 BOTH; 0.2.9: ALGORITHM's BOTH when saved, never
+ *      loaded: reserved, the state is not saved), MORPH SET bits (morph.c
  *      MC_SET), the parts' automation PLAY bits (motion.on)
  *   8  the name, 12 bytes (ASCII 32..126, 0-padded)
  *  20  ng globals, int16 each (all stored; only MU_GLOBAL ones are loaded)
@@ -33,12 +34,14 @@
  *   An older or a newer np loads by count as a user preset does (params_by_count; motion ids moved, proj_motion_ids); a
  *   newer version or np > P_COUNT does not load: the slot lists as empty ("--"), a LOAD says EMPTY SLOT / DAMAGED.
  *
- * Factory multis (build/gen/duell_multis.h, tools/gen_duell_multis.py from tools/factory_multis/M01..M04.bin and M13..M16.bin): M01 EERIE SIGNAL,
- * M02 WIRED SNAIL, M03 DEAD BUFFER, M04 ACID ETHER are in the firmware image (ROM), not in flash. While a slot's stored record is
+ * Factory multis (build/gen/duell_multis.h, tools/gen_duell_multis.py from tools/factory_multis/M01..M10.bin and M13..M16.bin), in the 0.2.13 order:
+ * M01 REESE SWAMP (a new unit's first start loads it, ui_input.c first_boot_poll), M02 WHISPER TIDE, M03 EERIE SIGNAL, M04 WIRED SNAIL, M05 DEAD BUFFER,
+ * M06 ACID ETHER, M07 COLD CHAPEL, M08 GARGLE ACID, M09 NIGHT ORGAN, M10 FINAL REEL (M01 M02 M07..M10: 0.2.11's six, tests/gen_factory_multis.c)
+ * are in the firmware image (ROM), not in flash. While a slot's stored record is
  * empty (first boot, a flash erase, ERASE of a saved overwrite) it shows and loads the factory multi (mu_fact bit); SAVE
  * over it stores an ordinary record that wins from then on and survives firmware updates (the ROM copy is only the default);
  * ERASE of such a slot restores the factory multi ("ALREADY FACTORY" when it is not overwritten); a rename of an unchanged
- * factory slot stores its record under the new name (an overwrite). M05..M12 have no factory default (empty: "--"). M13..M16 (DUELL 0.1 beta) are the four CPU TEST multis (TEST 1 BASE, TEST 2 PHASE, TEST 3 HEAVY, TEST 4 MIX: tools/factory_multis/M13..M16.bin, docs/TESTING.md), the same mechanism (erase restores, overwritable).
+ * factory slot stores its record under the new name (an overwrite). M11, M12 have no factory default (empty: "--"). M13..M16 (DUELL 0.1 beta) are the four CPU TEST multis (TEST 1 BASE, TEST 2 PHASE, TEST 3 HEAVY, TEST 4 MIX: tools/factory_multis/M13..M16.bin, docs/TESTING.md), the same mechanism (erase restores, overwritable).
  * The records name their sounds by engine + factory index (checked at build time) and hold End B as the 7-byte block (seed,
  * AMOUNT), so they need nothing else from the sound list.
  *
@@ -70,7 +73,7 @@ _Static_assert(MU_OBJ_MAX <= ST_PAYLOAD_MAX && OBJ_PATCH0 == OBJ_MULTI0 + MU_NOB
 #endif
 /* the globals a multi loads (the music's; not the device's: clock source, TUNE, MIDI, the SAVE pages' own) */
 #define MU_GLOBAL(i) ((i) == G_BPM || (i) == G_SWING || ((i) >= G_DTIME && (i) <= G_CDEPTH) || (i) == G_RTYPE || \
-                      (i) == G_PINGSPREAD || (i) == G_PINGPONG)
+                      (i) == G_PINGSPREAD || (i) == G_PINGPONG || (i) == G_DMDEP || (i) == G_DMRATE)
 #define mu_buf (proj_wire_u.raw)
 static char mu_names[MU_SLOTS][PROJ_NAME_LEN + 1u] __attribute__((section(".pool")));
 static uint16_t mu_used;                          /* bit k: M(k + 1) holds a multi that loads */
@@ -79,7 +82,7 @@ static uint8_t mu_ram[MU_NOBJ][MU_OBJ_MAX];       /* (host builds: the store) */
 static uint16_t mu_ram_len[MU_NOBJ];
 #endif
 static int project_restore_runtime(const project_t *input);
-#include "duell_multis.h"                         /* DF_N factory multis: DF_SLOT (their slots) / DM_REC / DM_AT / DM_LEN (M01..M04, M13..M16) */
+#include "duell_multis.h"                         /* DF_N factory multis: DF_SLOT (their slots) / DM_REC / DM_AT / DM_LEN (M01..M10, M13..M16) */
 static uint32_t df_of(uint32_t k)                 /* the factory multi of slot k (index into DM_*); DF_N none */
 {
     uint32_t i;
@@ -367,7 +370,7 @@ static void multi_ram_reset(void)                 /* (host tests: a power-on; wi
     memset(mu_names, 0, sizeof mu_names);
     mu_used = 0;
     mu_fact = 0;
-    for (o = 0; o < MU_NOBJ; o++) {                 /* (nothing stored: M01..M04 and M13..M16 are the factory multis) */
+    for (o = 0; o < MU_NOBJ; o++) {                 /* (nothing stored: M01..M10 and M13..M16 are the factory multis) */
         mu_obj_read(o);
         mu_note(o);
     }
@@ -486,7 +489,7 @@ static int project_erase(uint32_t slot)
     mu_note(o);
     if (proj_cur == k)
         proj_cur = PROJ_NO_SLOT;
-    mu_say("ERASED ", k);                              /* (M01..M04, M13..M16: the factory multi is back, mu_note) */
+    mu_say("ERASED ", k);                              /* (M01..M10, M13..M16: the factory multi is back, mu_note) */
     return 0;
 }
 
@@ -562,16 +565,27 @@ static void project_load(uint32_t slot)
         ui_message("DAMAGED");
         return;
     }
-    mix_bal = (int8_t)set[3];                          /* (the settings bytes follow: ui_input.c mode_settings) */
-    mix_xf = set[4];
-    mix_split = set[5];
-    duell_mode_req = set[0];                           /* (the audio takes it at its next block: seq.c mode_apply) */
-    morph_set_target(set[1]);
+    /* 0.2.11: the MODE saved in the multi is applied only when MENU > CONTROL > MODE RECALL is ON (default OFF: the unit stays in its
+     * mode, and BALANCE, XFADE and SPLIT stay as set; a PC recall too). The CPU TEST multis (M13..M16, developer builds) always set theirs: TEST 3 HEAVY is DUEL on purpose. */
+    if ((ui_prefs2 & (PREF_MODE_RECALL >> 16))
+#if DUELL_TEST_MODE
+        || (k >= 12u && k <= 15u)
+#endif
+        )
+    {
+        mix_bal = (int8_t)set[3];                      /* (the settings bytes follow: ui_input.c mode_settings) */
+        mix_xf = set[4];
+        mix_split = set[5];
+        duell_mode_req = set[0];                       /* (the audio takes it at its next block: seq.c mode_apply) */
+    }
+    /* set[1] TARGET: reserved (0.2.9: ALGORITHM's BOTH is the player's, a load keeps it) */
     morph.cfg = set[2];
     for (pi = 0; pi < NSHOWN; pi++)
         morph_load_part(pi, blk[pi], amt[pi]);
     proj_cur = (uint8_t)k;
     pat_from_set(k + 1u);
     ui.noid = 0;                                       /* (the parts' sounds: their patches as stored) */
+    perf_space = 0;                                    /* 0.2.11: a new multi starts the performance macros neutral (not saved with it; SPACE glides: fx.c sv.spc; */
+    perf_filt = 0;                                     /* a patch / sound load and a page change never do this; DEPTH and MORPH are left as they are) */
     mu_say("LOADED ", k);
 }

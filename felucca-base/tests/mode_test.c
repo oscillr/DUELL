@@ -1051,7 +1051,7 @@ static void t_ui(void)
     pan = TSEL->p[P_PAN];
     turn(EN_K2, 5);
     expect("MIXER in SPLIT: KNOB 2 (PAN) changes nothing (fixed: part 1 left, part 2 right)", TSEL->p[P_PAN] == pan &&
-           str_eq(ui.msg, "SPLIT: PAN IS FIXED"));
+           str_eq(ui.msg, "DUEL: PAN IS FIXED"));
     duell_mode_req = DM_STEREO;
     frame();
     turn(EN_K2, 5);
@@ -1237,11 +1237,12 @@ static void lk_duck(uint32_t v)
     (void)v;
     for (uint32_t k = 0; k < 2u; k++) { trk[k].p[P_DKSRC] = 0; trk[k].p[P_DKDEP] = 80; trk[k].p[P_DKATK] = 10; trk[k].p[P_DKRLS] = 40; trk[k].p[P_DKRATE] = 64; }
 }
+static void lk_dmod(uint32_t v) { (void)v; lk_dly(0); song.g[G_DMDEP] = 100; song.g[G_DMRATE] = 70; }   /* the delay's MODULATION (SPEC 5c.2) */
 static void lk_dist(uint32_t v) { (void)v; trk[0].p[P_DIST] = trk[1].p[P_DIST] = 90; }
 static void lk_bass(uint32_t v) { (void)v; fx_lowcut = 2; }
 static void lk_all(uint32_t v)
 {
-    lk_cho(0); lk_dly(1); lk_rev(v % 5u); lk_ins(v % 8u); lk_spread(0); lk_pan(0); lk_lfopan(0); lk_eq(0); lk_duck(0);
+    lk_cho(0); lk_dly(1); lk_dmod(0); song.g[G_PINGPONG] = 1; lk_rev(v % 5u); lk_ins(v % 8u); lk_spread(0); lk_pan(0); lk_lfopan(0); lk_eq(0); lk_duck(0);
     lk_dist(0); lk_bass(0);
 }
 static const leak_t LEAKS[] = {
@@ -1251,7 +1252,7 @@ static const leak_t LEAKS[] = {
     {"INSERT FUZZ", lk_ins, 1}, {"INSERT CRUSH", lk_ins, 1}, {"INSERT PHASR", lk_ins, 1}, {"INSERT FLANG", lk_ins, 1},
     {"INSERT CHOR", lk_ins, 1}, {"SPREAD 127 (+ chorus send)", lk_spread, 1}, {"PAN hard (part 1 right, part 2 left)", lk_pan, 1},
     {"PAN hard the other way", lk_pan, 1}, {"LFO -> PAN", lk_lfopan, 1}, {"EQ +-20", lk_eq, 1}, {"DUCKER (PUMP)", lk_duck, 1},
-    {"DIST 90", lk_dist, 1}, {"BASS+ (speaker EQ)", lk_bass, 1}, {"ALL together", lk_all, 1}};
+    {"DIST 90", lk_dist, 1}, {"BASS+ (speaker EQ)", lk_bass, 1}, {"ALL together", lk_all, 1}, {"DELAY MODULATION 100 %", lk_dmod, 1}};
 #define NLEAKS (sizeof LEAKS / sizeof LEAKS[0])
 /* the variant of entry i for its set function */
 static uint32_t lk_var(uint32_t i)
@@ -1265,6 +1266,7 @@ static int32_t lk_render(uint32_t i, uint32_t p, uint32_t mode, int32_t *other_p
     dsp_clean(mode);
     song.g[G_RTYPE] = 0;
     song.g[G_PINGPONG] = 0;
+    song.g[G_DMDEP] = 0;
     for (k = 0; k < 2u; k++)
         lk_part(&trk[k], eng_of("ANALOG"));
     LEAKS[i].set(lk_var(i));
@@ -1300,6 +1302,7 @@ static void t_leakmap(void)
     expect("SPLIT, one part alone, each effect and stereo feature on its own and all together: the other channel is digital silence", ok);
     expect("  .. and the part's own channel sounds in every case", ok_own);
     expect("  .. STEREO still shows its width (some of these put part 2 on the left there)", st_wide > 0);
+    song.g[G_DMDEP] = 0;
 }
 
 #ifndef MODE_TEST_NO_MAIN

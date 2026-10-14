@@ -3,8 +3,8 @@
 // The browser build (build/emu/felucca.wasm, web/emu/felucca_web.c) in Node, as the worklet runs it. After X0X's
 // tests/host/emu_test.mjs (charlesvestal/fm1-x0x, GPL-3.0).
 //   node web/emu/emu_test.mjs build/emu/felucca.wasm [NATIVE.f32]
-// Checks: it boots (splash, then HOME on the screen, the HOME LED; the power-on LED sweep under the splash, over by
-// 1 s), a held key sounds and lights its LED, PLAY
+// Checks: it boots (splash, then the first-start GUIDE over HOME on a fresh flash, the HOME LED; the power-on LED sweep under the
+// splash, over by 1 s), a held key sounds under the GUIDE and lights its LED, HOME leaves the GUIDE and writes the settings, PLAY
 // starts the sequencer (PLAY's green LED), a patch saved over from the panel (SAVE held, OCT+) reaches the flash,
 // and the flash sectors kept as the page keeps them bring it back in a fresh instance; the same gestures twice
 // give the same audio (deterministic), with NATIVE.f32 (web/emu/native_check.c) the native build's, bit for bit.
@@ -57,7 +57,7 @@ const a = await device(null);
 a.render(200);
 const splash = colours(a.screen());
 { // the power-on LED sweep (hal/fm1_led_anim.h) under the splash: at 200 ms its head on the middle of the keyboard, the
-  // keys it passed glowing (DIM HI), the ones ahead dark, the buttons not yet; the UI's LEDs untouched until it ends
+  // keys it passed glowing (MEDIUM), the ones ahead dark, the buttons not yet; the UI's LEDs untouched until it ends
   const p = a.ex.web_anim_levels(), lv = p ? Array.from(new Uint8Array(a.mem.buffer, p, 41)) : [];
   const keys = lv.slice(14), head = keys.indexOf(Math.max(...keys.map((q) => q & 127)) | 128);
   check(`power-on LED sweep: at 200 ms the head on key ${head}, glow behind, dark ahead, buttons dark`,
@@ -68,18 +68,18 @@ const splash = colours(a.screen());
 a.render(800);
 check("  over by 1 s (~0.70 s)", a.ex.web_anim_levels() === 0);
 const splash1 = a.screen();
-a.render(1000);                                    // DUELL splash (ui_draw.c): 1.8 s from the first frame, drawn by the loop, notes play through it
+a.render(1000);                                    // DUELL splash (ui_draw.c): 1.2 s + 0.5 s before the first-start GUIDE, drawn by the loop, notes play through it
 const home = a.screen();
-check("DUELL splash: still moving at 1 s, gone at 2 s (HOME drawn)", splash1.some((v, i) => v !== home[i]) && colours(home) > 0);
-check(`boots: the splash, then HOME (${colours(home)} colours), the HOME LED lit`,
-      splash > 1 && colours(home) > 4 && (a.ex.web_lit_buttons() >> B.HOME & 1) === 1);
+check("DUELL splash: still moving at 1 s, gone at 2 s (the GUIDE drawn)", splash1.some((v, i) => v !== home[i]) && colours(home) > 0);
+check(`boots: the splash, then the first-start GUIDE (page ${a.ex.web_guide()}, ${colours(home)} colours) over HOME, the HOME LED lit`,
+      splash > 1 && a.ex.web_guide() === 1 && colours(home) > 4 && (a.ex.web_lit_buttons() >> B.HOME & 1) === 1);
 check("silent at rest", a.peak === 0);
 a.ex.web_keys(1 << 7);                                        // C4
 a.render(300);
-const keyLit = (a.ex.web_lit_keys() >> 7) & 1;
+const keyLit = (a.ex.web_top_keys() >> 7) & 1;   // 0.2.11: a played key is in the pulsing set (fm1_led_ktop), not lit steadily
 a.ex.web_keys(0);
 a.render(400);
-check(`a key sounds (peak ${a.peak.toFixed(3)}) and lights its LED`, a.peak > 0.01 && keyLit === 1);
+check(`a key sounds (peak ${a.peak.toFixed(3)}) and its LED pulses`, a.peak > 0.01 && keyLit === 1);
 a.render(1500);
 a.peak = 0;
 a.ex.web_midi(0x90, 64, 100);                                  // Web MIDI: E4 on channel 1
@@ -87,22 +87,33 @@ a.render(300);
 a.ex.web_midi(0x80, 64, 0);
 a.render(300);
 check(`a MIDI note in (USB-MIDI's queue) sounds (peak ${a.peak.toFixed(3)})`, a.peak > 0.01);
+{ // DUELL 0.2.11: the keys and MIDI above played under the GUIDE; SELECT turns its page, HOME leaves it and the settings are written once
+  const w = a.ex.web_flash_writes_count(), g = a.ex.web_guide();
+  a.turn(EN.SELECT, 1);
+  const g2 = a.ex.web_guide();
+  a.tap(B.HOME);
+  a.render(300);
+  let tail = 300;                                 // (0.2.11: the settings write waits for silence: M01's release tails first, a few seconds at most)
+  while (a.ex.web_flash_writes_count() === w && tail < 10000) { a.render(100); tail += 100; }
+  check(`the GUIDE stayed up while playing (page ${g}), SELECT: page ${g2}, HOME left it, the settings written (after ${tail} ms: silence)`,
+        g === 1 && g2 === 2 && a.ex.web_guide() === 0 && a.ex.web_flash_writes_count() > w);
+}
 const draws = a.ex.web_screen_draws();
 a.turn(EN.K1, 3);
 check("KNOB 1 redraws the screen", a.ex.web_screen_draws() > draws);
 a.tap(B.PLAY);
 a.render(1000);
-check("PLAY: the sequencer runs, PLAY's green LED", a.ex.web_playing() === 1 && (a.ex.web_lit_buttons() >> 14 & 1) === 1);
+check("PLAY: the sequencer runs, PLAY's red LED (green dark)", a.ex.web_playing() === 1 && (a.ex.web_lit_buttons() >> 14 & 1) === 0 && (a.ex.web_lit_buttons() >> 10 & 1) === 1);
 a.tap(B.PLAY);
 a.render(300);
 check("PLAY again stops it", a.ex.web_playing() === 0);
-a.ex.web_buttons(1 << B.EDIT);                                // #119: EDIT held (0.2.2: FX has no layer any more), its map: INIT breathes
+a.ex.web_buttons(1 << B.EDIT);                                // #119: EDIT held (0.2.2: FX has no layer any more), QUICK FILTER: its button breathes, the keys are notes (0.2.11: no INIT key)
 a.render(800);
 const brK = a.ex.web_breath_keys(), brB = a.ex.web_breath_buttons(), litK = a.ex.web_lit_keys();
 a.ex.web_buttons(0);
 a.render(300);
-check("EDIT held: its button and its INIT key breathe, none lit; let go: nothing",
-      (brB >> B.EDIT & 1) === 1 && brK !== 0 && (brK & litK) === 0 && litK === 0 &&
+check("EDIT held: its button breathes, no key lit (they play; 0.2.11: no INIT key); let go: nothing",
+      (brB >> B.EDIT & 1) === 1 && (brK & litK) === 0 && litK === 0 &&
       a.ex.web_breath_keys() === 0 && a.ex.web_breath_buttons() === 0);
 { // the page's breathing peaks against the firmware's (hal/fm1_input.h FM1_LED_BREATH_PK / _LO, /256 of lit): the
   // colour at 50 % between the dark and the lit one by the LED's share, gamma-encoded (sRGB), within 0.06
@@ -148,7 +159,8 @@ check("a fresh instance with the kept sectors has it; one without does not",
 // ---- deterministic: the same gestures, the same samples
 async function song() {
   const d = await device(null);
-  d.render(2200);                                  // (past the 1.8 s splash: buttons are not read under it)
+  d.render(2200);                                  // (past the splash, 1.7 s on a fresh flash: buttons are not read under it; the first-start
+                                                   // GUIDE is up after it and stays: PLAY plays through it, the same in the native build)
   d.ex.web_test_heavy();
   d.tap(B.PLAY);
   d.rec = true;

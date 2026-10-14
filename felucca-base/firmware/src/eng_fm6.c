@@ -491,5 +491,5 @@ static const engine_t ENG_FM6 = {
     .done = fm6_done,
     .mem = sizeof(fm6_note_t) * FM6_POLY,
     .atgt = ATG_FM6,             /* ARP TARGET: OP1..OP6 (SPEC 2.3) */
-    .ufilt = 1,                 /* DUELL 0.2.2: no filter of its own: the universal filter (voice.c uf_run, P_FREEA CUT / P_FREEB RES) */
+    .ufilt = 1,                 /* no filter of its own: the multimode filter (DUELL 0.2.9; voice.c uf_run: CUT RES MODE SLOPE, P_FREEA..D) */
 };

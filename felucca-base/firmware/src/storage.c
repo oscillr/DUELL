@@ -19,8 +19,9 @@
 
 /* flash map (FL_DATA 0x97000..0xDFFFF, FL_GLOB 0xFC000.., FL_AUTO 0xE5000..0xE6FFF, FL_VBANK 0xE7000): settings 0xFC000, DUELL's
  * MULTI store M01..M08 0x97000..0x9EFFF (Felucca's four project slots were there: OBJ_PROJECT0..3 are retired, below), the
- * user sample slots 0xA0000..0xC7FFF (eng_sample.c: USR1 0xA0000, USR2 0xB4000, 80 KiB each; DUELL retired USR3, which
- * lay at 0xC8000..0xCDFFF), DUELL's PATCH store (upreset.c, OBJ_PATCH0..5: six A/B pairs, below) 0xC8000..0xCDFFF (chunks 0..2),
+ * user sample slots 0xA0000..0xC7FFF (USR1 0xA0000, USR2 0xB4000, 80 KiB each; DUELL retired USR3, which lay at 0xC8000..0xCDFFF;
+ * DUELL 0.2.9 retired USR1 and USR2 with the SAMPLE engine: 0xA0000..0xC7FFF (160 KiB) is UNUSED, nothing reads or writes it (old
+ * sample data may still lie there), FREE for future WAVE user wavetable slots), DUELL's PATCH store (upreset.c, OBJ_PATCH0..5: six A/B pairs, below) 0xC8000..0xCDFFF (chunks 0..2),
  * the MULTI store M09..M16 0xCE000..0xD5FFF (taken from USR3's end), DUELL's pattern slots 0xD6000..0xDBFFF (below); the user
  * preset banks of Felucca (OBJ_UPRESET0/1, 0xDC000..0xDFFFF: since DUELL step 3.6b the PATCH store's chunks 3 and 4) and the user
  * presets' FM6 patches (OBJ_UPFM6, copy A 0x9F000, copy B 0xFE000, shared with the retired FM6 bank: the PATCH store's chunk 5)
@@ -43,7 +44,7 @@
  * (fm1_flash.h FL_MULTI_*): objects 0..3 at 0x97000..0x9EFFF (the sectors of Felucca's four project slots, OBJ_PROJECT0..3:
  * retired, their numbers kept so no other object's commit records change; st_head / st_save refuse them, so nothing
  * writes there under their name and an old project's record reads as no multi), objects 4..7 at 0xCE000..0xD5FFF.
- * The factory multis M01..M04 (multi.c, build/gen/duell_multis.h) are ROM, not flash: an empty record shows them, a stored one wins. */
+ * The factory multis M01..M10 (multi.c, build/gen/duell_multis.h) are ROM, not flash: an empty record shows them, a stored one wins. */
 enum { OBJ_SETTINGS, OBJ_PROJECT0, OBJ_UPRESET0 = OBJ_PROJECT0 + 4, OBJ_FM6BANK = OBJ_UPRESET0 + 2, OBJ_UPFM6,
        OBJ_AUTOSAVE, OBJ_PATSLOT0, OBJ_MULTI0 = OBJ_PATSLOT0 + 3,   /* DUELL: the pattern slots (patslot.c), 3 objects */
        OBJ_PATCH0 = OBJ_MULTI0 + 8,                                 /* DUELL: the MULTI store (project.c), 8 objects; the PATCH store (upreset.c), */
@@ -165,8 +166,12 @@ static int st_load(uint32_t obj, void *dst, uint32_t max)
     return (int)h.len;
 }
 
+#ifndef ST_DUCK_BEGIN                                   /* (storage_hw.c: the flash duck around a write; host tests: none) */
+#define ST_DUCK_BEGIN() ((void)0)
+#define ST_DUCK_END() ((void)0)
+#endif
 /* save into copy `to` (0 A, 1 B; -1: the one that is not the current copy, as st_save) */
-static int st_save_to(uint32_t obj, const void *src, uint32_t len, int to)
+static int st_save_to_x(uint32_t obj, const void *src, uint32_t len, int to)
 {
     uint32_t seq, base, off;
     int cur, rc;
@@ -204,6 +209,14 @@ static int st_save_to(uint32_t obj, const void *src, uint32_t len, int to)
             return -7;
     }
     return 0;
+}
+static int st_save_to(uint32_t obj, const void *src, uint32_t len, int to)   /* DUELL 0.2.11: one duck over erase, payload and record */
+{
+    int rc;
+    ST_DUCK_BEGIN();
+    rc = st_save_to_x(obj, src, len, to);
+    ST_DUCK_END();
+    return rc;
 }
 
 static int st_save(uint32_t obj, const void *src, uint32_t len) { return st_save_to(obj, src, len, -1); }

@@ -365,7 +365,8 @@ const CMD = { INFO: 1, GET: 2, SET: 3, DUMP: 4, DESC: 5, STEP_GET: 6, STEP_SET: 
 const PUSH = new Set([CMD.CHANGED, CMD.RELOAD, CMD.STEP_CHANGED, CMD.TRACK_CHANGED]);
 /* user preset bank: name 1..12 printable ASCII, a 16-step pattern of (note, flags 1 acc 2 slide 4 tie) */
 const UP = { NAME_MAX: 12, PAT: 16, LIST_MAX: 16 };
-const F = { INT: 0, PCT: 1, BIPCT: 2, TIME: 3, LFOHZ: 4, CUTOFF: 5, DB: 6, SEMI: 7, ENUM: 8, BPM: 9, NOTE: 10, ONOFF: 11, OCT: 12, STEPS: 13 };
+const F = { INT: 0, PCT: 1, BIPCT: 2, TIME: 3, LFOHZ: 4, CUTOFF: 5, DB: 6, SEMI: 7, ENUM: 8, BPM: 9, NOTE: 10, ONOFF: 11, OCT: 12, STEPS: 13,
+  FILT: 23, FMODE: 24 };   /* DUELL 0.2.9: the multimode filter's CUT (a dial step shown as its cutoff) and MODE (LP .. BP .. HP) */
 
 const v14enc = (v) => { const u = Math.max(-8192, Math.min(8191, Math.round(v))) + 8192; return [u & 0x7F, (u >> 7) & 0x7F]; };
 const v14dec = (lo, hi) => (lo | (hi << 7)) - 8192;
@@ -485,7 +486,7 @@ const parse = {
   [CMD.DESC](a) {
     const r = new Reader(a);
     const o = { scope: r.b(), id: r.b(), fmt: r.b(), min: r.v(), max: r.v(), def: r.v(), label: r.s(), unit: r.s(), names: [] };
-    if (o.fmt === F.ENUM) for (let i = 0; i <= o.max - o.min && i < 24; i++) o.names.push(r.s());
+    if (o.fmt === F.ENUM) for (let i = 0; i <= o.max - o.min && i < 64; i++) o.names.push(r.s());
     return o;
   },
   [CMD.STEP_GET](a) {
@@ -804,6 +805,9 @@ function fmtValue(d, v) {
     case F.NOTE: return [NOTE_NAMES[((v % 12) + 12) % 12], ""];
     case F.ONOFF: return [v ? "ON" : "OFF", ""];
     case F.STEPS: return [String(v), "STEP"];
+    case F.FILT: { const h = 30 * Math.pow(16000 / 30, (40 + 396 * Math.min(Math.max(v, 0), 82)) / 256 / 127);   /* core.h UF_STEPS: 82 the open end */
+      return h < 1000 ? [String(Math.round(h)), "Hz"] : [(Math.trunc(h / 100) / 10).toFixed(1), "kHz"]; }
+    case F.FMODE: return [v <= 0 ? "LP" : v < 64 ? "LP>BP" : v === 64 ? "BP" : v < 127 ? "BP>HP" : "HP", ""];
     default: return [String(v), d.unit || ""];
   }
 }
@@ -1248,9 +1252,20 @@ async function capturePatch(rq, info, name) {
 }
 
 /* the track's own parameters, which no sound load changes (ui.c param_kept): LEVEL, the ARP and ARP 2 pages,
-   SCL, LEN DIV SWING GATE (17..32), PAN, MUTE, the SLICER (45..48); with P_E0 83 the chord keys CHRD VOIC (81, 82:
-   E0 E1 of the 89-parameter firmware) */
-const TRACK_OWN = new Set([0, 39, 40, ...Array.from({ length: 16 }, (_, i) => 17 + i), 45, 46, 47, 48]);
+   SCL, LEN DIV SWING GATE (17..32), PAN, MUTE; with P_E0 83 the chord keys CHRD VOIC (81, 82: E0 E1 of the 89-parameter
+   firmware). (45..48, Felucca's SLICER, were the track's too; since DUELL 0.2.2 they are the sound's filter) */
+const TRACK_OWN = new Set([0, 39, 40, ...Array.from({ length: 16 }, (_, i) => 17 + i)]);
+/* DUELL 0.2.9: a sound saved before the multimode filter (SLOPE, id 48, 0 or missing) holds 0.2.2's bipolar CUT at 45 (0 OFF,
+   negative a low-pass, positive a high-pass): as the device converts a stored one (core.h uf_legacy), CUT + MODE + SLOPE 12 dB */
+function ufLegacy(p, serial) {
+  if (!p || p.length < 49 || (p[48] != null && p[48] !== 0)) return p;
+  const q = p.slice(), c = Math.max(-64, Math.min(63, q[45] ?? 0));
+  if (serial) { q[45] = 82; q[46] = 0; q[47] = 0; q[48] = 1; return q; }   /* ANALOG TRIO NOISE: a leftover on 45..48 is the bypass */
+  q[45] = c > 0 ? c : 82 + c; q[47] = c > 0 ? 127 : 0; q[48] = 1;
+  return q;
+}
+const UF_ENGINES = ["PHASE", "LOFI", "VOICE", "WHEEL", "PHYS", "FM6", "WAVE"];   /* engine_t.ufilt 1: the FILTER page (45..48); GRAIN, SLICE had it until 0.2.9 retired them */
+const UF2_ENGINES = ["ANALOG", "TRIO", "NOISE"];   /* engine_t.ufilt 2: their own filter stays; the same four knobs on the page FILTER, in series after it; only the knobs move it (the generic routes, CC74 / CC71 stay their own filter's) */
 const P_CHORD = [81, 82];                          /* core.h P_CHRD, P_VOIC (since P_COUNT 91, P_E0 83) */
 const P_LANES = [83, 84, 85, 86, 87, 88, 89, 90];   /* core.h P_LN0..P_LN7: the DRUM lane levels (since P_COUNT 99, P_E0 91) */
 const P_QNTZ = 94;                                  /* core.h P_SQNT: QUANTIZE, the track's (since P_COUNT 103, P_E0 95) */
@@ -1263,9 +1278,10 @@ const trackOwn = (i, pe0) => TRACK_OWN.has(i) || (pe0 >= 83 && P_CHORD.includes(
 async function auditionPatch(rq, info, pt, opt = {}) {
   await rq(req.set(1, opt.gEng ?? 20, pt.engine));
   const dump = parse[CMD.DUMP](await rq(req.dump()), info);
-  const n = Math.min(info.pcount, pt.p.length);
+  const pp = info.pcount > 48 ? ufLegacy(pt.p, UF2_ENGINES.includes(info.engines[pt.engine])) : pt.p;
+  const n = Math.min(info.pcount, pp.length);
   for (let i = 0; i < n; i++) {
-    const v = pt.p[i];
+    const v = pp[i];
     if (opt.progress) opt.progress(i, n);
     if (v == null || v === dump.p[i] || trackOwn(i, info.pe0)) continue;
     await rq(req.set(0, i, v));
@@ -1678,7 +1694,7 @@ function makeMockDevice(opt = {}) {
     D("RATE", F.LFOHZ, 0, 127, 60), E("WAVE", ["SIN", "TRI", "SAW", "SQR", "S&H"], 0), D("PHS", F.INT, 0, 127, 0), D("FADE", F.TIME, 0, 127, 0),
     D("PIT", F.BIPCT, -64, 63, 0), D("FLT", F.BIPCT, -64, 63, 0), D("SHP", F.BIPCT, -64, 63, 0), D("AMP", F.PCT, 0, 127, 0),
     E("MODE", ["OFF", "UP", "DN", "UPDN", "RND", "ORD", "REPEAT", "DNUP", "UP+8", "CONV", "DIVG", "PINKY", "THUMB", "WALK", "CHORD"], 0), E("RATE", NDIV, 2), D("OCT", F.INT, 1, 4, 1), D("GATE", F.PCT, 1, 127, 64),
-    D("SWG", F.PCT, 0, 100, 0), D("PROB", F.PCT, 0, 127, 127), E("HOLD", NONOFF, 0), E("ORD", ["NOTE", "PLAY"], 0),
+    D("SWG", F.PCT, 0, 100, 0), D("PROB", F.PCT, 0, 127, 127), E("HOLD", ["OFF", "ARP", "ALL"], 0), E("ORD", ["NOTE", "PLAY"], 0),
     D("ROOT", F.NOTE, 0, 11, 0), E("SCL", ["CHR", "MAJ", "MIN", "DOR", "MIX", "PEN", "MPEN", "HARM", "PHRY", "LYD", "LOC", "MEL", "BLUES", "WHOLE", "DIMHW", "DIMWH"], 0), E("QNT", ["OFF", "SNAP", "WHITE", "SEQ"], 0), D("TRN", F.SEMI, -24, 24, 0),
     D("LEN", F.STEPS, 1, 64, 16), E("DIV", NDIV, 2), D("SWG", F.PCT, 0, 100, 0), D("GATE", F.PCT, 1, 127, 64),
     D("DST", F.PCT, 0, 127, 0), D("CHO", F.PCT, 0, 127, 0), D("DLY", F.PCT, 0, 127, 0), D("REV", F.PCT, 0, 127, 0),
@@ -2142,7 +2158,7 @@ function makeMockDevice(opt = {}) {
         const d = desc(a[0], a[1]);
         if (!d) return null;
         b(a[0]); b(a[1]); b(d.fmt); v(d.min); v(d.max); v(d.def); s(d.label); s(d.unit || "");
-        if (d.fmt === F.ENUM && d.names) for (let i = 0; i <= d.max - d.min && i < 24; i++) s(d.names[i]);
+        if (d.fmt === F.ENUM && d.names) for (let i = 0; i <= d.max - d.min && i < 64; i++) s(d.names[i]);
         break;
       }
       case CMD.STEP_GET: case CMD.STEP_SET: {
@@ -2434,8 +2450,8 @@ function enumShown(d) {
 /* the order the device shows its engines in (src/engines.c ENGINE_ORDER): the lists here follow it, the protocol keeps
    the engine numbers. engineOrder(names): the indices of names in that order, "-" (a reserved number) left out; a name
    the list does not know (another firmware) follows in index order */
-const ENGINE_ORDER = ["ANALOG", "FM6", "DIGITAL", "PHASE", "LOFI", "SAMPLE", "VOICE", "TRIO", "WHEEL", "GRAIN", "PHYS", "NOISE",
-  "SLICE"];   /* (DUELL: DRUM hidden, as the device's ENGINE_ORDER) */
+const ENGINE_ORDER = ["ANALOG", "FM6", "DIGITAL", "PHASE", "LOFI", "VOICE", "TRIO", "WHEEL", "PHYS", "NOISE"];
+  /* (DUELL: DRUM hidden, as the device's ENGINE_ORDER; WAVE after these; 0.2.9: SAMPLE, GRAIN, SLICE retired, the device names them "-") */
 function engineOrder(names) {
   const rank = (n) => { const k = ENGINE_ORDER.indexOf(n); return k < 0 ? ENGINE_ORDER.length : k; };
   return (names || []).map((n, i) => i).filter((i) => names[i] !== "-")
@@ -2706,7 +2722,7 @@ const TEXT = {
     badEngine: "This firmware has no such engine: ", flashFail: "Write failed (rc {rc})",
     installer: "Felucca installer",
     tabSeq: "Sequencer", tabTracks: "Tracks", tabSettings: "Settings",
-    needDevice: "Connect the FM-1 to edit.", smpNone: "This firmware has no user sample slots.",
+    needDevice: "Connect the FM-1 to edit.", smpNone: "This firmware has no user sample slots (DUELL 0.2.9 removed the sample engines).",
     bankConnect: "Connect the FM-1 to see its user presets too.", bankNone: "This firmware has no user presets.",
     mixer: "Mixer", mixHelp: "The four tracks of the device's MIXER page. The fader is the level. Pan is written to any track without changing the selection (firmware 0.8: by selecting it for a moment). REC shows a track armed for live recording on the device.",
     level: "Level", pan: "Pan", mute: "Mute", rec: "REC", selectTrack: "Select", selectedTrack: "Selected",
@@ -2777,7 +2793,7 @@ function renderPanels() {
     let show = mine && (!("dev" in p.dataset) || ready);
     if (mine && "dev" in p.dataset && !dev) hint = want === "fm6" ? "fm6NeedDevice" : "needDevice";   /* (while connecting the status line says it) */
     if (show && want === "fm6" && fm6Off) { show = false; hint = "fm6NoFw"; }
-    if (show && want === "samples" && !dev.smp) { show = false; hint = "smpNone"; }
+    if (show && want === "samples" && !(dev.smp && dev.smp.nslots)) { show = false; hint = "smpNone"; }   /* (DUELL 0.2.9: no slots) */
     p.hidden = !show;
   }
   $("hint").hidden = !hint;
@@ -2851,13 +2867,14 @@ const LAYOUT = (pe0) => [
   { t: "LFO", pages: [["LFO", 0, [9, 10, 11, 12]], ["LFO DEST", 0, [13, 14, 15, 16]]] },
   ...(pe0 >= 61 ? [{ t: "MOD", mod: 49 }] : []),   /* the matrix: P_M1SRC 49 .. P_M4AMT 60, one row per slot */
   { t: "EDIT", engine: true, pages: [["EDIT 1", 0, [pe0, pe0 + 1, pe0 + 2, pe0 + 3]], ["EDIT 2", 0, [pe0 + 4, pe0 + 5, pe0 + 6, pe0 + 7]],
+    ...(UF_ENGINES.includes(engName()) || UF2_ENGINES.includes(engName()) ? [["FILTER", 0, [45, 46, 47, 48]]] : []),   /* the multimode filter: CUT RES MODE SLOPE (DUELL 0.2.9) */
     ...(pe0 >= 91 && engName() === "DRUM" ? [["LANES", 0, P_LANES.slice(0, 4)], ["LANES 2", 0, P_LANES.slice(4)]] : [])] },   /* lane levels 83..90 */
   ...(pe0 >= 81 && engName() === "DIGITAL" ? [{ t: "OP ENV", pages: [   /* P_FM1_ATK 61: ATK DEC SUS REL LVL per operator (a
                                                     FELUCCA_FM4=1 firmware only: DIGITAL retired, its engine is "-") */
     ...[0, 1, 2, 3].map((k) => [`OP${k + 1}`, 0, [61 + 5 * k, 62 + 5 * k, 63 + 5 * k, 64 + 5 * k]]),
     ["OP LVL", 0, [65, 70, 75, 80]]] }] : []),
   { t: "VOICE", pages: [["LEVEL", 0, [0]], ["VOICE", 0, [37, 38, 41, 42]], ["VOICE 2", 0, [43, 44, 39, 40]]] },
-  { t: "FX", pages: [["FX", 0, [33, 34, 35, 36]], ["SLICER", 0, [45, 46, 47, 48]], ["DLY", 1, [4, 5, 6, 7]], ["REVERB", 1, [24, 8, 9]], ["CHORUS", 1, [10, 11]]] },   /* G_RTYPE 24: ROOM / SPRING / HALL */
+  { t: "FX", pages: [["FX", 0, [33, 34, 35, 36]], ["DLY", 1, [4, 5, 6, 7]], ["REVERB", 1, [24, 8, 9]], ["CHORUS", 1, [10, 11]]] },   /* G_RTYPE 24: ROOM / SPRING / HALL */
   { t: "SCL", pages: [["TRN", 0, [28]], ...(pe0 >= 83 ? [["CHORD", 0, P_CHORD]] : [])] },   /* CHRD VOIC 81, 82. ROOT SCL QNT (25..27) are reserved ids only (the scale is the
                                                     instrument's, set on the device: SCL page 1, global), so they are not offered here */
   { t: "ARP", pages: [["ARP", 0, [17, 18, 19, 20]], ["ARP 2", 0, [21, 22, 23, 24]]] },

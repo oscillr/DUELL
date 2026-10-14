@@ -71,7 +71,7 @@ function eraseBox() {
   for (const [rc, err] of [[1, null], [3, null], [4, null], [99, null], [undefined, null], [null, new Error("timed out")], [null, "notfound"]])
     ok(clean(eraseOutcome(rc, err)), `rc ${rc} / ${err}: install succeeded, data NOT erased, menu item named`);
   ok(/playing/.test(eraseOutcome(3).text) && /could not be reached/.test(eraseOutcome(null, "x").text), "the reason is named");
-  for (const w of ["settings", "autosave", "patches", "multis", "patterns", "user samples are NOT erased", "factory sounds, multis and patterns come back", "cannot be undone", "back up first (step 2)"])
+  for (const w of ["settings", "autosave", "patches", "multis", "patterns", "factory sounds, multis and patterns come back", "cannot be undone", "back up first (step 2)"])
     ok(ERASE.help.includes(w), `help says: ${w}`);
 }
 function erasePage() {

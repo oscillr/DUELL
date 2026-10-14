@@ -1,5 +1,7 @@
 # Felucca
 
+> **DUELL note.** This is Felucca's README, kept as it was; parts of it no longer describe DUELL. DUELL differs: two parts instead of four tracks; ten engines (ANALOG, PHASE, LOFI, VOICE, TRIO, WHEEL, PHYS, NOISE, FM6, WAVE), as SAMPLE, GRAIN and SLICE are removed with their samples and the user sample slots (0.2.9); hold FX opens PERFORM instead of the FX layer; MOMENTARY is gone; the quick edit layers are hold EDIT, LFO, ENV, ARP and GLO (SCL held: the scale layer); REC arms recording on the sequencer pages and is the HOLD switch on the others; PLAY/STOP is green when stopped and red when playing; GLO's pages are GLO (mutes and levels), TEMPO, SIDECHAIN, MIDI and MIDI LEARN. For DUELL see [../docs/QUICKSTART.md](../docs/QUICKSTART.md) and [../SPEC.md](../SPEC.md).
+
 [![License: GPL-3.0-only](https://img.shields.io/badge/license-GPL--3.0--only-blue.svg)](LICENSE)
 [![Sponsor](https://img.shields.io/badge/Sponsor-ea4aaa?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/hugelton)
 
@@ -63,7 +65,7 @@ Multi-engine synthesizer firmware for the M-VAVE FM-1. Please report what you fi
   or FREE, **POL** bipolar or unipolar (LFO > LFO 2)
 - **Modulation matrix:** 4 slots per track, MIDI controllers as sources, **S&H** and **SLEW** (a random value per
   LFO cycle, held or gliding), and **DEPTH** as a destination, so the matrix can modulate the LFO itself
-- **SPREAD** (EDIT > VOICE 3): the voices of a POLY or UNISON track alternate left and right of its PAN
+- **SPREAD** (EDIT > VOICE 2/2): the voices of a POLY or UNISON track alternate left and right of its PAN
 - **ENV SYNC** (ENV > ENV DEST): the envelope's attack, decay and release as note values of the tempo
 - **Effects:** distortion, an **INSERT** (drives, CRUSH, phaser, flanger, chorus, with a dry / wet MIX) and the
   SLICER per track; chorus, delay and reverb sends (the reverb as
@@ -83,7 +85,7 @@ Multi-engine synthesizer firmware for the M-VAVE FM-1. Please report what you fi
   Turn the FM-1 off and on and the music is as you left it (MENU > RESTORE LAST, an autosave of its own,
   written only when stopped and idle)
 - **Hold SAVE saves over the patch you are editing** (SAVE OVER <name>?, OCT+ yes); on PATTERNS and MULTIS it saves over the
-  slot picked. A short press of SAVE opens PATTERNS from the sequencer, otherwise MULTIS in LAYER and PATCHES in SPLIT and STEREO
+  slot picked. A short press of SAVE opens PATTERNS from the sequencer, otherwise MULTIS in LAYER and PATCHES in DUEL and STEREO
 - **Screen:** flat UI with Inter Tight and Fukiai icons, 10 palettes including
   grayscale, black and white, high contrast and NIGHT; type in sizes by role (what you read in the larger size,
   labels and hints in the smaller); the menu in
@@ -92,12 +94,12 @@ Multi-engine synthesizer firmware for the M-VAVE FM-1. Please report what you fi
   steps playing (LEVELS: with the four tracks' levels on the knobs); the screen can go dark when the panel is left
   alone (MENU > SCREEN OFF)
 - **LEDs:** idle buttons and keys glow dim so the panel can be found in the dark (MENU > LEDS: OFF,
-  DIM LO, DIM HI or INV, the official firmware's look); PLAY turns green while playing; the keys show
+  LOW, MEDIUM or MAX, MAX the official firmware's look); PLAY turns green while playing; the keys show
   the notes the sequencer and MIDI IN play, and on SEQ > STEP (stopped) the notes of the step under the cursor;
-  the drum grid marks the beats (steps 1, 5, 9, 13); MENU > SCALE LEDS shows the track's scale on the keys;
+  the drum grid marks the beats (steps 1, 5, 9, 13); with a scale other than CHROMATIC the keys show it by themselves (MENU > SCALE LEDS: AUTO or OFF);
   a soft light sweeps over the keys at power-on, and with MENU > ANIM IDLE drifts over them while the FM-1 waits
 - **USB:** class-compliant MIDI in and out, and a stereo audio input ("Felucca") at 44.1 or 48 kHz
-  (the computer picks) that records the master output on the computer, no driver needed (at a fixed level with MENU > USB LEVEL FIXED;
+  (the computer picks) that records the master output on the computer, no driver needed (at a fixed level, that of the default MASTER position, with MENU > USB LEVEL FIXED;
   on macOS 13–15, set MENU > USB SERIAL to OFF so the audio input appears)
 - **MIDI:** USB and TRS MIDI in; MENU > MIDI > MIDI IN: CH1-4 (channels 1–4 play tracks 1–4), CH5-8, CH9-12 or
   CH13-16 (another block of four, e.g. for two FM-1s on one cable), or SEL (every channel plays the selected track);
@@ -208,7 +210,7 @@ The pages by button:
 | GLO | CLOCK (KNOB 1 TEMPO, EXT with an external clock; swing, clock source), SONG | the GLO layer (mutes, solos, levels, TAP tempo, D4: MIDI LEARN) |
 | SAVE | USER, PRESETS, PHRASES (the pattern loader), PROJECT, TOOLS | UNDO |
 | LFO | LFO, LFO 2, LFO DEST, MOD | MOMENTARY (with a knob) |
-| EDIT | EDIT 1, EDIT 2, VOICE, VOICE 2, VOICE 3 (FM6 adds OPERATOR, OP ENV, OPERATOR 2; DRUM LANES; SLICE SLICES; ANALOG FILTER) | the EDIT layer (the engines; on DRUM the black keys mute lanes) |
+| EDIT | EDIT 1, EDIT 2, VOICE 1/2, VOICE 2/2 (FM6 adds OPERATOR, OP ENV, OPERATOR 2; DRUM LANES; SLICE SLICES; ANALOG FILTER) | the EDIT layer (the engines; on DRUM the black keys mute lanes) |
 | FX, SCL, ENV, ARP | their pages (FX: INSERT and INSERT 2 after the SLICER) | FX and SCL: their layers |
 | REC | arms the track | the REC layer (CLEAR, CLICK, COUNT-IN, CLICK LEVEL) |
 
@@ -230,8 +232,8 @@ way as from the menu, in the same tabs.
   the LED sweep at power-on. IDLE is ON plus a gentle LED animation after a minute without input: a soft light drifts
   over the keys and the buttons breathe; any key, button or knob ends it and does what it always does. It never runs
   while playing, with a track armed, in a layer, the menu or a dialog
-- **LEDS:** OFF (no glow), DIM LO, DIM HI (default) or INV (the idle LEDs lit, the active ones dark).
-  What can be pressed breathes up to about 60 % of a lit LED, about 30 % with DIM LO
+- **LEDS:** OFF (no glow), LOW, MEDIUM (default) or MAX (the idle LEDs lit, the active ones dark).
+  What can be pressed breathes up to about 60 % of a lit LED, about 30 % with LOW
 - **SCREEN OFF:** NEVER (default), 5 MIN, 15 MIN, 30 MIN or 60 MIN: after that long with no button, key or knob
   touched, the screen goes dark; the sound, the sequencer, MIDI and USB go on. The backlight stays on (on the FM-1
   its line also enables the buttons and keys). The next button, key or knob only turns the screen back on
@@ -246,8 +248,8 @@ way as from the menu, in the same tabs.
   jump. ON or OFF, every click of a fast turn counts
 - **FX LATCH:** ON, FX + an effect key turns the effect on until pressed again, the knob macros stay
   where you leave them, and FX + OCT− turns everything off
-- **SCALE LEDS:** OFF or ON: the keys show the selected track's scale all the time (the root a little
-  brighter); not on DRUM or SLICE tracks
+- **SCALE LEDS:** AUTO (default) or OFF: with a scale other than CHROMATIC the keys show it all the time (the root
+  fully lit, the scale's other keys a little dimmer); not on DRUM or SLICE tracks
 - **STEP PREVIEW:** OFF (default) or ON: on SEQ > STEP with the transport stopped, moving the cursor plays the step
   it lands on once (its notes or hits, through the track's sound)
 - **CHORD ENTRY:** HOLD (default) or ADD: how step recording writes. HOLD: the keys held together become the step,
@@ -256,8 +258,8 @@ way as from the menu, in the same tabs.
 - **SPEAKER EQ:** FLAT, LOWCUT or BASS+, a tone setting for the built-in speaker (not a switch). It also
   shapes the headphone out and USB audio, so keep it on FLAT when recording. The firmware cannot turn
   the speaker off, but headphones in the jack do
-- **USB LEVEL:** MASTER (the MASTER knob sets the USB audio level too) or FIXED (USB always at full
-  level, MASTER sets only the speaker and headphones)
+- **USB LEVEL:** MASTER (the MASTER knob sets the USB audio level too) or FIXED (USB always at the level
+  of the default MASTER position, MASTER sets only the speaker and headphones)
 - **CLICK:** OFF (default), REC (while a track is armed) or ON: a click on every beat while playing, the
   bar's first beat higher. **CLICK LEVEL:** LOW, MID (default) or HIGH; MASTER sets it too
 - **COUNT-IN:** OFF (default), 1 BAR or 2 BARS: with a track armed, PLAY counts in first (clicking even with

@@ -5,7 +5,7 @@
  *   2. YES erases the settings, favourites, autosave, patches (+ shadow copies), multis, pattern slots; the user sample
  *      slots and the FM6 voice bank sector are untouched; the restart is due ~0.7 s later (the main loop reboots); nothing is
  *      written meanwhile (settings_poll / autosave);
- *   3. the next start is a fresh unit: VIOLET, LAYER, factory multi M01, no patches, factory patterns and multis back;
+ *   3. the next start is a fresh unit: VIOLET, LAYER, factory multi M01 (0.2.13: REESE SWAMP), no patches, factory patterns and multis back;
  *   4. a power cut after any number of erases: every object whole or empty, the settings still valid until the very last
  *      object has gone, the unit boots; running it again finishes;
  *   5. the editor op: only the exact token "ERASE ALL" (wrong token, wrong length: rc 1, nothing written), not while playing (rc 3).
@@ -282,10 +282,11 @@ int main(void)
         first_boot_pending = 0;
     ck("  no autosave to restore", first_boot_pending == 1u);
     frames(160);
-    ck("  MODE is LAYER and factory multi M01 is loaded", duell_mode_req == DM_LAYER && project_cur_slot() == 0u && first_boot_pending == 0u);
+    ck("  MODE is LAYER and factory multi M01 (REESE SWAMP since 0.2.13) is loaded", duell_mode_req == DM_LAYER && project_cur_slot() == 0u && first_boot_pending == 0u &&
+       str_eq(proj_name, "REESE SWAMP"));
     ck("  no patches, no pattern slots, no user favourites", up_count() == 0u && !ps_used(2) && !ps_used(12) && favorites.user == 0u);
-    ck("  the factory multis M01..M04 and M13..M16 show again (nothing stored in the slots)",
-       project_factory(0) && project_factory(3) && !project_used(4) && !project_used(11));
+    ck("  the factory multis M01..M10 and M13..M16 show again (nothing stored in the slots)",
+       project_factory(0) && project_factory(3) && project_factory(4) && project_factory(9) && !project_used(10) && !project_used(11));
     frames(2400);
     ck("  the settings are written again (the next start is an ordinary one)", st_load(OBJ_SETTINGS, &persist_saved, sizeof persist_saved) > 0);
 

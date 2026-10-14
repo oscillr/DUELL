@@ -53,7 +53,7 @@ static void graph_adsr(const track_t *t, uint16_t c)
 static void graph_lfo(const track_t *t, uint16_t c)
 {
     const page_t *pg = cur_page();
-    int l2 = pg->id[0] == P_L2RATE || pg->id[0] == P_L2SYNC;   /* DUELL: LFO 2's pages draw LFO 2 */
+    int l2 = (pg->id[0] >= P_L2RATE && pg->id[0] <= P_L2FADE) || (pg->id[0] >= P_L2SYNC && pg->id[0] <= P_L2POL);   /* DUELL: LFO 2's pages (any of its ids in slot 1) draw LFO 2 */
     uint32_t r = l2 ? P_L2RATE : P_LRATE, s = l2 ? P_L2SYNC : P_LSYNC;
     int32_t x, cy = graph_ht / 2, a = 38 * graph_ht / 100, py = cy, uni = t->p[s + 2u] != 0;
     uint32_t ph = (uint32_t)t->p[r + 2u] << 25;
@@ -422,13 +422,18 @@ static void graph_insert(const track_t *t, uint16_t c)
 }
 /* MOD pages: the page's four slots as rows "1 LFO > CUT +50%" (M, a list's rows: the source to x 78, the arrow 84..98, the
  * destination of up to 5 characters 106..160, the amount from 172), the one KNOB 2..4 edit selected, slots that do
- * nothing (SRC, DST or AMT at 0) dim */
+ * nothing (SRC, DEST or AMT at 0, or a destination the part cannot move now: mod.c mod_dst_why) dim. Under them (0.2.7, owner:
+ * "you do not know what E7 or SYNC is") the selected slot's destination in full, "DEST: WAVE SYNC" (M), and on a line of its
+ * own (S) why it does nothing, or which bus a bus value moves (mod.c mod_dst_line) */
 static void graph_mod(const track_t *t, uint16_t c)
 {
     uint32_t k, base = mod_page_base(cur_page());      /* (MOD: slots 1..4, MOD 2: 5..8) */
+    char line[32];
+    const char *more;
+    int32_t dv = morph_view(song.sel, MSLOT_ID(base + mod_ui_slot) + 1u);   /* (the DEST card's value) */
     for (k = 0; k < 4u; k++) {
         const int16_t *p = &t->p[MSLOT_ID(base + k)];
-        int32_t y = 14 + (int32_t)k * 24, on = p[0] && p[1] && p[2], sel = k == mod_ui_slot, x;
+        int32_t y = 4 + (int32_t)k * 20, on = p[0] && p[1] && p[2] && !mod_dst_why(t, p[1]), sel = k == mod_ui_slot, x;
         uint16_t bg = sel ? T_THEME : T_SURF, col = sel ? T_INK : on ? c : T_DIM;
         char b[8];
         const char *unit;
@@ -450,6 +455,10 @@ static void graph_mod(const track_t *t, uint16_t c)
         GFX_HOOK_ALIGN(0, 0, 0, y + CAP_IN(M, 17) + AF_M.asc, AL_B, "mod row unit on its amount's baseline");
         cv_text_on(x, y + CAP_IN(M, 17) + AF_M.asc - AF_S.asc, &AF_S, unit, sel ? T_INK : T_DIM, bg);   /* (a unit: S) */
     }
+    mod_dst_line(t, dv, line, &more);
+    cv_free_text(14, 86 + CAP_IN(M, 17), &AF_M, line, dv && !mod_dst_why(t, dv) ? T_TEXT : T_DIM, T_SURF, 212);
+    if (more)
+        cv_free_text(14, 105, &AF_S, more, T_MID, T_SURF, 212);
 }
 
 static uint32_t steps_hash(const track_t *t)
@@ -470,137 +479,6 @@ static uint32_t str_hash(uint32_t h, const char *s)
         h = (h ^ (uint8_t)*s++) * 16777619u;
     return h;
 }
-
-/* One shared, reduced sample display. Decode only in the UI/main loop with a
- * private IMA state, 512 samples per frame; no audio voice state is touched.
- * Cache follows the sample zone, selected note and user-slot generation. */
-#define SAMPLE_WAVE_COLS 96u
-static struct {
-    int16_t lo[SAMPLE_WAVE_COLS], hi[SAMPLE_WAVE_COLS];
-    const smp_zone_t *zone;
-    uint32_t key, gen, pos;
-    int32_t pred, index, peak;
-    uint8_t ready;
-} sample_wave;
-
-static uint32_t sample_wave_zone(const track_t *t)
-{
-    uint32_t si = (uint32_t)t->p[P_E0] % SMP_NALL, i, zi = 0xFFFFu;
-    if (si < SMP_NSETS) {
-        const smp_set_t *set = &SMP_SETS[si];
-        for (i = 0; i < set->nz; i++)
-            if (last_note >= SMP_ZONES[set->z0 + i].lo && last_note <= SMP_ZONES[set->z0 + i].hi) zi = set->z0 + i;
-        if (zi == 0xFFFFu && set->nz) zi = set->z0;
-    } else {
-        uint32_t k = si - SMP_NSETS;
-        for (i = 0; i < usr_nz[k]; i++)
-            if (last_note >= usr_zone[k][i].lo && last_note <= usr_zone[k][i].hi) zi = 0x8000u | k << 5 | i;
-        if (zi == 0xFFFFu && usr_nz[k]) zi = 0x8000u | k << 5;
-    }
-    return zi;
-}
-
-static void sample_wave_tick(const track_t *t)
-{
-    uint32_t zi = sample_wave_zone(t), key = zi + ((uint32_t)last_note << 16), i;
-    if (key != sample_wave.key || sample_wave.gen != smp_user_gen || !sample_wave.zone) {
-        sample_wave.key = key; sample_wave.gen = smp_user_gen;
-        sample_wave.zone = zi == 0xFFFFu ? 0 : smp_zone(zi);
-        sample_wave.pos = 0; sample_wave.pred = sample_wave.index = 0;
-        sample_wave.peak = 1; sample_wave.ready = 0;
-        for (i = 0; i < SAMPLE_WAVE_COLS; i++) sample_wave.lo[i] = sample_wave.hi[i] = 0;
-    }
-    const smp_zone_t *z = sample_wave.zone;
-    if (!z || !z->n || sample_wave.ready) return;
-    for (i = 0; i < 512u && sample_wave.pos < z->n; i++) {
-        uint32_t pos = sample_wave.pos, b = SMP_DATA[z->off + (pos >> 1)];
-        uint32_t code = (pos & 1u) ? b >> 4 : b & 15u;
-        int32_t step = IMA_STEP[sample_wave.index], d = step >> 3;
-        if (code & 4u) d += step;
-        if (code & 2u) d += step >> 1;
-        if (code & 1u) d += step >> 2;
-        sample_wave.pred = clamp(sample_wave.pred + ((code & 8u) ? -d : d), -32768, 32767);
-        sample_wave.index = clamp(sample_wave.index + IMA_IDX[code & 7u], 0, 88);
-        uint32_t col = pos * SAMPLE_WAVE_COLS / z->n;
-        int32_t v = sample_wave.pred, a = v < 0 ? -v : v;
-        if (v < sample_wave.lo[col]) sample_wave.lo[col] = (int16_t)v;
-        if (v > sample_wave.hi[col]) sample_wave.hi[col] = (int16_t)v;
-        if (a > sample_wave.peak) sample_wave.peak = a;
-        sample_wave.pos++;
-    }
-    sample_wave.ready = sample_wave.pos == z->n;
-}
-
-static void graph_sample(uint16_t c)
-{
-    uint32_t i;
-    const smp_zone_t *z = sample_wave.zone;
-    cv_rect(PANEL_X0, 48, PANEL_W, 1, T_RAISE);
-    for (i = 0; i < SAMPLE_WAVE_COLS; i++) {
-        int32_t x = 12 + (int32_t)i * 216 / (SAMPLE_WAVE_COLS - 1u);
-        cv_line(x, 48 - sample_wave.hi[i] * 38 / sample_wave.peak,
-                x, 48 - sample_wave.lo[i] * 38 / sample_wave.peak, c);
-    }
-    if (z->looped && TSEL->p[P_E3]) {
-        int32_t left = 12 + (int32_t)(z->ls * 216u / z->n), right = 12 + (int32_t)(z->le * 216u / z->n);
-        cv_line(left, 4, left, 90, T_MID); cv_line(right, 4, right, 90, T_MID);
-    }
-}
-
-#if FELUCCA_SLICE
-/* SLICES (ui_slice.c): the waveform from the marker before the selected one to the one after it (the selected
- * slice tinted, its marker the accent, outside the slices DIM), under it the whole material with every marker and
- * the view; then the selected slice's length and the source */
-static void graph_slices(void)
-{
-    uint32_t a, b, len, n = slice_count(), j = slice_sel(), i, src, div, ma, mb;
-    char t[20], u[12];
-    if (!slice_src(&src, &div) || !n) {             /* (it plays a sine: eng_slice.c) */
-        panel_alert(ICON_X_NOFILE, "SAMPLE NOT FOUND");
-        return;
-    }
-    slice_view(&a, &b, &len);
-    slice_env(a, b);
-    ma = slice_mark(0);
-    mb = slice_mark(n);
-#define SPX(p) (12 + (int32_t)((uint32_t)((p) - a) * SP_COLS / (b - a)))   /* p in [a, b] */
-    if (j < n) {                                     /* the selected slice */
-        uint32_t s0 = slice_mark(j), s1 = slice_mark(j + 1u);
-        int32_t x0 = SPX(s0 > a ? s0 : a), x1 = SPX(s1 < b ? s1 : b);
-        if (x1 > x0)
-            cv_rect(x0, 6, x1 - x0, 80, T_TINT);
-    }
-    for (i = 0; i < SP_COLS; i++) {
-        uint32_t p = a + (uint32_t)((uint32_t)i * (b - a) / SP_COLS);
-        cv_line(12 + (int32_t)i, 46 - sp.hi[i] * 38 / 64, 12 + (int32_t)i, 46 - sp.lo[i] * 38 / 64,
-                p >= ma && p < mb ? T_THEME : T_DIM);
-    }
-    for (i = 0; i <= n; i++) {                       /* the markers in the view (the selected one last: on top) */
-        uint32_t p = slice_mark(i);
-        if (i != j && p >= a && p <= b)
-            cv_rect(SPX(p), 4, 1, 84, T_MID);
-    }
-    {
-        uint32_t p = slice_mark(j);
-        if (p >= a && p <= b)
-            cv_rect(SPX(p) > 226 ? 226 : SPX(p), 2, 2, 88, T_ACCENT);
-    }
-#undef SPX
-    cv_rrect(12, 96, (int32_t)SP_COLS, 3, 1, T_RAISE, T_SURF);   /* the whole: every marker, the view */
-    for (i = 0; i <= n; i++)
-        cv_rect(12 + (int32_t)((uint32_t)slice_mark(i) * (SP_COLS - 1u) / len), 94, 1, 7, i == j ? T_ACCENT : T_MID);
-    {
-        int32_t x0 = 12 + (int32_t)((uint32_t)a * SP_COLS / len), x1 = 12 + (int32_t)((uint32_t)b * SP_COLS / len);
-        cv_rect(x0, 103, x1 - x0 < 2 ? 2 : x1 - x0, 2, T_THEME);
-    }
-    str_cpy(t, "LEN ", sizeof t);
-    slice_time(u, j < n ? slice_mark(j + 1u) - slice_mark(j) : len - mb);
-    str_cpy(t + 4, u, sizeof t - 4);
-    str_cpy(t + str_len(t), " S", sizeof t - str_len(t));
-    cv_text(12, 104, &AF_M, t, T_MID);                  /* the slice's detail (M): its capitals rows 108 .. 118 */
-    cv_text_r(228, 104, &AF_M, N_SLC_SRC[src], src && src != SLC_SRC_PIANO ? vt(T_THEME, T_SURF) : T_DIM, T_SURF);
-}
-#endif
 
 /* WHEEL: the nine drawbars as rounded bars over RAISE slots (the bars of the knob just turned: the accent),
  * their footages under them */
@@ -921,7 +799,7 @@ static int page_parts(char *nm, char *ct)
         home_parts(nm, ct);
         return 0;
     }
-    for (i = 0; i < NPAGES && pg->scope != SC_TEST; i++)   /* (TEST: on no family's round, no number) */
+    for (i = 0; i < NPAGES && pg->scope != SC_TEST && pg->scope != SC_PERF; i++)   /* (TEST, PERFORM: on no family's round, no number) */
         if (PAGES[i].fam == pg->fam && page_visible(i)) {
             n++;
             if (i == ui.page)
@@ -978,8 +856,8 @@ static uint32_t graph_signature(void)
             h = (h ^ chord_last[song.sel].note[i]) * 16777619u;
         h ^= (uint32_t)t->engine * 389u;             /* (MONO and kits follow the sounding engine) */
     }
-    if (pg->graph == GR_MOD)
-        h ^= (mod_ui_slot + 1u) * 40503u;
+    if (pg->graph == GR_MOD)                         /* (the slot; DUEL or not: PAN's reason, the bus a bus value moves) */
+        h ^= (mod_ui_slot + 1u) * 40503u + (duell_mode_req == DM_SPLIT) * 0x01000193u;
     if (pg->scope == SC_MIDI)                        /* step 6: the channels, the route, the mode, MIDI LEARN's state */
         h = (h ^ ((uint32_t)midi_pch[0] | (uint32_t)midi_pch[1] << 4 | (uint32_t)(song.g[G_ROUTE] == 1) << 8 | (uint32_t)duell_mode_req << 9 |
                   (uint32_t)ui.ml.on << 11 | (uint32_t)ui.ml.pick << 12 | ml_count() << 13 | (uint32_t)ui.ml.id << 19 | (uint32_t)ui.ml.trk << 27) * 0x9E3779B1u) * 16777619u;
@@ -990,6 +868,8 @@ static uint32_t graph_signature(void)
     if (pg->graph == GR_TEST)                        /* the CPU test: multi, engines, patches, the meter (it polls the counters here) */
         h = (h ^ test_sig()) * 16777619u;
 #endif
+    if (pg->scope == SC_PERF)                        /* PERFORM: the keys held and running, what can run, the knobs, the part(s) */
+        h = (h ^ perf_sig()) * 16777619u;
     if (pg->scope == SC_MODE)                        /* step 5: the MODE asked for */
         h = (h ^ (duell_mode_req + 1u) * 0x2545F491u ^ ((uint32_t)(uint8_t)mix_bal | (uint32_t)mix_xf << 8 | (uint32_t)mix_split << 16) * 0x9E3779B1u) * 16777619u;
     if (pg->scope == SC_MORPH) {                     /* 4b: the faders, AMOUNT, TARGET; MORPH: the animation step */
@@ -1008,16 +888,12 @@ static uint32_t graph_signature(void)
     if (pg->graph == GR_EVENTS)                      /* AUTOMATION: the rows, the one selected, + ADD's place, PLAY,
                                                       * QUANTIZE */
         h = (h ^ ev_sig()) * 16777619u;
-#if FELUCCA_SLICE
-    if (pg->graph == GR_SLICES && slice_page_ok()) h ^= slice_sig();
-#endif
     if (pg->scope == SC_ENGINE && (ENGINES[t->eng_req % NENGINES] == &ENG_WHEEL || t->eng_req % NENGINES == ENGI_FM6 ||
                                    (FELUCCA_FM4 && t->eng_req % NENGINES == ENGI_DIGITAL)))
         h ^= (ui.hot_t ? ui.hot_col + 1u : 0u) * 65537u;
     if ((pg->scope == SC_ENGINE || fop_page(pg->graph)) && t->eng_req % NENGINES == ENGI_FM6)   /* the patch (PAT's algorithm,
                                                      * levels, FB; the operator pages: the operator, the stage) */
         h ^= (fm6_pgen[(t - trk) % NTRK] + 1u) * 2246822519u + (fop_op + 1u) * 40503u + (fop_stg + 1u) * 7919u;
-    if (pg->scope == SC_ENGINE && ENGINES[t->eng_req % NENGINES] == &ENG_SAMPLE) h ^= sample_wave.pos * 13u + sample_wave.key;
     if (pg->graph == GR_ROLL) {
         uint32_t ph = song.playing ? t->seq_idx : 0xFFFFu;
         if (ph / 16u != ui.bank)
@@ -1044,9 +920,9 @@ static const char *eng_abbr(const char *name)
                                        {"DIGITAL", "DGTL"},
 #endif
                                        {"PHASE", "PHAS"}, {"LOFI", "LOFI"},
-                                       {"SAMPLE", "SMPL"}, {"VOICE", "VOCL"}, {"TRIO", "TRIO"}, {"WHEEL", "WHEL"},
-                                       {"GRAIN", "GRAN"}, {"PHYS", "PHYS"}, {"DRUM", "DRUM"},
-                                       {"NOISE", "NOIS"}, {"FM6", "FM6"}, {"SLICE", "SLCE"}};
+                                       {"VOICE", "VOCL"}, {"TRIO", "TRIO"}, {"WHEEL", "WHEL"},
+                                       {"PHYS", "PHYS"}, {"DRUM", "DRUM"},
+                                       {"NOISE", "NOIS"}, {"FM6", "FM6"}};
     uint32_t i;
     for (i = 0; i < sizeof A / sizeof A[0]; i++)
         if (str_eq(name, A[i][0]))
@@ -2006,7 +1882,7 @@ static void graph_midi(void)
 {
     uint32_t m = duell_mode_req < DM_N ? duell_mode_req : DM_SPLIT, sel = song.g[G_ROUTE] == 1, same = midi_pch[0] == midi_pch[1], k;
     char v[12], w[40];
-    static const char *const WHERE[3][2] = {{"SPLIT: LEFT OUTPUT", "SPLIT: RIGHT OUTPUT"}, {"STEREO OUTPUT", "STEREO OUTPUT"},
+    static const char *const WHERE[3][2] = {{"DUEL: LEFT OUTPUT", "DUEL: RIGHT OUTPUT"}, {"STEREO OUTPUT", "STEREO OUTPUT"},
                                              {"LAYER: PLAYS BOTH PARTS", "LAYER: NOT HEARD, USE P1 CH"}};
     for (k = 0; k < 2u; k++) {
         str_cpy(v, "CH ", sizeof v);
@@ -2061,14 +1937,14 @@ static void graph_morphset(void)
 {
     uint32_t pi = song.sel;
     char l[40], c[40];
-    const char *t = morph.target == MT_BOTH ? "BOTH PARTS TOGETHER" : pi ? "PART 2 ONLY" : "PART 1 ONLY";
+    const char *t = morph.target == MT_BOTH ? "BOTH" : pi ? "PART 2" : "PART 1";
     str_cpy(l, "THE MORPH MOVES ", sizeof l);
     str_cpy(l + str_len(l), t, 24);
     if (text_w(&AF_M, l) <= 232) {                      /* the whole sentence in one line, else two */
         str_cpy(c, "ARP ", sizeof c);
-        str_cpy(c + str_len(c), morph.cfg & MC_ARP ? "SHUFFLES TOO  " : "STAYS  ", 16);
+        str_cpy(c + str_len(c), morph.cfg & MC_ARP ? "ON   " : "OFF   ", 16);
         str_cpy(c + str_len(c), "PITCH ", 8);
-        str_cpy(c + str_len(c), morph.cfg & MC_PIT ? "MOVES" : "STAYS", 8);
+        str_cpy(c + str_len(c), morph.cfg & MC_PIT ? "ON" : "OFF", 8);
         panel_note(l, morph.cfg & MC_WILD ? "WILD: ANYTHING MAY CHANGE" : "SMART: NOTHING STUPID", c);
     } else {
         str_cpy(c, morph.cfg & MC_WILD ? "WILD   " : "SMART   ", sizeof c);
@@ -2092,7 +1968,6 @@ static void draw_graph(void)
         draw_home_tracks();
         return;
     }
-    if (!ui.home && pg->scope == SC_ENGINE && ENGINES[t->eng_req % NENGINES] == &ENG_SAMPLE) sample_wave_tick(t);
     sig = graph_signature();
     if (!ui.force && sig == ui.graph_sig)
         return;
@@ -2164,6 +2039,10 @@ static void draw_graph(void)
             cv_oy = 0;
             graph_morph();
             break;
+        case GR_PERF:
+            cv_oy = 0;
+            graph_perf();
+            break;
         case GR_MORPHSET:
             cv_oy = 0;
             graph_morphset();
@@ -2190,12 +2069,6 @@ static void draw_graph(void)
             graph_test();
             break;
 #endif
-#if FELUCCA_SLICE
-        case GR_SLICES:
-            cv_oy = 0;
-            graph_slices();
-            break;
-#endif
         case GR_FMOP:
         case GR_FMOP2:
             if (fop_ok()) graph_fm6(t, c, fop_op % 6u);   /* the chart, the operator picked */
@@ -2205,7 +2078,6 @@ static void draw_graph(void)
             break;
         default:
             if (pg->scope == SC_ENGINE && ENGINES[t->eng_req % NENGINES] == &ENG_WHEEL) graph_wheel(t, c);
-            else if (pg->scope == SC_ENGINE && ENGINES[t->eng_req % NENGINES] == &ENG_SAMPLE && sample_wave.ready) graph_sample(c);
             else if (pg->scope == SC_ENGINE && t->eng_req % NENGINES == ENGI_FM6) graph_fm6(t, c, 6u);   /* EDIT 1 and 2 */
 #if FELUCCA_FM4
             else if ((pg->scope == SC_ENGINE || pg->id[0] == P_FM1_LEVEL) && t->eng_req % NENGINES == ENGI_DIGITAL)

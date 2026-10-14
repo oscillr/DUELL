@@ -13,8 +13,8 @@
  *   - the panel: buttons and encoders by their printed labels (panel.c's table maps them to the matrix),
  *     the keys as fm1_in.notes, the LEDs read back from fm1_led / fm1_led_dim through the key matrix;
  *   - the screen: lcd_fill / lcd_blit into a 240 x 240 RGB565 frame (the panel's byte order);
- *   - the flash: a 1 MiB NOR image behind storage.c's hooks (settings, projects, user presets, the user
- *     sample slots read through it as XIP); the page keeps its storage sectors and gives them back at boot.
+ *   - the flash: a 1 MiB NOR image behind storage.c's hooks (settings, multis, patches, pattern slots); the page keeps its
+ *     storage sectors and gives them back at boot.
  * Not here: USB (MIDI, audio, the editor, updates), TRS MIDI, the serial console, the battery (full), the
  * crash / UBOOT paths. Nothing of the firmware changes for this file.
  *   web/emu/build.sh  ->  build/emu/{felucca.wasm, worklet.js, index.html} */
@@ -35,7 +35,6 @@
 #endif
 
 static uint8_t nor[0x100000];            /* the SPI NOR (erased: 0xFF) */
-#define SMP_USER_XIP(k) ((const uint8_t *)nor + SMP_USER_BASE + (k) * SMP_USER_SIZE)   /* eng_sample.c */
 #define main hostsim_main
 #include "../../tests/hostsim.c"
 #undef main
@@ -68,7 +67,14 @@ static const int8_t FM1_KEYMAP[6][FM1_NCOL] = {      /* as hal/fm1_input.h: key 
     { 0,  1, 15, 14, 17, 16, 19, 18, 20, 21, 22},
     {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
 };
-static uint8_t fm1_led[FM1_NCOL], fm1_led_dim[FM1_NCOL], fm1_led_breath[FM1_NCOL], fm1_led_mid[FM1_NCOL];
+static uint8_t fm1_led[FM1_NCOL], fm1_led_dim[FM1_NCOL], fm1_led_breath[FM1_NCOL], fm1_led_mid[FM1_NCOL], fm1_led_hi[FM1_NCOL];
+static uint8_t fm1_led_scl[FM1_NCOL], fm1_led_root[FM1_NCOL];   /* (0.2.9 rev. 2 the keyboard's sets: the scale's keys, the root's, */
+static uint8_t fm1_led_kout[FM1_NCOL], fm1_led_ktop[FM1_NCOL];   /* the keys out of the scale (MAX, PLAY), the keys held (LOW)) */
+#define FM1_LED_KL_FULL 240u
+static uint32_t web_kl, web_klow;                 /* the keyboard's levels /240, a byte each: out, scale, root, played peak; the played trough (hal/fm1_input.h) */
+static uint32_t web_pu_ms;
+static void fm1_led_pulse(uint32_t ms, uint32_t ph) { (void)ph; web_pu_ms = ms; }
+static void fm1_led_key_levels(uint32_t o, uint32_t s, uint32_t r, uint32_t t, uint32_t l) { web_kl = o | s << 8 | r << 16 | t << 24; web_klow = l; }
 static uint32_t web_dim_lo;
 static void fm1_led_dim_level(uint32_t lo) { web_dim_lo = lo; }
 /* the power-on LED sweep (hal/fm1_input.h fm1_led_anim_start, the picture hal/fm1_led_anim.h): its frame from the
@@ -85,6 +91,11 @@ static void fm1_led_anim_start(uint32_t glow)
     memset(fm1_led_dim, 0, sizeof fm1_led_dim);
     memset(fm1_led_breath, 0, sizeof fm1_led_breath);
     memset(fm1_led_mid, 0, sizeof fm1_led_mid);
+    memset(fm1_led_hi, 0, sizeof fm1_led_hi);
+    memset(fm1_led_scl, 0, sizeof fm1_led_scl);
+    memset(fm1_led_root, 0, sizeof fm1_led_root);
+    memset(fm1_led_kout, 0, sizeof fm1_led_kout);
+    memset(fm1_led_ktop, 0, sizeof fm1_led_ktop);
     web_anim_t0 = web_ticks;
     web_anim_glow = glow != 0u;
     web_anim_run = 1;
@@ -286,6 +297,8 @@ static void web_frame(void)
         fm1_reboot();
     felucca_dbg.ui_frames++;
     ui_input();
+    wave_service();                                       /* main.c: a frame of a WAVE table build */
+    vcap_poll();                                          /* main.c: the VOICE CAP (DUELL 0.2.11) */
     settings_poll();
     autosave_poll();
     ui_leds();
@@ -327,6 +340,7 @@ static void web_ms(void)
         web_frame();
     } else {
         ui_input();                                       /* main.c's wait loop */
+        wave_service();
     }
 }
 
@@ -433,7 +447,16 @@ EXPORT uint32_t web_dim_keys(void) { return led_keys(fm1_led_dim); }
 EXPORT uint32_t web_dim_level(void) { return web_dim_lo; }
 EXPORT uint32_t web_breath_buttons(void) { return led_buttons(fm1_led_breath); }   /* #119: dark .. ~60 % of lit */
 EXPORT uint32_t web_breath_keys(void) { return led_keys(fm1_led_breath); }
-EXPORT uint32_t web_mid_keys(void) { return led_keys(fm1_led_mid); }   /* the DRUM grid's beats: a steady mid level */
+EXPORT uint32_t web_hi_keys(void) { return led_keys(fm1_led_hi); }   /* the DRUM grid's beats with MEDIUM: a steady high level, 1 frame in 2 */
+EXPORT uint32_t web_scl_keys(void) { return led_keys(fm1_led_scl); }   /* the scale display: the scale's keys, at their level */
+EXPORT uint32_t web_root_keys(void) { return led_keys(fm1_led_root); }   /* .. the root's keys: their level, steady (0.2.11) */
+EXPORT uint32_t web_kout_keys(void) { return led_keys(fm1_led_kout); }   /* .. the keys out of the scale (OFF-SCALE PLAY) at a level (MAX) */
+EXPORT uint32_t web_top_keys(void) { return led_keys(fm1_led_ktop); }   /* the keys held or playing: they pulse peak..trough (~0.9 Hz) */
+EXPORT uint32_t web_pulse_ms(void) { return web_pu_ms; }   /* the played keys' pulse period in ms (0: ~1130 ms free) */
+EXPORT uint32_t web_key_low(void) { return web_klow; }   /* .. the played keys' trough /240 */
+EXPORT uint32_t web_key_levels(void) { return web_kl; }   /* the keyboard's levels /240: out | scale << 8 | root << 16 | held << 24 */
+EXPORT uint32_t web_mid_keys(void) { return led_keys(fm1_led_mid); }   /* LEDS MEDIUM's idle keys (1 frame in 4); LOW: the DRUM beats */
+EXPORT uint32_t web_mid_buttons(void) { return led_buttons(fm1_led_mid); }   /* LEDS MEDIUM's idle buttons */
 /* the power-on sweep (or 1.2's idle animation) running: each LED's level now (hal/fm1_led_anim.h: 0..64 /64 of lit, | 0x80 the glow under
  * it), 0..13 the buttons by label, 14..40 the keys F3..G5; 0 when it is not */
 EXPORT uint8_t *web_anim_levels(void)
@@ -449,15 +472,17 @@ EXPORT uint8_t *web_anim_levels(void)
 }
 
 /* for the test and the bench (web/emu/emu_test.mjs), a heavy song straight into the tracks (as hostsim's
- * renders set them): T1 FM6 PAD, T2 PHYS DRONE STRING (SYMP), T3 GRAIN CLOUD PAD, 4-note chords on all 16
+ * renders set them): T1 FM6 PAD, T2 PHYS DRONE STRING (SYMP), T3 WAVE SAW PAD (GRAIN CLOUD PAD until 0.2.8), 4-note chords on all 16
  * steps, held; T4 DRUM, kick snare and hats. PLAY is the page's (or the test's) to press */
 EXPORT void web_test_heavy(void)
 {
-    static const uint8_t ENG[3][2] = {{12, 4}, {ENGI_PHYS, 7}, {8, 0}};
+    static const uint8_t ENG[3][2] = {{12, 4}, {ENGI_PHYS, 7}, {ENGI_WAVE, 0}};
     static const uint8_t CH[4][4] = {{48, 55, 60, 64}, {45, 52, 57, 60}, {41, 48, 53, 57}, {43, 50, 55, 59}};
     uint32_t p, i;
     for (p = 0; p < 3u; p++) {
         track_t *t = &trk[p];
+        for (i = 0; i < P_E0; i++)                /* (0.2.13: the part's own values at their defaults first: the song must not depend on what the */
+            t->p[i] = TP[i].def;                  /* first start's M01 left there; REESE SWAMP's SEQUENCER arp and TRN -24 silenced it) */
         host_preset(t, ENG[p][0], ENG[p][1]);
         t->p[P_VOICE] = V_POLY;
         t->p[P_SUS] = 127;
@@ -488,4 +513,5 @@ EXPORT uint16_t *web_screen(void) { return web_fb; }
 EXPORT uint32_t web_screen_draws(void) { return web_draws; }
 EXPORT uint32_t web_now_ms(void) { return fm1_ms; }
 EXPORT uint32_t web_playing(void) { return song.playing; }
+EXPORT uint32_t web_guide(void) { return ui.guide; }   /* DUELL 0.2.11: the first-start GUIDE's page shown (0: none; emu_test.mjs) */
 EXPORT uint32_t web_sample_rate(void) { return FS; }

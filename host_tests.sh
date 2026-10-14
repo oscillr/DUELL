@@ -1,6 +1,6 @@
 #!/bin/sh
 # DUELL host tests that run on a Mac without the JieLi toolchain (subset of felucca-base/tests/run_tests.sh).
-# Usage: ./host_tests.sh [name ...]   names: duck regress chord mod ui select step3 engine morph morphui mode hang atgt patslot multi release patch splash sounds loadcost uf
+# Usage: ./host_tests.sh [name ...]   names: duck dlymod regress chord mod perform ui select step3 engine morph morphui mode dlymod hang atgt patslot multi release patch splash sounds loadcost cpuscen uf wave hold guide
 #   uitest project fun10 motion persist backup editor midictl audio erase emu   (default: all; emu only when ~/emsdk exists)
 # emu: web/emu/emu_test.mjs, the browser build (Emscripten from ~/emsdk, its own node: the Homebrew one is broken) incl. a bit-for-bit check against the native build
 # A test that does not compile counts as a failure (it used to be skipped silently).
@@ -9,7 +9,17 @@
 # The default build/gen/duell_multis.h is regenerated here with the switch off (the emulator step builds the release).
 # uitest: tests/ui_test.c (also the helper library the other UI tests include); its Felucca-era groups are parked under -DUI_TEST_STALE (not run)
 # motion: tests/motion_test.c, its DRUM-grid / SAVE-held-undo groups are parked under -DMOTION_TEST_STALE (not run)
-# uf: tests/uf_test.c, DUELL 0.2.2's universal per-voice filter (CUT / RES on the engines with no filter of their own): centre bit for bit, spectra, routes, CC74 / CC71, stability, roll, old records, cost
+# guide: tests/guide_test.c, 0.2.11's first-start GUIDE: the settings bit (fresh, seen, an older record, MENU's replay), its keys, playing under it, no stuck state
+# reset: tests/reset_test.c, 0.2.9's OCT- held + a knob = that card's default (once, no creeping) and OCT-/OCT+ moving the octave on release
+# perform: tests/perform_test.c, DUELL 0.2.5's PERFORM mode (FX held): entry and exit, its keys, knobs, PRESETS / ALGORITHM, ROLL, MUTE, LEDs, idle bit for bit, the effects
+# wave: tests/wave_test.c, DUELL's WAVE engine (eng_wave.c): the table build (deterministic, shape, level), band-limiting (FFT: off-harmonic energy), fades and
+#   silence while a table is built, POS ramps, TABLE changed every block, an engine switch mid-build, two parts, MORPH tags, cost (WAVE_VERBOSE=1: the whole table);
+#   0.2.7's tables 14..25: the list, the 14 older tables' fingerprint, a fade into each new one, their aliasing, every table's build cost
+# uf: tests/uf_test.c, the per-voice multimode filter (0.2.9; 0.2.2's universal filter: CUT RES MODE SLOPE on the engines with no filter of their own): the bypass bit for bit,
+#   the response table (UF_TABLE=1: RES 80 % too), 0.2.8's low-pass bit for bit, click-free sweeps, routes, CC74 / CC71, stability, old records converted, roll, cost
+# cpuscen: tests/cpu_scenarios_test.c (0.2.11), the STEADY-STATE load of held notes in the loadcost scale: the factory multis with the MORPH fader at 0 / 63 / 127 (guards on 63);
+#   C the VOICE CAP (voice.c vcap: the caps of heavy pairs, measured, never below 4, new notes only); CPU_SCEN=QCPEMXWKF for more (P the cap's per-voice
+#   table, engine pairs x rolls, what End B moves, the stages a move wakes, WAVE, fades, bursts); build -O1 -fno-builtin
 # loadcost: tests/loadcost_test.c, the cost of a CHANGE (a patch / multi load, a reverb or mode switch) in the audio half buffer, counted with the device's word-wise memset (build: -O1 -fno-builtin); LOADCOST_FULL=1 prints the whole table
 # sounds: the factory sound audit (tests/sound_audit.c: 10 s hold, level at 1 s / 3 s, sustained median, rise time, tap, hit peak; FAIL silent / clipping / NaN / quiet / slow / falls away / End B); SOUND_TRIM=1 adds the
 # suggested LEVEL per sound (copy into felucca-base/tools/duell_sounds.py). Needs build/gen/duell_sounds.h (DUELL/gen_only.py)
@@ -19,18 +29,19 @@ unset DUELL_TEST_MODE                                  # (the environment switch
 CCR="cc -O2 -w -Ibuild/gen -Ifirmware/src -Itests"      # the release configuration (switch off)
 CC="cc -O2 -w -DDUELL_TEST_MODE=1 -Ibuild/gen_test -Ibuild/gen -Ifirmware/src -Itests"   # test mode ON
 mkdir -p build/gen_test
-python3 tools/gen_duell_multis.py build/gen/duell_multis.h >/dev/null || exit 1                 # release header: M01..M04
+python3 tools/gen_duell_multis.py build/gen/duell_multis.h >/dev/null || exit 1                 # release header: M01..M10
 python3 tools/gen_duell_multis.py build/gen_test/duell_multis.h --test-mode >/dev/null || exit 1   # test header: + M13..M16
 python3 tools/gen_version.py build/gen/duell_version.h || exit 1   # VERSION file -> build/gen/duell_version.h
 FV=$(sed -n 's/^#define DUELL_VERSION_STR "\(.*\)"/\1/p' build/gen/duell_version.h)
 [ -f "$HOME/emsdk/emsdk_env.sh" ] && EMU=emu || EMU=
-want="${*:-regress chord mod ui select step3 engine morph morphui mode hang atgt patslot multi release patch splash sounds loadcost uf uitest project fun10 motion persist backup editor midictl audio erase $EMU}"
+want="${*:-regress chord mod perform ui select step3 engine morph morphui mode dlymod hang atgt patslot multi release patch splash sounds loadcost cpuscen uf wave hold reset guide uitest project fun10 motion persist backup editor midictl audio erase $EMU}"
 fail=0
 run() { echo "== $1"; shift; "$@" > "$OUT/last.log" 2>&1 && echo "   PASS" || { echo "   FAIL"; tail -15 "$OUT/last.log"; fail=1; }; }
 for t in $want; do case $t in
   regress) $CC -DNLIVE=4 -o $OUT/regress tests/regress.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run regress $OUT/regress tests/golden.txt tests/cpu_baseline.txt ;;
   chord)   $CC -o $OUT/chord_test tests/chord_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run chord $OUT/chord_test ;;
   mod)     $CC -o $OUT/mod_test tests/mod_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run mod $OUT/mod_test build/mod_demo ;;
+  perform) $CC "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/perform_test tests/perform_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run perform $OUT/perform_test ;;
   ui)      $CC -O1 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/ui_render tests/ui_render.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run ui $OUT/ui_render build/ui_new build/ui_slot ;;
   select)  $CC -O1 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/select_test tests/select_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run select $OUT/select_test ;;
   step3)   $CC -o $OUT/step3_test tests/step3_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run step3 $OUT/step3_test ;;
@@ -38,6 +49,7 @@ for t in $want; do case $t in
   morph)   $CC -o $OUT/morph_test tests/morph_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run morph $OUT/morph_test ;;
   morphui) $CC -O1 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/morph_ui_test tests/morph_ui_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run morphui $OUT/morph_ui_test ;;
   duck)    $CC -O1 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/duck_test tests/duck_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run duck $OUT/duck_test ;;
+  dlymod)  $CC -O1 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/dlymod_test tests/dlymod_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run dlymod $OUT/dlymod_test ;;
   mode)    $CC "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/mode_test tests/mode_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run mode $OUT/mode_test ;;
   hang)    $CC -O1 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/hang_test tests/hang_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run hang $OUT/hang_test ;;
   atgt)    $CC -o $OUT/atgt_test tests/atgt_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run atgt $OUT/atgt_test ;;
@@ -47,7 +59,12 @@ for t in $want; do case $t in
   patch)   $CC -O1 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/patch_test tests/patch_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run patch $OUT/patch_test ;;
   splash)  $CC -O1 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/splash_test tests/splash_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run splash $OUT/splash_test ;;
   loadcost) $CC -O1 -fno-builtin -D_FORTIFY_SOURCE=0 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/loadcost_test tests/loadcost_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run loadcost $OUT/loadcost_test ;;
+  cpuscen) $CC -O1 -fno-builtin -D_FORTIFY_SOURCE=0 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/cpu_scenarios_test tests/cpu_scenarios_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run cpuscen $OUT/cpu_scenarios_test ;;
   uf)      $CC -O1 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/uf_test tests/uf_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run uf $OUT/uf_test ;;
+  reset)   $CC -O1 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/reset_test tests/reset_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run reset $OUT/reset_test ;;
+  guide)   $CC -O1 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/guide_test tests/guide_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run guide $OUT/guide_test ;;
+  hold)    $CC -o $OUT/hold_test tests/hold_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run hold $OUT/hold_test ;;
+  wave)    $CC -o $OUT/wave_test tests/wave_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run wave $OUT/wave_test ;;
   multi)   $CC -O1 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/multi_test tests/multi_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run multi $OUT/multi_test ;;
   uitest)  $CC -O1 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/ui_test tests/ui_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run uitest $OUT/ui_test ;;
   project) $CC -o $OUT/project_test tests/project_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run project $OUT/project_test ;;

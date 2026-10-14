@@ -4,7 +4,7 @@
 # Felucca in the browser: the firmware's sources as the host tests build them (web/emu/felucca_web.c), compiled
 # to WebAssembly with Emscripten, plus the page. After X0X's web/emu/build.sh (charlesvestal/fm1-x0x, GPL-3.0).
 #   web/emu/build.sh   ->  build/emu/{index.html, worklet.js, felucca.wasm, fonts/}
-# Run after one ./build.sh (build/gen: the tables, the fonts, the CC0 samples).
+# Run after one ./build.sh (build/gen: the tables, the fonts, the factory sounds and multis).
 # -ffp-contract=off: no fused multiply-adds, as the host build. EMU_OPT replaces -O2, EMU_CFLAGS adds flags
 # (EMU_CFLAGS=-msimd128: let the compiler vectorise; every browser with AudioWorklet has wasm SIMD).
 # DUELL_TEST_MODE=1 builds in the CPU TEST screen and the test multis M13..M16 (default 0, the release; build/gen/duell_multis.h must come from the same

@@ -934,10 +934,34 @@ static void proj_steps(step_t *s)            /* a loaded sequence stays inside i
     }
 }
 
+/* a project, multi or autosave of before 0.2.9 (a track whose SLOPE is 0): 0.2.2's bipolar CUT -> today's CUT + MODE (core.h
+ * uf_legacy), the track's CUT automation with it: on a low-pass track a low-pass value at the same cutoff, OFF and a high-pass value
+ * the open end; on a high-pass track a high-pass value the same, OFF and a low-pass value the open end of the high-pass (MODE has no
+ * automation). A track of today: untouched. Before any value is fitted (param_fit would make the SLOPE of before 12 dB): proj_bound and
+ * project_restore_runtime run it */
+static void proj_uf(project_t *q)
+{
+    uint32_t t, i;
+    for (t = 0; t < NTRK; t++) {
+        int16_t *p = q->t[t].p;
+        uint32_t ser = ENGINES[q->t[t].engine % NENGINES]->ufilt == 2u;   /* ANALOG, TRIO, NOISE: nothing was ever meant by 45..48 there (0.2.9's multimode filter): the bypass, a lock there the open end */
+        if (p[P_FREED])
+            continue;
+        uf_legacy(p, ser);
+        for (i = 0; i < q->motion.count && i < MOTION_MAX; i++) {
+            motion_event_t *e = &q->motion.event[i];
+            int32_t v = e->value;
+            if ((e->place >> 6) == t && MOTION_ID(e) == P_FREEA)
+                e->value = (int8_t)(ser ? UF_STEPS : p[P_FREEC] ? (v > 0 ? v : 0) : v < 0 ? UF_STEPS + (v < -64 ? -64 : v) : UF_STEPS);
+        }
+    }
+}
+
 /* an imported older format may hold values FUN7 cannot pack: keep them inside the fields and ranges */
 static void proj_bound(project_t *q)
 {
     uint32_t t, i;
+    proj_uf(q);                                         /* (the filter's CUT of before 0.2.9: before param_fit) */
     for (t = 0; t < NTRK; t++) {
         proj_steps(q->t[t].step);
         for (i = 0; i < NSTEP; i++) {
@@ -990,13 +1014,13 @@ static int project_restore_runtime(const project_t *input)
     uint8_t fv[NTRK][FP_SIZE + 1u];
     int32_t fslot[NTRK];
     if (!proj_ok(input) || !proj_engines_ok(input)) return 1;
-    mom_back(0);                                  /* (ui_input.c MOMENTARY: the values as they were, then the load) */
     memset(drum_mute, 0, sizeof drum_mute);       /* (1.4.1: the DRUM lanes' mutes, performance state) */
     if (p != input) memcpy(p, input, sizeof *p);
     proj_drums_to_part(p);                              /* a RAM slot of firmware before 1.0 */
     proj_phys(p);                                       /* .. before PHYS lost DUST and DRUM */
     proj_fm4(p, 0);                                     /* .. that had DIGITAL tracks (a project_t: DUELL's layout) */
     proj_perc(p);                                       /* .. or SAMPLE PERC tracks */
+    proj_uf(p);                                         /* .. or of before 0.2.9 (the filter's CUT) */
     if (!proj_keep_play)
         transport_req = 2;
     panic_req = (1u << NTRK) - 1u;                      /* (every note off) */
@@ -1070,15 +1094,12 @@ static int project_restore_runtime(const project_t *input)
     sync_reload = 1;
     ui.force = 1;
     ui_message("LOADED");
-    memset(snd_said, 0, sizeof snd_said);               /* a missing sample is said again, after LOADED */
+    memset(snd_said, 0, sizeof snd_said);               /* a part on a retired engine is said again (NO ENGINE), after LOADED */
     return 0;
 }
 /* settings + learned panel table: one flash object. The flash copy wins at
  * boot (the .noinit copies are garbage after a power-off). */
 #include "settings_persist.c"
-#if FELUCCA_FLASH && FELUCCA_SLICE
-#include "slice_store.c"                          /* SLICE's MAN slices, kept in the user slots */
-#endif
 #if FELUCCA_FLASH
 static persist_t persist_saved __attribute__((section(".pool")));
 static uint8_t persist_pending;                 /* 1 requested, 2 waiting after a flash error */
@@ -1094,16 +1115,7 @@ static void persist_boot(void)                    /* before settings_init / pane
     irq_restore(f);
     if (!flash_ok)
         return;
-    fl_plain_window_init();                        /* flash above 0x93000 reads as plaintext through XIP
-                                                    * (user sample sets are played from there) */
-#if FELUCCA_SLICE
-    slc_store_boot();                              /* (the scans read each slot's stored slices) */
-#endif
-    {
-        uint32_t k;
-        for (k = 0; k < SMP_USER_SLOTS; k++)
-            smp_user_scan(k);
-    }
+    fl_plain_window_init();                        /* flash above 0x93000 reads as plaintext through XIP (the stores' read-back) */
     {
         int n = st_load(OBJ_SETTINGS, &p, sizeof p);
         if (settings_import(&p, n))
@@ -1117,17 +1129,18 @@ static void persist_boot(void)                    /* before settings_init / pane
 }
 
 static int erase_busy(void);                      /* erase_data.c (included below): ERASE DATA done, the restart pending */
+static int autosave_quiet(void);                  /* below: transport stopped, no key / button down, no voice sounding */
 static void settings_poll(void)
 {
 #if FELUCCA_FLASH
     persist_t p;
     if (erase_busy())
         return;                                    /* DUELL 0.2.2: nothing is written over the erased flash */
-#if FELUCCA_SLICE
-    slc_store_poll();                              /* SLICE's slices edited on the SLICES page */
-#endif
     ps_poll();                                     /* DUELL: pattern slots saved / erased (patslot.c) */
-    if (!persist_pending || !flash_ok || transport_busy() ||
+    /* DUELL 0.2.11: a flash erase stops the audio ~40 ms, so the write waits until nothing sounds (autosave_quiet: transport
+     * stopped, no key or button down, no voice, release tails included), not only for the transport: the one-time "layer seen"
+     * bit, set on the first open of a layer while a multi is played by hand, clicked and spiked the CPU bar (0.2.10) */
+    if (!persist_pending || !flash_ok || !autosave_quiet() ||
         (persist_pending == 2u && (uint32_t)(fm1_ms - persist_retry_ms) < 1000u))
         return;
     p = persist_saved;

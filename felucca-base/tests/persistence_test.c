@@ -223,6 +223,18 @@ static int autosave_test(void)
     as_run(300000u);
     bad += check("autosave: RESTORE LAST OFF: none restored, none written", ok && !as.writes && as_erases == b0);
     ui_prefs &= (uint8_t)~PREF_RESTORE_OFF;
+    {   /* 0.2.7: a matrix routed to the new destinations (a bus value, the part's LEVEL, an engine slot) is restored as it was */
+        as_power_on();
+        autosave_boot(1);
+        trk[0].p[P_M3SRC] = MS_LFO2, trk[0].p[P_M3DST] = MD_RDAMP, trk[0].p[P_M3AMT] = -33;
+        trk[1].p[P_M7SRC] = MS_VEL, trk[1].p[P_M7DST] = MD_LEVEL, trk[1].p[P_M7AMT] = 21;
+        trk[1].p[P_M1SRC] = MS_AT, trk[1].p[P_M1DST] = MD_E1 + 4, trk[1].p[P_M1AMT] = 40;
+        as_run(11000u);
+        as_power_on();
+        ok = autosave_boot(1) == 1 && trk[0].p[P_M3DST] == MD_RDAMP && trk[0].p[P_M3AMT] == -33 && trk[1].p[P_M7DST] == MD_LEVEL &&
+             trk[1].p[P_M7SRC] == MS_VEL && trk[1].p[P_M1DST] == MD_E1 + 4 && trk[1].p[P_M1AMT] == 40;
+        bad += check("autosave: matrix slots routed to REVERB DAMP, LEVEL, an engine slot (0.2.7): restored as they were", ok);
+    }
     {   /* mute is cleared by a restore: the autosave holds a muted part 1 (the owner's report), power-on is audible */
         as_power_on();
         autosave_boot(1);
@@ -416,6 +428,28 @@ int main(void)
     bad += check("settings retry succeeds after 1000 ms", !persist_pending && erases == before + 1u &&
                   st_load(OBJ_SETTINGS, &p, sizeof p) == (int)sizeof p && p.palette == palette_to_stored(1));
 
+    {   /* DUELL 0.2.11: a settings write (an erase stops the audio ~40 ms) waits for silence, not only for the transport: the
+         * one-time "layer seen" bit (ui_layer.c layer_opened, favorites.factory[15][31]) on a layer's first open while played */
+        uint8_t seen0 = favorites.factory[15][31];
+        before = erases;
+        song.playing = 0; transport_req = 0; fm1_in.notes = 0; fm1_in.buttons = 0;
+        favorites.factory[15][31] = (uint8_t)(seen0 | 0x10u);
+        trk[2].v[1].active = 1;                               /* a voice sounding (stopped transport) */
+        settings_save();
+        bad += check("a voice sounding: seen bit queued, no erase", persist_pending && erases == before);
+        trk[2].v[1].active = 0; fm1_in.notes = 1u << 5;       /* a key held */
+        settings_poll();
+        bad += check("a key held: still no erase", persist_pending && erases == before);
+        fm1_in.notes = 0; fm1_in.buttons = 1u << 3;           /* a button held (the long press that opened the layer) */
+        settings_poll();
+        bad += check("a button held: still no erase", persist_pending && erases == before);
+        fm1_in.buttons = 0;
+        settings_poll();
+        bad += check("silent: written once, the seen bit saved", !persist_pending && erases == before + 1u &&
+                      st_load(OBJ_SETTINGS, &p, sizeof p) == (int)sizeof p && (p.favorites.factory[15][31] & 0x10u));
+        favorites.factory[15][31] = seen0; settings_save();   /* (put back, saved: later checks start clean) */
+        before = erases;
+    }
     /* (DUELL: the PROJECT slots and the user preset banks are gone; their failed-save flows are not tested here any more) */
     before = erases;
     song.playing = 0; transport_req = 1; irq_start_race = 1;

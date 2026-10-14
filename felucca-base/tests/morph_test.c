@@ -137,7 +137,7 @@ static void test_tags(void)
     uint32_t n[5] = {0}, id, e, k, ok = 1, list[NENGINES], ne = engines_used(list);
     int8_t o[P_COUNT] = {0};
     static const uint8_t EXCL[] = {P_LEVEL, P_TRANS, P_ROOT, P_SCALE, P_AOCT, P_VOICE, P_LPOL, P_L2POL, P_AMODE, P_AHOLD,
-                                   P_ITYPE, P_MUTE, P_FREEB, P_AGATE, P_ASWING, P_APROB, P_LSYNC, P_L2SYNC, P_ESYNC};
+                                   P_ITYPE, P_MUTE, P_AGATE, P_ASWING, P_APROB, P_LSYNC, P_L2SYNC, P_ESYNC};
     for (id = 0; id < P_E0; id++)
         n[MT[id].kind]++;
     printf("morph: common tags (P_LEVEL..P_ESYNC, %u ids):", (unsigned)P_E0);
@@ -146,6 +146,8 @@ static void test_tags(void)
     printf("\n");
     for (k = 0; k < NELEM(EXCL); k++)
         ok &= morph_tag(&ENG_ANALOG, o, EXCL[k], 1).kind <= MK_HARD;
+    ok &= morph_tag(&ENG_DRUM, o, P_FREEB, 1).kind <= MK_HARD && morph_tag(&ENG_ANALOG, o, P_FREEC, 1).kind == MK_CONT &&
+          morph_tag(&ENG_ANALOG, o, P_FREED, 1).kind == MK_FADE && morph_tag(&ENG_PHASE, o, P_FREEA, 1).kind == MK_CONT;   /* (the multimode filter's four roll on every engine with one since 0.2.9, DRUM has none) */
     check("rule 3: LEVEL, TRANS, ROOT, SCALE, ARP OCT, VOICE, LFO POL, ARP MODE, INSERT TYPE, ... never rolled", ok);
     for (k = 0; k < ne; k++) {
         const engine_t *en = ENGINES[list[k]];
@@ -279,6 +281,88 @@ static void test_amount0(void)
     }
 }
 
+/* (0.2.11: a stage off in the Original that SMART wakes with half the chance: morph.c morph_wake_half; tested in test_wake) */
+static int morph_is_wake(uint32_t id)
+{
+    uint32_t k;
+    for (k = 0; k < NELEM(MORPH_WAKE); k++)
+        if (MORPH_WAKE[k] == id)
+            return 1;
+    return 0;
+}
+/* DUELL 0.2.11 (owner, 2026-10-14; SPEC rule 3g, morph.c morph_wake_half): SMART switches ON a stage that is off in the Original
+ * (the bypassed multimode filter, DIST, CHO / DLY / REV, SPREAD from 0, the FLT and LFO depths from 0) with HALF the chance it had:
+ * a coin each from the seed's own stream (rs4). Tails: never woken; heads: the roll as before (it wakes nearly always), so the
+ * chance is exactly half the old one. The end stays a pure function of the seed; WILD is unchanged */
+static uint32_t wake_coin(uint32_t seed, uint32_t part, uint32_t k)   /* morph_wake_half's coin k (0 the filter, 1.. MORPH_WAKE) */
+{
+    uint32_t rs = morph_state(seed, part + 24u), i, c = 0;
+    for (i = 0; i <= k; i++)
+        c = mr_next(&rs) >> 31;
+    return c;
+}
+static void test_wake(void)
+{
+    uint32_t list[NENGINES], ne = engines_used(list), k, s, cfg, i;
+    uint32_t n[1 + NELEM(MORPH_WAKE)] = {0}, on[1 + NELEM(MORPH_WAKE)] = {0}, hon[1 + NELEM(MORPH_WAKE)] = {0}, nh[1 + NELEM(MORPH_WAKE)] = {0};
+    uint32_t tails_woke = 0, nondet = 0, wild_n = 0, wild_on = 0;
+    char b[220];
+    for (cfg = 0; cfg < 2u; cfg++)                      /* 0: the filter bypassed; 1: the filter on (the FLT depths: a bypassed filter keeps them 0 anyway) */
+        for (k = 0; k < ne; k++) {
+            const engine_t *e = ENGINES[list[k]];
+            int8_t o[P_COUNT], end[P_COUNT], end2[P_COUNT];
+            fresh(list[k], 0);
+            orig8(&trk[0], o);
+            for (i = 0; i < NELEM(MORPH_WAKE); i++)
+                o[MORPH_WAKE[i]] = 0;
+            o[P_FREEA] = (int8_t)(cfg ? 60 : UF_STEPS); o[P_FREEB] = 0; o[P_FREEC] = 0; o[P_FREED] = 1;
+            for (s = 1; s <= 1000u; s++) {
+                uint32_t seed = (s * 7919u + k * 104729u + cfg * 31u) % 65535u + 1u, part = s & 1u;
+                mrc = 0;                                /* SMART */
+                morph_roll_pure(o, end, e, 40, seed, part, 1);
+                morph_roll_pure(o, end2, e, 40, seed, part, 1);
+                nondet += memcmp(end, end2, sizeof end) != 0;
+                for (i = 0; i <= NELEM(MORPH_WAKE); i++) {
+                    int woke;
+                    if (!i) {
+                        if (cfg || !e->ufilt)
+                            continue;
+                        woke = end[P_FREEA] < UF_STEPS || end[P_FREEC] > 0;
+                    } else {
+                        if (!cfg && (MORPH_WAKE[i - 1u] == P_ED_FLT || MORPH_WAKE[i - 1u] == P_E2FLT || MORPH_WAKE[i - 1u] == P_LD_FLT || MORPH_WAKE[i - 1u] == P_L2FLT))
+                            continue;
+                        woke = end[MORPH_WAKE[i - 1u]] != 0;
+                    }
+                    n[i]++;
+                    on[i] += woke;
+                    if (wake_coin(seed, part, i)) {
+                        nh[i]++;
+                        hon[i] += woke;
+                    } else
+                        tails_woke += woke;
+                }
+                mrc = MC_WILD;                          /* WILD: unchanged, DIST from 0 wakes nearly always */
+                morph_roll_pure(o, end, e, 40, seed, part, 1);
+                wild_n++;
+                wild_on += end[P_DIST] != 0;
+                mrc = 0;
+            }
+        }
+    {
+        int ok = 1;
+        printf("morph: 0.2.11 SMART wake (AMOUNT 40, %u engines x 1000 seeds x 2): switched on / heads (= the old chance):", (unsigned)ne);
+        for (i = 0; i <= NELEM(MORPH_WAKE); i++) {
+            double r = (double)on[i] / n[i], h = (double)hon[i] / nh[i];
+            printf(" %s %.2f/%.2f", i ? TP[MORPH_WAKE[i - 1u]].label : "FILTER", r, h);
+            ok &= h >= 0.85 && fabs(r - h / 2) <= 4 * sqrt(0.25 / n[i]) + 0.01;
+        }
+        printf("; WILD DIST %.2f\n", (double)wild_on / wild_n);
+        snprintf(b, sizeof b, "0.2.11 SMART: an off stage (filter, DIST, sends, SPREAD, FLT / LFO depths) switches on with half the old chance (coin tails: never)");
+        check(b, ok && !tails_woke);
+        check("0.2.11 SMART wake: the same seed rolls the same end (every engine, 2000 seeds: deterministic); WILD unchanged (DIST from 0 wakes)", !nondet && wild_on >= 0.9 * wild_n);
+    }
+}
+
 /* ---------------------------------------------------------------- 3 bounds --- */
 static void test_bounds(void)
 {
@@ -310,7 +394,9 @@ static void test_bounds(void)
                             over++;
                         if (lim && fabs((double)d) / (pd->max - pd->min) > worst)
                             worst = fabs((double)d) / (pd->max - pd->min);
-                        if (lim && !((g.flags & MF_ZERO) && !o[id])) {   /* eligible: it moves, uniform 0 .. AMOUNT */
+                        if (lim && !((g.flags & MF_ZERO) && !o[id]) && !(!o[id] && morph_is_wake(id)) &&
+                            !(e->ufilt == 1u && o[P_FREEA] >= UF_STEPS && o[P_FREEC] <= 0 && !o[id] && (id == P_ED_FLT || id == P_LD_FLT || id == P_E2FLT || id == P_L2FLT)) &&
+                            id != P_FREEC && !(id >= P_FREEA && id <= P_FREED)) {   /* eligible: it moves, uniform 0 .. AMOUNT (a FLT depth at 0 stays 0 while the filter is bypassed; the filter's own four: rolled, kept audible by morph_uf_safe, uf_test checks them) */
                             nelig++;
                             nmoved += d != 0;
                             hist[(abs(d) * 100 + lim / 2) / lim > 100 ? 100 : (abs(d) * 100 + lim / 2) / lim]++;
@@ -322,6 +408,12 @@ static void test_bounds(void)
                         }
                     } else if (g.kind == MK_FADE) {
                         int32_t n = (g.flags & MF_NFADE) ? g.lim : pd->max + 1;
+                        if (id == P_FREED) {            /* the multimode filter's SLOPE (1 or 2): forced to 12 dB on the band-pass side (morph_uf_safe) */
+                            topp++;
+                            tchg += d != 0;
+                            bad_choice += end[id] < 1 || end[id] > 2;
+                            continue;
+                        }
                         if ((e == &ENG_ANALOG && id == P_FTYPE) || (e == &ENG_TRIO && id == P_E0 + 4u)) {
                             topp++;                     /* a filter TYPE: the dead-path rule keeps some (morph_open) */
                             tchg += d != 0;
@@ -849,14 +941,14 @@ static void test_target_seed(void)
         n = morph_pack(blk);
         memset(mph, 0, sizeof mph);
         memset(&morph, 0, sizeof morph);
-        ok = n == MORPH_PACK_SIZE && morph_unpack(blk, n) && morph.target == MT_BOTH;
+        ok = n == MORPH_PACK_SIZE && blk[2] == MT_BOTH && morph_unpack(blk, n) && morph.target == MT_SELECTED;   /* (0.2.9: TARGET written, not read) */
         for (pi = 0; pi < NSHOWN; pi++)
             for (x = 0; x < 2u; x++)
                 ok &= !memcmp(ea[pi][x], endp(pi, x), P_COUNT) && mph[pi].fader == 77 && mph[pi].amount == 33;
         ok &= !morph_unpack(blk, 3) && !morph_unpack((const uint8_t *)"Xx", 2);
         printf("morph: persistence block: %u bytes (%u parts); RAM: the parts' state %u bytes, the hook's %u\n", (unsigned)n,
            (unsigned)NSHOWN, (unsigned)sizeof mph, (unsigned)sizeof mw);
-        check("the persistence block (morph_pack / morph_unpack) round-trips TARGET, fader, AMOUNT, seeds, ends", ok);
+        check("the persistence block (morph_pack / morph_unpack) round-trips fader, AMOUNT, seeds, ends; TARGET written (byte 2), not loaded (0.2.9)", ok);
     }
 }
 
@@ -959,6 +1051,10 @@ static double cost(uint32_t mode)
                 endw(p, 0)[P_FTYPE] = 0;
                 endw(p, 1)[P_FTYPE] = 1;
             }
+            for (i = P_FREEA; i <= P_FREED; i++)        /* (0.2.11: the same stages on at both ends, as End B's: morph_wake_half's coins */
+                endw(p, 0)[i] = endw(p, 1)[i];          /* differ per seed, and a stage on at one end only is not a fade) */
+            for (i = 0; i < NELEM(MORPH_WAKE); i++)
+                endw(p, 0)[MORPH_WAKE[i]] = endw(p, 1)[MORPH_WAKE[i]];
             morph_build(&mph[p]);
             if (mode == 3u) {                           /* End A's sound written plainly: no morph */
                 int16_t v[P_COUNT];
@@ -1036,15 +1132,20 @@ static int cmpd(const void *a, const void *b) { return *(const double *)a < *(co
 /* LOFI sweep (odd seeds: ARP 8BIT, else PULSE LD): End B rolled at AMOUNT 100 (A = the Original), 64 fader steps, a 70 ms note each; steps[0/1][i] =
  * the loudness (dB) / brightness (ln) change from step i - 1 to i. only: -1 the whole end, else only that parameter's
  * (a slot: its three) value differs from the Original */
+static const char *cliff_eng = "LOFI";                   /* (the engine the cliff sweep runs on, and its two presets) */
+static const char *cliff_pr[2] = {"PULSE LD", "ARP 8BIT"};
 static void lofi_sweep(uint32_t seed, int only, double *dl, double *db)
 {
-    uint32_t st, id, e = eng_by_name("LOFI"), pr = seed / 977u & 1u ? 2u : 0u;   /* PULSE LD / ARP 8BIT */
+    uint32_t st, id, e = eng_by_name(cliff_eng), pr = preset_by_name(e, cliff_pr[seed / 977u & 1u]);   /* LOFI: PULSE LD / ARP 8BIT */
     double pl = 0, pb = 0;
     for (st = 0; st < 64u; st++) {
         double l, b;
         fresh(e, pr);
         morph_set_amount(100);
         morph_roll_seed(0, 1, seed);
+        if (only < 0)
+            for (id = P_FREEA; id <= P_FREED; id++)      /* (0.2.9: the multimode filter's own sweep is steep by nature, a cutoff crossing a few partials moves a note's level 5 to 10 dB in a step: its continuity is uf_test's (sweeps, click-free), the SLOPE's blend is smooth (mxf MX_SLOPE)) */
+                endw(0, 1)[id] = mph[0].base[id];
         if (only >= 0)
             for (id = 0; id < P_COUNT; id++) {
                 int g = id >= P_M1SRC && id < P_M1SRC + 3u * NMSLOT ? (int)(P_M1SRC + (id - P_M1SRC) / 3u * 3u) : (int)id;
@@ -1091,8 +1192,8 @@ static void test_reach(void)
                     ok &= a >= -24 && a <= 24 && !morph_loop(src, dst);   /* (6 .. 24 with AMOUNT) */
                     if (MD_ENGINE(dst))
                         ok &= morph_tag(en, o, P_E0 + dst - MD_E1, mode).kind == MK_CONT;
-                    ok &= dst != MD_CUT || morph_resp(en, MD_CUT);
-                    ok &= dst != MD_SHP || morph_resp(en, MD_SHP);
+                    ok &= dst != MD_CUT || morph_resp(en, end, MD_CUT);
+                    ok &= dst != MD_SHP || morph_resp(en, end, MD_SHP);
                 }
                 ok &= act <= 4u;
                 nadd += act;
@@ -1143,10 +1244,17 @@ static void test_reach(void)
         check("FM6: at AMOUNT 70 End B differs audibly from End A (RMS or brightness >= 15 % in at least 8 of 10 seeds); patch intact",
               good >= 8u && ok);
     }
-    /* D: LOFI at AMOUNT 100, 20 seeds, 64 fader steps: no step far above the median step (loudness and brightness) */
-    {
+    /* D: LOFI at AMOUNT 100, 20 seeds, 64 fader steps: no step far above the median step (loudness and brightness); DUELL WAVE the
+     * same (its SYNC LEAD and ALL ON presets: SYNC, BEND, DTN, SUB rolled; TABLE never) */
+    for (k = 0; k < 2u; k++) {
         double dl[64], db[64], ml[64], mb[64];
         uint32_t nbad = 0, shown = 0;
+        char what[160];
+        if (k) {
+            cliff_eng = "WAVE";
+            cliff_pr[0] = "SYNC LEAD";
+            cliff_pr[1] = "ALL ON";
+        }
         for (s = 1; s <= 20u; s++) {
             uint32_t i, hit = 0;
             double medl, medb, tl, tb;
@@ -1172,7 +1280,7 @@ static void test_reach(void)
                 if (shown++ < 3u) {
                     int8_t *B = endw(0, 1);
                     uint32_t id;
-                    printf("morph: LOFI cliff: seed %u step %u (fader %u): %.1f dB, %.2f ln (medians %.2f, %.2f); responsible:",
+                    printf("morph: %s cliff: seed %u step %u (fader %u): %.1f dB, %.2f ln (medians %.2f, %.2f); responsible:", cliff_eng,
                            (unsigned)(s * 977u), (unsigned)hit, (unsigned)(hit * 127u / 63u), dl[hit], db[hit], medl, medb);
                     for (id = 0; id < P_E0 + 8u; id++) {
                         double x[64], y[64];
@@ -1183,15 +1291,19 @@ static void test_reach(void)
                         for (j = 1; j < 64u; j++)
                             hot |= x[j] > tl || y[j] > tb;
                         if (hot)
-                            printf(" id %u (%s)", (unsigned)id, id >= P_E0 ? ENG_LOFI.edit[id - P_E0].label : TP[id].label);
+                            printf(" id %u (%s)", (unsigned)id, id >= P_E0 ? ENGINES[eng_by_name(cliff_eng)]->edit[id - P_E0].label : TP[id].label);
                     }
                     printf("\n");
                 }
             }
         }
-        printf("morph: LOFI AMOUNT 100, 20 seeds x 64 fader steps: %u seeds with a step above 6x the median step\n", (unsigned)nbad);
-        check("LOFI: no cliff (a step above 6x the median loudness / brightness step) over 20 seeds at AMOUNT 100", !nbad);
+        printf("morph: %s AMOUNT 100, 20 seeds x 64 fader steps: %u seeds with a step above 6x the median step\n", cliff_eng, (unsigned)nbad);
+        snprintf(what, sizeof what, "%s: no cliff (a step above 6x the median loudness / brightness step) over 20 seeds at AMOUNT 100", cliff_eng);
+        check(what, !nbad);
     }
+    cliff_eng = "LOFI";
+    cliff_pr[0] = "PULSE LD";
+    cliff_pr[1] = "ARP 8BIT";
 }
 
 /* ------------------------------------------------ v2: saved End B, WILD, PITCH, ARP --- */
@@ -1375,9 +1487,9 @@ static void test_rules(void)
     mrc = 0;
     check("SMART matrix: no route added, removed or re-assigned (SRC, DST kept; empty slots stay empty), AMT rolls; WILD still changes routes",
           ok_mx && amt_moved > 300 && wild_mx > 100);
-    /* 4. the ducker: off stays off in SMART (WILD may switch it on); on: SMART rolls DEPTH / times; SRC NOTE RATE CURVE never roll */
+    /* 4. the ducker: off stays off in SMART (WILD may switch it on); on: SMART rolls DEPTH only; SRC NOTE RATE CURVE never roll */
     {
-        uint32_t off_ok = 1, wild_on = 0, on_moved = 0, src_ok = 1;
+        uint32_t off_ok = 1, wild_on = 0, on_moved = 0, src_ok = 1, fixed_ok = 1, wild_times = 0;
         fresh(ea, 0);
         t->p[P_DKDEP] = 0;
         orig8(t, o);
@@ -1396,12 +1508,17 @@ static void test_rules(void)
         for (seed = 1; seed <= 100u; seed++) {
             mrc = 0;
             morph_roll_pure(o, end, &ENG_ANALOG, 20, seed, 0, 0);
-            on_moved += end[P_DKDEP] != 40 || end[P_DKRLS] != o[P_DKRLS];
+            on_moved += end[P_DKDEP] != 40;
+            fixed_ok &= end[P_DKATK] == o[P_DKATK] && end[P_DKRLS] == o[P_DKRLS] && end[P_DKTHR] == o[P_DKTHR] && end[P_DKHLD] == o[P_DKHLD];
+            mrc = MC_WILD;
+            morph_roll_pure(o, end, &ENG_ANALOG, 60, seed, 0, 0);
+            wild_times += end[P_DKATK] != o[P_DKATK] || end[P_DKRLS] != o[P_DKRLS] || end[P_DKTHR] != o[P_DKTHR];
+            mrc = 0;
             src_ok &= end[P_DKSRC] == o[P_DKSRC] && end[P_DKNOTE] == o[P_DKNOTE] && end[P_DKRATE] == o[P_DKRATE];
         }
         mrc = 0;
-        check("DUCK: off stays off in SMART (WILD may switch it on); on: SMART rolls DEPTH / times; SRC NOTE RATE CURVE never roll (WILD too)",
-              off_ok && wild_on && on_moved > 50 && src_ok);
+        check("DUCK: off stays off in SMART (WILD may switch it on); on: SMART rolls DEPTH only (ATK, RLS, THR, HOLD never move, 100 rolls), WILD rolls the times; SRC NOTE RATE CURVE never roll (WILD too)",
+              off_ok && wild_on && on_moved > 50 && fixed_ok && wild_times > 50 && src_ok);
     }
     (void)dist_fix;
 }
@@ -1422,6 +1539,7 @@ int main(void)
     test_reach();
     test_v2();
     test_rules();
+    test_wake();
     printf("%s\n", bad ? "MORPH TEST FAILED" : "morph test passed");
     return bad != 0;
 }

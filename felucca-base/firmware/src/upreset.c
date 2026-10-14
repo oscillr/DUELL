@@ -42,7 +42,8 @@
  * drum_from_phys); flash keeps the old record until its bank is written again,
  * which stores the new one. No version bump: today's PHYS has no MODEL 4, so
  * such a record cannot be anything else, and older firmware keeps reading the bank.
- * A record of SAMPLE SET 4 (PERC, the GM kit, retired after 1.0.2) is migrated the same way to the DRUM engine
+ * A record of SAMPLE SET 4 (PERC, the GM kit, retired after 1.0.2; the SAMPLE engine itself is retired since DUELL 0.2.9: any other
+ * SAMPLE, GRAIN or SLICE record stays as stored and loads onto the silent placeholder, engines.c ENG_RETIRED) is migrated the same way to the DRUM engine
  * with its default kit (core.h drum_from_perc: its E values the kit's, the rest of the sound and its pattern as
  * stored; the GM notes play the same drums).
  * Version 3 (UP_VER_GRID, since the DRUM grid) is the same record with a drum grid as its pattern: note[i] is
@@ -168,13 +169,15 @@ static void up_migrate(up_rec_t *r)
 
 static void up_pat_norm(uint8_t *note, uint8_t *flags);
 
-/* the sparse store's default of parameter id for engine eng: params.c's, except the two LFO TRIGs. DUELL 0.2.2 made FREE
+/* the sparse store's default of parameter id for engine eng: params.c's, except the two LFO TRIGs and the DUCK's CURVE (LIN, EXP since 0.2.5, same reason). DUELL 0.2.2 made FREE
  * their default (params.c), but a record leaves out what equals the default, and every record stored before left NOTE out:
  * so the store keeps NOTE (0) as its own default for them, an old patch still loads as NOTE and a new FREE one stores its
  * pair (2 bytes each; PT_WORST counts every parameter off its default anyway) */
 static int32_t up_def(uint32_t eng, uint32_t id)
 {
-    return id == P_LTRIG || id == P_L2TRIG ? 0 : param_desc_of(eng, id)->def;
+    return id == P_LTRIG || id == P_L2TRIG || id == P_DKCRV || id == P_FREEA || id == P_FREED ? 0 : param_desc_of(eng, id)->def;   /* (P_DKCRV: DUELL 0.2.5 made EXP its default; an older record left LIN out.
+                                                         * The multimode filter's CUT and SLOPE (0.2.9): a record of before left 0.2.2's CUT 0 (OFF) out and has no
+                                                         * SLOPE; one of today always stores SLOPE (1 or 2, never 0) and so says which CUT it holds: core.h uf_legacy) */
 }
 
 /* the record's values in today's P_* order (mapped by count, see above); def = the defaults */
@@ -296,6 +299,7 @@ static void up_values(const up_rec_t *r, int16_t *v)   /* mapped and clamped for
         params_retire(v, tdef);
     if (r->ver == 1u && ENGINES[r->engine] == &ENG_PHYS)   /* (before 1.0: MODEL 2 was DUST) */
         phys_legacy(&v[P_E0]);
+    uf_legacy(v, ENGINES[r->engine % NENGINES]->ufilt == 2u);                                       /* (a record of before 0.2.9: 0.2.2's CUT as today's CUT + MODE) */
     for (i = 0; i < P_COUNT; i++)
         v[i] = (int16_t)param_fit(param_desc_of(r->engine, i), v[i]);   /* (a retired KIT: the kit it plays) */
 }

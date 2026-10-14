@@ -46,7 +46,7 @@ On Linux x86-64 the toolchain runs natively and Docker is not needed.
 The version comes from the `VERSION` file at the DUELL root (`0.MINOR.BUILD`, shown as "DUELL 0.2.1 beta").
 Every build writes `build/duell-<VERSION>-beta.fwsc` (identity `FM-1_901`), `build/duell-latest.fwsc` and
 `build/duell-version.json`. `./build.sh --release` also makes `build/release-<VERSION>-beta/`, which holds what a
-release ships: the package, the app (`duell-<VERSION>-beta-app.bin`), `SHA256SUMS`, the sample attribution, `LICENSE`, `LICENSING.md` and
+release ships: the package, the app (`duell-<VERSION>-beta-app.bin`), `SHA256SUMS`, `LICENSE`, `LICENSING.md` and
 `LICENSES/` (the package contains Apache-2.0 SDK files, so the licence texts travel with it).
 
 Build options (environment, `0` or `1`; defaults in `firmware/src/felucca.c`, `core.h` and `icons.c`):
@@ -60,7 +60,6 @@ Build options (environment, `0` or `1`; defaults in `firmware/src/felucca.c`, `c
 | `FELUCCA_UAC` | 1 | USB audio input (the master output, stereo, 44.1 or 48 kHz) |
 | `FELUCCA_UAC_48K` | 1 | `0`: the USB audio input at 44.1 kHz only, as up to 1.0.5.2 (`firmware/src/usb.c`) |
 | `FELUCCA_UART` | 1 | TRS MIDI IN |
-| `FELUCCA_SLICE` | 1 | the SLICE engine |
 | `FELUCCA_ICONS` | 1 | parameter icons on the knob cards |
 | `FELUCCA_FM4` | 0 | the retired DIGITAL engine (4-operator FM) instead of its FM6 conversion |
 
@@ -69,11 +68,9 @@ Build options (environment, `0` or `1`; defaults in `firmware/src/felucca.c`, `c
 
 ## Samples
 
-The CC0 instrument samples that the SAMPLE engine uses are in `assets/samples-cc0/`
-(Versilian Studios, see `ATTRIBUTION.txt` there). `tools/fetch_cc0.py` downloads them
-again from the source repositories. Without that folder the build still works, with no
-instrument sets in the SAMPLE engine and no PIANO in SLICE (the PIANO set's middle C): they play a plain sine
-at the note's pitch instead, and the screen says NO SAMPLE.
+None (DUELL 0.2.9): the SAMPLE, GRAIN and SLICE engines are removed, and with them the built-in sample sets, their CC0
+source files and their tools (`gen_samples.py`, `fetch_cc0.py`, `fm1_sample_upload.py`). A stored sound of a removed engine
+plays silent and the screen says NO ENGINE.
 
 ## Browser emulator
 
@@ -86,7 +83,7 @@ python3 -m http.server -d build/emu 8790     # open http://localhost:8790/
 `web/emu/felucca_web.c` builds the firmware's sources as the host tests do, against a simulated FM-1, and
 Emscripten compiles it to WebAssembly (`build/emu/felucca.wasm`, with `index.html`, `worklet.js` and the font in `fonts/`). The page
 keeps the flash's storage sectors (projects, user presets, settings) in the browser. Not emulated: USB (audio,
-MIDI out, the editor, updates), TRS MIDI and the user sample slots. A build of it is on the site:
+MIDI out, the editor, updates) and TRS MIDI. A build of it is on the site:
 <https://hugelton.github.io/Felucca/webapp/try/>.
 
 ## Tests
@@ -100,7 +97,7 @@ Runs the host tests and, with Node.js, the web page tests (and, with Emscripten 
 user presets, projects of every format, backup, the keys and knobs, MIDI (USB, TRS, clock,
 control), USB audio, the update entry and loader, the command-line installer, the UI (the real
 drawing code against stubs: every screen in every palette is rendered and checked for clipped or
-overlapping text; PNGs land in `build/ui_new/`), every engine (DRUM, NOISE, PHYS, FM6, SLICE, the
+overlapping text; PNGs land in `build/ui_new/`), every engine (DRUM, NOISE, PHYS, FM6, the
 DIGITAL conversion), the chord keys, the modulation matrix, the FX layer, the reverbs, the SLICER
 and swing. With `DAISYSP` pointing at a DaisySP checkout, the PHYS models are also compared with
 their floating-point originals; without it that test is skipped.

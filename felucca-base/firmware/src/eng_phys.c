@@ -250,5 +250,5 @@ static const engine_t ENG_PHYS = {
     .poly = PHYS_POLY,
     .desc = phys_desc,
     .mem = sizeof(phys_slot_t) * PHYS_POLY,
-    .ufilt = 1,                 /* DUELL 0.2.2: no filter of its own: the universal filter (voice.c uf_run, P_FREEA CUT / P_FREEB RES) */
+    .ufilt = 1,                 /* no filter of its own: the multimode filter (DUELL 0.2.9; voice.c uf_run: CUT RES MODE SLOPE, P_FREEA..D) */
 };

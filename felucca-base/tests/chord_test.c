@@ -353,12 +353,10 @@ static int kits(void)
     bad += check("  MIDI IN on the DRUM track: one hit, no chord kept", !mchord[0].id);
     midi(0x83, 38, 0);
     song.sel = 0;
-    trk[0].eng_req = trk[0].engine = ENGI_SAMPLE;                   /* SAMPLE: no set is a kit (PERC, retired, */
-    trk[0].p[P_CHRD] = CH_DIA3;                                     /* loads as DRUM; its SET 4 is a PIANO alias) */
+    trk[0].eng_req = trk[0].engine = ENGI_SAMPLE;                   /* a retired engine (SAMPLE, DUELL 0.2.9): no kit, */
+    trk[0].p[P_CHRD] = CH_DIA3;                                     /* chords as any part (silent) */
     trk[0].p[P_E0] = SMP_SET_PERC;
-    bad += check("SAMPLE SET 4 (once PERC): chords, no kit", !chord_kit(&trk[0]) && chord_build(&trk[0], 60, out) == 3u);
-    trk[0].p[P_E0] = 0;
-    bad += check("SAMPLE with a melodic set: chords", !chord_kit(&trk[0]) && chord_build(&trk[0], 60, out) == 3u);
+    bad += check("a retired engine (SAMPLE, once SET 4 PERC): chords, no kit", !chord_kit(&trk[0]) && chord_build(&trk[0], 60, out) == 3u);
     return bad;
 }
 
@@ -568,9 +566,65 @@ static int global_scale(void)
     return bad;
 }
 
+/* 0.2.9: a stored step follows the global scale at playback (seq_step), the chord keys under the arp follow it too (arp_rechord) */
+static int snap_follow(void)
+{
+    int bad = 0;
+    track_t *t = &trk[0], *d = &trk[3];
+    uint32_t i, list[16], cnt, n;
+    reset();
+    for (i = 0; i < NSTEP; i++) { t->step[i] = d->step[i] = (step_t){{0}, 0, ST_REST, 0, 0}; }
+    t->step[0] = d->step[0] = (step_t){{61}, 1, ST_NOTE, 0, 100};
+    t->p[P_SLEN] = d->p[P_SLEN] = 4;
+    scale_g = 1; root_g = 0; offscale_g = OS_SNAP;
+    trk_all_off(t); seq_step(t, &t->step[0], 0, div_samples(2), SEQ_ROLLED);
+    bad += check("step 61, C major SNAP: sounds C (60), the stored note stays 61", t->seq_n == 1u && t->seq_notes[0] == 60 && gate_note(t, 60) && t->step[0].note[0] == 61);
+    scale_g = 1; root_g = 2;
+    trk_all_off(t); seq_step(t, &t->step[0], 0, div_samples(2), SEQ_ROLLED);
+    bad += check("  ROOT D (D major has C#): the same step now sounds 61", t->seq_notes[0] == 61 && gate_note(t, 61));
+    scale_g = 2; root_g = 0;
+    trk_all_off(t); seq_step(t, &t->step[0], 0, div_samples(2), SEQ_ROLLED);
+    bad += check("  C minor: 60 again (a tie goes down)", t->seq_notes[0] == 60);
+    scale_g = 0;
+    trk_all_off(t); seq_step(t, &t->step[0], 0, div_samples(2), SEQ_ROLLED);
+    bad += check("  CHROMATIC: 61 as stored", t->seq_notes[0] == 61);
+    scale_g = 1; root_g = 0; offscale_g = OS_PLAY;
+    trk_all_off(t); seq_step(t, &t->step[0], 0, div_samples(2), SEQ_ROLLED);
+    bad += check("  OFF-SCALE PLAY: 61 passes unchanged", t->seq_notes[0] == 61);
+    offscale_g = OS_SNAP;
+    d->eng_req = d->engine = ENGI_DRUM;
+    trk_all_off(d); seq_step(d, &d->step[0], 0, div_samples(2), SEQ_ROLLED);
+    bad += check("  the DRUM kit is not snapped (61 stays 61)", chord_kit(d) && d->seq_n == 1u && d->seq_notes[0] == 61);
+    /* chord keys under the arp: C major -> C minor with DIA3 on D4 gives D F Ab */
+    reset();
+    scale_g = 1; root_g = 0; offscale_g = OS_SNAP; scale_last = scale_pack();
+    t->p[P_CHRD] = CH_DIA3; t->p[P_AMODE] = AM_UP; t->p[P_AOCT] = 1;
+    key_down(K_D4);
+    t->arp_idx = 5; t->arp_pos = 77; t->arp_ph = 1;
+    n = arp_list(t, list, &cnt);
+    bad += check("arp, C major DIA3 on D4: D F A", n == 3u && list[0] == 62 && list[1] == 65 && list[2] == 69);
+    scale_g = 2; scale_sync(); keyboard_block();
+    n = arp_list(t, list, &cnt);
+    bad += check("  scale to C minor while held: the arp list is D F Ab", n == 3u && list[0] == 62 && list[1] == 65 && list[2] == 68);
+    bad += check("  the phrase goes on (arp_idx, arp_pos, arp_ph kept), nothing retriggered, held[] as pressed",
+                 t->arp_idx == 5u && t->arp_pos == 77u && t->arp_ph == 1u && t->nheld == 3u && t->held[2] == 69 && ngated(t) == 0u);
+    key_up(K_D4);
+    bad += check("  the key up ends it cleanly", !t->nheld && !t->arp_phys && !ngated(t));
+    t->p[P_CHRD] = CH_OFF;
+    scale_g = 1; scale_sync(); keyboard_block();
+    key_down(K_C4 + 1u);                                            /* a plain key: C# snaps to C */
+    scale_g = 1; root_g = 2; scale_sync(); keyboard_block();
+    n = arp_list(t, list, &cnt);
+    bad += check("  a plain held key still follows (C# : C in C major, C# in D major), held[] unchanged", n == 1u && list[0] == 61 && t->held[0] == 60);
+    key_up(K_C4 + 1u);
+    t->p[P_AMODE] = 0; trk_all_off(t); t->nheld = 0;
+    scale_g = 0; root_g = 0; scale_sync(); keyboard_block();
+    return bad;
+}
+
 int main(void)
 {
-    int bad = global_scale() + theory() + shapes_voicings() + keys() + arp_rec() + arp_seq_mode() + midi_in() + kits();
+    int bad = global_scale() + theory() + shapes_voicings() + keys() + arp_rec() + arp_seq_mode() + midi_in() + kits() + snap_follow();
     printf("%s\n", bad ? "CHORD TEST FAILED" : "chord keys test passed");
     return bad != 0;
 }

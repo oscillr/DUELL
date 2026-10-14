@@ -392,4 +392,5 @@ static const engine_t ENG_TRIO = {
     .render = trio_render,
     .knob = {P_E5, P_E6, P_E7, P_E1},
     .atgt = ATG_TRIO,            /* ARP TARGET: OSC1..OSC3 (SPEC 2.3) */
+    .ufilt = 2,                  /* its own filter stays; the multimode filter (the FILTER page, ids 45..48) runs in series after it (DUELL 0.2.9, voice.c) */
 };
