@@ -9,14 +9,16 @@
  *        buffers), section .pool. The same SRAM: the RAM / POOL boundary only splits the budget (1.5: 96 / 336
  *        KiB -> 72 / 360 KiB); tools/build.py reads both lengths from here
  * STACKS with 256-byte guard bands; NOINIT survives resets and UBOOT entry.
- * 0x01C7FD50.. is reserved: boot_info, boot-state mailbox, vector table. */
+ * 0x01C7FD4C.. is reserved: boot_info (52 B, the SDK's linker.ld: 0x1c7fe00 - 128 - 52), boot-state mailbox (0x01C7FD80), vector table
+ * (DUELL bench branch, 2026-10-14: NOINIT ended at 0x01C7FD50, 4 bytes into boot_info on paper; nothing lay there: .noinit is 0xCC
+ * bytes at 0x01C7C000 (felucca.elf, 0.2.12). Now it ends where boot_info starts; the image is the same) */
 MEMORY
 {
     XIP    (rx)  : ORIGIN = 0x02000120, LENGTH = 0x8DFBC
     RAMTEXT (rwx): ORIGIN = 0x01C00000, LENGTH = 0x6000
     RAM    (rwx) : ORIGIN = 0x01C08000, LENGTH = 72K
     POOL   (rw)  : ORIGIN = 0x01C1A000, LENGTH = 0x5A000
-    NOINIT (rw)  : ORIGIN = 0x01C7C000, LENGTH = 0x3D50
+    NOINIT (rw)  : ORIGIN = 0x01C7C000, LENGTH = 0x3D4C
 }
 SECTIONS
 {

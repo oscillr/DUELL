@@ -134,8 +134,8 @@ check("EDIT held: its button breathes, no key lit (they play; 0.2.11: no INIT ke
 }
 
 // ---- a patch saved over from the panel, kept across a fresh instance
-// (DUELL: SAVE held 0.7 s asks "SAVE OVER <name>?", OCT+ confirms; saving over a factory sound writes a user copy that
-// shadows it into the PATCH store, 128 places: web_test_user_preset(i) says whether place i is stored)
+// (DUELL 0.2.17: SAVE held 0.7 s asks "OVERWRITE #NN <name>?", OCT+ confirms; the 128 slots hold the factory sounds until one is saved over:
+// web_test_user_preset(i) says whether slot i holds a saved record)
 const stored = (d) => { let n = 0; for (let i = 0; i < 128; i++) n += d.ex.web_test_user_preset(i); return n; };
 const w0 = a.ex.web_flash_writes_count(), n0 = stored(a);
 a.ex.web_buttons(1 << B.SAVE);

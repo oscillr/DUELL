@@ -28,7 +28,6 @@ static int32_t lfo_wave_of(int32_t wave, uint32_t rnd, uint32_t ph)
         return osc_sine(ph);
     }
 }
-static int32_t lfo_wave(track_t *t, uint32_t ph) { return lfo_wave_of(t->p[P_LWAVE], t->lfo_rnd, ph); }   /* LFO 1 */
 
 /* the S&H value of a new LFO cycle. Parts 1..3 draw it from the shared generator (rng); part 4 has its
  * own xorshift, so the shared sequence, which also seeds the engines' noise (PHYS, VOICE, ..), does not
@@ -123,7 +122,7 @@ static void track_lfo_tick(track_t *t) { lfo_tick(t, &t->lfo1, P_LRATE, P_LSYNC,
 static uint8_t vcap[NTRK];                              /* the cap of each part, 0: none yet (all of the engine's) */
 static const struct { const engine_t *e; uint8_t c; } VCOST[] = {   /* (tests/cpu_scenarios_test.c CPU_SCEN=P: the heaviest sound, its voices) */
     {&ENG_ANALOG, 51}, {&ENG_FM6, 61}, {&ENG_PHASE, 40}, {&ENG_LOFI, 24}, {&ENG_FORMANT, 60}, {&ENG_TRIO, 44}, {&ENG_WHEEL, 59},
-    {&ENG_PHYS, 144}, {&ENG_NOISE, 47}, {&ENG_WAVE, 52},   /* (FM6: 6 voices, PHYS 3, VOICE 4; WAVE: #50 DIGITAL PAD less its 12 dB filter) */
+    {&ENG_PHYS, 144}, {&ENG_NOISE, 47}, {&ENG_WAVE, 52},   /* (FM6: 6 voices, PHYS 3, VOICE 4; WAVE: #60 DIGITAL PAD less its 12 dB filter) */
 };
 /* voices the engine may use (POLY and UNISON): its cap, else all of them; DUELL 0.2.11: and the part's VOICE CAP */
 static uint32_t trk_nvoice_eng(const track_t *t)
@@ -218,10 +217,10 @@ static void vcap_poll(void)                             /* main loop, every fram
         vcap[p] = (uint8_t)cap[p];
 }
 
-/* the part's voice mode: P_VOICE, POLY for an engine of hits (engine_t.oneshot: DRUM) */
+/* the part's voice mode: P_VOICE */
 static uint32_t trk_vmode(const track_t *t)
 {
-    return ENGINES[t->engine]->oneshot ? V_POLY : (uint32_t)t->p[P_VOICE];
+    return (uint32_t)t->p[P_VOICE];
 }
 
 /* ------------------------------------------------- the shared voice budget --- */
@@ -308,7 +307,7 @@ static voice_t *voice_reuse(track_t *t, voice_t *v)
     return v;
 }
 
-/* POLY allocation (within the engine's voice cap). DRUM: reuse its lane; other engines: the same note.
+/* POLY allocation (within the engine's voice cap): the same note again reuses its voice.
  * Else a free voice: ROTATE takes
  * the next one round-robin (release tails ring out), REUSE (or any GLIDE) takes
  * the free voice whose last pitch is closest, so poly portamento moves each
@@ -320,11 +319,6 @@ static voice_t *voice_alloc(track_t *t, uint32_t note)
 {
     uint32_t i, np = trk_nvoice(t), best = np, low = np, nfree = 0;
     int32_t bd = 0x7FFFFFFF;
-    if (t->engine == ENGI_DRUM) {
-        voice_t *v = drum_reuse(t, note);
-        if (v)
-            return voice_reuse(t, v);
-    }
     for (i = 0; i < np; i++) {
         if (t->v[i].active && t->v[i].note == note)
             return voice_reuse(t, &t->v[i]);
@@ -538,7 +532,7 @@ static void trk_note_on_x(track_t *t, uint32_t note, uint32_t vel)
         t->nmono = 0;                                   /* no stale mono stack after a mode change */
         t->mono_note = 0;
         v->fine = 0;
-        voice_start(t, v, note, vel, t->p[P_GLIDE] != 0 && !ENGINES[t->engine]->oneshot);
+        voice_start(t, v, note, vel, t->p[P_GLIDE] != 0);
         return;
     }
     {
@@ -835,9 +829,8 @@ static __attribute__((noinline)) void atg_voice(const track_t *t, voice_t *v, vm
  * The EFFECTIVE cut = CUT + every cutoff route (ENV 1 / ENV 2 / LFO 1 / LFO 2 FLT, the matrix's CUT; 1/256 dial steps, 63 steps = the
  * whole of an old dial: their depths as in 0.2.2), per voice and block, clamped to 0..UF_STEPS; the accent's opening does not apply.
  * BYPASS: MODE LP with the effective cut at the open end (RES and SLOPE do not matter there): the voice renders straight into the
- * part's buffer (no work, bit for bit as without a filter): the defaults, so every sound of before plays as it did. A store of before
- * converts at its load (core.h uf_legacy): its low-pass has the same cutoff here exactly (the same formula: table index 40 + 396 x
- * step, Q8), its high-pass MODE HP 0.16 of a table step higher.
+ * part's buffer (no work, bit for bit as without a filter): the defaults, so every sound of before plays as it did. (A store of before 0.2.9, with 0.2.2's
+ * bipolar CUT, was converted at its load into this one until DUELL 0.2.14; it is no longer read.)
  * KILL ZONES: within the last 4 dial steps at an end the output's share that the end closes fades to 0 (the low-pass and band-pass
  * shares to 30 Hz, the high-pass and band-pass ones to 16 kHz), so a filter fully closed is silent. The weights are worked out per
  * block (Q10) and ramp over it from the last block's (a MODE turn, a route through a kill zone: no click).
@@ -958,9 +951,7 @@ static uint32_t track_render(track_t *t, int32_t *out, uint32_t n)
     uint32_t ti = (uint32_t)(t - trk);
     if (ti >= NLIVE)                                   /* DUELL: a hidden part never renders (no engine memory) */
         return 0;
-    if (ENGINES[eng_idx(t->eng_req)] == &ENG_DRUM) {
-        midi_bend_q8[ti] = midi_bend_target[ti] = 0;
-    } else {
+    {
         int32_t d = midi_bend_target[ti] - midi_bend_q8[ti];
         /* ~6 ms smoothing, with an exact landing (no permanent small offset). */
         midi_bend_q8[ti] += d > 0 ? (d < 4 ? d : (d + 3) / 4) : (d > -4 ? d : (d - 3) / 4);

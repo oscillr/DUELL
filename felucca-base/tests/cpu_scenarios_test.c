@@ -7,9 +7,10 @@
  * ones, M01..M04 before 0.2.13), M14, M15 at fader 0 / 63 / 127 (4 + 4 notes and 8 on part 1), with
  * guards on the fader in the middle (SMART's wake rule, morph.c morph_wake_half: the morph must not creep back up); C, the VOICE CAP
  * (voice.c vcap: the caps of heavy pairs and the factory multis, measured with and without, never below 4, new notes only).
- * CPU_SCEN=letters for more: N the other factory multis (M02, M07..M10) as Q (no guard), P the cap's per-voice table, E engine pairs x SMART / WILD rolls, M what a factory End B moves, X the
+ * CPU_SCEN=letters for more: I the INSERT types incl. TAPE, VINYL (0.2.14), N the other factory multis (M02, M07..M10) as Q (no guard), P the cap's per-voice table, E engine pairs x SMART / WILD rolls, M what a factory End B moves, X the
  * stages a small move wakes, W WAVE incl. the kitchen sink, K the faded choices of M04 (WIRED SNAIL) / M14 / M15, F bursts (retrigger, 64 MIDI
- * events, 63 CC74) */
+ * events, 63 CC74), L (0.2.14) PERFORM's K3 FILTER steady and turned, on one scene. Y (0.2.14, default): a flat part EQ (gains 0) is not run:
+ * the output bit for bit and the cost as with none, and what an EQ on costs */
 #define UI_TEST_NO_MAIN 1
 #define FELUCCA_FLASH 1
 #define _FORTIFY_SOURCE 0
@@ -17,6 +18,8 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
+#include <sys/wait.h>
+#include <unistd.h>
 #ifdef __APPLE__
 #include <libproc.h>
 #include <sys/resource.h>
@@ -47,8 +50,19 @@ static uint64_t instr_now(void)
     return 0;
 }
 static int32_t ob[2 * CTL];
-static uint64_t blk(void) { uint64_t i0 = instr_now(); mix_block(ob, CTL); return instr_now() - i0 - ovh; }
+static uint64_t g_hash;                          /* (Y: the output, hashed outside the count) */
+static uint64_t blk(void)
+{
+    uint64_t i0 = instr_now(), c;
+    uint32_t i;
+    mix_block(ob, CTL);
+    c = instr_now() - i0 - ovh;
+    for (i = 0; i < 2u * CTL; i++)
+        g_hash = g_hash * 1000003u + (uint32_t)ob[i];
+    return c;
+}
 static uint64_t half(uint64_t *mb) { uint64_t s = 0, c, m = 0; uint32_t b; for (b = 0; b < HALF_FRAMES / CTL; b++) { c = blk(); s += c; if (c > m) m = c; } if (mb) *mb = m; return s; }
+static uint32_t g_mods;                           /* DUELL 0.2.14 GLO > MODULES switched OFF for a run (core.h MODS_*; section O) */
 static void power(void)
 {
     uint32_t k;
@@ -58,6 +72,8 @@ static void power(void)
     flash_ok = 1;
     multi_boot();
     frame();
+    if (g_mods)
+        mods_put(g_mods, 1u);                     /* (their fades run out in each run's settle) */
 }
 static uint32_t eng_named(const char *n) { uint32_t e; for (e = 0; e < NENGINES; e++) if (str_eq(ENGINES[e]->name, n)) return e; return 99; }
 static void load_patch(track_t *t, uint32_t e, uint32_t k)
@@ -82,7 +98,9 @@ typedef struct {
     int space;                    /* PERFORM SPACE value */
     int morph;                    /* 0 none, 1 both ends rolled, fader mid (SMART, AMOUNT 100), 2 WILD */
     int vmode;                    /* P_VOICE override (-1 none) */
+    int filt;                     /* PERFORM K3 FILTER value (0.2.14: section L) */
 } scn_t;
+static const int *g_ins_abc;                  /* the INSERT's A B C for the scenario (0: as loaded) */
 static void setpart(track_t *t, int e, int k, const scn_t *s)
 {
     if (e < 0) return;
@@ -96,17 +114,20 @@ static void setpart(track_t *t, int e, int k, const scn_t *s)
         t->p[P_FREED] = s->uf == 2 ? 1 : 2;
     }
     if (s->sends) { t->p[P_CHOR] = 60; t->p[P_DLY] = 60; t->p[P_REV] = 80; }
-    if (s->ins) { t->p[P_ITYPE] = (int16_t)s->ins; t->p[P_IMIX] = 127; }
+    if (s->ins) { t->p[P_ITYPE] = (int16_t)s->ins; t->p[P_IMIX] = 127; if (g_ins_abc) { t->p[P_IA] = (int16_t)g_ins_abc[0]; t->p[P_IB] = (int16_t)g_ins_abc[1]; t->p[P_IC] = (int16_t)g_ins_abc[2]; } }
     if (s->eq) { t->p[P_EQLG] = 5; t->p[P_EQLF] = -4; t->p[P_EQMG] = -4; t->p[P_EQMF] = 5; t->p[P_EQMQ] = 3; t->p[P_EQHG] = 6; t->p[P_EQHF] = 2; }
+    if (s->eq == 2) t->p[P_EQLG] = t->p[P_EQMG] = t->p[P_EQHG] = 0;   /* (Y: flat, its other four values moved) */
     if (s->duck) { t->p[P_DKDEP] = 90; t->p[P_DKATK] = 20; t->p[P_DKRLS] = 70; t->p[P_DKSRC] = 0; }
 }
 static double last_peak, last_blk;
-static int g_amt = 100, g_fader = 64, g_x = 0;
+static int g_amt = 100, g_fader = 64, g_x = 0, g_sweep = 0, g_master = 0;   /* (g_master: MASTER, Q12, 0 = as the test leaves it: silent) */
 static double run(const scn_t *s)
 {
     uint32_t i, n;
     uint64_t sum = 0, pk = 0, mb, h, bm = 0;
     power();
+    if (g_master)
+        song.master_q12 = (uint16_t)g_master;
     duell_mode_force((uint32_t)s->mode);
     setpart(&trk[0], s->e1, s->k1, s);
     setpart(&trk[1], s->e2, s->k2, s);
@@ -119,10 +140,11 @@ static double run(const scn_t *s)
         if (g_x & 16) { t->p[P_LD_AMP] = 8; t->p[P_LD_SHP] = 2; }
     }
     if (s->rtype >= 0) song.g[G_RTYPE] = (int16_t)s->rtype;
-    if (s->pingmod) { song.g[G_PINGPONG] = 1; song.g[G_DMDEP] = 60; song.g[G_DMRATE] = 40; }
+    if (s->pingmod) { song.g[G_DMODE] = DMD_PING; song.g[G_DMDEP] = 60; song.g[G_DMRATE] = 40; }
     for (i = 0; i < 40; i++) { half(0); while (wave_service()) ; }   /* engine switch fades, the mode, WAVE tables built */
 
     perf_space = (int8_t)s->space;
+    perf_filt = (int8_t)s->filt;
     if (s->perf == 1) { perf_press(PF_R16, 1); perf_press(PF_FLG, 1); perf_press(PF_PHS, 1); perf_press(PF_DRV, 1); perf_press(PF_PUMP, 1); }
     if (s->perf == 2) perf_press(PF_OUP, 1);
     if (s->perf == 3) perf_press(PF_FRZ, 1);
@@ -138,7 +160,12 @@ static double run(const scn_t *s)
     for (i = 0; s->e1 >= 0 && i < (uint32_t)s->n1; i++) trk_note_on(&trk[0], N8[i], 110);
     for (i = 0; s->e2 >= 0 && i < (uint32_t)s->n2; i++) trk_note_on(&trk[1], (uint8_t)(N8[i] + 7), 110);
     for (i = 0; i < 120; i++) { half(0); while (wave_service()) ; }          /* settle: attacks, ramps, the morph's ramp */
-    for (n = 0; n < 160; n++) { h = half(&mb); sum += h; if (h > pk) pk = h; if (mb > bm) bm = mb; }
+    for (n = 0; n < 160; n++) {
+        if (g_sweep)                              /* (L: K3 turned all the time, a detent a half, between g_sweep and the middle's side) */
+            perf_filt = (int8_t)(g_sweep + (g_sweep < 0 ? 1 : -1) * (int)(n % 40u < 20u ? n % 40u : 40u - n % 40u));
+        h = half(&mb); sum += h; if (h > pk) pk = h; if (mb > bm) bm = mb;
+    }
+    perf_filt = 0;
     last_peak = pk * 100.0 / HB;
     last_blk = bm * 4 * 100.0 / HB;
     return sum / 160.0 * 100.0 / HB;
@@ -216,6 +243,8 @@ static void cap_scene(const scn_t *s)
 {
     uint32_t i;
     power();
+    if (g_master)
+        song.master_q12 = (uint16_t)g_master;
     duell_mode_force((uint32_t)s->mode);
     setpart(&trk[0], s->e1, s->k1, s);
     setpart(&trk[1], s->e2, s->k2, s);
@@ -253,15 +282,15 @@ static double cap_run(const scn_t *s, int capped, uint32_t *c, double *pred)
 static void cap_tests(void)
 {
     static const struct { const char *what, *e1, *s1, *e2, *s2; int uf, mode; } CS[] = {
-        {"#50 DIGITAL PAD (WAVE) 24 dB HP + #01 SQUELCH (ANALOG), STEREO", "WAVE", "DIGITAL PAD", "ANALOG", "SQUELCH", 1, DM_STEREO},
-        {"#50 DIGITAL PAD (WAVE) as stored (12 dB) + #01 SQUELCH, STEREO", "WAVE", "DIGITAL PAD", "ANALOG", "SQUELCH", 0, DM_STEREO},
-        {"#50 DIGITAL PAD (WAVE) 24 dB HP + #01 SQUELCH, LAYER (4 + 4)", "WAVE", "DIGITAL PAD", "ANALOG", "SQUELCH", 1, DM_LAYER},
-        {"#38 GLASS HALL (FM6) + #50 DIGITAL PAD (WAVE), 24 dB HP both", "FM6", "GLASS HALL", "WAVE", "DIGITAL PAD", 1, DM_SPLIT},
-        {"#38 GLASS HALL (FM6) + #50 DIGITAL PAD (WAVE), 24 dB LP both", "FM6", "GLASS HALL", "WAVE", "DIGITAL PAD", 3, DM_SPLIT},
-        {"#38 GLASS HALL (FM6) + #50 DIGITAL PAD (WAVE) as stored", "FM6", "GLASS HALL", "WAVE", "DIGITAL PAD", 0, DM_SPLIT},
-        {"#96 LESLIE STORM (WHEEL) 24 dB HP + #29 PAN WHISTLE (PHYS)", "WHEEL", "LESLIE STORM", "PHYS", "PAN WHISTLE", 1, DM_SPLIT},
-        {"#103 GLASS SHARDS (ANALOG) 24 dB HP + #43 CHIP CHAPEL (TRIO)", "ANALOG", "GLASS SHARDS", "TRIO", "CHIP CHAPEL", 1, DM_SPLIT},
-        {"#09 CARTRIDGE (LOFI) 24 dB HP + #59 WIRE HARP (PHASE)", "LOFI", "CARTRIDGE", "PHASE", "WIRE HARP", 1, DM_SPLIT},
+        {"#60 DIGITAL PAD (WAVE) 24 dB HP + #5 SQUELCH (ANALOG), STEREO", "WAVE", "DIGITAL PAD", "ANALOG", "SQUELCH", 1, DM_STEREO},
+        {"#60 DIGITAL PAD (WAVE) as stored (12 dB) + #5 SQUELCH, STEREO", "WAVE", "DIGITAL PAD", "ANALOG", "SQUELCH", 0, DM_STEREO},
+        {"#60 DIGITAL PAD (WAVE) 24 dB HP + #5 SQUELCH, LAYER (4 + 4)", "WAVE", "DIGITAL PAD", "ANALOG", "SQUELCH", 1, DM_LAYER},
+        {"#47 GLASS HALL (FM6) + #60 DIGITAL PAD (WAVE), 24 dB HP both", "FM6", "GLASS HALL", "WAVE", "DIGITAL PAD", 1, DM_SPLIT},
+        {"#47 GLASS HALL (FM6) + #60 DIGITAL PAD (WAVE), 24 dB LP both", "FM6", "GLASS HALL", "WAVE", "DIGITAL PAD", 3, DM_SPLIT},
+        {"#47 GLASS HALL (FM6) + #60 DIGITAL PAD (WAVE) as stored", "FM6", "GLASS HALL", "WAVE", "DIGITAL PAD", 0, DM_SPLIT},
+        {"#109 LESLIE STORM (WHEEL) 24 dB HP + #37 PAN WHISTLE (PHYS)", "WHEEL", "LESLIE STORM", "PHYS", "PAN WHISTLE", 1, DM_SPLIT},
+        {"#117 GLASS SHARDS (ANALOG) 24 dB HP + #53 CHIP CHAPEL (TRIO)", "ANALOG", "GLASS SHARDS", "TRIO", "CHIP CHAPEL", 1, DM_SPLIT},
+        {"#13 CARTRIDGE (LOFI) 24 dB HP + #70 WIRE HARP (PHASE)", "LOFI", "CARTRIDGE", "PHASE", "WIRE HARP", 1, DM_SPLIT},
     };
     uint32_t i, c[2], k[2], e[2], cap[2], ok = 1;
     double pred, a, a0, p0;
@@ -377,7 +406,7 @@ int main(void)
     uint32_t i, k, ei, n;
     scn_t s;
     char b[200];
-    const char *sec = getenv("CPU_SCEN") ? getenv("CPU_SCEN") : "QC";
+    const char *sec = getenv("CPU_SCEN") ? getenv("CPU_SCEN") : "QCYO";
     uint64_t a0 = instr_now(), a1 = instr_now();
     setvbuf(stdout, NULL, _IONBF, 0);
     if (!a0) {
@@ -412,6 +441,44 @@ int main(void)
     }
     if (strchr(sec, 'C'))
         cap_tests();
+    if (strchr(sec, 'Y')) {                       /* (0.2.14) the part EQ flat (its three gains 0) is not run: bit for bit, no cost */
+        double c[3];
+        uint64_t h[3];
+        static const char *const YN[3] = {"none", "flat (gains 0, FREQ / Q moved)", "on (LOW +5, MID -4, HIGH +6)"};
+        s = base(); s.e1 = (int)eng_named("ANALOG"); s.n1 = 4; s.e2 = (int)eng_named("FM6"); s.k2 = 2; s.n2 = 4; s.sends = 1;
+        for (k = 0; k < 3u; k++) {                /* (each from the same state: a child process; runs in a row carry state over) */
+            int fd[2];
+            pid_t pid;
+            if (pipe(fd))
+                return 1;
+            pid = fork();
+            if (!pid) {
+                double v[2];
+                s.eq = k == 1u ? 2 : k == 2u ? 1 : 0;
+                g_master = 2048;                  /* (MASTER at its default: the output not silent, the hash sees it) */
+                g_hash = 0;
+                v[0] = run(&s);
+                v[1] = (double)(g_hash & 0xFFFFFFFFFFFFull);
+                if (write(fd[1], v, sizeof v) != (ssize_t)sizeof v)
+                    _exit(1);
+                _exit(0);
+            }
+            {
+                double v[2] = {0, 0};
+                if (read(fd[0], v, sizeof v) != (ssize_t)sizeof v)
+                    v[0] = -1;
+                waitpid(pid, 0, 0);
+                close(fd[0]);
+                close(fd[1]);
+                c[k] = v[0];
+                h[k] = (uint64_t)v[1];
+            }
+        }
+        printf("Y EQ on a 4 + 4 voice scene, %% of the half: %s %.2f, %s %.2f, %s %.2f (+%.2f)\n", YN[0], c[0], YN[1], c[1], YN[2], c[2], c[2] - c[0]);
+        printf("cpuscen: %-66s %s\n", "a flat EQ: the output bit for bit as with none, the same cost", h[0] == h[1] && h[2] != h[0] && fabs(c[1] - c[0]) < 0.3 ? "ok" : "FAIL");
+        bad += h[0] != h[1] || h[2] == h[0] || fabs(c[1] - c[0]) >= 0.3;   /* (h[2]: the hash sees the EQ when it is on) */
+    }
+
     if (strchr(sec, 'P')) {                       /* the voice cap's table (voice.c VCOST): a voice of each engine's heaviest sound (2a) */
         static const char *const PE[] = {"ANALOG", "FM6", "PHASE", "LOFI", "VOICE", "TRIO", "WHEEL", "PHYS", "NOISE", "WAVE"};
         static const char *const PS[] = {"GLASS SHARDS", "GLASS HALL", "WIRE HARP", "CARTRIDGE", "GHOST VOICES", "CHIP CHAPEL", "LESLIE STORM", "PAN WHISTLE", "MOOR WIND", "DIGITAL PAD"};
@@ -429,6 +496,33 @@ int main(void)
             }
             printf("P %-7s %-13s %u v: stored %4.2f | 24 dB HP %4.2f | stored, morph 64 %4.2f | 24 HP, morph 64 %4.2f\n", PE[q], PS[q], nv, v[0], v[1], v[2], v[3]);
         }
+    }
+    if (strchr(sec, 'L')) {                       /* (0.2.14) PERFORM's K3 FILTER and the part EQ on a steady scene: what each costs */
+        double a0, a;
+        s = base(); s.e1 = (int)eng_named("ANALOG"); s.n1 = 4; s.e2 = (int)eng_named("FM6"); s.k2 = 2; s.n2 = 4; s.sends = 1;
+        a0 = run(&s);
+        printf("L ANALOG#0 4n + FM6#2 4n LAYER, sends: K3 in the middle %5.1f %% (peak half %5.1f)\n", a0, last_peak);
+        static const int KF[] = {-1, -50, -95, -98, 1, 50, 95};
+        for (k = 0; k < NELEM(KF); k++) {
+            s.filt = KF[k]; a = run(&s);
+            printf("L   K3 %+4d (steady): %5.1f %% (+%4.2f), peak half %5.1f\n", KF[k], a, a - a0, last_peak);
+        }
+        s.filt = -60; g_sweep = -60; a = run(&s); printf("L   K3 turned -60 .. -40, a detent a half: %5.1f %% (+%4.2f), peak half %5.1f\n", a, a - a0, last_peak);
+        s.filt = 60; g_sweep = 60; a = run(&s); printf("L   K3 turned +60 .. +40, a detent a half: %5.1f %% (+%4.2f), peak half %5.1f\n", a, a - a0, last_peak);
+        g_sweep = 0; s.filt = 0;
+    }
+    if (strchr(sec, 'I')) {                       /* the INSERT types (0.2.14: TAPE, VINYL), ANALOG#0 4 + 4 notes, LAYER, the insert on both parts at MIX 127 */
+        static const int DEF[11][3] = {{0}, {64, 96, 96}, {64, 96, 96}, {64, 96, 96}, {64, 96, 96}, {99, 96, 96}, {64, 96, 96}, {64, 96, 96}, {64, 96, 96}, {47, 71, 110}, {47, 47, 17}};
+        double base0 = 0, v;
+        uint32_t ty;
+        for (ty = 0; ty < IT_N; ty++) {
+            s = base(); s.e1 = (int)eng_named("ANALOG"); s.n1 = 4; s.e2 = (int)eng_named("ANALOG"); s.n2 = 4; s.ins = (int)ty;
+            g_ins_abc = ty ? DEF[ty] : 0;
+            v = run(&s);
+            if (!ty) base0 = v;
+            printf("I %-6s both parts: avg %5.2f %% (%+5.2f %% of the device's half for two parts, %+5.2f per part), peak half %5.1f %%\n", N_ITYPE[ty], v, v - base0, (v - base0) / 2, last_peak);
+        }
+        g_ins_abc = 0;
     }
     if (strchr(sec, 'W')) {                       /* WAVE again, tables built */
         double w = -1, v; uint32_t wk = 0, e = eng_named("WAVE");
@@ -501,6 +595,52 @@ int main(void)
                 for (j = 0; j < mp->nid; j++) if ((mp->ent[j].kind & 0x7Fu) == MK_FADE) printf(" %s", param_desc_of(trk[pi].engine, mp->ent[j].id)->label);
                 printf("  (entries %u)\n", mp->nid);
             }
+        }
+    }
+    if (strchr(sec, 'O')) {                       /* DUELL 0.2.14 GLO > MODULES: the CPU SENDS OFF and PART FX OFF save (steady state, 4 + 4 notes, fader 63) */
+        static const uint32_t MO[6] = {0, 1, 2, 3, 13, 14};   /* M01..M04, M14, M15 */
+        static const uint32_t SW[4] = {0, MODS_SENDS, MODS_PFX, MODS_SENDS | MODS_PFX};
+        static const char *const SWN[4] = {"all ON", "SENDS OFF", "PART FX OFF", "both OFF"};
+        double v[4], pk;
+        uint32_t m, q;
+        for (m = 0; m < 6; m++) {
+            for (q = 0; q < 4; q++) {
+                g_mods = SW[q];
+                v[q] = multi_run(MO[m], 4, 63, &pk);
+            }
+            g_mods = 0;
+            printf("O M%02u 4+4 notes, fader 63 (%s / %s): %s %5.1f %% | %s %5.1f %% (-%4.1f) | %s %5.1f %% (-%4.1f) | %s %5.1f %% (-%4.1f)\n", MO[m] + 1,
+                   ENGINES[trk[0].engine]->name, ENGINES[trk[1].engine]->name, SWN[0], v[0], SWN[1], v[1], v[0] - v[1], SWN[2], v[2], v[0] - v[2],
+                   SWN[3], v[3], v[0] - v[3]);
+            for (q = 1; q < 4; q++) {
+                snprintf(b, sizeof b, "M%02u %s costs no more than all ON (+0.5 %% host noise)", MO[m] + 1, SWN[q]);
+                guard(b, v[q] - v[0], 0.5);
+            }
+        }
+        {   /* the bench scene: DUEL, FM6 #2 4 notes + WAVE #0 4 notes, sends on both (SHIM, PING-PONG with modulation), FLANGER insert, EQ, DUCK
+             * (W's heaviest without PERFORM); and the idle unit (power-on FX, no note) */
+            scn_t bs = base();
+            bs.mode = DM_SPLIT; bs.e1 = (int)eng_named("FM6"); bs.k1 = 2; bs.n1 = 4; bs.e2 = (int)eng_named("WAVE"); bs.k2 = 0; bs.n2 = 4;
+            bs.sends = 1; bs.rtype = 3; bs.pingmod = 1; bs.ins = 7; bs.eq = 1; bs.duck = 1;
+            for (q = 0; q < 4; q++) {
+                g_mods = SW[q];
+                v[q] = run(&bs);
+            }
+            g_mods = 0;
+            printf("O bench (DUEL FM6#2 4n + WAVE#0 4n, sends SHIM PING mod, FLANGER ins, EQ, DUCK): %s %5.1f %% | %s %5.1f %% (-%4.1f) | %s %5.1f %% (-%4.1f) | %s %5.1f %% (-%4.1f)\n",
+                   SWN[0], v[0], SWN[1], v[1], v[0] - v[1], SWN[2], v[2], v[0] - v[2], SWN[3], v[3], v[0] - v[3]);
+            for (q = 1; q < 4; q++) {
+                snprintf(b, sizeof b, "bench %s costs no more than all ON (+0.5 %% host noise)", SWN[q]);
+                guard(b, v[q] - v[0], 0.5);
+            }
+            bs = base(); bs.e1 = (int)eng_named("ANALOG"); bs.n1 = 0;
+            for (q = 0; q < 4; q++) {
+                g_mods = SW[q];
+                v[q] = run(&bs);
+            }
+            g_mods = 0;
+            printf("O idle (no note, power-on FX, LAYER): %s %5.1f %% | %s %5.1f %% (-%4.1f) | %s %5.1f %% (-%4.1f) | %s %5.1f %% (-%4.1f)\n",
+                   SWN[0], v[0], SWN[1], v[1], v[0] - v[1], SWN[2], v[2], v[0] - v[2], SWN[3], v[3], v[0] - v[3]);
         }
     }
     if (strchr(sec, 'F')) {                       /* bursts */

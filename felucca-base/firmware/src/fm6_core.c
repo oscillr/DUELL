@@ -554,9 +554,17 @@ static int fm6_note_compute(fm6_note_t *n, const uint8_t *p, int32_t *out, int32
         n->op[k].freq = fm6_freq((n->fixed >> k) & 1u ? n->base[k] : logfreq + n->base[k] + pitch_mod + dt[k]);
         if (ams) {                                 /* msfa: pt = exp(sensamp / 262144 * 0.07 + 12.2) */
             uint32_t sensamp = (uint32_t)(((uint64_t)amod * ams) >> 24);
-            int32_t lg = FM6_AMS_C0 + (int32_t)(((uint64_t)sensamp * FM6_AMS_K) >> 10);
-            uint32_t pt = fm6_mant(lg) << ((lg >> 24) - 16);   /* (2^17.6 .. 2^24.1: shift 1..8) */
-            level -= (int32_t)(((uint64_t)(uint32_t)level * ((uint64_t)pt << 4)) >> 28);
+            if (sensamp) {                         /* no amplitude modulation (AMD 0, LFO off, still in its delay): the level is untouched */
+                /* lg = log2(pt), Q24, 17.6 .. 24.1 (sensamp 0 .. 2^24); fm6_mant is 2^(frac) as Q30 (2^30 .. 2^31), so
+                 * pt = mant * 2^(i - 30) = mant >> (30 - i): the shift is 13 .. 6, always right, pt < 2^25, no overflow.
+                 * pt at sensamp 0 (2^17.6, 1.2 % of the range) is taken off: the DX7 has no attenuation at depth 0 and the curve
+                 * stays continuous from 0 (msfa keeps it, a constant 1 dB loss that the fix to the shift alone would leave) */
+                int32_t lg = FM6_AMS_C0 + (int32_t)(((uint64_t)sensamp * FM6_AMS_K) >> 10);
+                uint32_t pt = fm6_mant(lg) >> (30 - (lg >> 24));
+                uint32_t p0 = fm6_mant(FM6_AMS_C0) >> (30 - (FM6_AMS_C0 >> 24));
+                pt = pt > p0 ? pt - p0 : 0;
+                level -= (int32_t)(((uint64_t)(uint32_t)level * ((uint64_t)pt << 4)) >> 28);
+            }
         }
         if (!((car >> k) & 1u))
             level += modlvl;

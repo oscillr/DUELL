@@ -15,7 +15,7 @@
  * tests/run_tests.sh. */
 #define UI_TEST_NO_MAIN 1
 #include "ui_test.c"
-#include "old_pack.h"                         /* (DUELL: FUN7 as firmware before wrote it, four tracks) */
+#include "old_pack.h"                         /* (FUN7 as firmware before wrote it: now only to show it is refused) */
 
 /* track 1 alone, a one-step loop: step 0 NOTE 60 (flags), RATCH hits, GATE 64, no swing; the transport started */
 static track_t *one_step(uint32_t hits, uint32_t flags)
@@ -92,17 +92,7 @@ static int play(void)
     run(t, step_len(t, 0) / CTL + step_len(t, 1) / CTL - 1u, 0, 0, 0);
     bad += check("  nor ties out: a TIE after a ratcheted step holds nothing", !t->seq_n);
 
-    t = one_step(4, 0);                               /* the DRUM grid: hits of BD (accented) and CH */
-    set_engine_of(t, ENGI_DRUM);
-    t->engine = t->eng_req;
-    t->step[0] = (step_t){{0}, 0, ST_NOTE, 0, 100, 1u << DV_KICK | 1u << DV_HATC, 1u << DV_KICK};
-    step_set_ratchet(&t->step[0], 3);
-    seq_start();
-    n = run(t, passes(t, 1), 0, 0, 0);
-    ok = 0;
-    for (h = 0; h < NVOICE; h++)
-        ok |= t->v[h].note == DRUM_LANE_NOTE[DV_KICK] && t->v[h].vel == 127u;
-    bad += check("  DRUM grid: BD + CH at x3, 6 hits, BD accented", n == 6u && ok);
+    t = one_step(4, 0);
     step_set_chance(&t->step[0], 0);
     seq_start();
     bad += check("  chance 0: no part plays", run(t, passes(t, 2), 0, 0, 0) == 0u);
@@ -164,7 +154,7 @@ static int projects(void)
         step_set_ratchet(&t->step[i], 1u + i % 4u);
         step_set_chance(&t->step[i], i < 4u ? 100u : i == 4u ? 0u : 30u);
     }
-    trk[1].step[5].hit = 0x81; trk[1].step[5].acc = 0x80; trk[1].step[5].time = ST_NOTE;   /* (DUELL: part B) */
+    trk[1].step[5] = (step_t){{64}, 1, ST_NOTE, 0, 100};   /* (DUELL: part B) */
     step_set_ratchet(&trk[1].step[5], 4);
     project_capture(&before);
     ok = proj_pack(&packed, &before) && proj_import(&after, &packed, sizeof packed) &&
@@ -172,8 +162,8 @@ static int projects(void)
     for (i = 0; ok && i < 8u; i++)
         ok &= step_ratchet(&after.t[0].step[i]) == 1u + i % 4u && step_chance(&after.t[0].step[i]) == step_chance(&before.t[0].step[i]) &&
               after.t[0].step[i].vel == before.t[0].step[i].vel;
-    bad += check("FUN8: x1..x4 round trip with their velocity, accent, chance (0 and 30 %) and lane hits", ok &&
-                 step_ratchet(&after.t[1].step[5]) == 4u && after.t[1].step[5].hit == 0x81);
+    bad += check("FUN8: x1..x4 round trip with their velocity, accent and chance (0 and 30 %)", ok &&
+                 step_ratchet(&after.t[1].step[5]) == 4u);
     pos = 68u + P_COUNT + 2u + 3u * 9u;              /* step 3 of track 1: x4 -> bit 7 of its velocity and chance */
     bad += check("  x4 is bit 7 of the velocity and the chance bytes", (packed.raw[pos + 5] & 128u) && (packed.raw[pos + 8] & 128u) &&
                  (packed.raw[pos + 5] & 127u) == before.t[0].step[3].vel);
@@ -187,28 +177,16 @@ static int projects(void)
         for (i = 0; i < NSTEP; i++)
             ok &= packed.raw[pos + P_COUNT + 2u + i * 9u + 5u] < 128u && packed.raw[pos + P_COUNT + 2u + i * 9u + 8u] < 128u;
     bad += check("  a project without ratchets: every velocity and chance byte below 128, as firmware before wrote", ok);
-    {   /* a FUN7 image (its tracks without patches) as firmware before RATCH wrote it: x1 */
+    {   /* a FUN7 image (its tracks without patches) as firmware before RATCH wrote it, and a FUN6 (10-byte steps): DUELL 0.2.14 reads
+         * neither any more (they used to load with every step x1); both are refused */
         project_store_t old;
         project_t fun7;
-        ok = old_pack(old.raw, &before, OLD_FUN7, P_COUNT) == PROJ_STORE_V7 && proj_import(&fun7, &old, PROJ_STORE_V7);
-        for (k = 0; ok && k < NTRK; k++)
-            for (i = 0; i < NSTEP; i++)
-                ok &= step_ratchet(&fun7.t[k].step[i]) == 1u;
-        bad += check("  FUN7 of before: every step x1", ok && fun7.t[0].step[1].flags == SF_ACCENT);
-    }
-    {   /* FUN6 (10-byte steps): only accent and slide come over, x1 */
-        project_v6_t v6;
-        memset(&v6, 0, sizeof v6);
-        v6.magic = PROJ_MAGIC_V6; v6.size = sizeof v6; v6.parts = NPART; v6.phys = PROJ_PHYS;
-        memcpy(v6.g, before.g, sizeof v6.g);
-        memset(&v6.chain, 0, sizeof v6.chain);
-        for (k = 0; k < NTRK; k++) {
-            for (i = 0; i < 69u; i++) v6.t[k].p[i] = TP[i < 61u ? i : i - 61u + P_E0].def;
-            v6.t[k].step[0] = (step10_t){{60}, 1, ST_NOTE, 0xFBu, 100, 0, 0};   /* (stray high bits) */
-        }
-        v6.sum = proj_hash(&v6, sizeof v6 - 4u);
-        bad += check("  FUN6: x1, accent and slide kept", proj_import(&after, &v6, sizeof v6) &&
-                     step_ratchet(&after.t[0].step[0]) == 1u && after.t[0].step[0].flags == (SF_ACCENT | SF_SLIDE));
+        uint8_t v6[3388];
+        ok = old_pack(old.raw, &before, OLD_FUN7, P_COUNT) == 3388u && !proj_import(&fun7, &old, 3388u);
+        bad += check("  FUN7 of before: refused (no longer read)", ok);
+        memcpy(v6, old.raw, sizeof v6);
+        v6[0] = '6';                                      /* the magic "FUN6" */
+        bad += check("  FUN6: refused (no longer read)", !proj_import(&after, v6, sizeof v6));
     }
     ui_power_on();                                   /* a real save and load */
     step_set_ratchet(&trk[1].step[7], 3);
@@ -251,15 +229,6 @@ static int presets(void)
     memset(&r, 0, sizeof r);
     bad += check("  UP_PUT keeps a pattern's ratchet", !up_parse(a, n, &r, &slot) && r.flags[2] == 2u << SF_RATCH_SH &&
                  r.flags[5] == (SF_ACCENT | 3u << SF_RATCH_SH));
-    set_engine_of(t, ENGI_DRUM);                     /* a drum grid record: no room, x1 */
-    t->engine = t->eng_req;
-    track_defaults_steps(t);
-    t->step[0] = (step_t){{0}, 0, ST_NOTE, 0, 100, 1u << DV_KICK};
-    step_set_ratchet(&t->step[0], 2);
-    up_store(4, "GRID");
-    up_pat_load(t, 4);
-    bad += check("  a DRUM grid record loads its hits x1", up_grid(up_rec(4)) && t->step[0].hit == 1u << DV_KICK &&
-                 step_ratchet(&t->step[0]) == 1u);
     return bad;
 }
 
@@ -310,13 +279,10 @@ static int screens(void)
             memset(host_screen, 0, sizeof host_screen); ui.force = 1; ui_draw();
             dim[k] = card_px(3, T_DIM); thm[k] = card_px(3, T_THEME);
         }
-        t->step[0] = kind[3]; t->step[0].hit = 1u;   /* a NOTE step of lane hits only: it plays */
-        step_set_ratchet(&t->step[0], 2);
-        memset(host_screen, 0, sizeof host_screen); ui.force = 1; ui_draw();
-        ok = card_px(3, T_DIM) == dim[0] && card_px(3, T_THEME) == thm[0];
+        ok = 1;
         for (k = 1; k < 4u; k++)
             ok &= dim[k] > dim[0] && thm[k] < thm[0];
-        bad += check("  RATCH shows dimmed on a REST, a TIE or an empty step (a note or a hit: not)", ok);
+        bad += check("  RATCH shows dimmed on a REST, a TIE or an empty step (a note: not)", ok);
         t->step[0] = (step_t){{0}, 0, ST_REST, 0, 0};
     }
     ui_power_on();                                   /* the piano roll: x2 in two bars, the middle column empty */
@@ -342,16 +308,6 @@ static int screens(void)
                  pr_slide_px(1, 60, 64) == 0u);
     t->step[1].flags &= (uint8_t)~SF_SLIDE; t->step[3].flags = 0;
     t->step[2] = t->step[4] = (step_t){{0}, 0, ST_REST, 0, 0};
-    set_engine_of(t, ENGI_DRUM);                     /* the grid: x3 in three bars */
-    t->engine = t->eng_req;
-    t->step[1] = (step_t){{0}, 0, ST_NOTE, 0, 100, 1u};
-    step_set_ratchet(&t->step[1], 3);
-    ui.lane = 1;
-    memset(host_screen, 0, sizeof host_screen); ui.force = 1; ui_draw();
-    y = Y_GRAPH + 6u + 4u + 6u;                      /* lane 0's hits: y 12 .. 21 of the panel */
-    x = 40u + 12u;
-    bad += check("  the DRUM grid draws an x3 hit in three parts", pr_is_bar(x, y) && !pr_is_bar(x + 2u, y) &&
-                 pr_is_bar(x + 3u, y) && !pr_is_bar(x + 5u, y) && pr_is_bar(x + 6u, y));
     return bad;
 }
 

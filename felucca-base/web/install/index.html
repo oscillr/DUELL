@@ -69,6 +69,10 @@
     DUELL is not affiliated with M-VAVE.</p>
   </div>
 
+  <div class="box" id="savewarn">
+    <p><b>Saves may change before the alpha.</b> Until the alpha release, the way patches, multis, settings and everything else are saved may change. Saves may stop loading between versions, and a backup made with one version may not restore in the next. Do not rely on them yet.</p>
+  </div>
+
   <p class="small" id="browser"></p>
 
   <div class="needpkg" hidden>
@@ -89,7 +93,8 @@
       <h2>BACK UP</h2>
       <p>Reads the unit and saves a file with your current sounds and settings to this computer. Nothing is written to the FM-1. It needs a firmware that supports
       backups (Felucca or DUELL). The official M-VAVE firmware cannot be backed up from this page.</p>
-      <p class="small"><b>Known gap:</b> in this beta the backup does <b>not</b> include MULTIs or the PATTERN slots. Restoring a backup is done in the editor (the editor in the source tree), which has not been adapted to DUELL yet, so restoring is untested.</p>
+      <p class="small"><b>A backup made with one version may not restore in the next</b> (see the warning at the top: until the alpha release the way things are saved may change).</p>
+      <p class="small">The file holds every patch, the settings and the music of both parts; from DUELL 0.2.14 on also the MULTIs and the PATTERN slots, and the user wavetables. An older firmware cannot save the MULTIs and PATTERN slots: the message after the backup says so. A backup is restored in the editor (its Backup page).</p>
       <p><button id="backup" disabled>Save a backup file</button></p>
       <p class="lock" id="lock-backup"></p>
       <progress class="bar" id="bar-backup" max="100" value="0" hidden></progress>
@@ -160,7 +165,7 @@
 <script type="module">
 import { productOf, logicalImage, sha256hex, validateStockPackage } from "../fm1pkg.js";
 import { Updater } from "../fm1ota.js";
-import { BackupConnection, captureBackup, eraseAllData } from "../fm1backup.js";
+import { BackupConnection, captureBackup, eraseAllData, parseInfo } from "../fm1backup.js";
 import { uiState, TEXT, ERASE, eraseOutcome, SMART, detectUnit, eraseDecision } from "../installer_state.js";
 
 const $ = (id) => document.getElementById(id);
@@ -302,7 +307,7 @@ async function probeUnit(midi) {
   const outs = [...midi.outputs.values()];
   let talked = false;
   for (const input of midi.inputs.values()) {
-    if (input.state === "disconnected" || !/fm-1|felucca|ota|composite|sinco|usb-midi/i.test(input.name || "")) continue;   // never probe other gear
+    if (input.state === "disconnected" || !/fm-1|felucca|duell|ota|composite|sinco|usb-midi/i.test(input.name || "")) continue;   // never probe other gear
     const output = outs.find((o) => o.name === input.name && o.state !== "disconnected");
     if (!output) continue;
     try { await input.open(); await output.open(); } catch { continue; }
@@ -393,15 +398,11 @@ function saveArchive(archive) {
   document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 function archiveInfo(a) {
-  let pos = a.indexOf(0); if (pos < 0) throw new Error("Invalid INFO");
-  const version = String.fromCharCode(...a.slice(0, pos)); pos++;
-  const engines = a[pos]; pos += 5;
-  for (let i = 0; i < engines; i++) { const end = a.indexOf(0, pos); if (end < 0) throw new Error("Invalid INFO"); pos = end + 1; }
-  const ext = a.slice(pos + 1);
-  // the firmware reports "FELUCCA <version string>", DUELL's too
-  const supported = /^FELUCCA /i.test(version) && ext[0] === 16 && ext[1] === 0x55 && ext[2] === 1 &&
-    ext[4] === 0x4d && ext[5] === 1 && ext[8] === 0x42 && ext[9] === 1 && (ext[10] & 1);
-  return { version, supported };
+  const { version, tags, caps, patchCap } = parseInfo(a);
+  // the firmware reports "FELUCCA <version string>", DUELL's too. A complete backup needs the preferences, motion and backup tags
+  // (the song-rows byte is not compared: Felucca sent 16, DUELL sends 0) and the backup tag's bit 0.
+  const supported = /^FELUCCA /i.test(version) && tags.has(0x55) && tags.has(0x4d) && caps !== null && !!(caps & 1);
+  return { version, supported, caps: caps ?? 0, patchCap };
 }
 // card = the card that shows the progress ("backup", or "return" when the return makes its backup first)
 async function doBackup(up, card) {
@@ -415,7 +416,9 @@ async function doBackup(up, card) {
     if (!info.supported) { result(card, "This firmware cannot make a complete backup (the official firmware, or an old build). Nothing was saved.", card === "backup"); return false; }
     const archive = await captureBackup((r, o) => link.request(r, o), info.version,
       (d, t) => { const pc = d / Math.max(1, t) * 100; say(card, `Saving backup ${Math.round(pc)}%`); if (card === "backup") $("bar-backup").value = pc; });
-    saveArchive(archive); result(card, "Backup saved to your downloads. MULTIs and PATTERN slots are not in it."); return true;
+    saveArchive(archive);
+    result(card, "Backup saved to your downloads." + (info.caps & 4 ? "" : " MULTIs and PATTERN slots are not in it (this firmware cannot save them)."));
+    return true;
   } finally { link.close(); }
 }
 $("backup").addEventListener("click", async () => {

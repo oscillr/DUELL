@@ -340,23 +340,12 @@ static int midi_in(void)
 static int kits(void)
 {
     int bad = 0;
-    track_t *d = &trk[3];
     uint8_t out[CHORD_MAX];
     reset();
-    song.sel = 3;                                                  /* the DRUM track */
-    d->p[P_CHRD] = CH_DIA7;
-    key_down(K_C4);
-    bad += check("DRUM: CHRD ignored (one hit per key)", chord_build(d, 36, out) == 1u && out[0] == 36 &&
-                 kb_chn[K_C4] == 1u && mo_w == 1u);
-    key_up(K_C4);
-    midi(0x93, 38, 100);
-    bad += check("  MIDI IN on the DRUM track: one hit, no chord kept", !mchord[0].id);
-    midi(0x83, 38, 0);
     song.sel = 0;
-    trk[0].eng_req = trk[0].engine = ENGI_SAMPLE;                   /* a retired engine (SAMPLE, DUELL 0.2.9): no kit, */
+    trk[0].eng_req = trk[0].engine = 4;                             /* a retired engine (SAMPLE, DUELL 0.2.9; DRUM, 0.2.14: no kits at all any more): */
     trk[0].p[P_CHRD] = CH_DIA3;                                     /* chords as any part (silent) */
-    trk[0].p[P_E0] = SMP_SET_PERC;
-    bad += check("a retired engine (SAMPLE, once SET 4 PERC): chords, no kit", !chord_kit(&trk[0]) && chord_build(&trk[0], 60, out) == 3u);
+    bad += check("a retired engine: chords as on any part (no kit exception since 0.2.14)", chord_build(&trk[0], 60, out) == 3u);
     return bad;
 }
 
@@ -437,7 +426,7 @@ static int global_scale(void)
         scale_sync();
         ok &= scale_g == 7 && root_g == 5 && offscale_g == OS_PLAY; }
     bad += check("settings: SCALE, ROOT and OFF-SCALE round trip", ok);
-    bad += check("MENU > CONTROL has no SCALE LINK row", menu_n(MI_HOMEPG) == (uint32_t)HP_COUNT && MI_TAB[MI_LOWCUT] == MTAB_AUDIO);
+    bad += check("MENU > CONTROL has no SCALE LINK row", menu_n(MI_HOMEPG) == (uint32_t)HP_COUNT && MI_TAB[MI_USB] == MTAB_AUDIO);
     reset();
     scale_g = 0; root_g = 0; offscale_g = OS_SNAP;
     /* SNAP: the nearest scale note, a tie goes down; PLAY passes; CHROMATIC has nothing to snap */
@@ -592,9 +581,6 @@ static int snap_follow(void)
     trk_all_off(t); seq_step(t, &t->step[0], 0, div_samples(2), SEQ_ROLLED);
     bad += check("  OFF-SCALE PLAY: 61 passes unchanged", t->seq_notes[0] == 61);
     offscale_g = OS_SNAP;
-    d->eng_req = d->engine = ENGI_DRUM;
-    trk_all_off(d); seq_step(d, &d->step[0], 0, div_samples(2), SEQ_ROLLED);
-    bad += check("  the DRUM kit is not snapped (61 stays 61)", chord_kit(d) && d->seq_n == 1u && d->seq_notes[0] == 61);
     /* chord keys under the arp: C major -> C minor with DIA3 on D4 gives D F Ab */
     reset();
     scale_g = 1; root_g = 0; offscale_g = OS_SNAP; scale_last = scale_pack();

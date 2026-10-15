@@ -119,8 +119,7 @@ static int ed_ui_handle(uint32_t cmd, const uint8_t *a, uint32_t n)
         if (n == 4u && a[0] <= NENGINES && a[3] <= 1u) {
             int32_t preset = ed_rv(a + 1);
             uint32_t limit = a[0] == NENGINES ? UP_SLOTS : ds_count(a[0]);
-            if (preset >= 0 && (uint32_t)preset < limit &&
-                (a[0] != NENGINES || !a[3] || up_used((uint32_t)preset))) {
+            if (preset >= 0 && (uint32_t)preset < limit) {
                 favorite_set(a[0], (uint32_t)preset, a[3]);
                 ui.force = 1;
                 ed_b(ed_ui_save()); ed_b(a[0]); ed_v(preset); ed_b(a[3]);

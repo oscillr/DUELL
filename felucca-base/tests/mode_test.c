@@ -2,15 +2,15 @@
 /* DUELL build step 5: the output MODE (SPEC 5b.1): SPLIT, STEREO, LAYER. On the firmware's sources (the DSP of hostsim.c and
  * the UI against ui_test.c's stubs).  build/host/mode_test   (DUELL/host_tests.sh "mode")
  *   STEREO     bit for bit as before step 5: a busy two-part render (SPREAD, the matrix's PAN, an INSERT CHORUS, every
- *              send, HALL, BASS+; tests/mode_scn.h) hashes to what the sources
+ *              send, HALL; tests/mode_scn.h) hashes to what the sources
  *              before step 5 gave (MODE_STEREO_HASH). (regress's goldens: the same, unchanged)
  *   ISOLATION  SPLIT: a loud part 1 alone (every engine, chords at velocity 127, LEVEL 127, PAN pointing the other way,
  *              SPREAD 127, the matrix LFO -> PAN, DIST, each INSERT type, every send at 127, delay feedback,
- *              ROOM / SPRING / HALL, BASS+; part 2
+ *              ROOM / SPRING / HALL; part 2
  *              silent with all of that on too): the right channel is exactly 0 in every sample, and the reverse for
  *              part 2. Then both parts at once (every engine, with
  *              a partner): the left channel equals part 1's alone sample for sample, the right part 2's (no shared
- *              state: the limiters and BASS+ per channel, the buses per part), while the limiter works.
+ *              state: the limiters per channel, the buses per part), while the limiter works.
  *   LAYER      a note of part 1 plays part 2 too (the same note, velocity, bend, sustain): the keys (with part 2 selected
  *              too), MIDI channel 1, ROUT SEL; channel 2 not; each part's own arp; the mix is STEREO's (bit for bit the
  *              same as the notes sent to both parts by hand); the shared budget: at most 8 voices, the notes in pairs.
@@ -31,7 +31,7 @@
 #endif
 #include <sys/wait.h>
 
-#define MODE_STEREO_HASH 0xBB6416D3547A055Cull   /* mode_stereo_scenario(); re-based in 0.2.2: the FX layer's THROW / FLANGER / PHASER left the scenario with the layer (the output idle is regress's goldens, unchanged); was 0x174A9561B9854C15, before that 0xA233C4BC0DC6D894 (the sources before step 5, commit bb60ab7) up to 8f45fc5; re-based at 0d28bf8: a bipolar LFO now swings the whole range of a per-block destination and the scenario routes LFO to PAN */
+#define MODE_STEREO_HASH 0xA77A7B40656EB88Dull   /* mode_stereo_scenario(); re-based 2026-10-16 when OUTPUT EQ (BASS+, which the scenario had on) was removed: the 0.2.19 sources with BASS+ off give this same hash (checked), so FLAT is bit for bit as it was; before it was 0xBB6416D3547A055C; re-based in 0.2.2: the FX layer's THROW / FLANGER / PHASER left the scenario with the layer (the output idle is regress's goldens, unchanged); was 0x174A9561B9854C15, before that 0xA233C4BC0DC6D894 (the sources before step 5, commit bb60ab7) up to 8f45fc5; re-based at 0d28bf8: a bipolar LFO now swings the whole range of a per-block destination and the scenario routes LFO to PAN */
 
 static int bad, ncheck;
 static int expect(const char *what, int ok)
@@ -90,11 +90,6 @@ static void dsp_clean(uint32_t mode)                    /* the DSP as at power-o
     memset(&hl_b, 0, sizeof hl_b);
     lim_env = lim_env_r = LIM_T;
     dc_l = dc_r = dce_l = dce_r = 0;
-    memset(lce, 0, sizeof lce);
-    lc_l1 = lc_l2 = lc_r1 = lc_r2 = 0;
-    memset(&sb, 0, sizeof sb);
-    memset(&sb_r, 0, sizeof sb_r);
-    fx_lowcut = 0;
     host_tracks_init();
     song.sel = 0;
     song.playing = 0;
@@ -152,7 +147,7 @@ static const uint8_t INS_TYPES[4] = {IT_CHORUS, IT_FLANGER, IT_PHASER, IT_FUZZ};
 static void part_busy(track_t *t, uint32_t e, uint32_t k, int32_t pan)
 {
     host_preset(t, e, k);
-    t->p[P_LEVEL] = 127;
+    t->p[P_TRIM] = 127;
     t->p[P_VOICE] = k % 3u == 2u ? V_UNISON : V_POLY;
     t->p[P_DETUNE] = 60;
     t->p[P_SPRD] = 127;
@@ -174,13 +169,13 @@ static void part_busy(track_t *t, uint32_t e, uint32_t k, int32_t pan)
 }
 static void buses_busy(uint32_t rt)
 {
+    song.g[G_RLOCUT] = 0;                                  /* (0.2.14: the buses' sound is the one the hash below was made with; the low cut is locut_test.c) */
     song.g[G_RTYPE] = (int16_t)rt;
     song.g[G_RSIZE] = 120;
     song.g[G_DFDBK] = 110;
     song.g[G_DMIX] = 127;
     song.g[G_CDEPTH] = 127;
     song.g[G_DTIME] = 1;
-    fx_lowcut = 2;                                       /* BASS+: the speaker EQ */
 }
 
 /* ------------------------------------------------------------- STEREO --- */
@@ -442,7 +437,7 @@ static void t_superpose(void)
         }
     printf("mode: %u engine pairs x reverb models, each rendered both / part 1 alone / part 2 alone\n", n);
     expect("SPLIT: both parts at once: left = part 1 alone, right = part 2 alone, sample for sample (every engine)", ok);
-    expect("  .. loud enough that the limiter works (its envelope above the threshold), BASS+ on", lim != 0);
+    expect("  .. loud enough that the limiter works (its envelope above the threshold)", lim != 0);
 }
 
 /* -------------------------------------------------------------- LAYER --- */
@@ -506,7 +501,7 @@ static void t_lfo_trig_default(void)
     expect("  a fresh part (power-on) has both FREE", trk[0].p[P_LTRIG] == 1 && trk[0].p[P_L2TRIG] == 1 &&
            trk[1].p[P_LTRIG] == 1 && trk[1].p[P_L2TRIG] == 1);
     for (i = 0; i < NENGINES; i++) {
-        if (!eng_ok(i) || i == ENGI_DIGITAL)
+        if (!eng_ok(i))
             continue;
         t->p[P_LTRIG] = t->p[P_L2TRIG] = 0;
         set_engine_of(t, i);                              /* INIT SOUND (set_engine): the engine's first sound over the defaults */
@@ -943,7 +938,7 @@ static void t_click(void)
             trk[i].p[P_SUS] = 127;
             trk[i].p[P_REL] = 90;                        /* (a long release: still sounding at the dip) */
             trk[i].p[P_CHOR] = trk[i].p[P_DLY] = trk[i].p[P_REV] = 0;
-            trk[i].p[P_LEVEL] = 120;
+            trk[i].p[P_TRIM] = 120;
             trk[i].p[P_PAN] = (int16_t)(i ? 40 : -40);
         }
         rec_n = 0;
@@ -1019,15 +1014,13 @@ static void t_ui(void)
     ui_power_on();
     frame();
     expect("power-on: MODE SPLIT (the settings byte 0)", duell_mode_req == DM_SPLIT && !ui_mode_set);
-    press(B_HOME);                                      /* (OVERVIEW -> MORPH -> MORPH SET -> MODE) */
-    frames(64);
-    press(B_HOME);
+    press(B_HOME);                                      /* (the harness starts on MORPH: MORPH SET -> MODE) */
     frames(64);
     press(B_HOME);
     frames(64);
     page_title(ti);
-    expect("HOME tapped three times from OVERVIEW: the MODE page (HOME's third sub-page), its footer MODE 3/5",
-           !ui.home && ui.page == page_of("MODE") && str_eq(ti, "MODE 3/5"));
+    expect("HOME tapped twice from the start (on MORPH): the MODE page (HOME's third sub-page), its footer MODE 3/4",
+           ui.page == page_of("MODE") && str_eq(ti, "MODE 3/4"));
     turn(EN_K1, -1);
     expect("MODE: KNOB 1 left at SPLIT stays SPLIT", duell_mode_req == DM_SPLIT);
     turn(EN_K1, 1);
@@ -1050,8 +1043,9 @@ static void t_ui(void)
     expect("HOME again: the MIXER", ui.page == page_of("MIXER"));
     pan = TSEL->p[P_PAN];
     turn(EN_K2, 5);
-    expect("MIXER in SPLIT: KNOB 2 (PAN) changes nothing (fixed: part 1 left, part 2 right)", TSEL->p[P_PAN] == pan &&
-           str_eq(ui.msg, "DUEL: PAN IS FIXED"));
+    ui.force = 1; frame();
+    expect("MIXER in SPLIT: the PAN card is not drawn; KNOB 2 (PAN) changes nothing (fixed: part 1 left, part 2 right), says nothing", TSEL->p[P_PAN] == pan &&
+           ui.col[1][0] == 0x7f && !str_eq(ui.msg, "DUEL: PAN IS FIXED"));
     duell_mode_req = DM_STEREO;
     frame();
     turn(EN_K2, 5);
@@ -1096,7 +1090,6 @@ static double cost_run(uint32_t mode, uint32_t notes)
     uint64_t i0;
     dsp_clean(mode);
     buses_busy(2);
-    fx_lowcut = 0;
     part_busy(&trk[0], eng_of("ANALOG"), 1, -20);
     part_busy(&trk[1], eng_of("PHASE"), 2, 20);
     trk[0].p[P_VOICE] = trk[1].p[P_VOICE] = V_POLY;
@@ -1135,7 +1128,7 @@ static void t_cost(void)
 }
 
 /* ------------------------------------------------- JIANT's SHIM, RESO --- */
-/* a held chord through the ported reverbs (3 SHIM, 4 RESO), in STEREO and in SPLIT on part 1 and part 2: no blowup, a tail
+/* a held chord through the ported reverbs (3 SHIM, 4 RESO) and 0.2.14's 5 PLATE, in STEREO and in SPLIT on part 1 and part 2: no blowup, a tail
  * that is heard after the release and ends in exact silence, SPLIT's other channel exactly 0 in every sample */
 static void jiant_render(uint32_t mode, uint32_t p, uint32_t rt, uint32_t size)
 {
@@ -1148,7 +1141,7 @@ static void jiant_render(uint32_t mode, uint32_t p, uint32_t rt, uint32_t size)
     song.g[G_DFDBK] = 0;
     for (i = 0; i < 2u; i++) {
         host_preset(&trk[i], eng_of("ANALOG"), i);
-        trk[i].p[P_LEVEL] = 127;
+        trk[i].p[P_TRIM] = 127;
         trk[i].p[P_REV] = 127;
         trk[i].p[P_DLY] = trk[i].p[P_CHOR] = trk[i].p[P_DIST] = 0;
         trk[i].p[P_REL] = 20;
@@ -1165,25 +1158,25 @@ static void t_jiant_rev(void)
 {
     uint32_t rt, m, p, i, ok;
     int32_t pk, tail, last;
-    for (rt = 3; rt <= 4u; rt++)
+    for (rt = 3; rt <= 5u; rt++)
         for (m = 0; m < 2u; m++)
             for (p = 0; p < (m ? 2u : 1u); p++) {
                 static const char *const MN[] = {"STEREO", "SPLIT"};
                 char w[120];
-                jiant_render(m ? DM_SPLIT : DM_STEREO, p, rt, rt == 3u ? 100 : 110);   /* (RESO rings on longer per SIZE) */
+                jiant_render(m ? DM_SPLIT : DM_STEREO, p, rt, rt == 3u ? 100 : rt == 5u ? 100 : 110);   /* (RESO rings on longer per SIZE) */
                 pk = peak_of(rec_l, rec_n) > peak_of(rec_r, rec_n) ? peak_of(rec_l, rec_n) : peak_of(rec_r, rec_n);
                 tail = peak_of(rec_l + 13u * FS / 5u, FS / 2u);            /* 0.3 s after the release (SPLIT part 2: the right) */
                 tail = (m && p) ? peak_of(rec_r + 13u * FS / 5u, FS / 2u) : tail;
                 last = peak_of(rec_l + rec_n - FS / 2u, FS / 2u);
                 last = peak_of(rec_r + rec_n - FS / 2u, FS / 2u) > last ? peak_of(rec_r + rec_n - FS / 2u, FS / 2u) : last;
                 snprintf(w, sizeof w, "%s %s %s: peak %d, tail %d, last 0.5 s peak %d: bounded, audible tail, silent end",
-                         rt == 3u ? "SHIM" : "RESO", MN[m], m ? (p ? "part 2" : "part 1") : "both", pk, tail, last);
+                         rt == 3u ? "SHIM" : rt == 5u ? "PLATE" : "RESO", MN[m], m ? (p ? "part 2" : "part 1") : "both", pk, tail, last);
                 expect(w, pk > 0 && pk < 40000 && tail > 0 && last == 0);
                 if (m) {                                        /* the other channel: exactly 0 */
                     const int32_t *o = p ? rec_l : rec_r;
                     for (i = 0, ok = 1; i < rec_n; i++)
                         ok &= o[i] == 0;
-                    snprintf(w, sizeof w, "%s SPLIT part %u: the other channel exactly 0 in every sample", rt == 3u ? "SHIM" : "RESO", p + 1u);
+                    snprintf(w, sizeof w, "%s SPLIT part %u: the other channel exactly 0 in every sample", rt == 3u ? "SHIM" : rt == 5u ? "PLATE" : "RESO", p + 1u);
                     expect(w, ok);
                 }
             }
@@ -1196,7 +1189,7 @@ typedef struct { const char *name; void (*set)(uint32_t v); uint32_t nv; } leak_
 static void lk_part(track_t *t, uint32_t e)
 {
     host_preset(t, e, 0);
-    t->p[P_LEVEL] = 100;
+    t->p[P_TRIM] = 100;
     t->p[P_VOICE] = V_POLY;
     t->p[P_SUS] = 120;
     t->p[P_REL] = 60;
@@ -1209,7 +1202,7 @@ static void lk_part(track_t *t, uint32_t e)
 }
 static void lk_none(uint32_t v) { (void)v; }
 static void lk_cho(uint32_t v) { (void)v; trk[0].p[P_CHOR] = trk[1].p[P_CHOR] = 127; song.g[G_CDEPTH] = 127; }
-static void lk_dly(uint32_t v) { trk[0].p[P_DLY] = trk[1].p[P_DLY] = 127; song.g[G_DFDBK] = 110; song.g[G_DMIX] = 127; song.g[G_DTIME] = 1; song.g[G_PINGPONG] = (int16_t)v; song.g[G_PINGSPREAD] = 100; }
+static void lk_dly(uint32_t v) { trk[0].p[P_DLY] = trk[1].p[P_DLY] = 127; song.g[G_DFDBK] = 110; song.g[G_DMIX] = 127; song.g[G_DTIME] = 1; song.g[G_DMODE] = (int16_t)(v ? DMD_PING : DMD_DIGITAL); song.g[G_PINGSPREAD] = 100; }
 static void lk_rev(uint32_t v) { trk[0].p[P_REV] = trk[1].p[P_REV] = 127; song.g[G_RTYPE] = (int16_t)v; song.g[G_RSIZE] = 120; }
 static void lk_ins(uint32_t v)
 {
@@ -1239,11 +1232,10 @@ static void lk_duck(uint32_t v)
 }
 static void lk_dmod(uint32_t v) { (void)v; lk_dly(0); song.g[G_DMDEP] = 100; song.g[G_DMRATE] = 70; }   /* the delay's MODULATION (SPEC 5c.2) */
 static void lk_dist(uint32_t v) { (void)v; trk[0].p[P_DIST] = trk[1].p[P_DIST] = 90; }
-static void lk_bass(uint32_t v) { (void)v; fx_lowcut = 2; }
 static void lk_all(uint32_t v)
 {
-    lk_cho(0); lk_dly(1); lk_dmod(0); song.g[G_PINGPONG] = 1; lk_rev(v % 5u); lk_ins(v % 8u); lk_spread(0); lk_pan(0); lk_lfopan(0); lk_eq(0); lk_duck(0);
-    lk_dist(0); lk_bass(0);
+    lk_cho(0); lk_dly(1); lk_dmod(0); song.g[G_DMODE] = DMD_PING; lk_rev(v % 5u); lk_ins(v % 8u); lk_spread(0); lk_pan(0); lk_lfopan(0); lk_eq(0); lk_duck(0);
+    lk_dist(0);
 }
 static const leak_t LEAKS[] = {
     {"nothing (the dry part)", lk_none, 1}, {"CHORUS send", lk_cho, 1}, {"DELAY send", lk_dly, 1}, {"DELAY send PING-PONG", lk_dly, 1},
@@ -1252,7 +1244,7 @@ static const leak_t LEAKS[] = {
     {"INSERT FUZZ", lk_ins, 1}, {"INSERT CRUSH", lk_ins, 1}, {"INSERT PHASR", lk_ins, 1}, {"INSERT FLANG", lk_ins, 1},
     {"INSERT CHOR", lk_ins, 1}, {"SPREAD 127 (+ chorus send)", lk_spread, 1}, {"PAN hard (part 1 right, part 2 left)", lk_pan, 1},
     {"PAN hard the other way", lk_pan, 1}, {"LFO -> PAN", lk_lfopan, 1}, {"EQ +-20", lk_eq, 1}, {"DUCKER (PUMP)", lk_duck, 1},
-    {"DIST 90", lk_dist, 1}, {"BASS+ (speaker EQ)", lk_bass, 1}, {"ALL together", lk_all, 1}, {"DELAY MODULATION 100 %", lk_dmod, 1}};
+    {"DIST 90", lk_dist, 1}, {"ALL together", lk_all, 1}, {"DELAY MODULATION 100 %", lk_dmod, 1}};
 #define NLEAKS (sizeof LEAKS / sizeof LEAKS[0])
 /* the variant of entry i for its set function */
 static uint32_t lk_var(uint32_t i)
@@ -1265,7 +1257,7 @@ static int32_t lk_render(uint32_t i, uint32_t p, uint32_t mode, int32_t *other_p
     uint32_t k;
     dsp_clean(mode);
     song.g[G_RTYPE] = 0;
-    song.g[G_PINGPONG] = 0;
+    song.g[G_DMODE] = DMD_DIGITAL;
     song.g[G_DMDEP] = 0;
     for (k = 0; k < 2u; k++)
         lk_part(&trk[k], eng_of("ANALOG"));
@@ -1411,7 +1403,7 @@ static void t_meter(void)
 {
     uint32_t k;
     dsp_clean(DM_SPLIT);
-    trk[0].p[P_LEVEL] = 110;
+    trk[0].p[P_TRIM] = 110;
     meter_on = 255;
     meter_bus[0] = meter_bus[1] = 0;
     trk[0].peak = trk[1].peak = 0;
@@ -1443,7 +1435,7 @@ static void out_render(uint32_t mode, uint32_t mute1, uint32_t p1, uint32_t p2)
     dsp_clean(mode);
     host_preset(&trk[0], e, 0);
     host_preset(&trk[1], e, 1);
-    trk[0].p[P_LEVEL] = trk[1].p[P_LEVEL] = 80;     /* (under the limiter: it would hide the sum) */
+    trk[0].p[P_TRIM] = trk[1].p[P_TRIM] = 80;     /* (under the limiter: it would hide the sum) */
     trk[0].p[P_PAN] = trk[1].p[P_PAN] = 0;
     trk[0].p[P_MUTE] = (int16_t)mute1;
     rec_n = 0;

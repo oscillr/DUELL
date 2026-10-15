@@ -1,0 +1,95 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-3.0-only
+     DUELL editor, Backup page (beta). The page's look follows the installer (install/index.html).
+     Copyright (C) 2026 OSCILL/R (DUELL). Part of DUELL, a modified version of Felucca by Leo Kuroshita, Hügelton Instruments.
+     Serve the folder felucca-base/web/ with any static web server and open /editor/ (the page imports ../fm1backup.js and ../installer_state.js).
+     /editor/backup.html?mock=1 runs a simulated unit (?mock=old: firmware 0.2.13, ?mock=playing: a unit that is playing). Chrome or Edge only (WebMIDI with SysEx). -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DUELL editor: Backup</title>
+<style>
+  :root { --bg: #fff; --fg: #000; --dim: #666; --line: #ccc; --warn: #b00020; --ok: #0a6b2d; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #000; --fg: #fff; --dim: #999; --line: #444; --warn: #ff6b81; --ok: #62d98a; } }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif; }
+  main { max-width: 640px; margin: 0 auto; padding: 40px 16px 64px; }
+  h1 { font-size: 30px; font-weight: 700; margin: 0; letter-spacing: .02em; }
+  .tag { margin: 0 0 4px; color: var(--dim); }
+  h2 { font-size: 18px; margin: 0 0 8px; }
+  p { margin: 0 0 12px; }
+  section { border-top: 1px solid var(--line); padding: 20px 0 8px; margin-top: 20px; }
+  .n { display: inline-block; width: 1.6em; height: 1.6em; line-height: 1.6em; text-align: center; border: 1px solid var(--fg); border-radius: 50%; margin-right: 8px; font-size: 14px; }
+  button { font: inherit; background: var(--fg); color: var(--bg); border: 0; padding: 8px 20px; cursor: pointer; }
+  button:disabled { opacity: .3; cursor: default; }
+  label { display: block; margin: 4px 0; }
+  label.off { color: var(--dim); }
+  .small { color: var(--dim); font-size: 13px; }
+  .warn { color: var(--warn); }
+  .good { color: var(--ok); }
+  .box { border: 1px solid var(--warn); padding: 10px 14px; margin: 16px 0; }
+  .mockbar { background: #ffb347; color: #000; font-weight: 700; padding: 8px 16px; }
+  progress { width: 100%; height: 8px; margin: 8px 0; }
+  .status { min-height: 1.6em; margin: 4px 0; font-weight: 700; }
+  .result { min-height: 1.2em; margin: 4px 0 8px; white-space: pre-line; }
+  details { margin: 8px 0; }
+  summary { cursor: pointer; }
+  ul.names { columns: 2; padding-left: 20px; margin: 6px 0; font-size: 14px; }
+  a { color: inherit; }
+  code { font-size: 14px; }
+</style>
+</head>
+<body>
+<div id="mockbar" class="mockbar" hidden>SIMULATED UNIT: nothing on this page touches a real FM-1.</div>
+<main>
+  <h1>DUELL</h1>
+  <p class="tag">MultiMorphing Bitimbral Synthesizer<br>by OSCILL/R</p>
+  <p><b>Editor (beta): Backup</b> for the M-VAVE FM-1 running DUELL. <a id="tosound" href="./">Back to the sound editor</a></p>
+
+  <p class="small warn" id="savewarn"><b>Saves may change before the alpha.</b> Until the alpha release, the way patches, multis, settings and everything else are saved may change. Saves may stop loading between versions, and a backup made with one version may not restore in the next. Do not rely on them yet.</p>
+
+  <p class="small" id="browser"></p>
+
+  <section>
+    <h2><span class="n">1</span>Connect</h2>
+    <p>Connect the FM-1 by USB and press the button. Chrome or Edge asks for MIDI access with SysEx.</p>
+    <p><button id="connect">Connect the FM-1</button></p>
+    <p id="unit" class="status"></p>
+    <p id="unitnote" class="small"></p>
+  </section>
+
+  <section>
+    <h2><span class="n">2</span>Back up</h2>
+    <p>Saves one file to your downloads: your patches, multis, pattern slots, settings and the current music of both parts. Backing up stops playback on the unit. Nothing is written to the unit.</p>
+    <p><button id="backup" disabled>Back up to a file</button></p>
+    <progress id="bar-backup" max="100" value="0" hidden></progress>
+    <p class="status" id="status-backup"></p>
+    <p class="result" id="result-backup"></p>
+    <details id="saved" hidden><summary>What is in the file</summary><div id="saved-list"></div></details>
+  </section>
+
+  <section>
+    <h2><span class="n">3</span>Restore</h2>
+    <p>Choose a backup file made by this page (or the installer's backup file of a DUELL unit). The file is checked completely before anything is sent.</p>
+    <p><input type="file" id="file" accept=".json,application/json"></p>
+    <p class="status" id="filestate"></p>
+    <details id="contents" hidden><summary>What is in this file</summary><div id="contents-list"></div></details>
+    <div id="groups" hidden>
+      <p><b>Replace on the unit:</b></p>
+      <div id="group-rows"></div>
+      <p class="small">Everything of a chosen kind on the unit is replaced by what the file holds, including slots that are empty in the file. The unit stops playback by itself before it writes and checks every object (size, checksum, content) before it commits it; a power cut leaves each object as it was or as it is in the file.</p>
+      <p class="small warn" id="settingsnote">Settings include the button map (calibration) of the unit that made the file. Restore settings from another unit only if you mean to.</p>
+    </div>
+    <p><button id="restore" disabled>Restore to the unit</button></p>
+    <progress id="bar-restore" max="100" value="0" hidden></progress>
+    <p class="status" id="status-restore"></p>
+    <p class="result" id="result-restore"></p>
+    <p class="small">Beta: restore has been run against a simulated unit only, not yet on a real FM-1. Before it writes, this page saves a safety backup of the unit to your downloads. If a restore stops half way, the safety file and the file you chose both stay valid: restore again.</p>
+  </section>
+
+  <p class="small" id="foot">Firmware before DUELL 0.2.14 cannot back up or restore multis and pattern slots; update with the <a href="../install/">installer</a>. This page never updates the firmware. DUELL is released under the GPL-3.0 with no warranty; see <a href="https://github.com/oscillr/DUELL/blob/main/NOTICE.md">NOTICE</a>.</p>
+</main>
+<script>{ const q = location.search; if (q) document.getElementById("tosound").href = "./" + q; }</script>
+<script type="module" src="./backup.js"></script>
+</body>
+</html>

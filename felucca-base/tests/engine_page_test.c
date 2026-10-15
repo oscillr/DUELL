@@ -25,7 +25,7 @@ static int expect(const char *what, int ok)
     }
     return ok;
 }
-static int on_engine_page(void) { return !ui.home && str_eq(cur_page()->title, "ENGINE"); }
+static int on_engine_page(void) { return !at_home() && str_eq(cur_page()->title, "ENGINE"); }
 static void fresh(uint32_t e)                       /* power on, part A on engine e, HOME */
 {
     ui_power_on();
@@ -33,7 +33,7 @@ static void fresh(uint32_t e)                       /* power on, part A on engin
     TSEL->engine = TSEL->eng_req;
     memset(ui.fam_last, 0, sizeof ui.fam_last);
     frames(320);
-    go_home(); frame();
+    go_main_to(HP_MORPH); frame();
 }
 static void tap_edit(void) { press(B_EDIT); frames(320); }   /* (taps further apart than a double tap: #83 locks) */
 static uint32_t snd(void) { return TSEL->preset | (uint32_t)TSEL->user << 8 | (uint32_t)TSEL->eng_req << 16; }   /* (DUELL: the PRESETS list runs across the engines, by category: the engine is part of "the sound") */
@@ -84,8 +84,8 @@ static void test_open_and_order(void)
         expect("SELECT right: ENGINE again", on_engine_page());
     }
     {   /* the order spelled out for two engines (ANALOG: FILTER; FM6: OPERATOR pages) */
-        static const char *const A[] = {"ENGINE", "EDIT 1", "EDIT 2", "FILTER", "VCF", "VOICE 1/2", "VOICE 2/2"};
-        static const char *const F[] = {"ENGINE", "EDIT 1", "EDIT 2", "FILTER", "OP TUNE", "OP ENV", "OP MODE", "VOICE 1/2", "VOICE 2/2"};
+        static const char *const A[] = {"ENGINE", "EDIT 1", "EDIT 2", "MULTI FILTER", "VCF", "VOICE 1/2", "VOICE 2/2"};
+        static const char *const F[] = {"ENGINE", "EDIT 1", "EDIT 2", "MULTI FILTER", "OP TUNE", "OP ENV", "OP MODE", "VOICE 1/2", "VOICE 2/2"};
         const char *got[16];
         uint32_t n, k, ok = 1;
         fresh(0);
@@ -126,26 +126,26 @@ static void test_knob1(void)
     tap_edit();
     for (i = 0, ok = 1, hidden = 0; i < NENG_SHOWN * 2u + 1u; i++) {   /* right round twice: every visible engine in order, wrapping */
         ok &= TSEL->eng_req == eng_vis(i % NENG_SHOWN);
-        hidden |= TSEL->eng_req == ENGI_DRUM || !eng_ok(TSEL->eng_req);
+        hidden |= ENGI_RETIRED(TSEL->eng_req) || !eng_ok(TSEL->eng_req);
         turn(EN_K1, 1);
     }
     expect("KNOB 1 right x (2 rounds): every shown engine in PRESETS order, wrapping from the last to the first", ok);
-    expect("KNOB 1 right: never DRUM, never an engine the order hides", !hidden);
+    expect("KNOB 1 right: never a retired engine (DIGITAL, SAMPLE, GRAIN, DRUM, SLICE), never an engine the order hides", !hidden);
     for (i = 0, ok = 1, hidden = 0; i < NENG_SHOWN * 2u + 1u; i++) {   /* and left round twice, the order backwards */
         ok &= TSEL->eng_req == eng_vis((NENG_SHOWN * 3u + 1u - i) % NENG_SHOWN);
         turn(EN_K1, -1);
-        hidden |= TSEL->eng_req == ENGI_DRUM || !eng_ok(TSEL->eng_req);
+        hidden |= ENGI_RETIRED(TSEL->eng_req) || !eng_ok(TSEL->eng_req);
     }
     expect("KNOB 1 left x (2 rounds): the order backwards, wrapping from the first to the last", ok);
-    expect("KNOB 1 left: never DRUM", !hidden);
+    expect("KNOB 1 left: never a retired engine", !hidden);
     for (k = 0, ok = 1; k < NENG_SHOWN; k++)
-        ok &= eng_vis(k) != ENGI_DRUM;
-    expect("DRUM is not in the order at all", ok);
+        ok &= !ENGI_RETIRED(eng_vis(k));
+    expect("no retired engine is in the order at all", ok);
     /* the engine page of the engine KNOB 1 reached: its sound is that engine's first, the engine's page list follows it */
     fresh(0);
     tap_edit();
     turn(EN_K1, 1);
-    expect("KNOB 1: the new engine plays its first sound", TSEL->eng_req == eng_vis(1) && user_of(TSEL) >= UP_SLOTS);
+    expect("KNOB 1: the new engine plays its first sound", TSEL->eng_req == eng_vis(1) && !TSEL->user);
     turn(EN_K1, 1);                                  /* (the click-free swap is set_engine's own, select_engine; the audio fades) */
     expect("KNOB 1: eng_req moves at once, the voices follow through set_engine's fade", TSEL->eng_req == eng_vis(2));
 }
@@ -225,7 +225,7 @@ static void test_knob4(void)
     expect("OCT+ does it: the engine's defaults, the engine kept", !ui.confirm && TSEL->p[P_E0] != 77 && TSEL->eng_req == eng_vis(0));
     expect("... the page stays ENGINE", on_engine_page());
     /* (the song chain and its 'STOP TO EDIT' lock were removed with the song mode) */
-    /* the hold-EDIT layer (0.2.9: QUICK FILTER, K1..K4 CUT RES MODE REL; the engine is the ENGINE page's alone) */
+    /* the hold-EDIT layer (0.2.9: QUICK FILTER, 0.2.20: K1..K4 CUT RES MODE REL; the engine is the ENGINE page's alone) */
     fresh(0);
     {
         const page_t *qp;
@@ -251,7 +251,7 @@ static void test_parts(void)
     song.sel = 0;
     memset(ui.fam_last, 0, sizeof ui.fam_last);
     frames(320);
-    go_home(); frame();
+    go_main_to(HP_MORPH); frame();
     tap_edit();
     expect("part A: ENGINE page, A's engine", on_engine_page() && song.sel == 0u && TSEL->eng_req == a);
     turn(EN_ALGO, 1);

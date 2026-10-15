@@ -51,7 +51,8 @@ static int st_prog(uint32_t off, const void *src, uint32_t n)
 }
 static uint32_t irq_save(void) { return 0; }
 static void irq_restore(uint32_t f) { (void)f; }
-static uint32_t fl_jedec_ram(void) { return 0; }
+static uint8_t jedec_ok;                          /* (0.2.14 defaults test: persist_boot finds the flash part) */
+static uint32_t fl_jedec_ram(void) { return jedec_ok ? 0x856014u : 0u; }
 static void fl_plain_window_init(void) {}
 #define FL_FAR(fn) (fn)
 #include "../firmware/src/storage.c"
@@ -266,6 +267,30 @@ static int autosave_test(void)
         as_power_on();
         bad += check("autosave: a record that is no project: ignored", autosave_boot(1) == 0 && song.g[G_BPM] != 97);
     }
+    {   /* DUELL 0.2.14: an autosave of before (0.2.13's FUN11: revision 0, the hash right; Felucca's FUN10) is ignored at power-on: nothing restored, nothing crashes,
+         * and the power-on state is what the unit writes from then on */
+        static uint8_t buf[3840];
+        uint32_t sum, magic = 0x46554E41u, n;
+        memset(nor + 0xE5000u, 0xFF, 0x2000u);
+        as_power_on();
+        autosave_boot(1);
+        as_edit(9);
+        song.g[G_BPM] = 97;
+        as_run(11000u);                                  /* (a valid autosave, tempo 97) */
+        n = (uint32_t)st_load(OBJ_AUTOSAVE, buf, sizeof buf);
+        buf[67] = 0;
+        sum = proj_hash(buf, sizeof buf - 4u); memcpy(buf + sizeof buf - 4u, &sum, 4);
+        ok = n == sizeof buf && st_save(OBJ_AUTOSAVE, buf, sizeof buf) == 0;
+        as_power_on();
+        ok &= autosave_boot(1) == 0 && song.g[G_BPM] != 97;
+        memcpy(buf, &magic, 4);
+        buf[67] = 1;
+        sum = proj_hash(buf, sizeof buf - 4u); memcpy(buf + sizeof buf - 4u, &sum, 4);
+        ok &= st_save(OBJ_AUTOSAVE, buf, sizeof buf) == 0;
+        as_power_on();
+        ok &= autosave_boot(1) == 0 && song.g[G_BPM] != 97;
+        bad += check("autosave: a FUN11 of before 0.2.14 (revision 0) or a FUN10 is ignored at power-on, nothing restored", ok);
+    }
     /* a power cut in the middle of a write: the copy before stays in charge */
     memset(nor + 0xE5000u, 0xFF, 0x2000u);
     as_power_on();
@@ -315,6 +340,107 @@ static int autosave_test(void)
     return bad;
 }
 
+/* ---- DUELL 0.2.14: the new defaults (KNOB ACCEL ON, CLICK REC, USB SERIAL OFF) and their one-time flag [15][24] bit 7
+ * (settings_persist.c settings_defaults): a new unit (and ERASE DATA, erase_test.c) gets them, a unit with an older record gets them
+ * once where the old default is stored (an explicit OFF / ON cannot be told apart from it), then the user's choice sticks ---- */
+static void d14_boot(void)                               /* a power cycle: RAM gone, persist_boot from the NOR, settings_init */
+{
+    memset(&favorites, 0, sizeof favorites);
+    memset(&settings, 0, sizeof settings);
+    memset(&persist_saved, 0, sizeof persist_saved);
+    first_boot_pending = 0;
+    persist_pending = 0;
+    jedec_ok = 1;
+    persist_boot();
+    jedec_ok = 0;
+    flash_ok = 1;
+    settings_init();
+}
+static int d14_new(void)                                 /* the three new defaults and the flag in RAM */
+{
+    return (ui_prefs & PREF_ACCEL) && (ui_prefs & PREF_SERIAL_OFF) && rp_get(RP_CLICK) == 1u && (ui_prefs2 & (PREF_DEFAULTS >> 16));
+}
+static int defaults_0214_test(void)
+{
+    int bad = 0, ok;
+    persist_t p, q;
+    uint32_t e0;
+    /* a new unit: no settings in the flash */
+    reset();
+    d14_boot();
+    ok = first_boot_pending == 1u && d14_new() && menu_get(MI_ACCEL) == 1u && menu_get(MI_CLICK) == 1u &&
+         str_eq(menu_vname(MI_SERIAL, menu_get(MI_SERIAL)), "OFF") && str_eq(menu_vname(MI_CLICK, menu_get(MI_CLICK)), "REC") &&
+         rp_get(RP_LEVEL) == 1u && rp_get(RP_COUNTIN) == 0u && !(ui_prefs & ~(uint32_t)(PREF_ACCEL | PREF_SERIAL_OFF)) &&
+         ui_prefs2 == (PREF_DEFAULTS >> 16);
+    settings_save(); settings_poll();
+    ok &= !persist_pending && st_load(OBJ_SETTINGS, &q, sizeof q) == (int)sizeof q && (q.favorites.factory[15][24] & 0x80u) &&
+          (q.favorites.factory[15][30] & (PREF_ACCEL | PREF_SERIAL_OFF)) == (PREF_ACCEL | PREF_SERIAL_OFF) && (q.favorites.factory[15][28] & 3u) == 1u;
+    bad += check("0.2.14 a new unit: KNOB ACCEL ON, CLICK REC, USB SERIAL OFF, the flag set; saved so", ok);
+    /* the user's choices on a 0.2.14 unit stick: ACCEL OFF, CLICK OFF, USB SERIAL ON, saved, a power cycle */
+    menu_put(MI_ACCEL, 0); menu_put(MI_CLICK, 0); menu_put(MI_SERIAL, 0);
+    settings_save(); settings_poll();
+    d14_boot();
+    ok = first_boot_pending == 0u && !(ui_prefs & PREF_ACCEL) && !(ui_prefs & PREF_SERIAL_OFF) && rp_get(RP_CLICK) == 0u &&
+         (ui_prefs2 & 0x80u);
+    e0 = erases;
+    settings_save(); settings_poll();
+    ok &= erases == e0;                                  /* (nothing changed: no write) */
+    d14_boot();
+    ok &= !(ui_prefs & PREF_ACCEL) && !(ui_prefs & PREF_SERIAL_OFF) && rp_get(RP_CLICK) == 0u;
+    bad += check("0.2.14 the user's ACCEL OFF / CLICK OFF / USB SERIAL ON (flag set) stay so, power cycle after power cycle", ok);
+    /* an older record (0.2.13): ACCEL OFF, CLICK OFF, USB SERIAL ON (the old defaults), MODE RECALL ON, ANIM IDLE, junk in [15][10] bits 1-7 */
+    reset();
+    d14_boot();
+    settings_export(&p);
+    p.favorites.factory[15][30] = PREF_USB_FIXED;        /* (ACCEL clear, SERIAL clear = ON, USB LEVEL FIXED: kept) */
+    p.favorites.factory[15][28] = 2u << 4;               /* CLICK OFF, LEVEL MID, COUNT-IN 2 BARS */
+    p.favorites.factory[15][24] = 0x40u | 0x02u;         /* MODE RECALL ON, STEP PREVIEW ON; the flag clear */
+    p.favorites.factory[15][10] = 0xFFu;                 /* ANIM IDLE (bit 0) and bits 1-7 set */
+    ok = st_save(OBJ_SETTINGS, &p, sizeof p) == 0;
+    d14_boot();
+    ok &= first_boot_pending == 0u && d14_new() && (ui_prefs & PREF_USB_FIXED) && rp_get(RP_COUNTIN) == 2u &&
+          (ui_prefs2 & 0x42u) == 0x42u && ui_idle == 1u && ui_prefs == (PREF_USB_FIXED | PREF_ACCEL | PREF_SERIAL_OFF);
+    e0 = erases;
+    settings_save(); settings_poll();
+    ok &= erases == e0 && !persist_pending;              /* (no save at boot: the record as read, changed in RAM, is the saved copy) */
+    q = persist_saved;
+    ok &= settings_import(&q, (int)sizeof q) == 1 && !memcmp(&q, &persist_saved, sizeof q);   /* (importing twice changes nothing) */
+    bad += check("0.2.14 an older record: ACCEL ON, CLICK OFF -> REC, USB SERIAL ON -> OFF once; the rest kept, [15][10] bits 1-7 cleared", ok);
+    /* .. with CLICK ON / REC and USB SERIAL OFF stored: kept (only the old default changes) */
+    p.favorites.factory[15][28] = 2u;                    /* CLICK ON */
+    p.favorites.factory[15][30] = PREF_SERIAL_OFF | PREF_ACCEL;
+    st_save(OBJ_SETTINGS, &p, sizeof p);
+    d14_boot();
+    ok = rp_get(RP_CLICK) == 2u && (ui_prefs & PREF_SERIAL_OFF) && (ui_prefs & PREF_ACCEL) && (ui_prefs2 & 0x80u);
+    p.favorites.factory[15][28] = 1u;                    /* CLICK REC */
+    st_save(OBJ_SETTINGS, &p, sizeof p);
+    d14_boot();
+    ok &= rp_get(RP_CLICK) == 1u;
+    /* .. then the user sets them back to the old values: they stick (the flag is saved with them) */
+    menu_put(MI_ACCEL, 0); menu_put(MI_CLICK, 0); menu_put(MI_SERIAL, 0);
+    settings_save(); settings_poll();
+    d14_boot();
+    ok &= !(ui_prefs & PREF_ACCEL) && rp_get(RP_CLICK) == 0u && !(ui_prefs & PREF_SERIAL_OFF);
+    bad += check("0.2.14 an older record's CLICK ON / REC and SERIAL OFF kept; set back to OFF / ON after the change: they stick", ok);
+    /* a record without any favourites bytes (the flag clear, as 0.2.13 left it): the new defaults; no flash (RAM only): the new defaults too.
+     * Older forms (PER1..PER3, a PER4 without user_hi) are no record at all (0.2.14): refused, the unit starts as a new one */
+    reset();
+    memset(&p, 0, sizeof p);
+    p.magic = 0x50455233u;
+    ok = settings_import(&p, (int)(sizeof p - sizeof p.favorites)) == 0;
+    p.magic = PERSIST_MAGIC;
+    ok &= settings_import(&p, (int)(sizeof p - sizeof p.favorites.user_hi)) == 0;
+    ok &= settings_import(&p, (int)sizeof p) == 1 && d14_new();
+    reset();
+    jedec_ok = 0;
+    persist_boot();
+    flash_ok = 1;
+    ok &= d14_new();
+    bad += check("0.2.14 a PER3 record (no favourites) and a unit with no flash part: the new defaults", ok);
+    reset();
+    return bad;
+}
+
 int main(void)
 {
     int bad = 0, ok;
@@ -348,7 +474,7 @@ int main(void)
         bad += check("the retired font weight is refused without a write", ed_ui_set(bold, sizeof bold) == 2);
     }
     {   /* MENU_SET (editor_menu.c): the same settings record, the same deferral, retry and idempotence */
-        const uint8_t leds_off[] = {4, 0, 64}, accel_on[] = {6, 1, 64}, hold_06[] = {5, 3, 64}, eq_bass[] = {9, 2, 64};
+        const uint8_t leds_off[] = {4, 0, 64}, accel_on[] = {6, 1, 64}, hold_06[] = {5, 3, 64};
         persist_t q;
         reset();
         settings_init();
@@ -365,10 +491,9 @@ int main(void)
         ok = ed_rep[0] == 0 && (ui_prefs & PREF_ACCEL);
         ed_repn = 0; ed_menu_handle(ED_MENU_SET, hold_06, 3);
         ok &= ed_rep[0] == 0 && settings_hold == 3u;
-        ed_repn = 0; ed_menu_handle(ED_MENU_SET, eq_bass, 3);
-        ok &= ed_rep[0] == 0 && st_load(OBJ_SETTINGS, &q, sizeof q) == (int)sizeof q && q.lowcut == 2u &&
+        ok &= st_load(OBJ_SETTINGS, &q, sizeof q) == (int)sizeof q &&
               hold_from_stored(q.bold) == 3u && (q.favorites.factory[15][30] & PREF_ACCEL) && leds_from_stored(q.zoom) == LEDS_OFF;
-        bad += check("MENU_SET stopped: rc 0, saved at once (KNOB ACCEL, HOLD, SPEAKER EQ), the others kept", ok);
+        bad += check("MENU_SET stopped: rc 0, saved at once (KNOB ACCEL, HOLD), the others kept", ok);
         before = erases;
         ed_repn = 0; ed_menu_handle(ED_MENU_SET, hold_06, 3);
         bad += check("repeating an unchanged MENU_SET: rc 0, no erase", ed_rep[0] == 0 && erases == before);
@@ -389,7 +514,6 @@ int main(void)
     }
     reset();
     settings.palette = 3;
-    settings.lowcut = 2;
     settings.zoom = 1;
     persist_saved.bold = 1;                       /* (an earlier firmware's font weight: kept as saved) */
     favorites.factory[8][0] = 1;
@@ -397,7 +521,7 @@ int main(void)
     song.playing = 1;
     settings_save();
     bad += check("playing: settings queued, no erase, runtime kept", persist_pending && !erases &&
-                  settings.palette == 3u && settings.lowcut == 2u && settings.zoom == 1u);
+                  settings.palette == 3u && settings.zoom == 1u);
     song.playing = 0;
     transport_req = 1;
     settings_poll();
@@ -407,7 +531,7 @@ int main(void)
     settings_poll();
     bad += check("STOP: latest settings saved and request cleared", !persist_pending && erases == 1u &&
                   st_load(OBJ_SETTINGS, &p, sizeof p) == (int)sizeof p && p.palette == palette_to_stored(2) &&
-                  p.lowcut == 2u && p.zoom == 1u && p.bold == 1u &&
+                  p.zoom == 1u && p.bold == 1u &&
                   p.favorites.factory[8][0] == 1 && p.favorites.user == (1u << 31) &&
                   !memcmp(&p.panel, &panel, sizeof panel));
     settings_save();
@@ -458,6 +582,7 @@ int main(void)
     bad += check("PLAY consumed before the settings snapshot defers the write",
                   irq_races == 1u && song.playing && !transport_req && persist_pending && erases == before);
     bad += autosave_test();
+    bad += defaults_0214_test();
     printf("%s\n", bad ? "PERSISTENCE TEST FAILED" : "persistence test passed");
     return bad != 0;
 }

@@ -11,7 +11,6 @@ trio_pass 175
 wheel_render 267
 wheel_block 102
 phys_render 61
-drum_render 86
 noise_render 259
 fm6_render 372
 fm6_op_run 72
@@ -22,17 +21,6 @@ px_memb_block 106
 px_string_excite 171
 px_string_run 264
 px_symp_run 252
-dv_metal_run 26
-dv_kick_run 153
-dv_snare_run 158
-dv_clap_run 74
-dv_hat_run 61
-dv_tom_run 75
-dv_rim_run 61
-dv_bell_run 52
-dv_cym_run 67
-dv_out 35
-dv_metal_mix 16
 fm1_alnk0_irq 37502
 fm1_timer5_irq 33387
 click_render 30

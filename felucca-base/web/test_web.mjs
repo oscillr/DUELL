@@ -272,16 +272,16 @@ async function editorMock() {
       "editor: MIDI IN routing (ROUT CH1-4 / SEL / CH5-8 / CH9-12 / CH13-16, global id 14)");
   }
   {
-    /* FX > REVERB TYPE (G_RTYPE 24, the old drum channel's id): ROOM (0) / SPRING (1) / HALL (2, 1.2: the default) / SHIM (3) / RESO (4: JIANT ports);
+    /* FX > REVERB TYPE (G_RTYPE 24, the old drum channel's id): ROOM (0) / SPRING (1) / HALL (2, 1.2: the default) / SHIM (3) / RESO (4: JIANT ports) / PLATE (5, 0.2.14);
      * G_COUNT unchanged; 10 clamps to the last */
     const rd = E.parse[E.CMD.DESC](await rq(E.req.desc(1, 24)));
     const r1 = E.parse[E.CMD.SET](await rq(E.req.set(1, 24, 10)));
     const r0 = E.parse[E.CMD.SET](await rq(E.req.set(1, 24, 0)));
     const inert = [25, 26].map(async (id) => E.parse[E.CMD.DESC](await rq(E.req.desc(1, id))));
     const [d25, d26] = await Promise.all(inert);
-    ok(rd.label === "TYPE" && rd.def === 2 && eq(rd.names, ["ROOM", "SPRING", "HALL", "SHIM", "RESO"]) && r1.value === 4 && r0.value === 0 &&
+    ok(rd.label === "TYPE" && rd.def === 2 && eq(rd.names, ["ROOM", "SPRING", "HALL", "SHIM", "RESO", "PLATE"]) && r1.value === 5 && r0.value === 0 &&
        d25.label === "-" && d26.label === "-" && d25.max === 0 && info.gcount === 27,
-      "editor: REVERB TYPE (ROOM / SPRING / HALL / SHIM / RESO, global id 24; 25, 26 still inert)");
+      "editor: REVERB TYPE (ROOM / SPRING / HALL / SHIM / RESO / PLATE, global id 24; 25, 26 still inert)");
   }
   const st = E.parse[E.CMD.STEP_SET](await rq(E.req.stepSet(5, { n: 2, notes: [60, 64], time: 0, flags: 1, vel: 100 })));
   ok(st.n === 2 && st.notes[1] === 64 && st.vel === 100, "editor: STEP_SET");
@@ -1360,6 +1360,26 @@ function fm6Tolerant(F6, voices, bank, one) {
   let inrange = r.voices.length === 32;
   for (const { v } of r.voices) for (let i = 0; i < F6.SIZE; i++) inrange &&= i >= F6.NAME ? v[i] >= 32 && v[i] <= 126 : v[i] <= F6.max(i);
   ok(inrange, "FM6 import: every voice sanitized (all 7F bank)");
+  /* a corrupt voice next to valid ones (voice #31 and the one after it, #32): bytes >= 0x80 inside one record. Only that voice is
+     left out and reported with its name; the others (also the one after it) are read as they are */
+  const clean = F6.parseSysex(bank), hasNames = (rr, skip) => rr.voices.every((x, k) => x.name === clean.voices[k + (k >= skip ? 1 : 0)].name);
+  const bad = Uint8Array.from(bank), at = 6 + 30 * 128;                    /* voice #31 (index 30) */
+  for (const k of [3, 20, 44, 77, 100]) bad[at + k] |= 0x80;
+  let c = F6.parseSysex(bad);
+  ok(c.voices.length === 31 && c.corrupt.length === 1 && c.corrupt[0].index === 31 && c.corrupt[0].name === clean.voices[30].name
+    && c.voices[30].name === clean.voices[31].name && hasNames(c, 30) && !c.badSum && !c.short,
+    "FM6 import: one corrupt voice (#31) in a bank: 31 voices read, the corrupt one skipped and named, the voice after it kept");
+  const bad2 = Uint8Array.from(bank);
+  bad2[6 + 0 * 128 + 5] = 0xFF; bad2[6 + 31 * 128 + 120] = 0x90; bad2[6 + 31 * 128 + 119] = 0xF0;     /* the first and the last voice, one name byte too */
+  c = F6.parseSysex(bad2);
+  ok(c.voices.length === 30 && c.corrupt.map((x) => x.index).join() === "1,32" && c.voices[0].name === clean.voices[1].name,
+    "FM6 import: corrupt first and last voice (an F0 byte among them): the 30 others kept, both reported");
+  c = F6.parseSysex(U(bad.subarray(0, 4102), [0xF7]));
+  ok(c.voices.length === 31 && c.corrupt.length === 1, "FM6 import: the same bank without its checksum: still one voice skipped");
+  c = F6.parseSysex(U(bad, one));
+  ok(c.voices.length === 32 && c.corrupt.length === 1 && c.voices[31].name === "BRASS SECT", "FM6 import: a bank with a corrupt voice, a single voice after it");
+  c = F6.parseSysex(bad.subarray(0, 4000));
+  ok(c.short === 1 && c.voices.length === 30 && !c.corrupt.length, "FM6 import: a cut bank with a corrupt voice keeps the old rule (short)");
 }
 
 /* the 6-OP FM tab without the bank (1.0.3): import -> pick -> edit -> send to track; factory patches into the editor */

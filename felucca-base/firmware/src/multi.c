@@ -5,19 +5,19 @@
  * project_* names the UI and the editor call (project_save, project_load, ..): a slot number is a multi now, 0..15.
  *
  * What a multi holds: per part (1 and 2) the engine and preset, every P_* value (the sound with its matrix, LFO / ENV 2,
- * INSERT, EQ, DUCK; the arp; LEVEL PAN MUTE and the sends; LEN DIV SWING GATE QUANTIZE), the 64 steps, the FM6 patch (an
+ * INSERT, EQ, DUCK, its TRIM (the PATCH TRIM); the arp; the MIXER LEVEL, PAN, MUTE and the sends; LEN DIV SWING GATE QUANTIZE), the 64 steps, the FM6 patch (an
  * FM6 part only), the morph's AMOUNT and End B (the 7-byte block of a user preset, morph.c morph_blk_make: seed, AMOUNT, roll
  * bits; End B is rolled again from it on load); the parts' automation and parameter locks; the globals of the music
- * (MU_GLOBAL: TEMPO, SWING, CHORUS, DLY 1 / 2 with PING-PONG and its SPREAD, REVERB with its TYPE), the output MODE
+ * (MU_GLOBAL: TEMPO, SWING, CHORUS, DLY 1 / 2 with PING-PONG and its SPREAD, REVERB with its TYPE; and BASS MONO, in byte 5), the output MODE
  * (duell_mode), MORPH SET's SMART / ARP / PITCH (TARGET: written, not loaded, 0.2.9), the selected part, the name (12 characters). Not held (the
  * device's, MENU's and the settings'): the clock source (G_CLOCK), MIDI IN's routing (G_ROUTE), TUNE (G_TUNE), the colour
  * theme, MIDI channels, display, LEDs, USB. Loading replaces everything held; each part's MORPH starts at fader A with the
  * multi's End B (a patch load's rule). Loading while playing keeps the transport running: every note off, an engine change
  * fades as ever (project_restore_runtime with proj_keep_play).
  *
- * Record (version MU_VER 2 (1: without the last line below), little endian, variable length, at most MU_REC_MAX = 1916 bytes):
- *   0  version, np (P_COUNT when saved), ng (G_COUNT), the selected part, MODE, TARGET (1 BOTH; 0.2.9: ALGORITHM's BOTH when saved, never
- *      loaded: reserved, the state is not saved), MORPH SET bits (morph.c
+ * Record (version MU_VER 5, little endian, variable length, at most MU_REC_MAX = 1916 bytes):
+ *   0  version, np (P_COUNT when saved), ng (G_COUNT), the selected part, MODE, byte 5: bit 0 TARGET (1 BOTH; 0.2.9: ALGORITHM's BOTH when saved, never
+ *      loaded: reserved, the state is not saved), bits 1..4 BASS MONO (0.2.19: 0 OFF, 1..11 the corner; the factory multis have 0 = OFF), MORPH SET bits (morph.c
  *      MC_SET), the parts' automation PLAY bits (motion.on)
  *   8  the name, 12 bytes (ASCII 32..126, 0-padded)
  *  20  ng globals, int16 each (all stored; only MU_GLOBAL ones are loaded)
@@ -26,13 +26,14 @@
  *      per stored step (patslot.c ps_pack_step, the packing of FUN11 and the pattern slots; a step not stored is an empty
  *      step, step_clear); the FM6 patch, 128 bytes (eng_fm6.c fm6_pack), when flag bit 0
  *      the automation: a count, then (place, param, value) per event of parts 1..2 (core.h motion_event_t)
- *      version 2: BALANCE (int8, -100..100), XFADE (0..100), SPLIT (0 OFF, else note + 1): core.h mix_bal, mix_xf, mix_split
+ *      then BALANCE (int8, -100..100), XFADE (0..100), SPLIT (0 OFF, else note + 1): core.h mix_bal, mix_xf, mix_split
  *   Sizes (P_COUNT 127): 74 bytes of header and globals, a part 146 + 9 per used step (+ 128 FM6), the automation 1 + 3 per event. Two FM6
  *   parts with all 64 steps used take 1775 bytes: the record always holds the sound and the steps; the automation gets the
- *   rest of the 1916 (46 events at worst after the 3 version-2 bytes; was 49 at P_COUNT 122; all 128 of a part with 16-step patterns); a save that has more keeps the first
+ *   rest of the 1916 (46 events at worst after the 3 mix bytes; was 49 at P_COUNT 122; all 128 of a part with 16-step patterns); a save that has more keeps the first
  *   that fit and says AUTOMATION CUT.
- *   An older or a newer np loads by count as a user preset does (params_by_count; motion ids moved, proj_motion_ids); a
- *   newer version or np > P_COUNT does not load: the slot lists as empty ("--"), a LOAD says EMPTY SLOT / DAMAGED.
+ *   DUELL 0.2.14: only a record of exactly this version (MU_VER 5) with np = P_COUNT and ng = G_COUNT loads. A record of firmware
+ *   before 0.2.14 (versions 1 and 2, an older P_COUNT) or of a newer one does not: the slot lists as empty ("--") and a LOAD says
+ *   EMPTY SLOT / DAMAGED; the first SAVE there replaces it, and a factory slot (M01..M10) shows its factory multi instead.
  *
  * Factory multis (build/gen/duell_multis.h, tools/gen_duell_multis.py from tools/factory_multis/M01..M10.bin and M13..M16.bin), in the 0.2.13 order:
  * M01 REESE SWAMP (a new unit's first start loads it, ui_input.c first_boot_poll), M02 WHISPER TIDE, M03 EERIE SIGNAL, M04 WIRED SNAIL, M05 DEAD BUFFER,
@@ -58,7 +59,7 @@
  * live in RAM (mu_ram). */
 #define MU_NOBJ (MU_SLOTS / 2u)
 #define MU_MAGIC 0x314C554Du                      /* "MUL1" */
-#define MU_VER 2u                                 /* 2: BALANCE, XFADE, SPLIT appended (3 bytes after the automation); 1 loads with 0 / 0 / OFF */
+#define MU_VER 5u                                 /* 5 (0.2.19): P_LEVEL is the MIXER level (a multi holds it: the performance state) and P_TRIM, the sound's loudness, is on the id of the legacy DUCK HOLD (tools/factory_multis_levelsplit.py moved the factory records: trim = the old LEVEL, mixer 112 = unity); 4 (0.2.16): G_DMODE is 0 DIGITAL / 1 PING-PONG / 2 RANDOM / 3 OCT UP (the ping-pong switch is gone); 3 (0.2.14): CRUSH's BITS is the curve of ins_bits.h, BALANCE, XFADE, SPLIT after the automation. The only version that loads (1..3: refused) */
 #define MU_HDR 8u
 #define MU_OBJ_MAX 3840u
 #define MU_REC_MAX ((MU_OBJ_MAX - MU_HDR) / 2u)
@@ -73,7 +74,8 @@ _Static_assert(MU_OBJ_MAX <= ST_PAYLOAD_MAX && OBJ_PATCH0 == OBJ_MULTI0 + MU_NOB
 #endif
 /* the globals a multi loads (the music's; not the device's: clock source, TUNE, MIDI, the SAVE pages' own) */
 #define MU_GLOBAL(i) ((i) == G_BPM || (i) == G_SWING || ((i) >= G_DTIME && (i) <= G_CDEPTH) || (i) == G_RTYPE || \
-                      (i) == G_PINGSPREAD || (i) == G_PINGPONG || (i) == G_DMDEP || (i) == G_DMRATE)
+                      (i) == G_RLOCUT || (i) == G_PINGSPREAD || (i) == G_DMDEP || (i) == G_DMRATE || \
+                      (i) == G_DMODE || (i) == G_SHPITCH || (i) == G_SHMOD)
 #define mu_buf (proj_wire_u.raw)
 static char mu_names[MU_SLOTS][PROJ_NAME_LEN + 1u] __attribute__((section(".pool")));
 static uint16_t mu_used;                          /* bit k: M(k + 1) holds a multi that loads */
@@ -175,7 +177,7 @@ static uint32_t mu_pack(uint8_t *b, const project_t *p, const uint8_t blk[NSHOWN
     b[2] = G_COUNT;
     b[3] = (uint8_t)(p->sel < NSHOWN ? p->sel : 0u);
     b[4] = (uint8_t)(duell_mode_req < DM_N ? duell_mode_req : DM_SPLIT);
-    b[5] = morph.target == MT_BOTH;
+    b[5] = (uint8_t)((morph.target == MT_BOTH) | (p->bm <= BM_N ? p->bm : 0u) << 1);   /* bit 0 TARGET (reserved), bits 1..4 BASS MONO (0.2.19) */
     b[6] = (uint8_t)(morph.cfg & MC_SET);
     b[7] = (uint8_t)(p->motion.on & ((1u << NSHOWN) - 1u));
     memcpy(b + MU_NAME_AT, nm, proj_name_get(nm, (const uint8_t *)p->name));
@@ -236,24 +238,21 @@ static uint32_t mu_pack(uint8_t *b, const project_t *p, const uint8_t blk[NSHOWN
  * blk[], amt[]: each part's End B block and AMOUNT. 0 = not a multi this firmware loads */
 static int mu_unpack(project_t *q, uint8_t blk[NSHOWN][MB_N], uint8_t amt[NSHOWN], uint8_t set[6], const uint8_t *b, uint32_t len)
 {
-    uint32_t np, ng, pos, t, i, n;
-    if (len < MU_G_AT || !b[0] || b[0] > MU_VER)
+    uint32_t pos, t, i, n;
+    if (len < MU_G_AT || b[0] != MU_VER || b[1] != P_COUNT || b[2] != G_COUNT)
         return 0;
-    np = b[1];
-    ng = b[2];
-    if (np < 8u || np > P_COUNT || b[3] >= NSHOWN || b[4] >= DM_N || b[5] > 1u || (b[6] & ~MC_SET) ||
-        (b[7] >> NSHOWN) || MU_G_AT + 2u * ng > len)
+    if (b[3] >= NSHOWN || b[4] >= DM_N || (b[5] >> 5) || (b[6] & ~MC_SET) ||
+        (b[7] >> NSHOWN) || MU_G_AT + 2u * G_COUNT > len)
         return 0;
     pos = MU_G_AT;
-    for (i = 0; i < ng; i++, pos += 2u)
-        if (i < G_COUNT && MU_GLOBAL(i))
+    for (i = 0; i < G_COUNT; i++, pos += 2u)
+        if (MU_GLOBAL(i))
             q->g[i] = (int16_t)mu_rd16(b + pos);
     for (t = 0; t < NSHOWN; t++) {
         proj_trk_t *d = &q->t[t];
-        int16_t v[P_COUNT], def[P_COUNT];
         uint32_t e, fl;
         const uint8_t *map;
-        if (pos + MU_PART_FIX - P_COUNT + np > len || (e = b[pos]) >= NENGINES || (b[pos + 3] & ~1u))
+        if (pos + MU_PART_FIX > len || (e = b[pos]) >= NENGINES || (b[pos + 3] & ~1u))
             return 0;
         d->engine = (uint8_t)e;
         d->preset = b[pos + 1];
@@ -262,14 +261,11 @@ static int mu_unpack(project_t *q, uint8_t blk[NSHOWN][MB_N], uint8_t amt[NSHOWN
         pos += 4u;
         memcpy(blk[t], b + pos, MB_N);
         pos += MB_N;
-        for (i = 0; i < np; i++) {
+        for (i = 0; i < P_COUNT; i++) {
             if (b[pos] > 191u)
                 return 0;
-            v[i] = (int16_t)(b[pos++] - 64);
+            d->p[i] = (int16_t)(b[pos++] - 64);
         }
-        for (i = 0; i < P_COUNT; i++)
-            def[i] = param_desc_of(e, i)->def;
-        params_by_count(d->p, v, np, def);
         map = b + pos;
         pos += 8u;
         for (i = 0; i < NSTEP; i++) {
@@ -294,7 +290,7 @@ static int mu_unpack(project_t *q, uint8_t blk[NSHOWN][MB_N], uint8_t amt[NSHOWN
             memcpy(q->fm6[t], FM6_INIT, FM6_PACKED);
         }
     }
-    if (pos >= len || (n = b[pos++]) > MOTION_MAX || pos + 3u * n + (b[0] >= 2u ? 3u : 0u) != len)
+    if (pos >= len || (n = b[pos++]) > MOTION_MAX || pos + 3u * n + 3u != len)
         return 0;
     memset(&q->motion, 0, sizeof q->motion);       /* (tracks 3..4: none in DUELL) */
     for (i = 0; i < n; i++, pos += 3u) {
@@ -306,7 +302,7 @@ static int mu_unpack(project_t *q, uint8_t blk[NSHOWN][MB_N], uint8_t amt[NSHOWN
     }
     q->motion.count = (uint8_t)n;
     q->motion.on = b[7];
-    if (!proj_motion_ids(&q->motion, np) || !motion_valid(&q->motion))
+    if (!motion_valid(&q->motion))
         return 0;
     q->sel = b[3];
     memset(q->name, 0, sizeof q->name);
@@ -314,17 +310,16 @@ static int mu_unpack(project_t *q, uint8_t blk[NSHOWN][MB_N], uint8_t amt[NSHOWN
         char nm[PROJ_NAME_LEN + 1u];
         memcpy(q->name, nm, proj_name_get(nm, b + MU_NAME_AT));
     }
-    set[3] = set[4] = set[5] = 0;
-    if (b[0] >= 2u) {                               /* BALANCE, XFADE, SPLIT: out of range = the defaults */
-        uint32_t e = pos;                        /* (after the events) */
-        int32_t sb = (int8_t)b[e];
+    {                                               /* BALANCE, XFADE, SPLIT (after the events): out of range = the defaults */
+        int32_t sb = (int8_t)b[pos];
         set[3] = (uint8_t)(sb < -100 || sb > 100 ? 0 : sb);
-        set[4] = b[e + 1u] <= 100u ? b[e + 1u] : 0u;
-        set[5] = b[e + 2u] <= 128u ? b[e + 2u] : 0u;
+        set[4] = b[pos + 1u] <= 100u ? b[pos + 1u] : 0u;
+        set[5] = b[pos + 2u] <= 128u ? b[pos + 2u] : 0u;
     }
     set[0] = b[4];
-    set[1] = b[5];
+    set[1] = b[5] & 1u;
     set[2] = b[6];
+    q->bm = (b[5] >> 1) <= BM_N ? (uint8_t)(b[5] >> 1) : 0u;   /* BASS MONO (0.2.19): a code past BM_N reads OFF */
     q->sum = proj_sum(q);
     return 1;
 }
@@ -340,12 +335,14 @@ static void mu_note(uint32_t o)
         mu_names[k][0] = 0;
         mu_used &= (uint16_t)~(1u << k);
         mu_fact &= (uint16_t)~(1u << k);
-        if (!len && df_of(k) < DF_N) {            /* nothing stored: the factory multi (ROM) */
+        int ok = len && mu_unpack(&proj_scratch, blk, amt, set, r, len);
+        if (!ok && df_of(k) < DF_N) {             /* nothing stored, or a record this firmware does not load (one of before 0.2.14): the factory multi (ROM) */
             r = DM_REC + DM_AT[df_of(k)];
             len = DM_LEN[df_of(k)];
             mu_fact |= (uint16_t)(1u << k);
+            ok = mu_unpack(&proj_scratch, blk, amt, set, r, len);
         }
-        if (len && mu_unpack(&proj_scratch, blk, amt, set, r, len)) {
+        if (ok) {
             mu_used |= (uint16_t)(1u << k);
             proj_name_get(mu_names[k], r + MU_NAME_AT);
         }
@@ -584,8 +581,7 @@ static void project_load(uint32_t slot)
         morph_load_part(pi, blk[pi], amt[pi]);
     proj_cur = (uint8_t)k;
     pat_from_set(k + 1u);
-    ui.noid = 0;                                       /* (the parts' sounds: their patches as stored) */
-    perf_space = 0;                                    /* 0.2.11: a new multi starts the performance macros neutral (not saved with it; SPACE glides: fx.c sv.spc; */
-    perf_filt = 0;                                     /* a patch / sound load and a page change never do this; DEPTH and MORPH are left as they are) */
+    perf_fade_begin(1);                                /* 0.2.14: PERF LEAVE FADE glides SPACE and KILL to neutral, KEEP leaves them (was: both set to 0 at once, 0.2.11: a new multi starts the performance macros neutral (not saved with it; SPACE glides: fx.c sv.spc; */
+                                                       /* a patch / sound load now does the same (ui.c load_begin); DEPTH and MORPH are left as they are) */
     mu_say("LOADED ", k);
 }

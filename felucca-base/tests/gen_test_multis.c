@@ -78,7 +78,7 @@ static void build(const scn_t *s)
     song.g[G_CDEPTH] = 60;
     song.g[G_DMIX] = 60;
     song.g[G_RTYPE] = s->rtype;
-    song.g[G_PINGPONG] = s->ping;
+    song.g[G_DMODE] = s->ping ? DMD_PING : DMD_DIGITAL;
     duell_mode_req = s->mode;
     song.sel = 0;
 }
@@ -95,7 +95,7 @@ static void show(void)
     char b[16], nm[16];
     const char *u;
     printf("  multi '%s' tempo %d mode %s  REVERB %s size %d  PING-PONG %s  delay mix %d fdbk %d  chorus depth %d\n", proj_name, song.g[G_BPM],
-           DM_NAME[duell_mode_req], N_RTYPE[song.g[G_RTYPE]], song.g[G_RSIZE], song.g[G_PINGPONG] ? "ON" : "off", song.g[G_DMIX], song.g[G_DFDBK], song.g[G_CDEPTH]);
+           DM_NAME[duell_mode_req], N_RTYPE[song.g[G_RTYPE]], song.g[G_RSIZE], song.g[G_DMODE] == DMD_PING ? "ON" : "off", song.g[G_DMIX], song.g[G_DFDBK], song.g[G_CDEPTH]);
     for (k = 0; k < 2u; k++) {
         const track_t *t = &trk[k];
         sound_name(t, nm);

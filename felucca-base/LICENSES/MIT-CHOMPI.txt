@@ -1,0 +1,74 @@
+The PLATE reverb (G_RTYPE 5: firmware/src/fx.c (the constants, plate_gain), firmware/src/fx_bus.c (rev_plate)) follows the topology, the line lengths
+(scaled), the allpass and feedback structure and the control laws of the reverb of the CHOMPI firmware
+<https://github.com/CHOMPI-Club/CHOMPI> (MIT):
+
+- firmware/chompi-tape/code/src/reverb.h and fx_engine.h (the same reverb in the TAPE, TEMPO and WAVE firmwares), which are
+  Emilie Gillet's Rings / Clouds reverb (pichenettes/eurorack, MIT; the Griesinger plate of Dattorro's paper) in DaisySP form,
+  and CHOMPI's own control laws (firmware/chompi-tape/code/src/DSPEngine.h: the in-loop low-pass and the diffusion at its reverb
+  knob 0.70)
+
+- firmware/chompi-tempo/code/src/granularDelay.h and granularDelay2.h (TEMPO's granular delay: no header of its own and no
+  third-party lineage in the files; it uses DaisySP's fonepole / fclamp helpers only): the idea of a tempo-synced delay that
+  retriggers, reverses and shifts its repeats by an octave on a random share of the clock edges. DUELL's DELAY MODE RAND and OCT+
+  (firmware/src/fx_bus.c dly_ev) is written again from that idea in integer C, no source line copied; so is the host harness
+  tests/graindelay_test.c (which carries the notice below)
+
+Rewritten as integer C for DUELL (Q15 coefficients, 16-bit lines at half the sample rate, the lines' lengths x 0.546, in ROOM's
+two buffers), 2026. The host comparison harnesses tests/revcompare_test.c and tests/graindelay_test.c follow the same sources. These
+files stay under the MIT licence below; the rest of DUELL / Felucca is GPL-3.0-only (LICENSE). The name and logo of CHOMPI are
+trademarks of CHOMPI Club and are not covered by this licence; DUELL's reverb is called PLATE and its delay modes RAND and OCT+,
+and they do not use them.
+
+-------------------------------------------------------------------------------
+
+1. The file reverb.h of the CHOMPI repository carries this notice (fx_engine.h has the same):
+
+Copyright 2014 Emilie Gillet.
+
+Author: Emilie Gillet (emilie.o.gillet@gmail.com)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+
+See http://creativecommons.org/licenses/MIT/ for more information.
+
+-------------------------------------------------------------------------------
+
+2. The CHOMPI repository's LICENSE:
+
+MIT License
+
+Copyright (c) 2026 CHOMPI Club
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

@@ -56,7 +56,7 @@ static int card_is(uint32_t c, const char *label, const char *val)   /* the card
     snprintf(want, sizeof want, "%s|%s|", label, val);
     return !strncmp(ui.col[c], want, strlen(want));
 }
-static const char *title_now(void) { return ui.home ? "OVERVIEW" : cur_page()->title; }
+static const char *title_now(void) { return cur_page()->title; }
 static int under_is(const char *t) { return str_eq(PAGES[ui.page].title, t); }
 static void perform_on(void) { hold(B_FX); frame(); }
 
@@ -90,13 +90,13 @@ static void t_entry(void)
     hold(B_FX);
     frames(32);
     expect("FX held again in PERFORM: off, back to the page under it", !ui.perf && str_eq(title_now(), "INSERT 1/2"));
-    go_home();
+    go_main_to(HP_MORPH);
     frames(32);
     perform_on();
-    expect("from OVERVIEW: PERFORM (OVERVIEW not shown under it)", ui.perf && !ui.home && str_eq(title_now(), "PERFORM"));
+    expect("from HOME (MORPH): PERFORM (MORPH not shown under it)", ui.perf && !at_home() && str_eq(title_now(), "PERFORM"));
     press(B_FX);
     frames(32);
-    expect("  a tap of FX: OVERVIEW again", !ui.perf && ui.home);
+    expect("  a tap of FX: HOME (MORPH) again", !ui.perf && at_home());
     go_title("ENV 2");
     perform_on();
     press(B_HOME);
@@ -229,7 +229,7 @@ static void t_knobs(void)
     turn(EN_K4, -10);
     frame();
     expect("K2 SPACE +3, K3 FILTER 2 LP, K4 DEPTH 90 %: on their cards",
-           perf_space == 3 && perf_filt == -2 && perf_depth == 90 && card_is(1, "SPACE", "+3") && card_is(2, "FILTER", "2") &&
+           perf_space == 3 && perf_filt == -2 && perf_depth == 90 && card_is(1, "SPACE", "+3") && card_is(2, "KILL", "2") &&
            card_is(3, "DEPTH", "90"));
     expect("  DUEL (the power-on MODE): SPACE turned says DUEL: NO WIDTH once (its width cannot work there; the rest of SPACE does)",
            duell_mode == DM_SPLIT && msg_is("DUEL: NO WIDTH") && perf_nw_said);
@@ -309,7 +309,9 @@ static void t_knobs(void)
     turn(EN_ALGO, 1);                                   /* BOTH, then out of PERFORM */
     press(B_FX);
     frame();
-    expect("PERFORM left: FILTER neutral again, SPACE (global, also the MIXER's K3) and DEPTH kept (3, 90 %)", perf_space == 3 && !perf_filt && perf_depth == 90);
+    frames(640);
+    expect("  .. 0.64 s later SPACE and FILTER are neutral, DEPTH kept (90 %)", perf_space == 0 && !perf_filt && perf_depth == 90);
+    perf_space = 3;
     expect("  ALGORITHM's BOTH kept (the MORPH page's state); this page shows the selected part's badge alone",
            morph.target == MT_BOTH && song.sel == 0u && badge_lit() == 1u);
     turn(EN_ALGO, 1);
@@ -327,7 +329,8 @@ static void t_knobs(void)
     frame();
     {   /* 0.2.9: the MIXER's third card is the same SPACE */
         int16_t rev = TSEL->p[P_REV];
-        for (int hp = 0; hp < 8 && (ui.home || cur_page()->graph != GR_TRK); hp++)
+        perf_space = 3;
+        for (int hp = 0; hp < 8 && (at_home() || cur_page()->graph != GR_TRK); hp++)
             press(B_HOME);
         frame();
         expect("MIXER: K3 is the SPACE card with PERFORM's value (+3)", card_is(2, "SPACE", "+3"));
@@ -350,16 +353,29 @@ static void t_multiload(void)
     fresh();
     perform_on();
     frame();
-    perf_space = 66; perf_filt = 30; perf_depth = 90; sv.spc = 66 * 256;
+    perf_space = 66; perf_filt = 30; perf_depth = 90; sv.spc = 66 * 256; perf_sp_live = 1;
     turn(EN_PRESET, 1);
     frame();
-    expect("PRESETS in PERFORM: SPACE (66) and FILTER kept by a patch load", perf_space == 66 && perf_filt == 30);
+    expect("PRESETS in PERFORM (PERF LEAVE FADE): a patch load starts the glide, not a jump (0.2.14)", perf_space < 66 && perf_space > 0 && perf_filt < 30 && perf_filt > 0);
+    frames(640);
+    expect("  .. SPACE 0 and FILTER 0 after it, DEPTH kept (90 %)", perf_space == 0 && perf_filt == 0 && perf_depth == 90);
+    perf_space = 66; perf_filt = 30; sv.spc = 66 * 256; perf_sp_live = 1;
     project_load(0);
-    expect("multi load: SPACE 0 and FILTER 0 (DEPTH kept)", perf_space == 0 && perf_filt == 0 && perf_depth == 90);
-    mix_block(o, CTL);
-    expect("  the effect glides (one block: a step of 64 of Q8, not a jump to 0)", sv.spc == 66 * 256 - 64);
-    perf_space = 0; perf_filt = 0; sv.spc = 0;
+    expect("multi load: the same glide, not a jump", perf_space > 0 && perf_filt > 0 && perf_depth == 90);
+    frames(640);
+    expect("  .. SPACE 0 and FILTER 0 (DEPTH kept)", perf_space == 0 && perf_filt == 0 && perf_depth == 90);
+    perf_space = 66; perf_filt = 30; sv.spc = 66 * 256; perf_sp_live = 1; ui_idle |= PERF_KEEP_BIT;
+    turn(EN_PRESET, 1);
+    frames(640);
+    expect("PERF LEAVE KEEP: a patch load keeps SPACE (66) and FILTER (30)", perf_space == 66 && perf_filt == 30);
+    project_load(0);
+    frames(640);
+    expect("  .. a multi load too", perf_space == 66 && perf_filt == 30);
+    ui_idle &= (uint8_t)~PERF_KEEP_BIT;
+    perf_space = 0; perf_filt = 0; sv.spc = 0; perf_sp_live = 0; perf_fading = 0;
+    (void)o;
 }
+
 
 /* ----------------------------------------------------------------- ROLL --- */
 static uint32_t rolls(uint32_t pi, uint32_t e) { return mph[pi].n[e]; }
@@ -395,6 +411,11 @@ static void t_roll(void)
 }
 
 /* ------------------------------------------------------------ the song --- */
+/* part B of the perform test's song: DIGITAL PAD (preset 5) as converted to FM6 by the 0.2.13 firmware (fm4_convert.c): the track's
+ * values and the converted patch, so the song (and the cost thresholds read from it) stay as they were */
+static const int16_t SONG_B_P[P_COUNT] = {104,80,90,110,95,0,0,0,0,60,0,0,0,0,0,0,0,0,2,1,64,0,127,0,0,0,0,0,0,16,2,0,64,0,60,30,70,0,0,0,0,0,0,0,40,82,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,10,70,90,60,60,0,0,0,0,0,0,1,0,0,0,0,0,0,0,1,0,1,0,0,64,96,96,127,0,0,0,0,1,0,0,5,0,36,0,0,30,0,0,0,0,0,0,0,0,0,0,0,0,4};
+static const uint8_t SONG_B_PATCH[FP_SIZE] = {99,46,99,46,99,82,82,82,39,0,0,0,0,0,0,1,86,0,3,0,7,43,25,99,46,99,96,96,0,39,0,0,0,0,0,0,3,91,0,1,0,7,43,25,99,46,99,96,96,0,39,0,0,0,0,0,0,3,91,0,2,0,7,43,25,99,46,99,96,96,0,39,0,0,0,0,0,0,3,91,0,1,0,7,99,99,99,99,0,0,0,0,39,0,0,0,0,0,0,0,0,0,1,0,7,99,99,99,99,0,0,0,0,39,0,0,0,0,0,0,0,0,0,1,0,7,99,99,99,99,50,50,50,50,21,7,1,35,0,0,0,0,0,0,24,80,65,68,32,32,32,32,32,32,32};
+static const uint8_t SONG_B_PRESET = 4, SONG_B_SLOT = 4;
 static void song_setup(void)
 {
     static const uint8_t ACID[16] = {45, 45, 57, 45, 0, 48, 45, 55, 45, 0, 57, 52, 45, 48, 0, 50};
@@ -405,7 +426,17 @@ static void song_setup(void)
     host_tracks_init();
     song.g[G_BPM] = 120;
     host_preset(t1, 0, 4);
-    host_preset(t2, 1, 5);
+    host_preset(t2, ENGI_FM6, 4);
+    {   /* part B exactly as the song had it up to 0.2.13 (the cost thresholds below read its content) */
+        uint8_t v[FP_SIZE + 1u] = {0};
+        memcpy(t2->p, SONG_B_P, sizeof SONG_B_P);
+        t2->p[P_TRIM] = SONG_B_P[P_LEVEL];                  /* (0.2.19: the image's id 0 was the one level, the sound's trim now; the legacy DUCK HOLD's id is the TRIM) */
+        t2->p[P_LEVEL] = TP[P_LEVEL].def;
+        memcpy(v, SONG_B_PATCH, FP_SIZE);
+        fm6_set_patch(1, v);
+        fm6_slot[1] = SONG_B_SLOT;
+        t2->preset = SONG_B_PRESET;
+    }
     for (i = 0; i < 16u; i++) {
         uint8_t n = ACID[i];
         put_step(t1, i, n ? 1u : 0u, &n, n ? ST_NOTE : ST_REST, 0);
@@ -611,7 +642,6 @@ static void perf_reset(void)
 {
     memset(&pf, 0, sizeof pf);
     pf.src = pf.next = PF_N;
-    pf.lc = PF_TOP;
     pf.pbeat = perf_beat;
     pf.mg[0] = pf.mg[1] = pf.mg[2] = pf.mg[3] = 32768;
     perf_held = perf_act = 0;
@@ -1051,26 +1081,26 @@ static void t_filter(void)
     test_signal(1000, 30000, 1000, 30000);              /* DUELL 0.2.9: the ends close completely (30 Hz, 15.4 kHz, then the kill zone) */
     run_filt = -96;
     run(120, 1, 0, 0, 20000);
-    snprintf(what, sizeof what, "K3 FILTER at -96 (low-pass at 38 Hz, the kill zone's edge): a 1 kHz sine down to %d of 30000 (more than 20 dB: the Q14 table's floor "
-             "down there; the kill zone does the rest)", peak(out_l, 10000, 20000));
-    expect(what, peak(out_l, 10000, 20000) < 3000 && peak(out_r, 10000, 20000) < 3000);
+    snprintf(what, sizeof what, "K3 FILTER at -96 (low-pass at 30 Hz, the kill zone's edge): a 1 kHz sine down to %d of 30000 (0.2.13: 1512, 26 dB; now more than 80 dB)",
+             peak(out_l, 10000, 20000));
+    expect(what, peak(out_l, 10000, 20000) < 3 && peak(out_r, 10000, 20000) < 3);
     run_filt = -100;
     run(120, 1, 0, 0, 20000);
     snprintf(what, sizeof what, "K3 FILTER all the way left (low-pass 30 Hz, the kill zone): silent (%d)", peak(out_l, 10000, 20000));
     expect(what, !peak(out_l, 10000, 20000) && !peak(out_r, 10000, 20000));
     run_filt = 96;
     run(120, 1, 0, 0, 20000);
-    snprintf(what, sizeof what, "K3 FILTER at +96 (high-pass at 12 kHz): a 1 kHz sine down to %d of 30000 (more than 40 dB)", peak(out_l, 10000, 20000));
-    expect(what, peak(out_l, 10000, 20000) < 300 && peak(out_r, 10000, 20000) < 300);
+    snprintf(what, sizeof what, "K3 FILTER at +96 (high-pass at 15 kHz): a 1 kHz sine down to %d of 30000 (more than 80 dB)", peak(out_l, 10000, 20000));
+    expect(what, peak(out_l, 10000, 20000) < 3 && peak(out_r, 10000, 20000) < 3);
     run_filt = 100;
     run(120, 1, 0, 0, 20000);
-    snprintf(what, sizeof what, "K3 FILTER all the way right (high-pass 15.4 kHz, the kill zone): silent (%d)", peak(out_l, 10000, 20000));
+    snprintf(what, sizeof what, "K3 FILTER all the way right (high-pass 15 kHz, the kill zone): silent (%d)", peak(out_l, 10000, 20000));
     expect(what, !peak(out_l, 10000, 20000) && !peak(out_r, 10000, 20000));
     test_signal(5000, 30000, 5000, 30000);
     run_filt = -50;
     run(120, 1, 0, 0, 20000);
-    snprintf(what, sizeof what, "K3 FILTER half left (low-pass ~680 Hz): a 5 kHz sine down to %d of 30000", peak(out_l, 10000, 20000));
-    expect(what, peak(out_l, 10000, 20000) < 3000 && peak(out_r, 10000, 20000) < 3000);
+    snprintf(what, sizeof what, "K3 FILTER half left (low-pass ~680 Hz): a 5 kHz sine down to %d of 30000 (24 dB/oct: ~73 dB)", peak(out_l, 10000, 20000));
+    expect(what, peak(out_l, 10000, 20000) < 30 && peak(out_r, 10000, 20000) < 30);
     test_signal(1000, 20000, 1000, 20000);
     run_filt = -1;
     run(120, 1, 0, 0, 20000);
@@ -1086,7 +1116,7 @@ static void t_filter(void)
         mx = abs(out_l[t] - out_l[t - 1]) > mx ? abs(out_l[t] - out_l[t - 1]) : mx;
     snprintf(what, sizeof what, "  K3 turned left, right and back to the middle on a 110 Hz sine: largest step %d (sine %d)", mx, own);
     expect(what, mx <= 4 * own);
-    expect("  back in the middle: off after its glide (the live signal bit for bit, the stage at rest)", same(60000 + 6000, 90000) && !pf.la && !pf.ha && !pf.ka &&
+    expect("  back in the middle: off after its glide (the live signal bit for bit, the stage at rest)", same(60000 + 6000, 90000) && !pf.fa && !pf.ka &&
                                                                                                          !pf.busy);
     for (t = 0; t < NT; t++) {                          /* full scale squares past Q15 */
         in_l[t] = (t / 37u) & 1u ? 120000 : -120000;
@@ -1101,8 +1131,322 @@ static void t_filter(void)
         run_filt = 60;
         run(120, 1, e2, 1, 60000);
         pk = peak(out_l, 0, 60000) > pk ? peak(out_l, 0, 60000) : pk;
-        snprintf(what, sizeof what, "  4x full scale through REPEAT + the low-pass / the high-pass: peak %d (no wrap; the square's edges overshoot)", pk);
+        snprintf(what, sizeof what, "  4x full scale through REPEAT + the low-pass / the high-pass: peak %d (no wrap; the square's edges ring)", pk);
         expect(what, pk < 400000);
+    }
+}
+
+/* ------------------------------------------- FILTER: the 24 dB/oct (0.2.14) --- */
+/* least squares DC + sine + cosine at f on x[a, b): the amplitude, the DC, the residual's rms */
+static void sine_fit(const int32_t *x, uint32_t a, uint32_t b, double f, double *amp, double *dc, double *res)
+{
+    double m[3][4] = {{0}}, c[3], e = 0;
+    uint32_t t;
+    int i, j, k;
+    for (t = a; t < b; t++) {
+        double v[3] = {1, sin(2 * M_PI * f * t / FS), cos(2 * M_PI * f * t / FS)};
+        for (i = 0; i < 3; i++) {
+            for (j = 0; j < 3; j++)
+                m[i][j] += v[i] * v[j];
+            m[i][3] += v[i] * x[t];
+        }
+    }
+    for (i = 0; i < 3; i++)
+        for (k = i + 1; k < 3; k++)
+            for (j = 3; j >= i; j--)
+                m[k][j] -= m[k][i] / m[i][i] * m[i][j];
+    for (i = 2; i >= 0; i--) {
+        c[i] = m[i][3];
+        for (j = i + 1; j < 3; j++)
+            c[i] -= m[i][j] * c[j];
+        c[i] /= m[i][i];
+    }
+    for (t = a; t < b; t++) {
+        double d = x[t] - c[0] - c[1] * sin(2 * M_PI * f * t / FS) - c[2] * cos(2 * M_PI * f * t / FS);
+        e += d * d;
+    }
+    *amp = hypot(c[1], c[2]);
+    *dc = c[0];
+    *res = sqrt(e / (b - a));
+}
+/* the gain (dB) of K3 at k on a sine at f (both sides, amplitude 16384, the last 0.5 s of 1.2 s); *res the residual's rms (dBFS), *dc */
+static double filt_gain(int k, double f, double *res, double *dc)
+{
+    double a, d, r, a2, d2, r2;
+    test_signal(f, 16384, f, 16384);
+    run_filt = (int8_t)k;
+    run(120, 0, 0, 0, 52920);
+    sine_fit(out_l, 30870, 52920, f, &a, &d, &r);
+    sine_fit(out_r, 30870, 52920, f, &a2, &d2, &r2);
+    if (res)
+        *res = 20 * log10(fmax(r, r2) / 32768 + 1e-30);
+    if (dc)
+        *dc = fmax(fabs(d), fabs(d2));
+    return 20 * log10(fmin(a, a2) / 16384 + 1e-30);
+}
+/* the design's response at f, K3 at k (steady): the two bilinear stages of g (PF_G between its rows, as perform.c) and the dampings */
+static double filt_ideal(int k, double f)
+{
+    int32_t q = (k < 0 ? -k : k) << 8, u = k > 0 ? (q * PF_UHR) >> 16 : PF_ULO - ((q * PF_ULR) >> 16), i = u >> 8;
+    double g = (PF_G[i] + (double)(PF_G[i + 1] - PF_G[i]) * (u & 255) / 256.0) / 134217728.0, w = 2 * M_PI * f / FS, h = 1;
+    double kk[2] = {PF_KA / 1073741824.0, PF_KB / 1073741824.0};
+    int s;
+    for (s = 0; s < 2; s++) {   /* H(s) of the analog prototype at the warped frequency: LP g^2 / (g^2 + k g W + W^2) with W = tan(w / 2) j */
+        double W = tan(w / 2), re = g * g - W * W, im = kk[s] * g * W, num = k > 0 ? W * W : g * g;
+        h *= num / hypot(re, im);
+    }
+    return 20 * log10(h);
+}
+/* the corner of K3 at k (Hz): where its g is */
+static double filt_fc(int k)
+{
+    int32_t q = (k < 0 ? -k : k) << 8, u = k > 0 ? (q * PF_UHR) >> 16 : PF_ULO - ((q * PF_ULR) >> 16), i = u >> 8;
+    double g = (PF_G[i] + (double)(PF_G[i + 1] - PF_G[i]) * (u & 255) / 256.0) / 134217728.0;
+    return atan(g) * FS / M_PI;
+}
+/* a radix-2 FFT, n a power of 2 */
+static void fft(double *re, double *im, uint32_t n)
+{
+    uint32_t i, j, len, b;
+    for (i = 1, j = 0; i < n; i++) {
+        for (b = n >> 1; j & b; b >>= 1)
+            j ^= b;
+        j ^= b;
+        if (i < j) {
+            double t = re[i]; re[i] = re[j]; re[j] = t;
+            t = im[i]; im[i] = im[j]; im[j] = t;
+        }
+    }
+    for (len = 2; len <= n; len <<= 1)
+        for (i = 0; i < n; i += len)
+            for (j = 0; j < len / 2; j++) {
+                double a = -2 * M_PI * j / len, wr = cos(a), wi = sin(a), *xr = re + i + j, *xi = im + i + j;
+                double vr = xr[len / 2] * wr - xi[len / 2] * wi, vi = xr[len / 2] * wi + xi[len / 2] * wr;
+                xr[len / 2] = *xr - vr; xi[len / 2] = *xi - vi;
+                *xr += vr; *xi += vi;
+            }
+}
+static double spur_hz;                                 /* (spectrum: where its highest spur was) */
+/* the spectrum of x (4096 points from a, Blackman-Harris) against a tone at f0: the highest bin more than 250 Hz from it (*spur), the
+ * median of those bins (*floor), the highest bin within 30 Hz of fz1 or fz2 (*zip), all dB under the tone's highest bin */
+static void spectrum(const double *x, uint32_t a, double f0, double fz1, double fz2, double *spur, double *floor_, double *zip)
+{
+    static double re[4096], im[4096], ob[2048];
+    uint32_t t, k, no = 0;
+    double tone = 0, sp = 0, zp = 0;
+    for (t = 0; t < 4096u; t++) {
+        double w = 0.35875 - 0.48829 * cos(2 * M_PI * t / 4095) + 0.14128 * cos(4 * M_PI * t / 4095) - 0.01168 * cos(6 * M_PI * t / 4095);
+        re[t] = x[a + t] * w;
+        im[t] = 0;
+    }
+    fft(re, im, 4096);
+    for (k = 1; k < 2048u; k++) {
+        double f = k * (double)FS / 4096, p = re[k] * re[k] + im[k] * im[k];
+        if (fabs(f - f0) < 250) {
+            tone = p > tone ? p : tone;
+        } else {
+            if (p > sp)
+                sp = p, spur_hz = f;
+            ob[no++] = p;
+        }
+        if (fabs(f - fz1) < 30 || fabs(f - fz2) < 30)
+            zp = p > zp ? p : zp;
+    }
+    for (t = 0; t < no; t++)                            /* (the median: a partial selection sort to the middle) */
+        for (k = t + 1; t <= no / 2 && k < no; k++)
+            if (ob[k] < ob[t]) {
+                double q = ob[t]; ob[t] = ob[k]; ob[k] = q;
+            }
+    *spur = 10 * log10(tone / (sp + 1e-30));
+    *floor_ = 10 * log10(tone / (ob[no / 2] + 1e-30));
+    *zip = 10 * log10(tone / (zp + 1e-30));
+}
+/* the ideally smoothed reference in double: K3's glide as a one-pole a SAMPLE (the same time constant), the coefficients exact of g at every
+ * sample (no straight lines, no fixed point), the shares and the mode as perform.c; x in, y out */
+static void filt_ref(const int32_t *x, double *y, uint32_t n0, void (*at)(uint32_t t))
+{
+    double z[4] = {0, 0, 0, 0}, fk = 0, kk[2] = {PF_KA / 1073741824.0, PF_KB / 1073741824.0};
+    int32_t fa = 0, fm = 0, ifk = 0;
+    uint32_t t, i, s;
+    for (t = 0; t < n0; t += CTL) {
+        int32_t m, wm, same, tk, ta, d;
+        if (at)
+            at(t);
+        m = perf_filt < 0 ? -perf_filt : perf_filt;
+        wm = perf_filt > 0 ? 1 : perf_filt < 0 ? 0 : fm;
+        if (!fa && wm != fm)
+            fm = wm, ifk = 0, fk = 0;
+        same = perf_filt && wm == fm;
+        tk = same ? (m < PF_KILL ? m : PF_KILL) << 8 : 0;
+        d = tk - ifk;                                   /* (the integer glide decides the fades, as perform.c) */
+        ifk += d > -16 && d < 16 ? d : d >> 4;
+        ta = same || ifk > PF_KOPEN ? 32768 : 0;
+        for (i = 0; i < CTL; i++) {
+            double v = x[t + i], o = v, u, g;
+            int32_t ui;
+            fk += (tk - fk) * (1 - pow(15.0 / 16.0, 1.0 / CTL));
+            if (!fa && !ta) {
+                y[t + i] = v;
+                continue;
+            }
+            u = fm ? fk * PF_UHR / 65536 : PF_ULO - fk * PF_ULR / 65536;
+            ui = (int32_t)u;
+            g = (PF_G[ui >> 8] + (double)(PF_G[(ui >> 8) + 1] - PF_G[ui >> 8]) * (u - (ui & ~255)) / 256) / 134217728.0;
+            for (s = 0; s < 2; s++) {
+                double a1 = 1 / (1 + g * (g + kk[s])), a2 = g * a1, a3 = g * a2, v3 = o - z[2 * s + 1];
+                double v1 = a1 * z[2 * s] + a2 * v3, v2 = z[2 * s + 1] + a2 * z[2 * s] + a3 * v3;
+                z[2 * s] = 2 * v1 - z[2 * s];
+                z[2 * s + 1] = 2 * v2 - z[2 * s + 1];
+                o = fm ? o - v2 - kk[s] * v1 : v2;
+            }
+            fa += clamp(ta - fa, -PF_FADE, PF_FADE);
+            y[t + i] = v + (o - v) * fa / 32768.0;
+        }
+        if (!fa)
+            z[0] = z[1] = z[2] = z[3] = 0, ifk = 0, fk = 0;
+    }
+}
+static int zip_a, zip_b;                               /* the sweep: K3 from zip_a to zip_b, a detent every 20 ms after 0.3 s */
+static void zip_at(uint32_t t)
+{
+    uint32_t ms = t / 441u * 10u;
+    int st = ms < 300u ? 0 : (int)(ms - 300u) / 20, span = abs(zip_b - zip_a), k = st > span ? span : st;
+    perf_filt = (int8_t)(zip_a + (zip_b > zip_a ? k : -k));
+}
+static void swing_at(uint32_t t) { perf_filt = (int8_t)(t < 22050u ? -60 : 60); }
+static void t_filter24(void)
+{
+    static double ref[NT], fx[NT];
+    char what[220];
+    double r, dc, g, worst = 0, wres = -999, wdc = 0;
+    uint32_t t, k, ok;
+    {   /* the middle: off, bit for bit, the stage never runs */
+        test_signal(1000, 20000, 330, 12000);
+        run_filt = 0;
+        run(120, 1, 0, 0, 44100);
+        expect("K3 FILTER (0.2.14, 24 dB/oct) in the middle: the live signal bit for bit, the stage never runs", same(0, 44100) && !busy_seen);
+    }
+    {   /* the open ends: flat (+-0.5 dB) from 30 Hz to 15 kHz one detent off the middle */
+        static const double F[6] = {30, 100, 1000, 5000, 10000, 15000};
+        double lo = 0, hi = 0;
+        for (k = 0; k < 12u; k++) {
+            g = filt_gain(k < 6u ? -1 : 1, F[k % 6u], 0, 0);
+            lo = g < lo ? g : lo;
+            hi = g > hi ? g : hi;
+        }
+        snprintf(what, sizeof what, "  a detent off the middle (low-pass %.1f kHz, high-pass %.1f Hz): 30 Hz .. 15 kHz within %+.2f .. %+.2f dB (+-0.5)",
+                 filt_fc(-1) / 1000, filt_fc(1), lo, hi);
+        expect(what, lo >= -0.5 && hi <= 0.5);
+    }
+    {   /* -50 and +50: the passband flat, -3 dB at the corner, no bump, -24 dB/oct away from it, the design's response within 0.2 dB */
+        double fl = filt_fc(-50), fh = filt_fc(50), pl = 0, ph = 0, bump = -99, dev = 0, sl, sh, c1, c2;
+        static const double PB[4] = {0.1, 0.2, 0.3, 0.5}, NB[4] = {0.5, 0.7, 0.85, 1.0};
+        for (k = 0; k < 4u; k++) {
+            g = filt_gain(-50, fl * PB[k], 0, 0);
+            pl = fabs(g) > pl ? fabs(g) : pl;
+            g = filt_gain(50, fh / PB[k], 0, 0);
+            ph = fabs(g) > ph ? fabs(g) : ph;
+            g = filt_gain(-50, fl * NB[k], 0, 0);
+            bump = g > bump ? g : bump;
+            dev = fabs(g - filt_ideal(-50, fl * NB[k])) > dev ? fabs(g - filt_ideal(-50, fl * NB[k])) : dev;
+            g = filt_gain(50, fh / NB[k], 0, 0);
+            bump = g > bump ? g : bump;
+            dev = fabs(g - filt_ideal(50, fh / NB[k])) > dev ? fabs(g - filt_ideal(50, fh / NB[k])) : dev;
+        }
+        c1 = filt_gain(-50, fl, 0, 0);
+        c2 = filt_gain(50, fh, 0, 0);
+        snprintf(what, sizeof what, "  K3 -50 (low-pass %.0f Hz) / +50 (high-pass %.0f Hz): passband within %.2f / %.2f dB, at the corner %.2f / %.2f dB, highest %+.3f dB (no bump)",
+                 fl, fh, pl, ph, c1, c2, bump);
+        expect(what, pl <= 0.5 && ph <= 0.5 && fabs(c1 + 3.01) < 0.3 && fabs(c2 + 3.01) < 0.3 && bump <= 0.05);
+        sl = filt_gain(-50, 6 * fl, 0, 0) - filt_gain(-50, 3 * fl, 0, 0);    /* (3 fc .. 6 fc: the bilinear zero at Nyquist adds ~0.7 dB at 6 fc) */
+        sh = filt_gain(50, fh / 8, 0, 0) - filt_gain(50, fh / 4, 0, 0);
+        dev = fabs(filt_gain(-50, 6 * fl, 0, 0) - filt_ideal(-50, 6 * fl)) > dev ? fabs(filt_gain(-50, 6 * fl, 0, 0) - filt_ideal(-50, 6 * fl)) : dev;
+        dev = fabs(filt_gain(50, fh / 8, 0, 0) - filt_ideal(50, fh / 8)) > dev ? fabs(filt_gain(50, fh / 8, 0, 0) - filt_ideal(50, fh / 8)) : dev;
+        snprintf(what, sizeof what, "  slopes: low-pass 3 fc -> 6 fc %.2f dB, high-pass fc/4 -> fc/8 %.2f dB (-24 +-1); the design's response within %.3f dB", sl, sh, dev);
+        expect(what, fabs(sl + 24) <= 1 && fabs(sh + 24) <= 1 && dev <= 0.2);
+    }
+    {   /* the noise floor: sines at -6 dBFS (100 Hz, 1 kHz, 8 kHz) at fixed settings: the residual after the fit (0.2.13: -66 .. -89 dBFS, DC up to 1416) */
+        static const int K[10] = {-1, -20, -50, -80, -95, 1, 20, 50, 80, 95};
+        static const double F[3] = {100, 1000, 8000};
+        for (k = 0; k < 30u; k++) {
+            filt_gain(K[k / 3u], F[k % 3u], &r, &dc);
+            wres = r > wres ? r : wres;
+            wdc = dc > wdc ? dc : wdc;
+        }
+        snprintf(what, sizeof what, "  noise floor at K3 -1 -20 -50 -80 -95 +1 +20 +50 +80 +95 (sines 100 Hz / 1 kHz / 8 kHz): at most %.1f dBFS (-95), DC %.2f", wres, wdc);
+        expect(what, wres <= -95 && wdc <= 0.5);
+    }
+    {   /* silence after a tone: exactly 0 (no limit cycle, no DC stuck in the states) */
+        static const int K[10] = {-1, -20, -50, -80, -95, 1, 20, 50, 80, 95};
+        for (ok = 1, k = 0; k < 10u; k++) {
+            test_signal(1000, 16384, 50, 16384);
+            for (t = 22050; t < NT; t++)
+                in_l[t] = in_r[t] = 0;
+            run_filt = (int8_t)K[k];
+            run(120, 0, 0, 0, 66150);
+            ok &= !peak(out_l, 44100, 66150) && !peak(out_r, 44100, 66150);
+        }
+        expect("  silence after a tone (1 kHz / 50 Hz), every setting: the output exactly 0 within 0.5 s", ok);
+    }
+    {   /* no zipper: K3 turned a detent every 20 ms over a 1 kHz sine; the spectrum against the ideally smoothed reference's */
+        static const int Z[4][2] = {{0, -45}, {0, 55}, {-45, 0}, {55, 0}};
+        double wz = 999, wf = 999, wsp = 0;
+        for (k = 0; k < 4u; k++) {
+            uint32_t a, n0 = 3u * 44100u;
+            test_signal(1000, 16384, 1000, 16384);
+            zip_a = Z[k][0];
+            zip_b = Z[k][1];
+            run_at = zip_at;
+            run(120, 0, 0, 0, n0);
+            run_at = 0;
+            filt_ref(in_l, ref, n0, zip_at);
+            for (t = 0; t < n0; t++)
+                fx[t] = out_l[t];
+            for (a = 0; a + 4096u <= n0; a += 2048u) {
+                double s1, f1, z1, s2, f2, z2, hz;
+                spectrum(fx, a, 1000, 1000 + FS / CTL - 2000, 1000 + FS / CTL, &s1, &f1, &z1);   /* (the block rate's sidebands: 378 Hz, 2378 Hz) */
+                hz = spur_hz;
+                spectrum(ref, a, 1000, 1000 + FS / CTL - 2000, 1000 + FS / CTL, &s2, &f2, &z2);
+                wz = z1 < wz ? z1 : wz;
+                wf = f1 < wf ? f1 : wf;
+                if (s1 < 70 && s2 - s1 > wsp)               /* (a spur that matters: within 70 dB of the tone) */
+                    wsp = s2 - s1;
+                if (getenv("ZIP_VERBOSE"))
+                    printf("zip %d->%d seg %.2f s: spur %.1f at %.0f Hz (ideal %.1f at %.0f Hz), floor %.1f, block-rate %.1f\n", zip_a, zip_b, a / 44100.0, s1, hz, s2, spur_hz, f1, z1);
+            }
+        }
+        snprintf(what, sizeof what, "  K3 turned a detent every 20 ms (0 -> -45, 0 -> +55 and back) on 1 kHz: block-rate sidebands %.1f dB under the tone, the floor %.1f dB under, "
+                 "a spur within 70 dB of it at most %.1f dB above the ideally smoothed filter's", wz, wf, wsp);
+        expect(what, wz >= 70 && wf >= 70 && wsp <= 1.5);
+    }
+    {   /* stable at the extremes: squares at 8x full scale and past the input's clamp, every 10 detents, then silence: bounded, and back to 0 */
+        static const double F[4] = {20, 110, 1000, 7000};
+        int32_t pk = 0;
+        for (ok = 1, k = 0; k < 4u * 21u; k++) {
+            int32_t amp = k & 1u ? 400000 : 262144;
+            for (t = 0; t < NT; t++)
+                in_l[t] = in_r[t] = t >= 33075u ? 0 : sin(2 * M_PI * F[k / 21u] * t / FS) >= 0 ? amp : -amp;
+            run_filt = (int8_t)(-100 + 10 * (int)(k % 21u));
+            run(120, 0, 0, 0, 66150);
+            pk = peak(out_l, 0, 33075) > pk ? peak(out_l, 0, 33075) : pk;
+            ok &= !peak(out_l, 55125, 66150) && !peak(out_r, 55125, 66150);
+        }
+        snprintf(what, sizeof what, "  squares at 8x full scale and 400000 (past the clamp), K3 -100 .. +100: peak %d (no wrap), silent again after", pk);
+        expect(what, ok && pk < 700000);
+    }
+    {   /* turned across the middle at once (-60 -> +60): no click; the low-pass sweeps open, fades out, rests, the high-pass fades in and closes */
+        int32_t own = 0, mx = 0;
+        test_signal(110, 16000, 110, 16000);
+        for (t = 1; t < NT; t++)
+            own = abs(in_l[t] - in_l[t - 1]) > own ? abs(in_l[t] - in_l[t - 1]) : own;
+        run_at = swing_at;
+        run(120, 0, 0, 0, 66150);
+        run_at = 0;
+        for (t = 1; t < 66150u; t++)
+            mx = abs(out_l[t] - out_l[t - 1]) > mx ? abs(out_l[t] - out_l[t - 1]) : mx;
+        snprintf(what, sizeof what, "  turned -60 -> +60 at once on a 110 Hz sine: largest step %d (sine %d), the high-pass at work after (%u, share %d)", mx, own,
+                 (unsigned)pf.fm, (int)pf.fa);
+        expect(what, mx <= 2 * own && pf.fm == 1u && pf.fa == 32768);
     }
 }
 
@@ -1525,8 +1869,6 @@ static void space_clear(void)                           /* the buses from silenc
                                                          * send floor feeds the chorus with the sends at 0) */
     fx.dm_xl = fx.dm_xr = fx_b.dm_xl = fx_b.dm_xr = 0;
     dc_l = dc_r = dce_l = dce_r = 0;                    /* (the master's DC blockers and low cuts from rest: a side silent is 0) */
-    lc_l1 = lc_l2 = lc_r1 = lc_r2 = 0;
-    memset(lce, 0, sizeof lce);
 }
 static double energy(const int32_t *x, uint32_t a, uint32_t b)
 {
@@ -1551,7 +1893,7 @@ static double space_seams(uint32_t which, uint32_t rt, uint32_t mode, int32_t *p
     song.g[G_RDAMP] = 60;
     song.g[G_CDEPTH] = 60;
     song.g[G_DMDEP] = 0;
-    song.g[G_PINGPONG] = 0;
+    song.g[G_DMODE] = DMD_DIGITAL;
     for (b = 0; b < 700u; b++, t += CTL) {
         for (i = 0; i < CTL; i++) {
             double ph = 2 * M_PI * 1000.0 * (t + i) / 44100.0;
@@ -1609,9 +1951,9 @@ static void t_space_width(void)
     uint32_t m, k, t;
     for (m = 0; m < 2u; m++) {
         uint32_t neq = 0;
-        double sm[3] = {0}, ss[3] = {0}, rr[5];
+        double sm[3] = {0}, ss[3] = {0}, rr[6];
         int32_t pk[3] = {0}, pmax = 0;
-        for (k = 0; k < 5u; k++) {
+        for (k = 0; k < 6u; k++) {
             uint32_t sp;
             for (sp = 0; sp < 3u; sp++) {                /* -100, 0, +100 */
                 song_setup();
@@ -1710,7 +2052,7 @@ static void t_space_width(void)
 
 static void t_space_glitch(void)
 {
-    static const char *const RT[5] = {"ROOM", "SPRING", "HALL", "SHIM", "RESO"};
+    static const char *const RT[6] = {"ROOM", "SPRING", "HALL", "SHIM", "RESO", "PLATE"};
     char what[240];
     uint32_t m, k;
     {   /* the chorus's DEPTH at +100: the knob's largest (762), not 2x it; a stored depth above that would be kept (none can be: 127 x 6) */
@@ -1811,7 +2153,7 @@ static void t_space_glitch(void)
 static void t_space(void)
 {
     char what[240];
-    static const char *const RT[5] = {"ROOM", "SPRING", "HALL", "SHIM", "RESO"};
+    static const char *const RT[6] = {"ROOM", "SPRING", "HALL", "SHIM", "RESO", "PLATE"};
     double e[3];
     uint32_t k, t, n;
     int sp;
@@ -1837,13 +2179,13 @@ static void t_space(void)
              10 * log10(e[0] / e[1]), 10 * log10(e[2] / e[1]));
     expect(what, e[0] < e[1] / 8 && e[2] > e[1] * 2);
     /* no runaway: every reverb at its largest SIZE, the delay at FDBK 127, the sends full, SPACE +100: the tail dies away (STEREO and DUEL) */
-    for (k = 0; k < 10u; k++) {
+    for (k = 0; k < 12u; k++) {
         int32_t p1, pk;
         double em, el;
         song_setup();
         space_clear();
-        duell_mode_force(k < 5u ? DM_STEREO : DM_SPLIT);
-        song.g[G_RTYPE] = (int16_t)(k % 5u);
+        duell_mode_force(k < 6u ? DM_STEREO : DM_SPLIT);
+        song.g[G_RTYPE] = (int16_t)(k % 6u);
         song.g[G_RSIZE] = 127;
         song.g[G_RDAMP] = 0;
         song.g[G_DFDBK] = 127;
@@ -1859,7 +2201,7 @@ static void t_space(void)
         em = energy(sp_l, 8u * FS, 10u * FS) + energy(sp_r, 8u * FS, 10u * FS);
         el = energy(sp_l, n - 2u * FS, n) + energy(sp_r, n - 2u * FS, n);
         snprintf(what, sizeof what, "  SPACE +100, %s %s, SIZE 127, FDBK 127, sends full: peak %d; 7 .. 9 s after the stop -> 21 .. 23 s: %.0f dB (it dies away), %d",
-                 k < 5u ? "STEREO" : "DUEL", RT[k % 5u], pk, 10 * log10(el / (em + 1) + 1e-12), p1);
+                 k < 6u ? "STEREO" : "DUEL", RT[k % 6u], pk, 10 * log10(el / (em + 1) + 1e-12), p1);
         expect(what, pk <= 32767 && el < em / 4);
     }
     /* the delay time: an echo's place (the delay's return alone: the render with the send less the one without), the middle against
@@ -1979,6 +2321,253 @@ static void t_after(void)
                                                                                                           pf.mode == BM_NONE);
 }
 
+
+/* ------------------------------------------------- PERF LEAVE (0.2.14) --- */
+/* the fade through the UI: PERFORM left, the values glide to neutral in 0.3 .. 0.5 s; KEEP leaves them; re-entering stops it; a SPACE the MIXER
+ * set alone is not taken by merely opening and leaving PERFORM */
+static void t_leave_ui(void)
+{
+    uint32_t i, n;
+    int8_t prev_f, prev_s;
+    int mono = 1, ok;
+    fresh();
+    perform_on();
+    frame();
+    perf_space = 0; perf_filt = 0;
+    turn(EN_K2, 100);
+    turn(EN_K3, -100);
+    frame();
+    expect("setup: SPACE and KILL turned to the ends in PERFORM", perf_space >= 90 && perf_filt <= -90);
+    press(B_FX);                                         /* leave: FADE (the default) */
+    prev_f = perf_filt; prev_s = perf_space;
+    {
+        int8_t f0 = perf_filt, s0 = perf_space;
+        int maxstep = 0;
+        n = 0;
+        for (i = 0; i < 80u && (perf_filt || perf_space); i++) {
+            int d;
+            frame();
+            n++;
+            d = abs(perf_filt - prev_f) > abs(perf_space - prev_s) ? abs(perf_filt - prev_f) : abs(perf_space - prev_s);
+            maxstep = d > maxstep ? d : maxstep;
+            mono &= perf_filt >= prev_f && perf_space <= prev_s;
+            prev_f = perf_filt; prev_s = perf_space;
+        }
+        (void)f0; (void)s0;
+        expect("PERF LEAVE FADE: leaving PERFORM glides KILL and SPACE to 0, monotonic, a few detents a frame (no jump)", mono && !perf_filt && !perf_space && maxstep <= 5);
+        printf("perform:   fade length %u ms from SPACE %d / KILL %d\n", n * 16u, 100, -100);
+        expect("  .. in 0.3 .. 0.5 s from the ends", n * 16u >= 300u && n * 16u <= 500u);
+    }
+    expect("  .. DEPTH untouched", perf_depth == 100);
+    /* KEEP: nothing moves */
+    ui_idle |= PERF_KEEP_BIT;
+    perform_on(); frame();
+    turn(EN_K2, 100); turn(EN_K3, -100); frame();
+    {
+        int8_t s = perf_space, f = perf_filt;
+        press(B_FX);
+        frames(1500);
+        ok = perf_space == s && perf_filt == f && s != 0 && f != 0 && !perf_fading;
+        expect("PERF LEAVE KEEP: leaving PERFORM keeps SPACE and KILL (1.5 s later the same)", ok);
+        perform_on(); frame();
+        char want[12];
+        snprintf(want, sizeof want, "+%d", s);
+        expect("  .. back in PERFORM the cards show them, KILL not greyed", card_is(1, "SPACE", want) && !strncmp(ui.col[2], "KILL|", 5));
+        perf_space = 0; perf_filt = 0;
+        press(B_FX);
+    }
+    ui_idle &= (uint8_t)~PERF_KEEP_BIT;
+    /* re-enter during the fade: it stops where it is */
+    fresh();
+    perform_on(); frame();
+    turn(EN_K2, 100); turn(EN_K3, -100); frame();
+    press(B_FX);
+    frames(96);
+    {
+        int8_t s = perf_space, f = perf_filt;
+        ok = perf_fading && (s > 0 || f < 0);
+        btn_down(B_FX);                                   /* (FX held + a white key: PERFORM at once, before the 0.7 s hold) */
+        key_down(wkey(0));
+        frame(); frame();
+        key_up(wkey(0));
+        btn_up(B_FX);
+        frame();
+        ok &= ui.perf;
+        frames(800);
+        expect("re-entering PERFORM during the fade stops it: the values stay where they were", ok && !perf_fading && perf_space >= s - 4 && perf_filt <= f + 4 && (perf_space || perf_filt));
+    }
+    /* a SPACE set on the MIXER alone is not taken by opening and leaving PERFORM */
+    fresh();
+    perf_space = 40; perf_sp_live = 0;
+    perform_on(); frame();
+    press(B_FX);
+    frames(800);
+    expect("a SPACE set on the MIXER alone (+40) stays when PERFORM is opened and left", perf_space == 40);
+    fresh();
+    perform_on(); frame();
+    turn(EN_K2, 30);
+    press(B_FX);
+    frames(800);
+    expect("  .. PERFORM's own SPACE (moved there) is 0 after leaving, and a patch loaded afterwards starts from the patch's own sends", perf_space == 0 && sv.spc <= 256 * 30);
+    perf_space = 0; perf_filt = 0; sv.spc = 0;
+    perf_fading = 0; perf_sp_live = 0;
+}
+
+static uint32_t lv_first, lv_last;
+static int32_t lv_step_c, lv_step_r;
+static void leave_at(uint32_t t)
+{
+    fm1_ms = 100000u + t / 44u;                          /* (44.1 samples a ms) */
+    if (t == 0u && (perf_filt || perf_space))
+        perf_fade_begin(0);
+    perf_fade_step();
+}
+/* a child renders the song with the KILL (and SPACE) set and the fade started at once; the parent without: where do they differ? */
+static int leave_diff(void (*prep)(void), uint32_t frames_n)
+{
+    static int32_t b_l[10u * 44100u + CTL], b_r[10u * 44100u + CTL];
+    int fd[2];
+    pid_t pid;
+    uint32_t t;
+    if (pipe(fd) || (pid = fork()) < 0)
+        return 0;
+    if (!pid) {
+        song_setup();
+        prep();
+        song_render(frames_n, leave_at);
+        close(fd[0]);
+        if (write(fd[1], song_l, frames_n * 4u) < 0 || write(fd[1], song_r, frames_n * 4u) < 0)
+            _exit(1);
+        _exit(0);
+    }
+    close(fd[1]);
+    song_setup();
+    song_render(frames_n, leave_at);
+    {
+        FILE *f = fdopen(fd[0], "rb");
+        size_t got = fread(b_l, 4, frames_n, f) + fread(b_r, 4, frames_n, f);
+        fclose(f);
+        waitpid(pid, 0, 0);
+        if (got != 2u * frames_n)
+            return 0;
+    }
+    lv_first = 0xFFFFFFFFu; lv_last = 0; lv_step_c = lv_step_r = 0;
+    for (t = 0; t < frames_n; t++) {
+        if (b_l[t] != song_l[t] || b_r[t] != song_r[t]) {
+            lv_first = t < lv_first ? t : lv_first;
+            lv_last = t;
+        }
+        if (t) {
+            int32_t d = abs(b_l[t] - b_l[t - 1u]), e = abs(song_l[t] - song_l[t - 1u]);
+            lv_step_c = d > lv_step_c ? d : lv_step_c;
+            lv_step_r = e > lv_step_r ? e : lv_step_r;
+        }
+    }
+    return 1;
+}
+static void lv_kill_prep(void) { perf_reset(); perf_filt = -60; sv.spc = 0; }
+static void lv_kill_hp_prep(void) { perf_reset(); perf_filt = 100; }
+static void lv_both_prep(void) { perf_reset(); perf_filt = -85; }
+static void t_leave_audio(void)
+{
+    int ok = leave_diff(lv_kill_prep, 4u * FS);
+    expect("audio: KILL -60 (a low-pass) faded on leaving: the song differs while it fades, then is bit for bit the dry song again (the filter's own settling inside 2 s)", ok && lv_first < FS / 4 && lv_last < 2u * FS);
+    printf("perform:   last differing sample %u (%.0f ms)\n", lv_last, lv_last / 44.1);
+    expect("  .. no click at the fade: no step of the faded song above 1.2 x the dry song's own largest step", lv_step_c <= lv_step_r * 12 / 10 + 8);
+    ok = leave_diff(lv_both_prep, 4u * FS);
+    expect("audio: KILL -85 (30 .. 150 Hz low-pass): back to the dry song bit for bit, no click", ok && lv_last < 2u * FS && lv_step_c <= lv_step_r * 12 / 10 + 8);
+    ok = leave_diff(lv_kill_hp_prep, 4u * FS);
+    printf("perform:   +100: last differing sample %u (%.0f ms), largest step %d (dry song %d)\n", lv_last, lv_last / 44.1, lv_step_c, lv_step_r);
+    expect("audio: KILL +100 (the kill zone, silence) faded on leaving: no click (steps within 1.2 x the dry song's), bit for bit after the fade", ok && lv_last < 2u * FS && lv_step_c <= lv_step_r * 12 / 10 + 8);
+    perf_reset();
+}
+static void lv_sp_prep(void) { perf_reset(); perf_space = 100; perf_sp_live = 1; }
+static void t_leave_space(void)
+{
+    /* SPACE: the buses carry a tail, so the end is judged where the song has stopped sounding the old tail; the engine state returns to the middle */
+    int32_t o[2 * CTL];
+    uint32_t t;
+    song_setup();
+    perf_reset();
+    perf_space = 100; perf_sp_live = 1; sv.spc = 100 * 256;
+    fm1_ms = 200000u;
+    perf_fade_begin(0);
+    for (t = 0; t < 44100u; t += CTL) {
+        fm1_ms = 200000u + t / 44u;
+        perf_fade_step();
+        mix_block(o, CTL);
+    }
+    expect("audio: SPACE +100 left and faded: the engine's SPACE is exactly 0 and the width stage off after 1 s (the output is the patch's own bus path)", perf_space == 0 && sv.spc == 0 && !sv.on);
+    perf_reset();
+    sv.spc = 0;
+    (void)lv_sp_prep;
+}
+
+/* D (0.2.14): in PERFORM the black keys play in the scale, whatever OFF-SCALE says */
+static void t_black_scale(void)
+{
+    static const uint8_t SC[] = {1, 2, 5, 9, 11};         /* MAJ MIN PEN WHOLE BLUES' neighbours: MAJ, MIN, PEN, WHOLE-ish, MEL (indices into SCALE_MASK) */
+    uint32_t si, ro, k, inside = 1, outside = 1, chrom = 1, white_same = 1, any_off = 0, any_moved = 0;
+    fresh();
+    perform_on();
+    frame();
+    usb.config = 1;
+    offscale_g = OS_PLAY;                                 /* the setting that never snapped */
+    for (si = 0; si < sizeof SC; si++)
+        for (ro = 0; ro < 12u; ro += 5u) {
+            scale_g = SC[si];
+            root_g = (int8_t)ro;
+            for (k = 0; k < 27u; k++) {
+                uint32_t note, raw = (uint32_t)(53 + (int32_t)k + 12 * song.octave + trk[song.sel].p[P_TRANS]);
+                if (!key_black(k))
+                    continue;
+                ui.perf = 1; perf_keys = 1;
+                key_down(k);
+                events_block(CTL);
+                note = kb_note[k];
+                key_up(k);
+                events_block(CTL);
+                inside &= (SCALE_MASK[SC[si]] >> ((note + 120u - ro) % 12u)) & 1u;
+                any_off |= !((SCALE_MASK[SC[si]] >> ((raw + 120u - ro) % 12u)) & 1u);
+                any_moved |= note != raw;
+                ui.perf = 0; perf_keys = 0;
+                key_down(k);
+                events_block(CTL);
+                outside &= kb_note[k] == raw;
+                key_up(k);
+                events_block(CTL);
+            }
+        }
+    expect("D: PERFORM, OFF-SCALE PLAY: every black key lands on a note of MAJ MIN PEN .. at roots C F A# (the scale and root of the SCALE page)", inside && any_off && any_moved);
+    expect("  .. outside PERFORM the same keys play as they always did with PLAY (off-scale notes unchanged)", outside);
+    scale_g = 0;
+    for (k = 0; k < 27u; k++) {
+        uint32_t raw = (uint32_t)(53 + (int32_t)k + 12 * song.octave + trk[song.sel].p[P_TRANS]);
+        if (!key_black(k)) continue;
+        ui.perf = 1; perf_keys = 1;
+        key_down(k); events_block(CTL);
+        chrom &= kb_note[k] == raw;
+        key_up(k); events_block(CTL);
+    }
+    expect("  .. SCALE CHROMATIC (off): the black keys are untouched in PERFORM", chrom);
+    scale_g = 1; root_g = 0; offscale_g = OS_SNAP;
+    for (k = 0; k < 27u; k++) {
+        uint32_t a, b;
+        if (!key_black(k)) continue;
+        ui.perf = 1; perf_keys = 1;
+        key_down(k); events_block(CTL); a = kb_note[k]; key_up(k); events_block(CTL);
+        ui.perf = 0; perf_keys = 0;
+        key_down(k); events_block(CTL); b = kb_note[k]; key_up(k); events_block(CTL);
+        white_same &= a == b;
+    }
+    expect("  .. with OFF-SCALE SNAP the keys are the same in and outside PERFORM (the setting's own snap)", white_same);
+    scale_g = 0; root_g = 0; offscale_g = OS_SNAP;
+    ui.perf = 0; perf_keys = 0;
+    usb.config = 0;
+    (void)outside;
+}
+
+
 /* -------------------------------------------------------------- COST --- */
 #ifdef __APPLE__
 #include <libproc.h>
@@ -2031,7 +2620,7 @@ static void t_cost(void)
 {
     static const int R16[] = {PF_R16}, OUP[] = {PF_OUP}, FRZ[] = {PF_FRZ}, TAPE[] = {PF_TAPE}, FLG[] = {PF_R16, PF_FLG}, PHS[] = {PF_R16, PF_PHS};
     static const int DRV[] = {PF_R16, PF_DRV}, PMP[] = {PF_R16, PF_PUMP}, ALL[] = {PF_R16, PF_FLG, PF_PHS, PF_DRV, PF_PUMP, PF_M2};
-    double harm0, harm, frz, tape, flg, phs, drv, pmp, all, flt, spc;
+    double harm0, harm, frz, tape, flg, phs, drv, pmp, all, flt, flh, spc;
     char what[200];
     cost_idle = cost_run(0, 0, 100);
     cost_rep = cost_run(R16, 1, 100);
@@ -2048,6 +2637,9 @@ static void t_cost(void)
     cost_space = 0;
     cost_filt = -50;
     flt = cost_run(R16, 1, 100);
+    cost_filt = 50;
+    flh = cost_run(R16, 1, 100);
+    cost_filt = -50;
     all = cost_run(ALL, 6, 100);
     cost_filt = 0;
     if (!cost_idle) {
@@ -2060,19 +2652,19 @@ static void t_cost(void)
     snprintf(what, sizeof what, "  OCT UP over REPEAT 1/16 (the harmonizer itself): +%.0f, with the shimmer +%.0f (device ~%.1f / %.1f %%, about 2 %%)",
              harm0 - cost_rep, harm - cost_rep, (harm0 - cost_rep) * 0.017, (harm - cost_rep) * 0.017);
     expect(what, (harm - cost_rep) * 0.017 <= 2.2);
-    snprintf(what, sizeof what, "  over REPEAT 1/16: FLANGER +%.0f, PHASER +%.0f, DRIVE +%.0f, PUMP +%.0f, K3 FILTER +%.0f (device ~%.1f %% at most, 2.5 %% each)",
-             flg - cost_rep, phs - cost_rep, drv - cost_rep, pmp - cost_rep, flt - cost_rep,
-             fmax(fmax(flg, phs), fmax(fmax(drv, pmp), flt)) * 0.017 - cost_rep * 0.017);
-    expect(what, fmax(fmax(flg, phs), fmax(fmax(drv, pmp), flt)) - cost_rep <= 2.5 / 0.017);
+    snprintf(what, sizeof what, "  over REPEAT 1/16: FLANGER +%.0f, PHASER +%.0f, DRIVE +%.0f, PUMP +%.0f, K3 FILTER -50 +%.0f / +50 +%.0f (device ~%.1f %% at most, 2.5 %% each)",
+             flg - cost_rep, phs - cost_rep, drv - cost_rep, pmp - cost_rep, flt - cost_rep, flh - cost_rep,
+             fmax(fmax(fmax(flg, phs), fmax(fmax(drv, pmp), flt)), flh) * 0.017 - cost_rep * 0.017);
+    expect(what, fmax(fmax(fmax(flg, phs), fmax(fmax(drv, pmp), flt)), flh) - cost_rep <= 2.5 / 0.017);
     snprintf(what, sizeof what, "  K2 SPACE +100 (the sends' gain, the SIZE the models read; 0.2.8 also moved the delay's taps: +57): +%.0f over idle (device ~%.1f %%)",
              spc - cost_idle, (spc - cost_idle) * 0.017);
     expect(what, (spc - cost_idle) * 0.017 <= 1.0);
     {   /* per reverb model and mode: SPACE +100 against the middle, in the loadcost scale (33 host instructions a sample = 1 % of a half) */
-        static const char *const RT[5] = {"ROOM", "SPRING", "HALL", "SHIM", "RESO"};
-        double d[2][5], worst = -1e9, worst2 = -1e9, c0;
+        static const char *const RT[6] = {"ROOM", "SPRING", "HALL", "SHIM", "RESO", "PLATE"};
+        double d[2][6], worst = -1e9, worst2 = -1e9, c0;
         uint32_t m, k;
         for (m = 0; m < 2u; m++)
-            for (k = 0; k < 5u; k++) {
+            for (k = 0; k < 6u; k++) {
                 cost_mode = m ? DM_SPLIT : DM_STEREO;
                 cost_rt = (int16_t)k;
                 c0 = cost_run(0, 0, 100);
@@ -2086,8 +2678,8 @@ static void t_cost(void)
             }
         cost_mode = DM_STEREO;
         cost_rt = -1;
-        snprintf(what, sizeof what, "  SPACE +100 over the middle, %% of a half: STEREO %s %+.2f %s %+.2f %s %+.2f %s %+.2f %s %+.2f; DUEL %+.2f %+.2f %+.2f %+.2f %+.2f",
-                 RT[0], d[0][0], RT[1], d[0][1], RT[2], d[0][2], RT[3], d[0][3], RT[4], d[0][4], d[1][0], d[1][1], d[1][2], d[1][3], d[1][4]);
+        snprintf(what, sizeof what, "  SPACE +100 over the middle, %% of a half: STEREO %s %+.2f %s %+.2f %s %+.2f %s %+.2f %s %+.2f %s %+.2f; DUEL %+.2f %+.2f %+.2f %+.2f %+.2f %+.2f",
+                 RT[0], d[0][0], RT[1], d[0][1], RT[2], d[0][2], RT[3], d[0][3], RT[4], d[0][4], RT[5], d[0][5], d[1][0], d[1][1], d[1][2], d[1][3], d[1][4], d[1][5]);
         expect(what, worst < 1.5 && worst2 < 1.5);       /* (STEREO / LAYER: the floors and the width; DUEL: two buses' gains and floors) */
     }
     {   /* the width stage itself (fx.c space_width), on a block of noise, SPACE +60 */
@@ -2116,6 +2708,8 @@ int main(void)
     t_keys();
     t_knobs();
     t_multiload();
+    t_leave_ui();
+    t_black_scale();
     t_roll();
     t_mute();
     t_idle();
@@ -2126,6 +2720,7 @@ int main(void)
     t_clicks();
     t_harm();
     t_filter();
+    t_filter24();
     t_mod();
     t_drive();
     t_pump();
@@ -2133,6 +2728,8 @@ int main(void)
     t_drive_song();
     t_pump_song();
     t_space();
+    t_leave_audio();
+    t_leave_space();
     t_cost();
     printf("%s (%d checks)\n", bad ? "PERFORM TEST FAILED" : "perform test passed", ncheck);
     return bad != 0;

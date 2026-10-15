@@ -191,7 +191,7 @@ int main(void)
     press(B_OCTUP);
     frames(3000);
     settings_poll();                                    /* (the main loop's pass: since 0.2.11 the write is queued and made there once it is quiet) */
-    expect("OCT+ on the last page: done, back to the page under it (HOME), the bit set", !ui.guide && ui.home && guide_seen());
+    expect("OCT+ on the last page: done, back to the page under it (HOME), the bit set", !ui.guide && at_home() && guide_seen());
     expect("  .. the settings written once (one erase), the flash holds the bit", erases - e0 == 1u && stored_seen());
 
     /* the next start: no guide, the splash as before */
@@ -214,7 +214,7 @@ int main(void)
     expect("  OCT+ on the row opens it again", page_is(1u));
     press(B_HOME);
     frames(100);
-    expect("  HOME: the guide and the menu closed, HOME's page (HOME OPENS: MORPH)", !ui.guide && !ui.menu && (ui.home || cur_fam() == FAM_TRK));
+    expect("  HOME: the guide and the menu closed, HOME's page (HOME OPENS: MORPH)", !ui.guide && !ui.menu && (at_home() || cur_fam() == FAM_TRK));
     frames(3000);
     settings_poll();
     expect("  the bit untouched (still set), nothing written", guide_seen() && erases == e0);
@@ -247,7 +247,7 @@ int main(void)
     turn(EN_SELECT, 2);
     e0 = erases;
     press(B_EDIT);
-    expect("  EDIT leaves it at once and opens EDIT (its tap, as from the MENU)", !ui.guide && !ui.home && cur_page()->fam == FAM_EDIT);
+    expect("  EDIT leaves it at once and opens EDIT (its tap, as from the MENU)", !ui.guide && !at_home() && cur_page()->fam == FAM_EDIT);
     frames(3000);
     settings_poll();
     expect("  .. the bit set, written once, the other settings kept", guide_seen() && stored_seen() && erases - e0 == 1u && settings.palette == 3u &&
@@ -267,7 +267,7 @@ int main(void)
                 press(LV[k]);
                 frames(100);
                 ok &= !ui.guide && guide_seen() && !ui.menu && !ui.confirm && !ui.perf;
-                ok &= LV[k] == B_HOME ? ui.home != 0 : !ui.home && FAM_BTN[cur_fam()] == LV[k];
+                ok &= LV[k] == B_HOME ? at_home() != 0 : !at_home() && FAM_BTN[cur_fam()] == LV[k];
             }
         }
         expect("EDIT FX ENV LFO ARP SCL GLO SEQ SAVE HOME on every page: the guide gone, the bit set, the button's own page", ok);

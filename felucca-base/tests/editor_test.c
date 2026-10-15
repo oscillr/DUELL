@@ -170,22 +170,24 @@ static int preferences(void)
     uint32_t n = request(ED_INFO, a, 0);
     bad += check("INFO explicitly tags display capabilities (song rows 0 since DUELL, the SONG lanes tag gone) without changing command 33",
         ED_SONG_RETIRED == 33 && ED_UI_STATE == 34 && ED_FAV_SET == 38 &&
-        host_wire[n - 44] == 0 && host_wire[n - 43] == 0x55 &&
-        host_wire[n - 42] == 1 && host_wire[n - 41] == 9 &&
-        host_wire[n - 40] == 0x4d && host_wire[n - 39] == 1 &&
-        host_wire[n - 38] == 64u && host_wire[n - 37] == 1 &&   /* (64 kept: 41 01 says 128) */
-        host_wire[n - 36] == 0x42 && host_wire[n - 35] == 1 && host_wire[n - 34] == 3 &&
-        host_wire[n - 33] == 0x46 && host_wire[n - 32] == 1 && host_wire[n - 31] == FM6_NFACTORY &&
-        host_wire[n - 30] == 0 &&                        /* (no bank since 1.0.3) */
-        host_wire[n - 29] == 0x53 && host_wire[n - 28] == 1 && host_wire[n - 27] == 3 &&
-        host_wire[n - 26] == 0x50 && host_wire[n - 25] == 1 && host_wire[n - 24] == 3 &&   /* FM6 v2: no bank, preset patches */
-        host_wire[n - 23] == 0x4E && host_wire[n - 22] == 1 && host_wire[n - 21] == 22 &&   /* MENU settings: 22 items (DUELL 0.2.2: STYLE, LARGE, FX LATCH, HELP retired too; 0.2.9: CPU METER, id 26; 0.2.11: MODE RECALL, id 27) */
-        host_wire[n - 20] == 0x52 && host_wire[n - 19] == 1 && host_wire[n - 18] == 4 &&   /* RATCH */
-        host_wire[n - 17] == 0x4C && host_wire[n - 16] == 1 && host_wire[n - 15] == 1 &&   /* 1.1 parameter locks */
-        host_wire[n - 14] == 0x41 && host_wire[n - 13] == 1 && host_wire[n - 12] == 0 && host_wire[n - 11] == 1 &&   /* 1.2: 128 */
-        host_wire[n - 10] == 0x54 && host_wire[n - 9] == 1 && host_wire[n - 8] == NUDGE_DIV &&   /* 1.2: NUDGE */
-        host_wire[n - 7] == 0x56 && host_wire[n - 6] == 1 && host_wire[n - 5] == 32 &&   /* 1.4.1: FM6 voice bank */
-        host_wire[n - 4] == 0x43 && host_wire[n - 3] == 1 && host_wire[n - 2] == ML_N);   /* 1.5: MIDI LEARN */
+        host_wire[n - 51] == 0 && host_wire[n - 50] == 0x55 &&
+        host_wire[n - 49] == 1 && host_wire[n - 48] == 9 &&
+        host_wire[n - 47] == 0x4d && host_wire[n - 46] == 1 &&
+        host_wire[n - 45] == 64u && host_wire[n - 44] == 1 &&   /* (64 kept: 41 01 says 128) */
+        host_wire[n - 43] == 0x42 && host_wire[n - 42] == 1 && host_wire[n - 41] == 31 &&   /* (DUELL 0.2.15: bit 4, the patch store's chunks 6..15 as backup ids 27..31 and 35..39; DUELL 0.2.14: bit 2, multis and pattern slots in the backup; bit 3, the user wavetables 24..26 and cmds 81..83) */
+        host_wire[n - 40] == 0x46 && host_wire[n - 39] == 1 && host_wire[n - 38] == FM6_NFACTORY &&
+        host_wire[n - 37] == 0 &&                        /* (no bank since 1.0.3) */
+        host_wire[n - 36] == 0x53 && host_wire[n - 35] == 1 && host_wire[n - 34] == 3 &&
+        host_wire[n - 33] == 0x50 && host_wire[n - 32] == 1 && host_wire[n - 31] == 3 &&   /* FM6 v2: no bank, preset patches */
+        host_wire[n - 30] == 0x4E && host_wire[n - 29] == 1 && host_wire[n - 28] == 25 &&   /* MENU settings: 25 items (0.2.19: OUTPUT EQ, id 9, retired; + BASS MONO, id 33; 0.2.14: + PERF LEAVE, id 32); (DUELL 0.2.2: STYLE, LARGE, FX LATCH, HELP retired too; 0.2.9: CPU METER, id 26; 0.2.11: MODE RECALL, id 27; 0.2.14: SCOPE, OVERVIEW retired, GLO > MODULES' four, ids 28..31) */
+        host_wire[n - 27] == 0x52 && host_wire[n - 26] == 1 && host_wire[n - 25] == 4 &&   /* RATCH */
+        host_wire[n - 24] == 0x4C && host_wire[n - 23] == 1 && host_wire[n - 22] == 1 &&   /* 1.1 parameter locks */
+        host_wire[n - 21] == 0x41 && host_wire[n - 20] == 1 && host_wire[n - 19] == 0 && host_wire[n - 18] == 1 &&   /* 1.2: 128 */
+        host_wire[n - 17] == 0x54 && host_wire[n - 16] == 1 && host_wire[n - 15] == NUDGE_DIV &&   /* 1.2: NUDGE */
+        host_wire[n - 14] == 0x56 && host_wire[n - 13] == 1 && host_wire[n - 12] == 32 &&   /* 1.4.1: FM6 voice bank */
+        host_wire[n - 11] == 0x43 && host_wire[n - 10] == 1 && host_wire[n - 9] == ML_N &&
+        host_wire[n - 8] == 0x58 && host_wire[n - 7] == 1 && host_wire[n - 6] == (UP_SLOTS & 127) && host_wire[n - 5] == (UP_SLOTS >> 7) &&
+        host_wire[n - 4] == 0x5A && host_wire[n - 3] == 1 && host_wire[n - 2] == 1);   /* DUELL 0.2.19: PATCH_RAW */   /* DUELL 0.2.15: the patch capacity, 128 as two 7-bit bytes */   /* 1.5: MIDI LEARN */
     request(ED_UI_SET, a, 2);
     bad += check("UI_SET updates the actual palette and reports RAM-only saving",
         host_wire[5] == 3 && settings.palette == 3 && T_BG == UI_PALETTES[3].bg[ux.part]);
@@ -201,10 +203,13 @@ static int preferences(void)
     bad += check("FAV_SET marks FM6 as a normal engine (DUELL: DRUM is hidden: refused)", host_wire[5] == 3 && favorite_has(ENGI_FM6, 0));
     request(ED_FAV_GET, a, 4);
     bad += check("FAV_GET reads the bounded favorite range", host_wire[5] == 0 && host_wire[10] == 1);
-    a[0] = NENGINES; a[1] = 127; request(ED_FAV_SET, a, 4);          /* (DUELL: the 128 places hold the factory sounds first; 127 is empty) */
-    bad += check("empty user slot cannot be starred", host_wire[5] == 1 && !favorite_has(NENGINES, 127));
+    a[0] = NENGINES; a[1] = 127; request(ED_FAV_SET, a, 4);          /* (DUELL 0.2.17: every slot of the 128 holds a sound, the factory one or a saved one) */
+    bad += check("a slot that holds its factory sound can be starred (FAV is the slot's)", host_wire[5] == 3 && favorite_has(NENGINES, 127));
     up_store(127, "Saved"); request(ED_FAV_SET, a, 4);
-    bad += check("saved user slot can be starred without changing its sound", host_wire[5] == 3 && favorite_has(NENGINES, 127));
+    bad += check("  and a saved sound in it keeps the star without changing its sound", host_wire[5] == 3 && favorite_has(NENGINES, 127));
+    a[1] = 0; a[2] = 1; request(ED_FAV_SET, a, 4);                   /* (the slot past the last: refused) */
+    bad += check("  a slot past the 128 cannot be starred", host_wire[5] == 1);
+    a[1] = 127; a[2] = 0;
     a[3] = 32; request(ED_FAV_GET, a, 4);
     bad += check("favorite range cannot cross the end of user slots", host_wire[5] == 1);
     request(ED_FAV_SET, a, 3);
@@ -299,12 +304,10 @@ static int steps(void)
     uint32_t n, ok = 1;
     int bad = 0;
     reset();
-    TSEL->step[0].hit = TSEL->step[0].acc = 0x80;
-    bad += check("legacy 8-byte step writes preserve lane data",
-                 request(ED_STEP_SET, a, 9) == 21u && TSEL->step[0].note[0] == 60 &&
-                 TSEL->step[0].hit == 0x80 && TSEL->step[0].acc == 0x80);
-    bad += check("full grid step writes preserve high lane bits and constrain accents",
-                 request(ED_STEP_SET, a, 12) == 21u && TSEL->step[0].hit == 0x92 && TSEL->step[0].acc == 2);
+    bad += check("legacy 8-byte step writes take the note",
+                 request(ED_STEP_SET, a, 9) == 21u && TSEL->step[0].note[0] == 60);
+    bad += check("full step writes (0.2.14: the three lane bytes are read and dropped) take the note",
+                 request(ED_STEP_SET, a, 12) == 21u && TSEL->step[0].note[0] == 60);
     before = TSEL->step[0]; a[2] = 71;
     for (n = 2; n <= sizeof a; n++) {
         if (n == 9u || n == 12u || n == 13u) continue;   /* (14: a[13], the ratchet, 0 is refused) */
@@ -394,8 +397,12 @@ static int samples(void)
     song.playing = 1; host_progress = 0; a[0] = 0; a[1] = 0;
     bad += check("user-preset STORE does not mutate RAM when audio cannot stop",
                  request(ED_UP_STORE, a, 2) == 8u && host_wire[6] == 2 && !up_used(0));
-    bad += check("user-preset ERASE reports failure when audio cannot stop",
-                 request(ED_UP_ERASE, a, 1) == 8u && host_wire[6] == 2);
+    song.playing = 0; up_store(0, "SAVED"); song.playing = 1;
+    bad += check("slot RESTORE (UP_ERASE) of a saved slot reports failure when audio cannot stop, and keeps it",
+                 request(ED_UP_ERASE, a, 1) == 8u && host_wire[6] == 2 && up_used(0));
+    bad += check("  a slot that holds its factory sound already answers rc 0 and writes nothing (even playing)",
+                 (a[0] = 1, request(ED_UP_ERASE, a, 1) == 8u) && host_wire[6] == 0 && !up_used(1));
+    song.playing = 0; up_put(0, 0);
     return bad;
 }
 
@@ -506,14 +513,14 @@ static int fm6_patches(void)
     a[0] = ED_FM6_USER; a[1] = 5;
     request(ED_FM6_GET, a, 2);
     bad += check("  .. a rename keeps it", host_wire[7] == 0 && !memcmp(host_wire + 8 + 118, "EDITOR    ", 10));
-    trk[0].eng_req = ENGI_DRUM;
+    trk[0].eng_req = 0;
     song.sel = 0;
     up_store(6, "KIT");
     a[0] = ED_FM6_USER; a[1] = 6; memcpy(a + 2, pk, FM6_PACKED);
     request(ED_FM6_GET, a, 2);
     i = host_wire[7];
     request(ED_FM6_PUT, a, sizeof a);
-    bad += check("a DRUM user preset has no patch: GET rc 2, PUT rc 1", i == 2u && host_wire[7] == 1u);
+    bad += check("an ANALOG user preset has no patch: GET rc 2, PUT rc 1", i == 2u && host_wire[7] == 1u);
     a[1] = 9;                                            /* an empty slot */
     request(ED_FM6_PUT, a, sizeof a);
     i = host_wire[7];
@@ -549,7 +556,7 @@ static int user_preset_roundtrip(void)
         const param_desc_t *d = param_desc_of(0, i);
         int16_t v = d->def;
         uint32_t u;
-        if (i == P_LEVEL) v = 90;
+        if (i == P_TRIM) v = 90;                              /* (0.2.19: the patch's loudness; the mixer level, P_LEVEL, is no patch's: below) */
         if (i == P_PAN) v = -20;
         if (i == P_ED_FLT) v = -40;
         if (i == P_LD_FLT) v = d->min;
@@ -558,6 +565,7 @@ static int user_preset_roundtrip(void)
         a[k++] = u & 127u; a[k++] = (u >> 7) & 127u;
     }
     for (i = 0; i < 16u; i++) { a[k++] = i & 1u ? 0u : (uint8_t)(48u + i); a[k++] = 0; }
+    want[P_LEVEL] = (int16_t)up_def(0, P_LEVEL);              /* a patch holds no mixer level: the sent 112 is not stored, the record reads its stored default */
     request(ED_UP_PUT, a, k);
     bad += check("UP_PUT stores a v4 record (no flash here: kept in RAM)",
                  host_wire[6] != 1u && up_used(3) && up_rec(3)->ver == UP_VER);
@@ -573,7 +581,7 @@ static int user_preset_roundtrip(void)
         ok &= host_wire[p] == (i & 1u ? 0u : 48u + i);
     bad += check("UP_GET returns the values and the pattern UP_PUT sent", ok);
     bad += check("  .. then kind 0 and (1.2) the category: none sent, ANALOG's (OTHER)",
-                 host_wire[p] == 0u && host_wire[p + 1u] == CAT_OTHER && host_wire[p + 2u] == 0xF7);
+                 host_wire[p] == 0u && host_wire[p + 1u] == CAT_OTHER && host_wire[p + 2u] == 1u && host_wire[p + 3u] == 0xF7);   /* (0.2.17: then SAVED 1) */
     {   /* 1.2 (Discussion #90): UP_PUT's category after the kind's 16 bytes; UP_LIST lists the categories after the slots */
         uint32_t k0 = k;
         a[k++] = 0;
@@ -590,7 +598,7 @@ static int user_preset_roundtrip(void)
         ok &= host_wire[p] == 0u && host_wire[p + 1u] == CAT_PAD;
         a[0] = 2; a[1] = 2;
         n = request(ED_UP_LIST, a, 2);
-        ok &= host_wire[5] == 2u && host_wire[6] == 2u && host_wire[n - 3u] == 0u && host_wire[n - 2u] == CAT_PAD;
+        ok &= host_wire[5] == 2u && host_wire[6] == 2u && host_wire[n - 3u] == 0u && host_wire[n - 2u] == 1u && host_wire[n - 4u] == CAT_PAD;   /* (the categories, then SAVED: slot 2 factory 0, slot 3 saved 1) */
         bad += check("UP_PUT with a category (after the kind's 16 bytes; past the last: rc 1), UP_GET and UP_LIST give it", ok);
         k = k0;
     }
@@ -647,7 +655,7 @@ static int live_sync(void)
     bad += check("WATCH after a USB reset starts over", !sync_pass());
 
     /* PRESET */
-    TSEL->p[P_PAN] = -20;                                /* pending; a sound load keeps P_PAN (DUELL: not P_LEVEL, a sound sets its own) */
+    TSEL->p[P_PAN] = -20;                                /* pending; a sound load keeps P_PAN and (0.2.19) the mixer P_LEVEL: it sets the trim, P_TRIM */
     a[0] = 0; a[1] = 2;
     request(ED_PRESET, a, 2);
     sync_pass();
@@ -799,25 +807,33 @@ static uint32_t menu_set(uint32_t id, int32_t v)            /* -> rc; host_wire[
 }
 static int menu_protocol(void)
 {
-    static const char *const WANT[22][2] = {
-        {"COLOR", 0}, {"ANIM", "ON,OFF,IDLE"}, {"LEDS", "OFF,LOW,MEDIUM,MAX"},
-        {"HOLD", "0.3 s,0.4 s,0.5 s,0.6 s"}, {"KNOB ACCEL", "OFF,ON"},
-        {"SPEAKER EQ", "FLAT,LOWCUT,BASS+"}, {"USB LEVEL", "MASTER,FIXED"}, {"USB SERIAL", "ON,OFF"},
+    /* DUELL 0.2.14: the new names (ANIMATION, BUTTON HOLD, OUTPUT EQ, STEP KEYS WRITE / ADD, MULTI LOAD KEEPS MODE / SETS MODE), SCALE LEDS in
+     * DISPLAY, SCOPE (18) and OVERVIEW (23) retired, HOME OPENS without OVERVIEW; a fresh unit's defaults: KNOB ACCEL ON, USB SERIAL OFF,
+     * CLICK REC (settings_persist.c settings_defaults, as persist_boot runs it on a unit with no settings) */
+#define MDN 25u
+    static const char *const WANT[MDN][2] = {
+        {"COLOR", 0}, {"ANIMATION", "ON,OFF,IDLE"}, {"LEDS", "OFF,LOW,MEDIUM,MAX"},
+        {"BUTTON HOLD", "0.3 s,0.4 s,0.5 s,0.6 s"}, {"KNOB ACCEL", "OFF,ON"},
+        {"USB LEVEL", "MASTER,FIXED"}, {"USB SERIAL", "ON,OFF"},
         {"CLICK", "OFF,REC,ON"}, {"CLICK LEVEL", "LOW,MID,HIGH"}, {"COUNT-IN", "OFF,1 BAR,2 BARS"},   /* (1.1: appended) */
         {"RESTORE LAST", "ON,OFF"}, {"SCALE LEDS", "AUTO,OFF"},                                        /* (1.2) */
         {"SCREEN OFF", "NEVER,5 MIN,15 MIN,30 MIN,60 MIN"},
-        {"SCOPE", "OUT,MIX"}, {"STEP PREVIEW", "OFF,ON"}, {"CHORD ENTRY", "HOLD,ADD"},                  /* (1.2) */
+        {"STEP PREVIEW", "OFF,ON"}, {"STEP KEYS", "WRITE,ADD"},                                        /* (1.2; 0.2.14: SCOPE retired) */
         {"TUNE", 0},   /* (1.2: the project's TUNE, a number; DUELL 0.1: MIDI IN, id 21, left MENU for GLO > CHANNELS) */
-        {"OVERVIEW", "SCOPE,PARTS"},                                                           /* (1.3 HOME; DUELL 0.1: OVERVIEW, no LEVELS) */
-        {"HOME OPENS", "MORPH,MODE,MIXER,OVERVIEW"},                                                 /* (DUELL 0.1, id 25) */
-        {"CPU METER", "ON,OFF"},
-        {"MODE RECALL", "OFF,ON"}};  /* (DUELL 0.2.11, id 27) */
-                                                                        /* (DUELL 0.2.9, id 26) */
-    static const uint8_t ID[22] = {0, 3, 4, 5, 6, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 22, 23, 25, 26, 27};   /* (1 STYLE, 2 LARGE, 7 FX LATCH, 8 BPM LOCK, 21 MIDI IN, 24 HELP: retired) */
-    static const int32_t DEF[22] = {-1, 0, 2, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};   /* (COLOR: the default palette) */
-    static const uint8_t TAB[22] = {0, 0, 0, 1, 1, 2, 2, 3, 2, 2, 2, 3, 1, 0, 0, 1, 1, 2, 0, 1, 0, 1};   /* DISPLAY CONTROL AUDIO
-                                                                                                         * SYSTEM (DUELL 0.1: no MIDI tab) */
-    static const char *const TABN[4] = {"DISPLAY", "CONTROL", "AUDIO", "SYSTEM"};
+        {"HOME OPENS", "MORPH,MODE,MIXER"},                                                          /* (DUELL 0.1, id 25; 0.2.14: no OVERVIEW) */
+        {"CPU METER", "ON,OFF"},                                                                     /* (DUELL 0.2.9, id 26) */
+        {"MULTI LOAD", "KEEPS MODE,SETS MODE"},                                                      /* (DUELL 0.2.11, id 27) */
+        {"ARP", "OFF,ON"}, {"SEQ", "OFF,ON"}, {"SENDS", "OFF,ON"}, {"PART FX", "OFF,ON"},
+        {"PERF LEAVE", "FADE,KEEP"},          /* (DUELL 0.2.14: id 32, CONTROL) */
+        {"BASS MONO", "OFF,40 Hz,50 Hz,63 Hz,80 Hz,100 Hz,125 Hz,160 Hz,200 Hz,250 Hz,315 Hz,400 Hz"}};   /* (DUELL 0.2.19: id 33, the MASTER page, tab MASTER: no MENU tab) */
+        /* (DUELL 0.2.14: GLO > MODULES, ids 28..31, tab MODULES) */
+    static const uint8_t ID[MDN] = {0, 3, 4, 5, 6, 10, 11, 12, 13, 14, 15, 16, 17, 19, 20, 22, 25, 26, 27, 28, 29, 30, 31, 32, 33};   /* (1 STYLE, 2 LARGE, 7 FX LATCH, 8 BPM LOCK, 18 SCOPE,
+                                                                                                         * 21 MIDI IN, 23 OVERVIEW, 24 HELP: retired) */
+    static const int32_t DEF[MDN] = {-1, 0, 2, 1, 1, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0};   /* (0.2.14 MODULES: ON; PERF LEAVE: FADE; 0.2.19 BASS MONO: OFF) */   /* (COLOR: the default palette; 0.2.14: ACCEL ON,
+                                                                                                    * USB SERIAL OFF, CLICK REC) */
+    static const uint8_t TAB[MDN] = {0, 0, 0, 1, 1, 2, 3, 2, 2, 2, 3, 0, 0, 1, 1, 2, 1, 0, 1, 4, 4, 4, 4, 1, 5};   /* DISPLAY CONTROL AUDIO
+                                                                                                     * SYSTEM (DUELL 0.1: no MIDI tab) */
+    static const char *const TABN[6] = {"DISPLAY", "CONTROL", "AUDIO", "SYSTEM", "MODULES", "MASTER"};   /* (0.2.14: MODULES, no MENU tab: GLO > MODULES; 0.2.19: MASTER, the FX > MASTER page) */
     int bad = 0, ok = 1;
     uint32_t i, k, n;
     menu_item_t it;
@@ -825,12 +841,13 @@ static int menu_protocol(void)
     const char *json = getenv("MENU_JSON");
     FILE *jf = json ? fopen(json, "w") : 0;
     reset();
+    settings_defaults(favorites.factory[15]);          /* (a new unit: persist_boot with no settings) */
     if (jf) fprintf(jf, "[");
-    for (i = 0; i < 22u; i++) {
+    for (i = 0; i < MDN; i++) {
         n = menu_desc(i, &it);
         joined[0] = 0;
         for (k = 0; k < it.nnames; k++) { if (k) strcat(joined, ","); strcat(joined, it.names[k]); }
-        ok &= i == 17u ? n > 10u && it.index == i && it.id == ID[i] && it.kind == 1 && it.min == -50 && it.max == 50 &&
+        ok &= i == 15u ? n > 10u && it.index == i && it.id == ID[i] && it.kind == 1 && it.min == -50 && it.max == 50 &&
                          !it.nnames && !strcmp(it.unit, "ct") && !strcmp(it.name, "TUNE")     /* (a number: cents) */
                        : n > 10u && it.index == i && it.id == ID[i] && it.kind == 0 && it.min == 0 && !it.unit[0] &&
                          it.max + 1 == (int32_t)it.nnames && !strcmp(it.name, WANT[i][0]) &&
@@ -848,7 +865,7 @@ static int menu_protocol(void)
         }
     }
     if (jf) { fprintf(jf, "]\n"); fclose(jf); }
-    bad += check("MENU_DESC: 22 items (0.2.11: MODE RECALL, id 27; was 20 (STYLE (1), LARGE (2), FX LATCH (7) and HELP (24) retired in DUELL 0.2.2; was 24: 1.0.4's 11 in the menu's order, BPM LOCK (id 8) retired in DUELL, then 1.1's CLICK, CLICK LEVEL, COUNT-IN, 1.2's RESTORE LAST, SCALE LEDS, SCREEN OFF, 1.2's SCOPE, STEP PREVIEW, CHORD ENTRY, MIDI IN, TUNE, 1.3's HOME, 1.5's HELP), ids 0..25 but 1 2 7 8 21 24, names, defaults; TUNE a number -50..50 ct", ok);
+    bad += check("MENU_DESC: 24 items (0.2.14: GLO > MODULES ARP SEQ SENDS PART FX, ids 28..31, OFF / ON, tab 4 MODULES; SCOPE (18) and OVERVIEW (23) retired, new names, the new defaults; 0.2.11: MODE RECALL, id 27; was 20 (STYLE (1), LARGE (2), FX LATCH (7) and HELP (24) retired in DUELL 0.2.2; was 24: 1.0.4's 11 in the menu's order, BPM LOCK (id 8) retired in DUELL, then 1.1's CLICK, CLICK LEVEL, COUNT-IN, 1.2's RESTORE LAST, SCALE LEDS, SCREEN OFF, 1.2's SCOPE, STEP PREVIEW, CHORD ENTRY, MIDI IN, TUNE, 1.3's HOME, 1.5's HELP), ids 0..25 but 1 2 7 8 21 24, names, defaults; TUNE a number -50..50 ct", ok);
     bad += check("MENU_DESC (1.0.5): after the names (TUNE: the unit) each item's tab, index and name (DISPLAY CONTROL AUDIO SYSTEM)", ok);
     {   /* an older editor reads the names and stops: the tab is past them, nothing it reads moved */
         uint32_t m = menu_desc(2, &it), p = 14, q;   /* (LEDS, a DISPLAY row) */
@@ -858,14 +875,15 @@ static int menu_protocol(void)
         bad += check("MENU_DESC: the tab comes after every byte of the 1.0.4 reply (older editors ignore it)", ok);
     }
     ok = 1;
-    for (i = 0; i < 22u; i++) {
+    for (i = 0; i < MDN; i++) {
         menu_desc(i, &it);
-        ok &= strcmp(it.name, "CALIBRATION") && strcmp(it.name, "ABOUT") && strcmp(it.name, "TEST");
+        ok &= strcmp(it.name, "CALIBRATION") && strcmp(it.name, "BUTTON MAP") && strcmp(it.name, "ABOUT") && strcmp(it.name, "TEST") &&
+              strcmp(it.name, "GUIDE") && strcmp(it.name, "ERASE DATA") && strcmp(it.name, "SCOPE") && strcmp(it.name, "OVERVIEW");
     }
-    n = menu_desc(22, &it);
-    ok &= n == 2u && it.index == 22 && it.id == 127;
+    n = menu_desc(MDN, &it);
+    ok &= n == 2u && it.index == MDN && it.id == 127;
     n = menu_desc(127, &it);
-    bad += check("MENU_DESC: no CALIBRATION / TEST / ABOUT; an index past the list answers index, 127 (no item)",
+    bad += check("MENU_DESC: no BUTTON MAP / TEST / GUIDE / ABOUT / ERASE DATA, no SCOPE / OVERVIEW; an index past the list answers index, 127 (no item)",
                  ok && n == 2u && it.index == 127 && it.id == 127);
     {
         uint8_t a[3] = {0, 0, 0};
@@ -874,19 +892,22 @@ static int menu_protocol(void)
         bad += check("MENU_DESC / MENU_SET with the wrong length: no reply", ok);
     }
 
-    /* MENU_SET: each setting, applied as the menu applies it; RAM only here (no flash: rc 3) */
+    /* MENU_SET: each setting, applied as the menu applies it; RAM only here (no flash: rc 3). A new unit (0.2.14's defaults: ui_prefs
+     * ACCEL | SERIAL OFF = 0x44, ui_prefs2 the flag 0x80, CLICK REC) */
     reset();
+    settings_defaults(favorites.factory[15]);
     ui.force = 0;
-    ok = menu_set(0, 2) == 3 && host_wire[6] == 0 && ed_rv(host_wire + 7) == 2 && settings.palette == 2u &&
+    ok = ui_prefs == 0x44u && ui_prefs2 == 0x80u && ui_rec_prefs == 1u;
+    ok &= menu_set(0, 2) == 3 && host_wire[6] == 0 && ed_rv(host_wire + 7) == 2 && settings.palette == 2u &&
          T_BG == UI_PALETTES[2].bg[ux.part] && ui.force;
-    ok &= menu_set(1, 1) == 1 && menu_set(2, 1) == 1 && menu_set(24, 1) == 1 && ui_prefs == 0u && ui_prefs2 == 0u;   /* (STYLE 1, LARGE 2, HELP 24: retired in DUELL 0.2.2, unknown ids: rc 1, nothing set) */
+    ok &= menu_set(1, 1) == 1 && menu_set(2, 1) == 1 && menu_set(24, 1) == 1 && ui_prefs == 0x44u && ui_prefs2 == 0x80u;   /* (STYLE 1, LARGE 2, HELP 24: retired in DUELL 0.2.2, unknown ids: rc 1, nothing set) */
     ok &= menu_set(3, 1) == 3 && (ui_prefs & PREF_ANIM_OFF);
     ok &= menu_set(4, 0) == 3 && settings_leds == LEDS_OFF && menu_set(4, 1) == 3 && settings_leds == LEDS_DIM_LO;
     ok &= menu_set(5, 3) == 3 && settings_hold == 3u;
     ok &= menu_set(6, 1) == 3 && (ui_prefs & PREF_ACCEL);
     ok &= menu_set(7, 1) == 1 && !(ui_prefs & 1u);   /* (FX LATCH, id 7: retired in DUELL 0.2.2, an unknown id: rc 1, its bit stays clear) */
     ok &= menu_set(8, 1) == 1 && !(ui_prefs & 16u);   /* (BPM LOCK, id 8: retired, an unknown id: rc 1) */
-    ok &= menu_set(9, 2) == 3 && settings.lowcut == 2u && fx_lowcut == 2u;
+    ok &= menu_set(9, 2) == 1 && host_wire[6] == 9;   /* (OUTPUT EQ, id 9: retired in DUELL 0.2.19, an unknown id: rc 1) */
     ok &= menu_set(10, 1) == 3 && (ui_prefs & PREF_USB_FIXED) && fx_usb_fixed;
     ok &= menu_set(12, 1) == 3 && click_mode == CLICK_REC && menu_set(12, 2) == 3 && click_mode == CLICK_ON;
     ok &= menu_set(13, 0) == 3 && click_lvl == 0u;
@@ -895,23 +916,32 @@ static int menu_protocol(void)
     ok &= menu_set(16, 1) == 3 && (ui_rec_prefs & 0x80u) && click_mode == CLICK_ON && cin_bars == 2u;   /* (its own bit) */
     ok &= menu_set(17, 0) == 3 && scr_get() == 0u && menu_set(17, 9) == 3 && scr_get() == 4u &&   /* (clamped) */
           menu_set(17, 2) == 3 && scr_get() == 2u && ui_scr == 1u;
-    ok &= menu_set(18, 1) == 3 && ui_prefs2 == 1u && scope_mix;                                    /* (1.2: their own byte) */
-    ok &= menu_set(19, 1) == 3 && ui_prefs2 == 3u && menu_set(20, 1) == 3 && ui_prefs2 == 7u;
+    ok &= menu_set(18, 1) == 1 && ui_prefs2 == 0x80u && !scope_mix;                              /* (SCOPE, id 18: retired in DUELL 0.2.14, an unknown id: rc 1) */
+    ok &= menu_set(19, 1) == 3 && ui_prefs2 == 0x82u && menu_set(20, 1) == 3 && ui_prefs2 == 0x86u;   /* (1.2: their own byte) */
     ok &= menu_set(21, 1) == 1 && song.g[G_ROUTE] == 0 &&       /* (MIDI IN, id 21: retired, an unknown id) */  menu_set(22, -13) == 0 && song.g[G_TUNE] == -13;   /* (1.2: the
                                                          * project's, rc 0: in the music, no settings record) */
-    ok &= menu_set(23, 1) == 3 && ui_home_view == HV_TRACKS && ui_prefs2 == 7u && ui_scr == 1u;   /* (1.3: its own byte) */
-    ok &= menu_set(25, 2) == 3 && ui_home_pg == HP_MIXER && ui_prefs2 == 7u;                      /* (DUELL 0.1: HOME OPENS, its own byte) */
-    ok &= menu_set(26, 1) == 3 && (ui_prefs2 & 0x10u) && ui_prefs2 == 0x17u && ui_home_pg == HP_MIXER;   /* (DUELL 0.2.9: CPU METER OFF, bit 4 of its byte; set = OFF, clear = ON) */
-    ok &= menu_set(27, 1) == 3 && (ui_prefs2 & 0x40u) && ui_prefs2 == 0x57u;                     /* (DUELL 0.2.11: MODE RECALL ON, bit 6 of its byte; set = LOAD, clear = KEEP) */
-    for (i = 0; i < 22u; i++) {                         /* MENU_DESC reads them back */
-        static const int32_t SET[22] = {2, 1, 1, 3, 1, 2, 1, 0, 2, 0, 2, 1, 1, 2, 1, 1, 1, -13, 1, 2, 1, 1};
+    ok &= menu_set(23, 1) == 1 && favorites.factory[15][26] == 0u && ui_prefs2 == 0x86u && ui_scr == 1u;   /* (OVERVIEW, id 23: retired in DUELL 0.2.14, an unknown id: rc 1) */
+    ok &= menu_set(25, 2) == 3 && ui_home_pg == HP_MIXER && ui_prefs2 == 0x86u;                      /* (DUELL 0.1: HOME OPENS, its own byte) */
+    ok &= menu_set(26, 1) == 3 && (ui_prefs2 & 0x10u) && ui_prefs2 == 0x96u && ui_home_pg == HP_MIXER;   /* (DUELL 0.2.9: CPU METER OFF, bit 4 of its byte; set = OFF, clear = ON) */
+    ok &= menu_set(27, 1) == 3 && (ui_prefs2 & 0x40u) && ui_prefs2 == 0xD6u;                     /* (DUELL 0.2.11 MODE RECALL ON, 0.2.14 MULTI LOAD SETS MODE: bit 6 of its byte) */
+    ok &= ui_idle == 0u && menu_set(28, 0) == 3 && ed_rv(host_wire + 7) == 0 && ui_idle == 2u && mods_off == MODS_ARP &&   /* (0.2.14 MODULES: ARP OFF, bit 1 of [15][10]; */
+          menu_set(29, 0) == 3 && menu_set(30, 0) == 3 && menu_set(31, 0) == 3 && ui_idle == 30u && mods_off == MODS_ALL &&   /* SEQ, SENDS, PART FX bits 2..4; */
+          menu_set(30, 1) == 3 && ed_rv(host_wire + 7) == 1 && ui_idle == 22u && menu_set(31, 9) == 3 && ed_rv(host_wire + 7) == 1 && ui_idle == 6u &&   /* ON clears, clamped */
+          ui_prefs2 == 0xD6u;                                                                         /* .. nothing else moved) */
+    ok &= menu_set(32, 1) == 3 && ed_rv(host_wire + 7) == 1 && ui_idle == 0x26u && perf_keep() && mods_off == (MODS_ARP | MODS_SEQ) &&   /* (0.2.14 PERF LEAVE KEEP: bit 5 of [15][10]; the MODULES bits stay) */
+          menu_set(32, 9) == 3 && ed_rv(host_wire + 7) == 1 && ui_prefs2 == 0xD6u;
+    ok &= menu_set(33, 5) == 0 && ed_rv(host_wire + 7) == 5 && song.bm == 5 && ui_prefs2 == 0xD6u && ui_idle == 0x26u &&   /* (0.2.19 BASS MONO 100 Hz: song.bm, the music's, rc 0 and no settings byte; the audio side takes it at the next frame) */
+          menu_set(33, 99) == 0 && ed_rv(host_wire + 7) == (int32_t)BM_N && menu_set(33, 0) == 0 && ed_rv(host_wire + 7) == 0 && song.bm == 0;
+    menu_set(33, 5);
+    for (i = 0; i < MDN; i++) {                         /* MENU_DESC reads them back */
+        static const int32_t SET[MDN] = {2, 1, 1, 3, 1, 1, 1, 2, 0, 2, 1, 1, 2, 1, 1, -13, 2, 1, 1, 0, 0, 1, 1, 1, 5};
         menu_desc(i, &it);
         ok &= it.value == SET[i];
     }
-    bad += check("MENU_SET: every setting applied as the menu does (palette, EQ, USB LEVEL, CLICK, COUNT-IN at once, RESTORE LAST, SCALE LEDS, SCREEN OFF, SCOPE, STEP PREVIEW, CHORD ENTRY, HOME), read back", ok);
+    bad += check("MENU_SET: every setting applied as the menu does (palette, EQ, USB LEVEL, CLICK, COUNT-IN at once, RESTORE LAST, SCALE LEDS, SCREEN OFF, STEP PREVIEW, STEP KEYS, HOME OPENS, CPU METER, MULTI LOAD), read back", ok);
     ok = menu_set(3, 0) == 3 && !(ui_prefs & PREF_ANIM_OFF) && (ui_prefs & PREF_ACCEL) && menu_set(10, 0) == 3 &&
-         !fx_usb_fixed && menu_set(26, 0) == 3 && !(ui_prefs2 & 0x10u) && ui_prefs2 == 0x47u &&   /* (CPU METER back to ON: its bit clears, the others stay) */
-         menu_set(27, 0) == 3 && ui_prefs2 == 7u;   /* (MODE RECALL back to KEEP) */
+         !fx_usb_fixed && menu_set(26, 0) == 3 && !(ui_prefs2 & 0x10u) && ui_prefs2 == 0xC6u &&   /* (CPU METER back to ON: its bit clears, the others stay) */
+         menu_set(27, 0) == 3 && ui_prefs2 == 0x86u;   /* (MULTI LOAD back to KEEPS MODE) */
     bad += check("MENU_SET: a flag back to its default leaves the other flags", ok);
 
     /* clamping: the reply carries the device's value */
@@ -922,7 +952,7 @@ static int menu_protocol(void)
     ok &= menu_set(6, 7) == 3 && ed_rv(host_wire + 7) == 1 && (ui_prefs & PREF_ACCEL);
     ok &= menu_set(14, 9) == 3 && ed_rv(host_wire + 7) == 2 && cin_bars == 2u;
     ok &= menu_set(12, -1) == 3 && ed_rv(host_wire + 7) == 0 && click_mode == CLICK_OFF;
-    ok &= menu_set(25, 99) == 3 && ed_rv(host_wire + 7) == 3 && ui_home_pg == HP_OVERVIEW;
+    ok &= menu_set(25, 99) == 3 && ed_rv(host_wire + 7) == 2 && ui_home_pg == HP_MIXER;   /* (0.2.14: MIXER the last; an old editor's 3, OVERVIEW: MIXER) */
     ok &= menu_set(22, -99) == 0 && ed_rv(host_wire + 7) == -50 && song.g[G_TUNE] == -50;
     ok &= menu_set(22, 51) == 0 && ed_rv(host_wire + 7) == 50 && song.g[G_TUNE] == 50;
     bad += check("MENU_SET: out-of-range values clamped, the reply says the value the device took (TUNE -50..50)", ok);
@@ -932,7 +962,7 @@ static int menu_protocol(void)
         static uint8_t fav0[sizeof favorites], set0[sizeof settings];
         uint8_t hold0 = settings_hold, leds0 = settings_leds;
         memcpy(fav0, &favorites, sizeof favorites); memcpy(set0, &settings, sizeof settings);
-        ok = menu_set(28, 1) == 1 && host_wire[6] == 28 && ed_rv(host_wire + 7) == 1;
+        ok = menu_set(34, 1) == 1 && host_wire[6] == 34 && ed_rv(host_wire + 7) == 1;   /* (0.2.14: 28..31 are MODULES', 32 PERF LEAVE, 0.2.19: 33 BASS MONO) */
         ok &= menu_set(126, -3) == 1 && host_wire[6] == 126 && ed_rv(host_wire + 7) == -3;
         ok &= menu_set(127, 0) == 1 && host_wire[6] == 127;
         ok &= !memcmp(fav0, &favorites, sizeof favorites) && !memcmp(set0, &settings, sizeof settings) &&

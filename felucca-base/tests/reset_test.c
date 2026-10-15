@@ -106,14 +106,14 @@ int main(void)
     duell_mode_req = DM_STEREO;
     TSEL->p[P_LEVEL] = 40; TSEL->p[P_PAN] = 20; TSEL->p[P_REV] = 60; TSEL->p[P_MUTE] = 1; perf_space = 40;
     btn_down(B_OCTDN); frame();
-    turn(EN_K1, 1);
-    expect("MIXER K1 LEVEL: its default", TSEL->p[P_LEVEL] == TP[P_LEVEL].def && said_reset());
+    turn(EN_K4, 1);
+    expect("MIXER K4 LEVEL: its default", TSEL->p[P_LEVEL] == TP[P_LEVEL].def && said_reset());
     quiet(); turn(EN_K2, 1);
     expect("MIXER K2 PAN: centre", TSEL->p[P_PAN] == 0);
     quiet(); turn(EN_K3, 1);
     expect("MIXER K3 SPACE: 0, said RESET SPACE, the part's REV send untouched", perf_space == 0 && TSEL->p[P_REV] == 60 && msg_is("RESET SPACE"));
-    quiet(); ui.msg_t = 0; turn(EN_K4, -1);
-    expect("MIXER K4 MUTE is a switch: the turn goes as ever", TSEL->p[P_MUTE] == 0 && !said_reset());
+    quiet(); ui.msg_t = 0; turn(EN_K1, -1);
+    expect("MIXER K1 MUTE is a switch: the turn goes as ever", TSEL->p[P_MUTE] == 0 && !said_reset());
     btn_up(B_OCTDN); frame(); frame();
     expect("  .. (the hold was a modifier: no octave on release)", song.octave == 0);
     song.octave = 0;
@@ -130,14 +130,23 @@ int main(void)
     btn_down(B_OCTDN); frame(); turn(EN_K2, -1); btn_up(B_OCTDN); frame();
     expect("MODE K2 BAL: centre", mix_bal == 0);
 
+    /* the REVERB page's LOCUT (0.2.14): K4, to its default 61 (88 Hz); and a turn is a turn, 1 step */
+    page("REVERB");
+    song.g[G_RLOCUT] = 0;
+    turn(EN_K4, 3);
+    expect("REVERB K4 LOCUT: a plain turn moves it", song.g[G_RLOCUT] == 3 && !said_reset());
+    btn_down(B_OCTDN); frame(); turn(EN_K4, 1);
+    expect("REVERB K4 LOCUT: OCT- + the knob, its default 61", song.g[G_RLOCUT] == GP[G_RLOCUT].def && GP[G_RLOCUT].def == 61 && said_reset());
+    btn_up(B_OCTDN); frame(); frame();
+
     /* TEMPO */
     page("TEMPO");
     song.g[G_BPM] = 150; song.g[G_SWING] = 40; song.g[G_CLOCK] = 0;
-    btn_down(B_OCTDN); frame(); turn(EN_K1, 1); quiet(); turn(EN_K3, 1);
-    expect("TEMPO K1 / K3: their defaults", song.g[G_BPM] == GP[G_BPM].def && song.g[G_SWING] == GP[G_SWING].def);
+    btn_down(B_OCTDN); frame(); turn(EN_K2, 1); quiet(); turn(EN_K4, 1);
+    expect("TEMPO K2 / K4: their defaults", song.g[G_BPM] == GP[G_BPM].def && song.g[G_SWING] == GP[G_SWING].def);
     quiet(); ui.msg_t = 0;
-    turn(EN_K2, 1);
-    expect("TEMPO K2 TAP is no parameter: no reset", !said_reset());
+    turn(EN_K3, 1);
+    expect("TEMPO K3 TAP is no parameter: no reset", !said_reset());
     btn_up(B_OCTDN); frame();
 
     /* an action page: OCT- stays "back" */

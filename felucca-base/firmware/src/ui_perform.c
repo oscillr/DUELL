@@ -3,9 +3,9 @@
  *   ON / OFF   FX held 0.7 s (btn_hold, SAVE's hold) turns PERFORM on, and off again; a white key pressed while FX is held turns it on
  *              at once and is already PERFORM's key (seq.c keyboard_block; FX's release then opens no page). A tap of FX in PERFORM goes
  *              back to the page it was shown over; HOME, SAVE and every other page button leave it for their own page (ui.c perf_off:
- *              page_entered, go_home). A tap of FX outside PERFORM opens the FX pages as ever. PERFORM starts OFF at power-on.
+ *              page_entered). A tap of FX outside PERFORM opens the FX pages as ever. PERFORM starts OFF at power-on.
  *   PAGE       PERFORM (PERF_PAGE, FAM_FX: FX's LED lit): the header names it with the part badges (BOTH: both lit) and the REC mark;
- *              the cards K1 MORPH (the MORPH page's fader: morph_act MQ_FADER on the part(s) chosen), K2 SPACE, K3 FILTER (-100 .. 100,
+ *              the cards K1 MORPH (the MORPH page's fader: morph_act MQ_FADER on the part(s) chosen), K2 SPACE, K3 KILL (-100 .. 100,
  *              0 = neutral; back to 0 when PERFORM is left), K4 DEPTH (0 .. 100 %, kept until power-off); the panel the 4 x 4 map of
  *              the white keys, a row per group of four keys: a held key's cell in the accent, one that cannot run now greyed (its key
  *              pressed says why); the footer's first row what SELECT (BALANCE) and ALGORITHM (PART 1 / BOTH / PART 2) do here, its
@@ -25,7 +25,7 @@ static const char *const PF_CELL[PF_KEYS][2] = {
 
 static uint8_t perf_nw_said;           /* "DUEL: NO WIDTH" shown since PERFORM opened (perf_knob: SPACE turned in DUEL) */
 /* PUMP needs the beats of the tempo: with an external clock they come only while it runs (the arp's steps: seq.c events_block) */
-static int perf_pump_ok(void) { return !song.g[G_CLOCK] || song.playing || (clock_state() == 1u && !midi_clock.stopped); }
+static int perf_pump_ok(void) { return !clock_src() || song.playing || (clock_state() == 1u && !midi_clock.stopped); }
 /* effect e can run now (the main loop's view: the ISR's perf_avail, and PUMP's clock) */
 static int perf_can(uint32_t e) { return ((perf_avail() >> e) & 1u) && (e != PF_PUMP || perf_pump_ok()); }
 /* why e cannot run (its key pressed: the header says it) */
@@ -53,27 +53,21 @@ static void perf_enter(void)
 {
     if (ui.perf)
         return;
-    ui.perf_home = ui.home;
-    ui.home = 0;
     ui.perf = 1;
     song.seq_mode = 0;                                  /* (STEP's entry is not PERFORM's) */
     ui.entry_open = 0;
     ui.act = 0;
     ui.hot_t = 0;
     ui.perf_seen = 0;
-    perf_filt = 0;                                      /* (SPACE keeps its value: it is the MIXER's SPACE card too, 0.2.9) */
+    perf_fading = 0;                                    /* (0.2.14: back in PERFORM while a fade runs: it stops where it is; the cards show the live values) */
     perf_nw_said = 0;
     ui.force = 1;
 }
 /* a tap of FX (or FX held again): back to the page PERFORM was shown over */
 static void perf_leave(void)
 {
-    uint8_t h = ui.perf_home;
     perf_off();
-    if (h)
-        go_home();
-    else
-        page_entered();
+    page_entered();
 }
 
 /* each pass of ui_input (after the layers have taken their buttons; lay: a layer's button held) */
@@ -101,6 +95,7 @@ static void perf_input(uint32_t pressed, uint32_t now, uint32_t lay)
     }
     perf_fxb = ok && !ui.perf && !lay && !(ui.fx_t0 & 2u) ? fxbit : 0u;   /* (the ISR: a key with FX down is PERFORM's) */
     perf_keys = (uint8_t)(ui.perf && ok);
+    perf_fade_step();
     if (!ok)
         perf_kill = 1;                                  /* (the menu, a dialog, NAME: every effect off until its keys are let go) */
     else if (!kb_perf)
@@ -123,7 +118,12 @@ static void perf_signed(char *v, int32_t x);
 /* SPACE's knob, PERFORM's K2 and the MIXER's third card (0.2.9): the one global value perf_space; role = the knob's EN_K* */
 static void space_turn(uint32_t role, int32_t s)
 {
+    if (mods_off & MODS_SENDS)                          /* GLO > MODULES SENDS OFF: SPACE acts through the sends; its card is not shown, its knob does nothing */
+        return;
     perf_space = (int8_t)clamp(perf_space + accel(role, s, 200), -100, 100);
+    perf_sp_live = ui.perf;                             /* (0.2.14: PERFORM's own move is faded on leaving; the MIXER's alone is kept) */
+    if (ui.perf)
+        perf_fading = 0;                                /* (turned by hand: a running fade stops, the player has the knob) */
     if (duell_mode == DM_SPLIT && !perf_nw_said) {      /* (0.2.9: SPACE's stereo width cannot work in DUEL, its sides are the two parts: */
         perf_nw_said = 1;                               /* said once since PERFORM opened, the rest of SPACE works) */
         ui_message("DUEL: NO WIDTH");
@@ -134,7 +134,10 @@ static void space_card(uint32_t col)
 {
     char val[12];
     perf_signed(val, perf_space);                       /* SPACE: 0 = the sound's own delay, reverb and chorus */
-    draw_column(col, "SPACE", val, "", VAL(col), (perf_space + 100) * 5, ICON_REVERB);
+    if (mods_off & MODS_SENDS)                          /* GLO > MODULES SENDS OFF: no bus to act on: no card */
+        draw_column_hide(col);
+    else
+        draw_column(col, "SPACE", val, "", VAL(col), (perf_space + 100) * 5, ICON_REVERB);
 }
 
 /* KNOB 1..4 on the PERFORM page */
@@ -149,6 +152,7 @@ static void perf_knob(uint32_t slot, int32_t s)
         space_turn(EN_K2, s);
         break;
     case 2:
+        perf_fading = 0;
         perf_filt = (int8_t)clamp(perf_filt + accel(EN_K3, s, 200), -100, 100);
         break;
     default:
@@ -189,10 +193,10 @@ static void perf_cards(void)
         fmt_int(val, (int32_t)f);
     draw_column(0, "MORPH", val, "", VAL(0u), (int32_t)f * 1000 / 127, ICON_MIX);
     space_card(1u);
-    x = perf_filt;                                      /* FILTER: OFF in the middle, a low-pass left, a high-pass right */
+    x = perf_filt;                                      /* KILL (the DJ filter): OFF in the middle, a low-pass left, a high-pass right */
     if (x)
         fmt_int(val, x < 0 ? -x : x);
-    draw_column(2, "FILTER", x ? val : "OFF", x < 0 ? "LP" : x > 0 ? "HP" : "", VAL(2u), (x + 100) * 5, ICON_CUTOFF);
+    draw_column(2, "KILL", x ? val : "OFF", x < 0 ? "LP" : x > 0 ? "HP" : "", VAL(2u), (x + 100) * 5, ICON_CUTOFF);
     fmt_int(val, perf_depth);
     draw_column(3, "DEPTH", val, "%", VAL(3u), perf_depth * 10, ICON_LEVEL);
 }

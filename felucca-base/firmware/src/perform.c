@@ -41,9 +41,19 @@ enum { PF_R8, PF_R16, PF_R32, PF_REV, PF_TAPE, PF_FRZ, PF_OUP, PF_ODN, PF_FLG, P
 #define HB_MASK 4095u                         /* OCT UP / DN: the delay's frames (of the buffer's 8192) */
 #define HB_BASE 128u                          /* .. the taps' shortest delay, samples; the sweep: 2048 */
 #define HB_FB 164                             /* .. K4 DEPTH (0 .. 100) -> the shimmer, Q15: 0 .. 0.5 */
-#define PF_TOP (63 << 8)                      /* FILTER: the cutoff index, Q8 (PF_SVF): the low-pass's open end (15.4 kHz); the low-pass closes to 0
-                                               * (30 Hz), the high-pass rises from 0 to it (DUELL 0.2.9: before, 120 Hz and 3.8 kHz) */
-#define PF_KILL 96                            /* .. beyond +-96 of the knob the output fades to silence at +-100 (the kill zone: fully closed) */
+#define PF_KILL 96                            /* FILTER: beyond +-96 of the knob the output fades to silence at +-100 (the kill zone: fully closed) */
+#define PF_FADE 32                            /* .. its share's ramp a sample, Q15: in and out over 23 ms at its open end (a high-pass at 21 Hz switched
+                                               * in rings at its corner: 3 ms let -40 dB of it through) */
+#define PF_KOPEN 128                          /* .. the closure (Q8 detents) within half a detent of the open end: the filter fades out */
+#define PF_ULO 20410                          /* .. the cutoff, Q8 table steps (PF_G: 1/8 octave from 20 Hz): the low-pass's open end, 20.0 kHz .. */
+#define PF_ULR 51232                          /* .. its fall a detent (Q16 of a Q8 detent): 30 Hz at 96 (PF_ULO - 1198 = 19212 over 96 << 8) */
+#define PF_UHR 52160                          /* .. the high-pass's rise from 20 Hz (step 0): 15.0 kHz at 96 (19560 over 96 << 8) */
+#ifndef PF_SH
+#define PF_SH 10                              /* .. the states carry 10 more bits than the signal .. */
+#endif
+#define PF_XMAX (1 << 18)                     /* .. its input's clamp (8 x full scale: x 1024 within 2^28, the states within 2^31) */
+#define PF_KA 1984016189                      /* .. the two stages' damping, Q30: a 4-pole Butterworth's 2 cos(pi / 8) = 1.848 .. */
+#define PF_KB 821806413                       /* .. and 2 cos(3 pi / 8) = 0.765 (no resonance bump) */
 #define FL_LEN 356u                           /* FLANGER: its line's frames (8.1 ms: FL_MAX + 2) */
 #define FL_MIN 22u                            /* .. the delay's sweep, samples: 0.5 .. 8 ms */
 #define FL_MAX 353u
@@ -93,11 +103,13 @@ static struct {
     int32_t hfb;                       /* .. the shimmer now, Q15 (glides to K4 DEPTH's a block at a time) */
     int32_t w, tw, hl, hr;             /* the buffer's share and its target, Q15; the first of a pair */
     int32_t mg[NPART];                 /* the mutes' gains, Q15 (32768 = open) */
-    /* FILTER (K3) */
-    int32_t lc, hc, la, ha;            /* cutoffs (Q8 index) and shares (Q15) of the low-pass and the high-pass */
+    /* FILTER (K3); all 0 = at rest, the low-pass, open */
+    int32_t fk, fa, fkc;               /* the closure (Q8 detents from the open end, 0 .. 96 << 8, glides), the filter's share (Q15), the closure
+                                        * fc is of */
+    uint32_t fm;                       /* 0 the low-pass, 1 the high-pass (changes only at rest) */
     int32_t ka;                        /* the kill zone's share (Q15: 0 none, 32768 silent) */
-    int32_t lz[4], hz[4];              /* their states: L ic1 ic2, R ic1 ic2 */
-    int16_t lk[3], hk[3];              /* their coefficients this block */
+    int32_t fc[6];                     /* the coefficients at the end of the last block: stage A a1 a2 a3, stage B a1 a2 a3 (Q30) */
+    int32_t fz[2][4];                  /* the states, L R: A ic1 ic2, B ic1 ic2 (the signal x 256) */
     /* FLANGER, PHASER */
     int32_t fw, pw;                    /* their shares, Q15 */
     uint32_t fwp, fn;                  /* FLANGER: the frame written next; frames written since it started */
@@ -110,25 +122,19 @@ static struct {
     /* PUMP */
     int32_t pdn;                       /* the duck now, Q16 (0: none) */
     uint8_t pph, pbeat;                /* 0 at rest, 1 the attack, 3 the release; the beats seen (perf_beat) */
-} pf = {.src = PF_N, .next = PF_N, .mg = {32768, 32768, 32768, 32768}, .lc = PF_TOP};
+} pf = {.src = PF_N, .next = PF_N, .mg = {32768, 32768, 32768, 32768}};
 
 static int16_t fl_buf[FL_LEN][2];      /* FLANGER's line: L R, at half the level (headroom) */
 
-/* the ZDF state-variable filter at cutoff index i (30 Hz * 2^(i / 7), 0..63: up to 15.4 kHz), k = 1:
- * a1 a2 a3 in Q14 (tools: g = tan(pi fc / fs), a1 = 1 / (1 + g (g + k)), a2 = g a1, a3 = g a2) */
-static const int16_t PF_SVF[64][3] = {
-    {16349, 35, 0}, {16345, 39, 0}, {16341, 43, 0}, {16337, 47, 0}, {16332, 52, 0}, {16327, 57, 0}, {16321, 63, 0},
-    {16314, 70, 0}, {16307, 77, 0}, {16299, 85, 0}, {16290, 94, 1}, {16280, 103, 1}, {16269, 114, 1},
-    {16257, 126, 1}, {16244, 139, 1}, {16229, 153, 1}, {16213, 169, 2}, {16196, 186, 2}, {16176, 205, 3},
-    {16154, 227, 3}, {16130, 250, 4}, {16104, 275, 5}, {16075, 303, 6}, {16043, 334, 7}, {16007, 368, 8},
-    {15968, 406, 10}, {15925, 447, 13}, {15877, 492, 15}, {15824, 541, 19}, {15766, 596, 22}, {15702, 655, 27},
-    {15631, 720, 33}, {15553, 791, 40}, {15467, 869, 49}, {15372, 953, 59}, {15267, 1046, 72}, {15151, 1146, 87},
-    {15024, 1255, 105}, {14883, 1374, 127}, {14729, 1502, 153}, {14559, 1640, 185}, {14372, 1790, 223},
-    {14166, 1950, 268}, {13940, 2121, 323}, {13692, 2304, 388}, {13420, 2499, 465}, {13122, 2704, 557},
-    {12797, 2921, 667}, {12441, 3147, 796}, {12053, 3382, 949}, {11631, 3624, 1129}, {11173, 3870, 1341},
-    {10677, 4119, 1589}, {10140, 4365, 1879}, {9562, 4605, 2218}, {8940, 4832, 2612}, {8274, 5040, 3070},
-    {7563, 5219, 3602}, {6807, 5359, 4219}, {6006, 5444, 4934}, {5163, 5456, 5766}, {4282, 5369, 6733},
-    {3372, 5149, 7863}, {2449, 4745, 9190},
+/* K3 FILTER's cutoff table (DUELL 0.2.14): g = tan(pi f / FS), Q27, a point every 1/8 octave from 20 Hz (u = 0 .. 80: f = 20 Hz * 2^(u / 8),
+ * up to 20.5 kHz), FS 44100 */
+static const int32_t PF_G[81] = {
+    191228, 208536, 227410, 247992, 270437, 294914, 321606, 350714, 382457, 417072, 454821, 495986, 540877, 589831, 643216, 701433, 764920, 834153,
+    909652, 991985, 1081772, 1179685, 1286462, 1402905, 1529889, 1668370, 1819388, 1984079, 2163684, 2359552, 2573160, 2806116, 3060176, 3337255,
+    3639444, 3969026, 4328492, 4720564, 5148213, 5614687, 6123535, 6678639, 7284244, 7945000, 8665997, 9452821, 10311597, 11249059, 12272616,
+    13390432, 14611525, 15945874, 17404552, 18999885, 20745644, 22657273, 24752183, 27050104, 29573540, 32348341, 35404442, 38776831, 42506817,
+    46643742, 51247289, 56390683, 62165184, 68686524, 76104364, 84616511, 94491006, 106101610, 119987295, 136957088, 158286533, 186115271, 224335710,
+    280864772, 374692284, 565754023, 1195040938,
 };
 
 /* the capture buffer (DUELL 0.2.5: the old FX layer's sl_buf, 32 KB in the pool): one stereo loop of PB_FRAMES at 22.05 kHz, L R */
@@ -291,18 +297,6 @@ static __attribute__((noinline)) int perf_begin(uint32_t n)
     for (k = 0; k < NSHOWN; k++)
         if (((held >> (PF_M1 + k)) & 1u) || pf.mg[k] != 32768)
             pf.mute |= (uint8_t)(1u << k);
-    {   /* K3 FILTER: the low-pass from its open end down to 30 Hz to the left, the high-pass from 30 Hz up to 15.4 kHz to the right, each
-         * fading to silence over the last 4 steps (the kill zone); the cutoffs glide (~60 ms over the range) */
-        int32_t m = perf_filt, lt = m < 0 ? PF_TOP + m * PF_TOP / 100 : PF_TOP, ht = m > 0 ? m * PF_TOP / 100 : 0;
-        pf.lc += clamp(lt - pf.lc, -192, 192);
-        pf.hc += clamp(ht - pf.hc, -192, 192);
-        if (pf.lc < PF_TOP || pf.hc > 0 || pf.la || pf.ha)
-            for (k = 0; k < 3u; k++) {                  /* the coefficients, between two table rows */
-                int32_t i = pf.lc >> 8, f = pf.lc & 255, j = pf.hc >> 8, g = pf.hc & 255;
-                pf.lk[k] = (int16_t)(PF_SVF[i][k] + (((PF_SVF[i < 63 ? i + 1 : 63][k] - PF_SVF[i][k]) * f) >> 8));
-                pf.hk[k] = (int16_t)(PF_SVF[j][k] + (((PF_SVF[j < 63 ? j + 1 : 63][k] - PF_SVF[j][k]) * g) >> 8));
-            }
-    }
     pf.busy = 1;
     return 1;
 }
@@ -537,51 +531,150 @@ static inline void perf_buf(int32_t *pl, int32_t *pr)
 
 static __attribute__((noinline)) void perf_switch(uint32_t a) { perf_buf_select(perf_pick(a)); }
 
-/* the UI: OCT UP / DN is the buffer effect playing (K4 DEPTH is its shimmer) */
-static int perf_harm_on(void) { return (PF_HARM >> perf_pick(perf_act)) & 1u; }
-
-/* one channel of a state-variable filter (k = 1): x in Q15 >> 2 */
-static inline int32_t pf_svf(int32_t x, int32_t *z, const int16_t *c, int hp)
+/* K3 FILTER (DUELL 0.2.14; SPEC 5e): a 24 dB/oct stereo filter, low-pass left of the middle, high-pass right of it, the middle exactly off.
+ * Each channel two 12 dB stages of the trapezoidal state-variable filter (voice.c uf_run's, dsp.c tsvf: stable at any cutoff), a 4-pole
+ * Butterworth (dampings 1.848 and 0.765: flat, no resonance bump). The numbers: the coefficients Q30, the states the signal x 256, the products
+ * 32 x 32 -> 64 bits (0.2.9's Q14 table and states at a quarter of the signal's resolution stalled below ~200 Hz: the output stuck at a
+ * DC offset that moved in steps, the crackle; the high-pass near its open end left that offset in). The cutoff glides (a one-pole in the
+ * log domain, ~12 ms: knob detents become a smooth sweep) a block at a time and the coefficients move in straight lines between blocks,
+ * a step every sample (no zipper). Turned from the middle the filter fades in over 2.9 ms at its open end (the low-pass 18.7 kHz at the
+ * first detent, the high-pass 21 Hz); back in the middle (or across it) it sweeps open first, then fades out, then rests (states cleared;
+ * the low-pass and the high-pass trade places only at rest). Beyond +-96 the kill zone fades to silence (2.9 ms a step at most). */
+/* the stages over a channel's block b, in place, a stage at a time (its 3 coefficients and 2 states in registers: both stages in one
+ * loop spilled on the device): state z (ic1 ic2), coefficients c (a1 a2 a3, Q30), moving by d a sample (0: steady). pf_a: stage A, in
+ * the signal (clamped) x 256, out x 256; pf_b: stage B, in that, out rounded back to the signal. The low-pass v2, the high-pass
+ * x - k v1 - v2; the products rounded (truncated, their bias left a DC offset at the lowest cutoffs). The four loops each: low-pass or
+ * high-pass, steady or moving (the host build drops the attributes, so no loop relies on a flag folded by inlining) */
+#define PF_STEP v3 = x - z1;                                                                    \
+                v1 = (int32_t)(((int64_t)a1 * z0 + (int64_t)a2 * v3 + (1 << 29)) >> 30);        \
+                v2 = z1 + (int32_t)(((int64_t)a2 * z0 + (int64_t)a3 * v3 + (1 << 29)) >> 30);   \
+                z0 = 2 * v1 - z0;                                                               \
+                z1 = 2 * v2 - z1
+#define PF_MOVE a1 += d1, a2 += d2, a3 += d3
+#define PF_HP(k) (x - v2 - (int32_t)(((int64_t)(k) * v1) >> 30))
+#define PF_IN(v) (clamp(v, -PF_XMAX, PF_XMAX) << PF_SH)
+#define PF_OUT(v) (((v) + (1 << (PF_SH - 1))) >> PF_SH)
+#define PF_LOOPS(IN, LP, HP)                                                                        \
+    uint32_t i;                                                                                   \
+    int32_t a1 = c[0], a2 = c[1], a3 = c[2], z0 = z[0], z1 = z[1], d1 = d[0], d2 = d[1], d3 = d[2], x, v1, v2, v3;   \
+    if (hp && (d1 | d2 | d3))                                                                     \
+        for (i = 0; i < n; i++) { x = IN(b[i]); PF_MOVE; PF_STEP; b[i] = HP; }                    \
+    else if (hp)                                                                                  \
+        for (i = 0; i < n; i++) { x = IN(b[i]); PF_STEP; b[i] = HP; }                             \
+    else if (d1 | d2 | d3)                                                                        \
+        for (i = 0; i < n; i++) { x = IN(b[i]); PF_MOVE; PF_STEP; b[i] = LP; }                    \
+    else                                                                                          \
+        for (i = 0; i < n; i++) { x = IN(b[i]); PF_STEP; b[i] = LP; }                             \
+    z[0] = z0;                                                                                    \
+    z[1] = z1
+#define PF_ID(v) (v)
+static void pf_a(int32_t *b, uint32_t n, const int32_t *c, const int32_t *d, int32_t *z, uint32_t hp) { PF_LOOPS(PF_IN, v2, PF_HP(PF_KA)); }
+static void pf_b(int32_t *b, uint32_t n, const int32_t *c, const int32_t *d, int32_t *z, uint32_t hp) { PF_LOOPS(PF_ID, PF_OUT(v2), PF_OUT(PF_HP(PF_KB))); }
+#undef PF_LOOPS
+#undef PF_STEP
+#undef PF_MOVE
+#undef PF_HP
+#undef PF_IN
+#undef PF_OUT
+#undef PF_ID
+/* one stage's a1 a2 a3 (Q30) of g (Q27) and the damping k (Q27): a1 = 1 / (1 + g (g + k)), a2 = g a1, a3 = g a2. a1 a 32-bit divide's
+ * estimate (16 bits at least) and a Newton step (to ~1e-9): the three always of one g, so a block's coefficients are a stable filter's
+ * and so is every straight line between two blocks' (det and trace of the state matrix stay inside the bounds) */
+static void pf_stage_coefs(int32_t *c, int32_t g, int32_t k)
 {
-    int32_t v3 = x - z[1], v1 = (c[0] * z[0] + c[1] * v3) >> 14, v2 = z[1] + ((c[1] * z[0] + c[2] * v3) >> 14);
-    z[0] = 2 * v1 - z[0];
-    z[1] = 2 * v2 - z[1];
-    return hp ? x - v1 - v2 : v2;
+    int64_t den = (1ll << 30) + (((int64_t)g * (g + k)) >> 24), s = (int64_t)(0x80000000u / (uint32_t)(den >> 15)) << 14;
+    c[0] = (int32_t)((s * ((2ll << 30) - ((den * s) >> 30))) >> 30);
+    c[1] = (int32_t)(((int64_t)g * c[0]) >> 27);
+    c[2] = (int32_t)(((int64_t)g * c[1]) >> 27);
 }
-/* K3 FILTER on the block: the low-pass (left of the middle) and the high-pass (right), each fading in and out over 2.9 ms; a stage
- * at rest has its states cleared (from rest next time); the kill zone's fade to silence at the ends (2.9 ms a step at most). noinline: its own loop */
-static __attribute__((noinline)) void perf_filter(int32_t *bl, int32_t *br, uint32_t n)
+/* the coefficients (stage A a1 a2 a3, stage B a1 a2 a3) at the closure k (Q8 detents) of mode fm */
+static void pf_coefs(int32_t *c, int32_t k, uint32_t fm)
+{
+    int32_t u = fm ? (k * PF_UHR) >> 16 : PF_ULO - ((k * PF_ULR) >> 16), i = u >> 8;
+    int32_t g = PF_G[i] + (int32_t)(((int64_t)(PF_G[i + 1] - PF_G[i]) * (u & 255)) >> 8);
+    pf_stage_coefs(c, g, PF_KA >> 3);
+    pf_stage_coefs(c + 3, g, PF_KB >> 3);
+}
+/* one channel b through the two stages, in place: the coefficients from c0 (the last block's) on a straight line to c1 (dc: moving) */
+static void pf_chan(int32_t *b, uint32_t n, const int32_t *c0, const int32_t *c1, int32_t *z, uint32_t hp, uint32_t dc)
+{
+    uint32_t j;
+    int32_t d[6] = {0, 0, 0, 0, 0, 0};
+    if (dc)
+        for (j = 0; j < 6u; j++)
+            d[j] = n == CTL ? (c1[j] - c0[j]) >> CTL_LOG2 : (c1[j] - c0[j]) / (int32_t)n;
+    pf_a(b, n, c0, d, z, hp);
+    pf_b(b, n, c0 + 3, d + 3, z + 2, hp);
+}
+/* the share of the filtered f against the dry x from *fa to ta, the kill zone's from *ka to kt (2.9 ms ramps), into x; the ramps' ends
+ * back in *fa, *ka */
+static void pf_fade(int32_t *x, const int32_t *f, uint32_t n, int32_t *fa, int32_t ta, int32_t *ka, int32_t kt)
 {
     uint32_t i;
-    int32_t lt = perf_filt < 0 || pf.lc < PF_TOP ? 32768 : 0, ht = perf_filt > 0 || pf.hc > 0 ? 32768 : 0;
-    int32_t m = perf_filt < 0 ? -perf_filt : perf_filt, kt = m > PF_KILL ? (m - PF_KILL) * (32768 / (100 - PF_KILL)) : 0;
+    int32_t a = *fa, k = *ka;
     for (i = 0; i < n; i++) {
-        int32_t l = bl[i], r = br[i];
-        pf.la += clamp(lt - pf.la, -SL_SLOPE, SL_SLOPE);
-        if (pf.la) {
-            int32_t fl = pf_svf(clamp(l >> 2, -32767, 32767), &pf.lz[0], pf.lk, 0) << 2;
-            int32_t fr = pf_svf(clamp(r >> 2, -32767, 32767), &pf.lz[2], pf.lk, 0) << 2;
-            l = pf_mix(l, fl, pf.la);
-            r = pf_mix(r, fr, pf.la);
-        } else {
-            pf.lz[0] = pf.lz[1] = pf.lz[2] = pf.lz[3] = 0;
+        int32_t y;
+        a += clamp(ta - a, -PF_FADE, PF_FADE);
+        y = pf_mix(x[i], f[i], a);
+        k += clamp(kt - k, -SL_SLOPE, SL_SLOPE);
+        x[i] = k ? pf_mix(y, 0, k) : y;
+    }
+    *fa = a;
+    *ka = k;
+}
+/* K3 FILTER on the block (noinline: its own loop) */
+static __attribute__((noinline)) void perf_filter(int32_t *bl, int32_t *br, uint32_t n)
+{
+    uint32_t i, wm = perf_filt > 0 ? 1u : perf_filt < 0 ? 0u : pf.fm;
+    int32_t m = perf_filt < 0 ? -perf_filt : perf_filt, kt = m > PF_KILL ? (m - PF_KILL) * (32768 / (100 - PF_KILL)) : 0;
+    int32_t same, tk, ta, d, c[6], dc;
+    if (!pf.fa && wm != pf.fm) {                        /* at rest: the other mode, from its open end */
+        pf.fm = wm;
+        pf.fk = 0;
+    }
+    same = perf_filt && wm == pf.fm;
+    tk = same ? (m < PF_KILL ? m : PF_KILL) << 8 : 0;   /* (across the middle: open first) */
+    d = tk - pf.fk;
+    pf.fk += d > -16 && d < 16 ? d : d >> 4;            /* the glide: 1/16 of the way a block (11.6 ms) */
+    ta = same || pf.fk > PF_KOPEN ? 32768 : 0;
+    if (!pf.fa && !ta) {                                /* at rest: the kill zone's fade alone */
+        for (i = 0; i < n && pf.ka; i++) {
+            pf.ka += clamp(kt - pf.ka, -SL_SLOPE, SL_SLOPE);
+            bl[i] = pf_mix(bl[i], 0, pf.ka);
+            br[i] = pf_mix(br[i], 0, pf.ka);
         }
-        pf.ha += clamp(ht - pf.ha, -SL_SLOPE, SL_SLOPE);
-        if (pf.ha) {
-            int32_t fl = pf_svf(clamp(l >> 2, -32767, 32767), &pf.hz[0], pf.hk, 1) << 2;
-            int32_t fr = pf_svf(clamp(r >> 2, -32767, 32767), &pf.hz[2], pf.hk, 1) << 2;
-            l = pf_mix(l, fl, pf.ha);
-            r = pf_mix(r, fr, pf.ha);
-        } else {
-            pf.hz[0] = pf.hz[1] = pf.hz[2] = pf.hz[3] = 0;
+        return;
+    }
+    dc = !pf.fa || pf.fk != pf.fkc;                     /* (the glide moved: this block's coefficients) */
+    if (dc) {
+        pf_coefs(c, pf.fk, pf.fm);
+        pf.fkc = pf.fk;
+        if (!pf.fa)                                     /* (from rest: the states clear, no line to draw from the last block) */
+            memcpy(pf.fc, c, sizeof c);
+    } else {
+        memcpy(c, pf.fc, sizeof c);
+    }
+    if (pf.fa == 32768 && ta == 32768) {               /* the share full: the filter alone, in place (then the kill zone's fade, if) */
+        pf_chan(bl, n, pf.fc, c, pf.fz[0], pf.fm, dc);
+        pf_chan(br, n, pf.fc, c, pf.fz[1], pf.fm, dc);
+        for (i = 0; i < n && (pf.ka || kt); i++) {
+            pf.ka += clamp(kt - pf.ka, -SL_SLOPE, SL_SLOPE);
+            bl[i] = pf_mix(bl[i], 0, pf.ka);
+            br[i] = pf_mix(br[i], 0, pf.ka);
         }
-        pf.ka += clamp(kt - pf.ka, -SL_SLOPE, SL_SLOPE);
-        if (pf.ka) {
-            l = pf_mix(l, 0, pf.ka);
-            r = pf_mix(r, 0, pf.ka);
-        }
-        bl[i] = l;
-        br[i] = r;
+    } else {                                            /* fading: filtered apart, then the shares (each channel from the same start) */
+        int32_t f[CTL], fa = pf.fa, ka = pf.ka;          /* (n <= CTL: the mix's blocks, fx.c mix_l) */
+        memcpy(f, bl, n * 4u);
+        pf_chan(f, n, pf.fc, c, pf.fz[0], pf.fm, dc);
+        pf_fade(bl, f, n, &fa, ta, &ka, kt);
+        memcpy(f, br, n * 4u);
+        pf_chan(f, n, pf.fc, c, pf.fz[1], pf.fm, dc);
+        pf_fade(br, f, n, &pf.fa, ta, &pf.ka, kt);
+    }
+    memcpy(pf.fc, c, sizeof c);
+    if (!pf.fa) {                                       /* faded out: at rest, open */
+        memset(pf.fz, 0, sizeof pf.fz);
+        pf.fk = 0;
     }
 }
 
@@ -825,7 +918,7 @@ static __attribute__((noinline)) void perf_block(int32_t *bl, int32_t *br, uint3
         bl[i] = l;
         br[i] = r;
     }
-    if (perf_filt || pf.la || pf.ha || pf.ka)
+    if (perf_filt || pf.fa || pf.ka)
         perf_filter(bl, br, n);
     if ((pf.act & PF_BIT(PF_FLG)) || pf.fw || pf.fn)
         perf_flanger(bl, br, n);
@@ -833,7 +926,7 @@ static __attribute__((noinline)) void perf_block(int32_t *bl, int32_t *br, uint3
         perf_phaser(bl, br, n);
     if ((pf.act & PF_BIT(PF_PUMP)) || pf.pph)
         perf_pump(bl, br, n);
-    pf.busy = pf.act || pf.mode != BM_NONE || pf.w || pf.la || pf.ha || pf.ka || pf.fw || pf.pw || pf.fn || pf.dw || pf.pph || perf_filt;
+    pf.busy = pf.act || pf.mode != BM_NONE || pf.w || pf.fa || pf.ka || pf.fw || pf.pw || pf.fn || pf.dw || pf.pph || perf_filt;
 }
 
 /* the master's lines from silence (fx.c dm_lines_clear: a change between DUEL and STEREO / LAYER): a buffer effect held records anew */
@@ -843,8 +936,7 @@ static __attribute__((noinline)) void perf_lines_clear(void)
     memset(pf.px, 0, sizeof pf.px);
     memset(pf.py, 0, sizeof pf.py);
     pf.pfb[0] = pf.pfb[1] = 0;
-    memset(pf.lz, 0, sizeof pf.lz);
-    memset(pf.hz, 0, sizeof pf.hz);
+    memset(pf.fz, 0, sizeof pf.fz);
     pf.dhp[0] = pf.dhp[1] = pf.ddc[0] = pf.ddc[1] = pf.dlp[0] = pf.dlp[1] = 0;
     if (pf.mode != BM_NONE) {
         if (pf.src != PF_N) {

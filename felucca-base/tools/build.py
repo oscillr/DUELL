@@ -15,6 +15,21 @@ See BUILDING.md for the toolchain and the SDK.
 
 The JieLi toolchain is Linux x86-64 only. JIELI_TOOLCHAIN points at it; on
 macOS (or with JIELI_DOCKER=1) each tool runs in a linux/amd64 container.
+
+Compiler flags (DUELL bench builds; the defaults are unchanged): FELUCCA_OPT replaces the app's "-Os" (e.g. "-O2 -mcpu=r3 -mfprev1 -flto";
+the update loader always keeps -Os), FELUCCA_LLVM adds -mllvm options (e.g. "-pi32v2-enable-simd=true"; with -flto they go to the
+link's LLVM plugin instead). -flto: felucca.o is LLVM bitcode, linked through the toolchain's LLVMgold.so with the same -O level and
+-mcpu. BENCH_TAG (with DUELL_BENCH=1, DUELL_TEST_MODE=1): the device shows "DUELL <VERSION> bench <TAG>" and the package is
+duell-<VERSION>-bench-<TAG>.fwsc (no duell-latest.fwsc / duell-version.json then: a bench package is never the latest).
+DUELL_CORE1_PROBE=1 (with a BENCH_TAG): the bench's second-core probe (hal/fm1_core1.h; never in a release).
+DUELL_HOTRAM (default 3 in every build since 0.2.14; 0 = all in flash; 1, 2, 4..8 need a BENCH_TAG: the experiment builds R1..R8; 4..6 are R3 without some functions, 7 = group 1 only padded to R3's size, 8 = R3 without group 1): the functions of tools/hot_fns.py's groups 1..n run from RAM:
+felucca.c is compiled as always, their sections .text.<name> are renamed .hotx.<name> in felucca_hot.o, and the link uses
+firmware/app_hot.ld instead of app.ld (the RAM code block at the top of RAM, in call reach of the flash); the no-calls rule of
+.ram_text then covers the flash driver only (below _hot_start), and tools/elfcheck.py checks the block.
+
+Every build (device, test, bench, release) ends with the start-up layout check (tools/elfcheck.py: the .noinit objects
+whole and of their C size, no LTO-split "bootguard.0", the .noinit size, the entry point, the app slot); it only
+reads the ELF, the package bytes are unchanged.
 """
 import argparse
 import hashlib
@@ -35,6 +50,8 @@ OUT = SRC / "build"
 GEN = OUT / "gen"
 LDR = OUT / "loader"
 sys.path.insert(0, str(SRC / "tools"))
+import elfcheck  # noqa: E402
+import hot_fns  # noqa: E402
 import fm1pkg_make  # noqa: E402
 import lz4blk  # noqa: E402
 
@@ -117,7 +134,7 @@ def generate():
             [tools / "gen_tables.py", GEN / "felucca_tables.h"],
             [tools / "gen_fm6_patches.py", GEN / "felucca_fm6.h"],
             [tools / "gen_duell_sounds.py", GEN / "duell_sounds.h"],   # DUELL factory sounds (tools/duell_sounds.py)
-            [tools / "gen_duell_multis.py", GEN / "duell_multis.h"]]  # DUELL factory multis M01..M10 (tools/factory_multis); M13..M16 too with DUELL_TEST_MODE=1 (env, as the -D below)
+            [tools / "gen_duell_multis.py", GEN / "duell_multis.h"]]  # DUELL factory multis M01..M04 (tools/factory_multis); M13..M16 too with DUELL_TEST_MODE=1 (env, as the -D below)
     procs = [subprocess.Popen([sys.executable, *map(str, c)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                               text=True) for c in cmds]
     failed = []
@@ -191,21 +208,66 @@ def build_loader():
 
 # ---- app
 
+def hotram():
+    """DUELL_HOTRAM: 3 by default, in every build (0.2.14: R3, tools/hot_fns.py groups 1..3, the hottest audio functions run from RAM;
+    DUELL_HOTRAM=0 builds the all-flash layout for a comparison). 1..2 and 4..8: the bench builds R1..R8 (hot_fns.WITHOUT / ONLY / PAD)"""
+    v = os.environ.get("DUELL_HOTRAM", "3")
+    if v not in ("0", "1", "2", "3", "4", "5", "6", "7", "8"):
+        raise SystemExit(f"build: DUELL_HOTRAM {v!r}: 0..8")
+    return int(v)
+
+
+def app_ld():
+    """the app's linker script: app.ld, or app_hot.ld for a DUELL_HOTRAM build"""
+    return FW / ("app_hot.ld" if hotram() else "app.ld")
+
+
 def ld_regions():
-    """firmware/app.ld's MEMORY regions: name -> (origin, length)"""
+    """the app linker script's MEMORY regions (app_ld()): name -> (origin, length)"""
     regs = {}
     for m in re.finditer(r"^\s*(\w+)\s*\([rwx]+\)\s*:\s*ORIGIN\s*=\s*(\w+),\s*LENGTH\s*=\s*(\w+)",
-                         (FW / "app.ld").read_text(), re.M):
+                         app_ld().read_text(), re.M):
         n = m.group(3)
         regs[m.group(1)] = (int(m.group(2), 0), int(n[:-1], 0) * 1024 if n.endswith("K") else int(n, 0))
     return regs
 
 
+def opt_flags():
+    """the app's optimisation flags: FELUCCA_OPT (default -Os) and FELUCCA_LLVM (-mllvm options)"""
+    opt = os.environ.get("FELUCCA_OPT", "").split() or ["-Os"]
+    llvm = os.environ.get("FELUCCA_LLVM", "").split()
+    return opt, llvm
+
+
+def opt_cpu(opt):
+    return next((f.split("=", 1)[1] for f in opt if f.startswith("-mcpu=")), None)
+
+
+def bench_tag():
+    t = os.environ.get("BENCH_TAG", "")
+    if t and not re.fullmatch(r"[A-Z0-9][A-Z0-9-]{0,6}", t):
+        raise SystemExit(f"build: BENCH_TAG {t!r}: 1..7 of A-Z 0-9 -")
+    if t and os.environ.get("DUELL_BENCH") != "1":
+        raise SystemExit("build: BENCH_TAG needs DUELL_BENCH=1 (and DUELL_TEST_MODE=1)")
+    if os.environ.get("DUELL_CORE1_PROBE") == "1" and not t:
+        raise SystemExit("build: DUELL_CORE1_PROBE=1 is a bench build: set BENCH_TAG (and DUELL_BENCH=1, DUELL_TEST_MODE=1)")
+    if hotram() not in (0, 3) and not t:
+        raise SystemExit("build: DUELL_HOTRAM 1, 2, 4..8 are bench builds: set BENCH_TAG (and DUELL_BENCH=1, DUELL_TEST_MODE=1)")
+    return t
+
+
 def build_app():
-    flags = [*CFLAGS, "-Ifirmware/hal", "-Ifirmware/src", "-Ibuild/gen"]
+    opt, llvm = opt_flags()
+    lto = "-flto" in opt
+    base = [g for f in CFLAGS for g in (opt if f == "-Os" else [f])] + [a for o in ([] if lto else llvm) for a in ("-mllvm", o)]
+    flags = [*base, "-Ifirmware/hal", "-Ifirmware/src", "-Ibuild/gen"]
+    tag = bench_tag()
+    if tag:
+        flags += [f'-DBENCH_TAG="{tag}"', f'-DBENCH_FLAGS="{" ".join(opt + llvm)}"',
+                  f'-DFELUCCA_VERSION="DUELL {read_version()} bench {tag}"']
     for flag in ("FELUCCA_FLASH", "FELUCCA_OTA", "FELUCCA_OTA_DRYRUN", "FELUCCA_OTA_RAMONLY", "FELUCCA_CDC",
-                 "FELUCCA_UART", "FELUCCA_UAC", "FELUCCA_UAC_TONE", "FELUCCA_UAC_48K", "FELUCCA_ICONS", "FELUCCA_FM4",
-                 "FELUCCA_CDC_DEFAULT", "DUELL_TEST_MODE"):
+                 "FELUCCA_UART", "FELUCCA_UAC", "FELUCCA_UAC_TONE", "FELUCCA_UAC_48K", "FELUCCA_ICONS",
+                 "FELUCCA_CDC_DEFAULT", "DUELL_TEST_MODE", "DUELL_BENCH", "DUELL_CORE1_PROBE"):
         v = os.environ.get(flag)    # unset: the default in firmware/src/felucca.c (DUELL_TEST_MODE: core.h, 0 = release: no TEST screen, no M13..M16)
         if v in ("0", "1"):
             flags.append(f"-D{flag}={v}")
@@ -228,17 +290,34 @@ def build_app():
                        check=True)
         tc("cc", *[f for f in flags if not f.startswith(("-I", "-D", "-W"))], "-c",
            OUT / "felucca_size.ll", "-o", OUT / "felucca.o")
+    obj = OUT / "felucca.o"
+    if hotram():                    # DUELL_HOTRAM: the hot functions' sections renamed for app_hot.ld (tools/hot_fns.py)
+        data, done, missing = hot_fns.hot_place(obj.read_bytes(), hotram())
+        obj = OUT / "felucca_hot.o"
+        obj.write_bytes(data)
+        print(f"hotram:  level {hotram()}: {len(done)} functions to RAM" +
+              (f"; inlined on the device (no section, they go with their callers): {', '.join(missing)}" if missing else ""))
     elf = OUT / "felucca.elf"
-    tc("pi32v2/bin/ld", "-T", FW / "app.ld", OUT / "crt0.o", OUT / "fm1_vec.o", OUT / "fm1_isr.o",
-       OUT / "felucca.o", "-o", elf)
+    plugin = []
+    if lto:                         # felucca.o is bitcode: the LLVM plugin optimises and generates it at the link
+        level = next((f[2:] for f in opt if re.fullmatch(r"-O[0-3sz]", f)), "2")
+        plugin = ["-plugin", "/opt/jieli/pi32v2/bin/LLVMgold.so" if use_docker() else str(toolchain() / "pi32v2/bin/LLVMgold.so"),
+                  f"-plugin-opt=O{level if level in '0123' else '2'}"]
+        if opt_cpu(opt):
+            plugin.append(f"-plugin-opt=mcpu={opt_cpu(opt)}")
+        plugin += [f"-plugin-opt={o}" for o in llvm]
+    pad = [f"--defsym=_hot_pad={hot_fns.PAD[hotram()]}"] if hotram() in hot_fns.PAD else []   # R7: the hot block padded to R3's size
+    tc("pi32v2/bin/ld", *plugin, *pad, "-T", app_ld(), OUT / "crt0.o", OUT / "fm1_vec.o", OUT / "fm1_isr.o",
+       obj, "-o", elf)
     for sect in ("text.bin", "data.bin", "ramtext.bin"):
         (OUT / sect).unlink(missing_ok=True)
+    dcpu = [f"-mcpu={opt_cpu(opt)}"] if opt_cpu(opt) else []   # (the disassembler knows that core's instructions only when told)
     *_, syms, dis, rt = tc_all(("common/bin/objcopy", "-O", "binary", "-j", ".text", elf, OUT / "text.bin"),
                                ("common/bin/objcopy", "-O", "binary", "-j", ".data", elf, OUT / "data.bin"),
                                ("common/bin/objcopy", "-O", "binary", "-j", ".ram_text", elf, OUT / "ramtext.bin"),
                                ("common/bin/objdump", "-t", elf),
-                               ("common/bin/objdump", "-d", elf),
-                               ("common/bin/objdump", "-d", "-j", ".ram_text", elf))
+                               ("common/bin/objdump", "-d", *dcpu, elf),
+                               ("common/bin/objdump", "-d", *dcpu, "-j", ".ram_text", elf))
     (OUT / "felucca.dis").write_text(dis)
 
     def symv(name):
@@ -267,11 +346,15 @@ def check(img, syms, dis, rt):
         errors.append(f"_start is not at {APP_XIP:#x}")
     if img[:4] != bytes.fromhex("04818000"):
         errors.append(f"image starts with {img[:4].hex()}, not the entry stub")
-    rt_calls = [ln for ln in rt.splitlines() if re.search(r"\bcall\b", ln)]
-    if rt_calls:                    # RAM code runs with the flash off: no calls into XIP
+    hm = re.search(r"^([0-9a-f]+) .*\s_hot_start$", syms, re.M)
+    hot = int(hm.group(1), 16) if hm else None     # (DUELL_HOTRAM: the hot audio code follows the flash driver in .ram_text)
+    drv = [ln for ln in rt.splitlines() if LINE.match(ln) and (hot is None or int(LINE.match(ln).group(1), 16) < hot)]
+    rt_calls = [ln for ln in drv if re.search(r"\bcall\b", ln)]
+    if rt_calls:                    # the flash driver runs with the flash off: no calls into XIP
         errors.append(f".ram_text contains calls: {rt_calls[:3]}")
     else:
-        notes.append(f".ram_text: {len([ln for ln in rt.splitlines() if LINE.match(ln)])} insns, no calls")
+        notes.append(f".ram_text: {len(drv)} insns, no calls" + ("" if hot is None else
+                     f" (the flash driver; then {len([ln for ln in rt.splitlines() if LINE.match(ln)]) - len(drv)} insns of hot audio code)"))
     for ln in dis.splitlines():     # nothing may call or load an address in the chip ROM
         mm = LINE.match(ln)
         if not mm:
@@ -355,7 +438,10 @@ def main():
     tag = f"{ver}-beta"
     if a.release:
         print(f"note: --release {a.release} ignored; the version is {ver} (the VERSION file)")
-    name = f"duell-{tag}.fwsc"                  # the package of the VERSION file, release or not
+    btag = bench_tag()
+    if btag and a.release:
+        raise SystemExit("build: a bench build (BENCH_TAG) is never a release")
+    name = f"duell-{ver}-bench-{btag}.fwsc" if btag else f"duell-{tag}.fwsc"   # the package of the VERSION file, release or not
     PRODUCT = "FM-1_901"                        # package identity (one digit each: the identity has room for two)
     fm1pkg_make.SDK = a.sdk
     for rel, sha in SDK_SHA256.items():          # fail early without the SDK
@@ -368,6 +454,17 @@ def main():
         ota = ldr.result()
     img, syms, dis, rt = build_app()
     errors, notes = check(img, syms, dis, rt)
+    elf = elfcheck.read_elf((OUT / "felucca.elf").read_bytes())     # the start-up layout (tools/elfcheck.py)
+    lay_err = elfcheck.check(elf, elfcheck.source_noinit(FW), os.environ.get("DUELL_CORE1_PROBE") == "1", len(img),
+                             ld_regions()["NOINIT"])
+    ram_err, ram_notes = elfcheck.check_ramcode(elf, bool(hotram()))
+    lay_err += ram_err
+    notes += ram_notes
+    errors += lay_err
+    if not lay_err:
+        nsect = elf["sections"][".noinit"]
+        notes.append(f"start-up layout: .noinit {nsect[1]:#x} B, " +
+                     ", ".join(f"{n} {sz}" for _, n, sz in elfcheck.noinit_table(elf)) + "; entry, slot ok")
     hal_err = mmio_check()
     errors += hal_err
     if not hal_err:
@@ -380,8 +477,11 @@ def main():
         raise SystemExit("build: checks failed")
     pkg = fm1pkg_make.ufw(fm1pkg_make.flash_image(img, fm1pkg_make.KEY), ota, PRODUCT)
     (OUT / name).write_bytes(pkg)
-    (OUT / "duell-latest.fwsc").write_bytes(pkg)                      # stable name for the installer page
-    (OUT / "duell-version.json").write_text(json.dumps({"version": ver}) + "\n")
+    if not btag:
+        (OUT / "duell-latest.fwsc").write_bytes(pkg)                  # stable name for the installer page
+        (OUT / "duell-version.json").write_text(json.dumps({"version": ver}) + "\n")
+    opt, llvm = opt_flags()
+    print(f"flags    {' '.join(opt + llvm)}" + (f"  (bench {btag}: DUELL {ver} bench {btag})" if btag else ""))
     print(f"app      {OUT / 'felucca.bin'}  {len(img)} B")
     print(f"loader   {LDR / 'ota.bin'}  {len(ota)} B")
     print(f"package  {OUT / name}  {len(pkg)} B, identity {PRODUCT}")

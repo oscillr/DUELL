@@ -4,10 +4,11 @@
  *
  * What goes (flash objects, storage.c; a stored object is the A/B pair of sectors, both erased by st_wipe):
  *   the autosave (OBJ_AUTOSAVE), the pattern slots (OBJ_PATSLOT0..2), the multis (OBJ_MULTI0..7: M01..M04 and M13..M16 are
- *   the factory ones again, ROM), the patch store (OBJ_PATCH0..5: every stored patch and every factory sound's shadow copy),
+ *   the factory ones again, ROM), the patch store (OBJ_PATCH0..5 and, DUELL 0.2.15, OBJ_PATCHX0..9: every stored patch and every factory sound's shadow copy),
+ *   the user wavetables (OBJ_WTAB0..2, DUELL 0.2.14: USR1..USR3 are EMPTY again),
  *   and the settings (OBJ_SETTINGS: theme, scale, MIDI channels, the favourites, the preferences, the panel table).
- * What stays: the FM6 voice bank and the firmware itself (DUELL 0.2.9: the user sample slots are gone with the SAMPLE engine; their
- * flash, 0xA0000..0xC7FFF, is not touched).
+ * What stays: the FM6 voice bank and the firmware itself (DUELL 0.2.9: the user sample slots are gone with the SAMPLE engine; the rest of
+ * their flash, 0xBA000..0xC7FFF (0xA6000..0xB9FFF is the patch store's chunks 6..15, above), is not touched; 0xA0000..0xA5FFF is the user wavetables, above).
  *
  * Order and power cuts: the objects in that order, the SETTINGS LAST. Every object is erased copy by copy (st_wipe: the
  * copy that is not the current one first), so a cut at any point leaves each object either whole as it was or empty; nothing
@@ -38,6 +39,9 @@ static int erase_data_run(void)
                                     OBJ_MULTI0, OBJ_MULTI0 + 1, OBJ_MULTI0 + 2, OBJ_MULTI0 + 3,
                                     OBJ_MULTI0 + 4, OBJ_MULTI0 + 5, OBJ_MULTI0 + 6, OBJ_MULTI0 + 7,
                                     OBJ_PATCH0, OBJ_PATCH0 + 1, OBJ_PATCH0 + 2, OBJ_PATCH0 + 3, OBJ_PATCH0 + 4, OBJ_PATCH0 + 5,
+                                    OBJ_PATCHX0, OBJ_PATCHX0 + 1, OBJ_PATCHX0 + 2, OBJ_PATCHX0 + 3, OBJ_PATCHX0 + 4,
+                                    OBJ_PATCHX0 + 5, OBJ_PATCHX0 + 6, OBJ_PATCHX0 + 7, OBJ_PATCHX0 + 8, OBJ_PATCHX0 + 9,
+                                    OBJ_WTAB0, OBJ_WTAB0 + 1, OBJ_WTAB0 + 2,
                                     OBJ_SETTINGS};
     uint32_t i;
     if (transport_busy())

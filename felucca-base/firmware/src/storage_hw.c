@@ -50,8 +50,12 @@ static int st_erase(uint32_t off)
     st_duck_begin();
     f = irq_save();
     audio_silence();                            /* (already silent after the duck; kept for a duck that timed out) */
-    rc = FL_FAR(fl_erase4k_ram)(off, &took);
-    irq_restore(f);
+    fm1__led_lines(0);                          /* DUELL 0.2.14, from Felucca 1.6 (#236): the erase stops the LED scan (IRQs off */
+    rc = FL_FAR(fl_erase4k_ram)(off, &took);    /* for ~17-40 ms): the column lit at that moment would burn at full duty and the */
+    irq_restore(f);                             /* rest go dark, a flash of the panel. All rows dark instead: the panel just drops
+                                                 * out, and the scan tick (fm1_input_tick, pending while the IRQs were off) lights
+                                                 * the rows again at its next pass, before the audio fades back in (st_duck_end).
+                                                 * Order: audio ducked, LEDs off, erase, LEDs back, audio back (SPEC 8.2a) */
     st_duck_end();
     felucca_dbg.erase_last_us = took;
     felucca_dbg.erases++;

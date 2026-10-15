@@ -285,7 +285,7 @@ static void dc_and_clip(void)
                             k & 8 ? 127 : 0, 0, k & 16 ? 127 : 0};
             static int32_t b[CTL];
             setup(e);
-            trk[0].p[P_LEVEL] = 127;
+            trk[0].p[P_TRIM] = 127;
             for (i = 0; i < 8u; i++)
                 trk_note_on(&trk[0], 24 + 12 * i, 127);
             for (i = 0; i < FS / CTL; i++) {
@@ -295,7 +295,7 @@ static void dc_and_clip(void)
                     vmax = abs(b[j]) > vmax ? abs(b[j]) : vmax;
             }
             setup(e);
-            trk[0].p[P_LEVEL] = 127;
+            trk[0].p[P_TRIM] = 127;
             for (i = 0; i < 8u; i++)
                 trk_note_on(&trk[0], 24 + 12 * i, 127);
             for (i = 0; i < FS / CTL; i++) {

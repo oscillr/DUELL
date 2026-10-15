@@ -15,11 +15,10 @@
  *              while it is), and on STEP steps held + the PRESETS knob (let go: the cursor).
  *   MOTION     128 records shared by the four tracks, all played.
  *   (DUELL: the FORMATS group, FUN10's four-track pack layout, is gone with FUN10: FUN11 stores parts A and B, and
- *   tests/project_test.c holds the format round trips and the FUN1..FUN10 imports.)
+ *   tests/project_test.c holds the format round trips and the refusal of FUN1..FUN10, 0.2.14.)
  * Built and run by tests/run_tests.sh. */
 #define UI_TEST_NO_MAIN 1
 #include "ui_test.c"
-#include "old_pack.h"
 /* (DUELL: the song chain is a stored format only; the old chain_row_of helper is local to this test) */
 static chain_row_t chain_row_of(uint32_t slot, uint32_t repeat)
 {

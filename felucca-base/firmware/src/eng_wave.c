@@ -32,13 +32,27 @@
  * the fastest part (the band-limit holds there) and a DC tracker takes the mean they make off; SUB a sine an octave below;
  * DTN a second read DTN cents up (with its own SYNC), mixed half and half. No filter of its own: the multimode filter
  * (voice.c uf_run; ufilt). Our own code: the approach (band-limited levels of a wavetable, a polyBLEP at sync resets) is the
- * textbook one. */
+ * textbook one.
+ *
+ * USER TABLES (DUELL 0.2.14): after the 26 factory tables, TABLE 26..28 are three user slots USR1..USR3 (wtab.c stores them in flash, the
+ * editor writes them: EDITOR_PROTOCOL "User wavetables"). A slot holds a table as the recipe's own source data: for each of the WV_F frames the
+ * harmonics 1 .. 64, ONE BYTE each (wt_obj_t), a log amplitude relative to the frame's strongest: 0 off, b >= 1 -> 2^(-(255 - b) / 16)
+ * (wt_q16, a 16 entry table and a shift). The build is the factory one: wv_frame takes the harmonics from wv_user instead of wv_recipe
+ * and goes on (the same scaling to the frame's peak, the same sums, the same WV_RMS gain), so everything downstream (levels, fades, voices) is
+ * as for a factory table and the factory tables' bytes do not change. An EMPTY slot plays a sine in every frame and is named EMPTY. The slot's
+ * name (up to 8 characters) is the TABLE's shown name; a card shows five. A new table in a slot that is playing fades out and builds again (wv_uver).
+ * Phases are not kept (all sine), 19 frames and 64 harmonics: that is what a user table is. */
+static char wv_uname[3][9] = {"USR1", "USR2", "USR3"};   /* the user slots' shown names (wt_names) */
 /* the tables (append-only: a stored sound keeps its number). Names: what the scan goes through, <= 5 letters (a card shows 5) */
 static const char *const N_WV_TABLE[] = {"SAWSQ", "PWM", "HARM", "ODD", "ORGAN", "VOWEL", "BRASS", "BOWED", "RESO", "COMB", "DIGI",
                                          "GLASS", "CHIME", "ROUGH",
                                          /* 0.2.7: classic digital tables (in the spirit of the 1980s wavetable synths), then modern ones */
-                                         "BAND", "DUAL", "THIN", "PIPE", "REESE", "HOOVR", "GROWL", "WOBBL", "YELL", "METAL", "STEPS", "AIR"};
+                                         "BAND", "DUAL", "THIN", "PIPE", "REESE", "HOOVR", "GROWL", "WOBBL", "YELL", "METAL", "STEPS", "AIR",
+                                         /* 0.2.14: the user slots: the shown name is the user's (wt_names: up to 8 characters, EMPTY when unused) */
+                                         wv_uname[0], wv_uname[1], wv_uname[2]};
 #define WV_NT NELEM(N_WV_TABLE)
+#define WV_NTF 26u               /* the factory tables; TABLE WV_NTF .. WV_NT - 1 are the user slots */
+#define WV_NU 3u                 /* user slots */
 #define WV_F 19u                 /* frames a table */
 #define WV_NL 5u                 /* levels a frame */
 #define WV_H 64u                 /* harmonics of level 0 */
@@ -67,6 +81,57 @@ ENG_MEM_FITS("WAVE", sizeof(wv_mem_t));
 
 static uint32_t wv_gen[NLIVE];   /* a part's build number: the audio side counts it up for every table it then wants */
 
+
+/* ------------------------------------------------------------------------------------------------- user tables --- */
+/* A stored user table (also the flash object of wtab.c and the backup object of ids 24..26, 1228 bytes): amp[f * WV_H + k - 1] is
+ * harmonic k of frame f (a log amplitude, below), name the user's name (0 padded, ASCII 32..126) */
+#define WT_VER 1u
+typedef struct {
+    uint8_t ver, nf, nh, flags;  /* WT_VER, WV_F, WV_H, 0 */
+    char name[8];
+    uint8_t amp[WV_F * WV_H];
+} wt_obj_t;
+_Static_assert(sizeof(wt_obj_t) == 1228u, "user wavetable object layout");
+static wt_obj_t wt_ram[WV_NU] __attribute__((section(".pool")));   /* the slots as loaded (main loop only) */
+static uint8_t wt_used;          /* bit u: slot u holds a table */
+static uint8_t wv_uver[WV_NU];   /* a slot's version: counted up (main loop) whenever its table is stored or erased */
+static uint8_t wv_bver[NLIVE];   /* the version of the user table a part's build began with (main loop; audio compares) */
+static const uint32_t WV_AMP[16] = {65536, 62757, 60097, 57549, 55109, 52773, 50535, 48393, 46341, 44376, 42495, 40693, 38968, 37316,
+                                    35734, 34219};   /* round(65536 * 2^(-r / 16)): the Q16 of a byte's amplitude, below */
+/* a byte -> the harmonic's level (Q16, 65536 = the frame's strongest): 0 off; b: 2^(-(255 - b) / 16). 16 steps an octave (0.38 dB), 255 -> -95 dB */
+static int32_t wt_q16(uint32_t b) { return b ? (int32_t)(WV_AMP[(255u - b) & 15u] >> ((255u - b) >> 4)) : 0; }
+/* the object's shape, as a stored one is accepted (0: not): size, version, frames, harmonics, flags, a printable name, some harmonic on */
+static int wt_obj_ok(const uint8_t *b, uint32_t len)
+{
+    uint32_t i, on = 0;
+    if (len != sizeof(wt_obj_t) || b[0] != WT_VER || b[1] != WV_F || b[2] != WV_H || b[3])
+        return 0;
+    for (i = 0; i < 8u; i++)
+        if (b[4u + i] && (b[4u + i] < 32u || b[4u + i] > 126u))
+            return 0;
+    for (i = 12u; i < len; i++)
+        on |= b[i];
+    return on != 0u;
+}
+/* the shown names: the user's, USRn when it has none, EMPTY for a slot with no table (TABLE still plays: a sine) */
+static void wt_names(void)
+{
+    uint32_t u, i;
+    for (u = 0; u < WV_NU; u++) {
+        const char *src = wt_ram[u].name;
+        for (i = 0; i < 9u; i++)
+            wv_uname[u][i] = 0;
+        if (!(wt_used >> u & 1u)) {
+            memcpy(wv_uname[u], "EMPTY", 5);
+        } else if (!src[0]) {
+            memcpy(wv_uname[u], "USR", 3);
+            wv_uname[u][3] = (char)('1' + u);
+        } else {
+            for (i = 0; i < 8u; i++)
+                wv_uname[u][i] = src[i];
+        }
+    }
+}
 /* ------------------------------------------------------------------------------------------------ the recipes --- */
 /* Each fills a[1..64] with the harmonics' levels (Q16, 65536 = 1, a sign is a phase flip) for the place x in the scan (Q16:
  * 0 the first frame, 65536 the last). Integer only (the device has no FPU) */
@@ -92,6 +157,16 @@ static struct {
     int32_t oe[2u * WV_NPT];          /* each level's odd and even sums at its first quarter cycle */
     int8_t out[WV_FS];                /* the frame */
 } wvj;
+
+/* the slot changed (stored, erased, restored; main loop): a build of a user table is dropped (wave_service starts it again if a part
+ * still wants it, with the new table), a part that has it built fades out and builds again (wave_block compares wv_uver) */
+static void wt_changed(uint32_t u)
+{
+    wv_uver[u]++;
+    wt_names();
+    if (wvj.on && wvj.table >= WV_NTF)
+        wvj.on = 0;
+}
 
 static uint64_t wv_isqrt(uint64_t v)
 {
@@ -355,13 +430,29 @@ static int32_t wv_q8(int32_t y, uint64_t g)              /* y x g (Q32), rounded
     return y < 0 ? -q : q;
 }
 
+/* user slot u's frame f for the build: the stored bytes -> the harmonics' levels (Q16) in a[1..]. An empty slot: a sine */
+static void wv_user(uint32_t u, uint32_t f, int32_t *a)
+{
+    uint32_t k;
+    for (k = 0; k <= WV_H; k++)
+        a[k] = 0;
+    if (u < WV_NU && (wt_used >> u & 1u))
+        for (k = 1; k <= WV_H; k++)
+            a[k] = wt_q16(wt_ram[u].amp[f * WV_H + k - 1u]);
+    else
+        a[1] = 65536;
+}
+
 /* frame f of table tb into out (WV_FS bytes): the recipe, the levels' sums, one gain, the samples */
 static void wv_frame(uint32_t tb, uint32_t f, int8_t *out)
 {
     int32_t *a = wvj.a, *oe = wvj.oe, big = 0;
     uint32_t l, k, n, at = 0, top = 0;
     uint64_t pk = 0, ss = 0, g;
-    wv_recipe(tb, (int32_t)((f * 65536u) / (WV_F - 1u)), a);
+    if (tb >= WV_NTF)                                       /* DUELL 0.2.14: a user slot's bytes are the recipe's levels */
+        wv_user(tb - WV_NTF, f, a);
+    else
+        wv_recipe(tb, (int32_t)((f * 65536u) / (WV_F - 1u)), a);
     for (k = 1; k <= WV_H; k++)
         big = a[k] > big ? a[k] : -a[k] > big ? -a[k] : big;
     for (k = 1; k <= WV_H; k++) {                           /* Q10, the largest 1023: 64 terms x 2^25 stay in 32 bits */
@@ -431,6 +522,8 @@ static int wave_service(void)
                 wvj.table = (uint8_t)(w->h.want - 1u);
                 wvj.frame = 0;
                 wvj.gen = wv_gen[p];
+                if (wvj.table >= WV_NTF && wvj.table - WV_NTF < WV_NU)
+                    wv_bver[p] = wv_uver[wvj.table - WV_NTF];   /* (the user table this build is made from) */
             }
         }
         if (!wvj.on)
@@ -466,6 +559,8 @@ static void wave_block(track_t *t)
         w->h.have = 0;
         wv_gen[p]++;
     }
+    if (tb > WV_NTF && w->h.want == tb && w->h.have == tb && !w->h.fade && wv_bver[p] != wv_uver[tb - 1u - WV_NTF])
+        w->h.fade = WV_FADE;                             /* the slot's table was stored again: out, then built anew */
     if (w->h.want != tb) {
         w->h.want = (uint8_t)tb;
         if (w->h.have == tb)

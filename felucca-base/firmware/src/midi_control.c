@@ -4,7 +4,7 @@
 /* Shared USB/TRS channel controls. Included by seq.c after its input helpers.
  * USB and TRS intentionally share channel state, matching the existing routing.
  * A synth part has one live bend/wheel state; channels assigned to the same part
- * share it (last controller wins). Drum hits ignore bend and sustain. CC1 keeps the existing matrix routing. */
+ * share it (last controller wins). CC1 keeps the existing matrix routing. */
 typedef struct {
     int16_t bend;                           /* signed 14-bit value, zero = centre */
     uint8_t wheel, pedal, targets;
@@ -39,8 +39,6 @@ static uint32_t midi_targets(uint32_t ch)
 static void midi_expression_1(track_t *t, const midi_channel_t *c)
 {
     int32_t range = ((int32_t)c->semis * 100 + c->cents) * 256 / 100;
-    if (drum_track(t))
-        return;
     midi_bend_target[trk_index(t)] = (int32_t)c->bend * range / (c->bend < 0 ? 8192 : 8191);
 }
 /* (DUELL step 5, LAYER: part 1's bend is part 2's too) */
@@ -203,7 +201,7 @@ static void midi_note_event(uint32_t ch, uint32_t note, uint32_t vel)
         midi_owners[trk_index(t)]++;
         c->owned[trk_index(t)]++;
     } else if (id) {
-        if (c->pedal && !drum_track(&trk[id - 1u]))
+        if (c->pedal)
             midi_notes[ch][note] |= MIDI_PEDAL_NOTE;
         else
             midi_release(ch, note);
@@ -280,9 +278,9 @@ static const uint8_t MIDI_CC_MAP[][2] = {
  * multimode filter, CC74 its CUT and CC71 its RES (DUELL 0.2.2) */
 #define MCC_UF 0xFFu
 static const uint8_t MIDI_CC_ENG[NENGINES] = {
-    0x56, 0x00, MCC_UF, MCC_UF, 0x00, MCC_UF, 0x67, MCC_UF,   /* ANALOG CUT RES, -, PHASE UF, LOFI UF, - (SAMPLE: retired), VOICE UF,
+    0x56, 0x00, MCC_UF, MCC_UF, 0x00, MCC_UF, 0x67, MCC_UF,   /* ANALOG CUT RES, - (1, DIGITAL: retired), PHASE UF, LOFI UF, - (SAMPLE: retired), VOICE UF,
                                                        * TRIO CUT RES, WHEEL UF */
-    0x00, MCC_UF, 0x30, 0x34, MCC_UF,                 /* - (GRAIN: retired), PHYS UF, DRUM TONE (hidden), NOISE FREQ RES, FM6 UF */
+    0x00, MCC_UF, 0x00, 0x34, MCC_UF,                 /* - (GRAIN: retired), PHYS UF, - (10, DRUM: retired in DUELL 0.2.14), NOISE FREQ RES, FM6 UF */
     0x00,                                             /* - (13, SLICE: retired in DUELL 0.2.9) */
     MCC_UF,                                           /* WAVE UF (DUELL) */
 };

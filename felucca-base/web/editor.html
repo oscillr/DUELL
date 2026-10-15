@@ -366,7 +366,7 @@ const PUSH = new Set([CMD.CHANGED, CMD.RELOAD, CMD.STEP_CHANGED, CMD.TRACK_CHANG
 /* user preset bank: name 1..12 printable ASCII, a 16-step pattern of (note, flags 1 acc 2 slide 4 tie) */
 const UP = { NAME_MAX: 12, PAT: 16, LIST_MAX: 16 };
 const F = { INT: 0, PCT: 1, BIPCT: 2, TIME: 3, LFOHZ: 4, CUTOFF: 5, DB: 6, SEMI: 7, ENUM: 8, BPM: 9, NOTE: 10, ONOFF: 11, OCT: 12, STEPS: 13,
-  FILT: 23, FMODE: 24 };   /* DUELL 0.2.9: the multimode filter's CUT (a dial step shown as its cutoff) and MODE (LP .. BP .. HP) */
+  FILT: 23, FMODE: 24, LOCUT: 25 };   /* DUELL 0.2.9: the multimode filter's CUT (a dial step shown as its cutoff) and MODE (LP .. BP .. HP) */
 
 const v14enc = (v) => { const u = Math.max(-8192, Math.min(8191, Math.round(v))) + 8192; return [u & 0x7F, (u >> 7) & 0x7F]; };
 const v14dec = (lo, hi) => (lo | (hi << 7)) - 8192;
@@ -807,6 +807,7 @@ function fmtValue(d, v) {
     case F.STEPS: return [String(v), "STEP"];
     case F.FILT: { const h = 30 * Math.pow(16000 / 30, (40 + 396 * Math.min(Math.max(v, 0), 82)) / 256 / 127);   /* core.h UF_STEPS: 82 the open end */
       return h < 1000 ? [String(Math.round(h)), "Hz"] : [(Math.trunc(h / 100) / 10).toFixed(1), "kHz"]; }
+    case F.LOCUT: return v <= 0 ? ["OFF", ""] : [String(Math.round(20 * Math.pow(22.5, (v - 1) / 126))), "Hz"];   /* DUELL 0.2.14: the reverb's LOW CUT (G_RLOCUT 21) */
     case F.FMODE: return [v <= 0 ? "LP" : v < 64 ? "LP>BP" : v === 64 ? "BP" : v < 127 ? "BP>HP" : "HP", ""];
     default: return [String(v), d.unit || ""];
   }
@@ -1403,10 +1404,11 @@ const FM6 = (() => {
        makers' messages are skipped and counted;
      - raw data without SysEx: 4096 x n bytes (banks), 155 (one voice) or 128 bytes (one packed voice).
      -> {voices: [{name, v}], badSum: messages with a wrong checksum (still read), short: messages cut short,
-         skipped: other messages, kinds: what the skipped ones were ("fm4" 4-operator voices, "other43" the format's other
+         skipped: other messages, corrupt: [{index (1..32), name}] voices of a complete bank left out because
+         their 128 bytes hold a byte >= 0x80 (the other voices are kept), kinds: what the skipped ones were ("fm4" 4-operator voices, "other43" the format's other
          blocks, "universal", "maker:XX" another manufacturer id), sysex: F0 seen} */
   function parseSysex(bytes) {
-    const d = Uint8Array.from(bytes), voices = [], kinds = [];
+    const d = Uint8Array.from(bytes), voices = [], kinds = [], corrupt = [];
     let badSum = 0, short = 0, skipped = 0;
     const add = (v) => voices.push({ v, name: name(v) });
     const kind = (k) => { skipped++; if (!kinds.includes(k)) kinds.push(k); };
@@ -1416,7 +1418,7 @@ const FM6 = (() => {
         for (let o = 0; o < d.length; o += 128) add(unpack(d.subarray(o, o + 128)));
       } else if (d.length === SIZE) add(sanitize(d));
       else if (d.length === PACKED) add(unpack(d));
-      return { voices, badSum, short, skipped, kinds, sysex };
+      return { voices, badSum, short, skipped, kinds, sysex, corrupt };
     }
     for (let i = 0; i < d.length; i++) {
       if (d[i] !== 0xF0) continue;
@@ -1425,6 +1427,23 @@ const FM6 = (() => {
         const want = f === 0 ? SIZE : 4096, s = i + 6;
         let e = s;
         while (e < d.length && e < s + want && d[e] < 0x80) e++;
+        /* a bank whose 4096 bytes are all there and closed (checksum, F7 or the end of the file) but with a byte >= 0x80 inside has a corrupt
+         * voice, not a short message: the records sit at fixed 128-byte offsets, so only the voices that hold such a byte are left out */
+        const w = s + want, closed = f === 9 && e < w && w <= d.length
+          && (w === d.length || d[w] === 0xF7 || (d[w] < 0x80 && (w + 1 >= d.length || d[w + 1] === 0xF7)));
+        if (closed) {
+          const data = d.subarray(s, w);
+          if (d[w] < 0x80 && w < d.length && checksum(data) !== d[w]) badSum++;
+          for (let o = 0; o < want; o += 128) {
+            const rec = data.subarray(o, o + 128);
+            if (rec.some((x) => x >= 0x80)) {
+              const nm = String.fromCharCode(...Array.from(rec.subarray(118, 128), (x) => ((x & 0x7F) < 32 || (x & 0x7F) > 126 ? 32 : x & 0x7F))).trim();
+              corrupt.push({ index: o / 128 + 1, name: nm });
+            } else add(unpack(rec));
+          }
+          i = w - 1;
+          continue;
+        }
         const data = d.subarray(s, e);
         if (data.length < want) short++;
         else if (e < d.length && d[e] < 0x80 && checksum(data) !== d[e]) badSum++;
@@ -1443,7 +1462,7 @@ const FM6 = (() => {
       else if (id !== undefined && id < 0x80) kind("maker:" + (id === 0 ? [0, d[i + 2], d[i + 3]] : [id])
         .map((x) => (x ?? 0).toString(16).toUpperCase().padStart(2, "0")).join(" "));
     }
-    return { voices, badSum, short, skipped, kinds, sysex };
+    return { voices, badSum, short, skipped, kinds, sysex, corrupt };
   }
   function singleSysex(v, ch = 0) {
     const data = Array.from(sanitize(v));
@@ -1684,7 +1703,7 @@ function makeMockDevice(opt = {}) {
   const D = (label, fmt, min, max, def, names = null, unit = "") => ({ label, fmt, min, max, def, names, unit });
   const E = (label, names, def) => D(label, F.ENUM, 0, names.length - 1, def, names);
   const MSRC = ["OFF", "LFO", "ENV", "VEL", "KEY", "RAND", "MODW", "AT", "EXPR", "S&H", "SLEW", "ENV2", "LFO2"];   /* (append-only: S&H SLEW, #132; DUELL: ENV2 LFO2) */
-  const MDST = ["OFF", "PITCH", "CUT", "SHP", "AMP", "PAN", "DIST", "CHO", "DLY", "REV", "RATE", "VIB", "E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8", "DEPTH",
+  const MDST = ["OFF", "PITCH", "CUT", "SHP", "AMP", "PAN", "SAT", "CHO", "DLY", "REV", "RATE", "VIB", "E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8", "DEPTH",
     "RATE2", "DEPTH2"];   /* (DEPTH: #132; DUELL: LFO 2's RATE2 DEPTH2) */
   const FREE = () => D("-", F.INT, 0, 0, 0);   /* DUELL: a free id (core.h P_FREE*: Felucca's P_ED_FX, the rest of its lane levels) */
   const TP = [
@@ -1697,7 +1716,7 @@ function makeMockDevice(opt = {}) {
     D("SWG", F.PCT, 0, 100, 0), D("PROB", F.PCT, 0, 127, 127), E("HOLD", ["OFF", "ARP", "ALL"], 0), E("ORD", ["NOTE", "PLAY"], 0),
     D("ROOT", F.NOTE, 0, 11, 0), E("SCL", ["CHR", "MAJ", "MIN", "DOR", "MIX", "PEN", "MPEN", "HARM", "PHRY", "LYD", "LOC", "MEL", "BLUES", "WHOLE", "DIMHW", "DIMWH"], 0), E("QNT", ["OFF", "SNAP", "WHITE", "SEQ"], 0), D("TRN", F.SEMI, -24, 24, 0),
     D("LEN", F.STEPS, 1, 64, 16), E("DIV", NDIV, 2), D("SWG", F.PCT, 0, 100, 0), D("GATE", F.PCT, 1, 127, 64),
-    D("DST", F.PCT, 0, 127, 0), D("CHO", F.PCT, 0, 127, 0), D("DLY", F.PCT, 0, 127, 0), D("REV", F.PCT, 0, 127, 0),
+    D("SAT", F.PCT, 0, 127, 0), D("CHO", F.PCT, 0, 127, 0), D("DLY", F.PCT, 0, 127, 0), D("REV", F.PCT, 0, 127, 0),
     E("VCE", ["POLY", "MONO", "LEG", "UNI"], 0), D("GLD", F.TIME, 0, 127, 0), D("PAN", F.BIPCT, -64, 63, 0), E("MUTE", NONOFF, 0),
     E("GLMOD", ["RATE", "TIME"], 0), E("PRIO", ["LAST", "LOW", "HIGH"], 0), E("ALLOC", ["ROT", "REUSE"], 0), D("DTUNE", F.INT, 0, 127, 40),
     E("SLCR", ["OFF", "GATE", "STUT"], 0), D("PAT", F.INT, 1, 16, 1), E("RATE", ["1/8", "1/16", "1/32", "8T", "16T", "32T"], 1), D("DEPTH", F.PCT, 0, 127, 127),
@@ -1705,15 +1724,15 @@ function makeMockDevice(opt = {}) {
      (DUELL: slots 5..8 on ids 61..72, Felucca's DIGITAL OP ENV ids) */
   ];
   const GP = [
-    D("TEMPO", F.BPM, 40, 240, 120), D("SWG", F.PCT, 0, 100, 0), E("CLK", ["INT", "USB", "TRS"], 0), D("TUNE", F.INT, -50, 50, 0),
+    D("TEMPO", F.BPM, 40, 240, 120), D("SWG", F.PCT, 0, 100, 0), E("CLK", ["INT", "USB", "TRS", "AUTO"], 3), D("TUNE", F.INT, -50, 50, 0),
     E("TIME", NDIV, 1), D("FDBK", F.PCT, 0, 120, 60), D("COLR", F.PCT, 0, 127, 70), D("MIX", F.PCT, 0, 127, 90),
     D("SIZE", F.PCT, 0, 127, 90), D("DAMP", F.PCT, 0, 127, 60), D("CRT", F.LFOHZ, 0, 127, 40), D("CDP", F.PCT, 0, 127, 60),
     E("MIDI", ["USB", "TRS"], 0), E("SYNC", NDASH, 0), E("ROUT", ["CH1-4", "SEL", "CH5-8", "CH9-12", "CH13-16"], 0), D("CPU", F.INT, 0, 0, 0),
     D("SLOT", F.INT, 1, 4, 1), E("NAME", NDASH, 0), E("LOAD", NGO, 0), E("SAVE", NGO, 0),
     E("ENG", ["ANALOG", "-", "PHASE", "LOFI", "SAMPLE", "VOICE", "TRIO", "WHEEL",
-      "GRAIN", "PHYS", "DRUM", "NOISE", "FM6", "SLICE"], 0), E("SET", NGO, 0),
+      "GRAIN", "PHYS", "DRUM", "NOISE", "FM6", "SLICE"], 0), D("LOCUT", F.LOCUT, 0, 127, 61),   /* G_RLOCUT (id 21, was G_ENGGO "SET", unused): the reverb's LOW CUT, 0 OFF, 20 .. 450 Hz (DUELL 0.2.14) */
     E("CLRSQ", NGO, 0), E("INIT", NGO, 0),
-    E("TYPE", ["ROOM", "SPRING", "HALL", "SHIM", "RESO"], 2),       /* G_RTYPE (id 24, was G_DRCH): the reverb's model (HALL: 1.2) */
+    E("TYPE", ["ROOM", "SPRING", "HALL", "SHIM", "RESO", "PLATE"], 2),       /* G_RTYPE (id 24, was G_DRCH): the reverb's model (HALL: 1.2, PLATE: 0.2.14) */
     D("-", F.INT, 0, 0, 0), D("-", F.INT, 0, 0, 0),   /* G_DRLVL, G_DRREV: inert since 1.0 */
   ];
   const NONE = D("-", F.INT, 0, 0, 0);
@@ -1825,7 +1844,7 @@ function makeMockDevice(opt = {}) {
   TP.push(E("SYNC", ["OFF", "4BAR", "2BAR", "1/1", "1/2", "1/4", "1/8", "8T", "1/16", "16T", "1/32"], 0),   /* 1.2: LFO 2 (91..93) */
     E("TRIG", ["NOTE", "FREE"], 1), E("POL", ["BI", "UNI"], 0), E("QNTZ", ["OFF", "ON"], 1),   /* and QUANTIZE (94) */
     D("SPRD", F.PCT, 0, 127, 0),   /* SPREAD (95, #148) */
-    E("INSRT", ["OFF", "SOFT", "HARD", "FOLD", "FUZZ", "CRUSH", "PHASR", "FLANG", "CHOR"], 0),   /* 1.5: the INSERT (96..100) */
+    E("INSRT", ["OFF", "SOFT", "HARD", "FOLD", "FUZZ", "CRUSH", "PHASR", "FLANG", "CHOR", "TAPE", "VINYL"], 0),   /* 1.5: the INSERT (96..100); 0.2.14: TAPE, VINYL */
     D("INS A", F.PCT, 0, 127, 64), D("INS B", F.PCT, 0, 127, 96), D("INS C", F.PCT, 0, 127, 96), D("MIX", F.PCT, 0, 127, 127),
     E("TYPE", ["LP", "BP", "HP"], 0), E("ESYNC", ["OFF", "ON"], 0));   /* 1.5: ANALOG's filter TYPE (101, #104), ENV SYNC (102, #175) */
   const P_COUNT = 111, G_COUNT = 27, NSTEP = 64, P_E0 = 103, G_ENGSEL = 20, P_SLCR = 45;
@@ -2535,7 +2554,7 @@ const TEXT = {
     fm6Pick: "読み込んだファイルの音色（押すと編集へ）:", fm6Picked: "編集中:", fm6Sent: "トラックへ送りました:", fm6Read: "トラックから読みました",
     fm6Loaded: "読み込みました", fm6BadSum: "チェックサム不一致あり",
     fm6Keep: "残すには、トラックへ送ってから本体でユーザープリセット（SAVE）かプロジェクトに保存してください。",
-    fm6Short: "途中で切れたデータあり", fm6Skipped: "音色以外の {x} 件は無視",
+    fm6Short: "途中で切れたデータあり", fm6Skipped: "音色以外の {x} 件は無視", fm6Corrupt: "壊れた音色を除外: {x}",
     fm6NoVoice: "6 オペレーター FM の音色が見つかりません（32 音色バンクか 1 音色の SysEx が必要です）",
     fm6NotSysex: "SysEx ファイルではありません（6 オペレーター FM の 32 音色バンクか 1 音色の SysEx が必要です）",
     fm6Is4op: "4 オペレーター FM の音色データです。FM6 は 6 オペレーターの音色だけ読み込めます",
@@ -2638,7 +2657,7 @@ const TEXT = {
     fm6Pick: "Voices of the imported file (click to edit):", fm6Picked: "Editing:", fm6Sent: "Sent to track", fm6Read: "Read from track",
     fm6Loaded: "Loaded", fm6BadSum: "a checksum did not match",
     fm6Keep: "To keep a voice, send it to a track, then save a user preset (SAVE) or a project on the device.",
-    fm6Short: "some data was cut short", fm6Skipped: "{x} non-voice blocks skipped",
+    fm6Short: "some data was cut short", fm6Skipped: "{x} non-voice blocks skipped", fm6Corrupt: "corrupt voice skipped: {x}",
     fm6NoVoice: "No 6-operator FM voices found (expects a 32-voice bank or single-voice SysEx)",
     fm6NotSysex: "Not a SysEx file (expects a 6-operator FM 32-voice bank or single-voice SysEx)",
     fm6Is4op: "These are 4-operator FM voices: FM6 reads 6-operator voices only",
@@ -2867,14 +2886,14 @@ const LAYOUT = (pe0) => [
   { t: "LFO", pages: [["LFO", 0, [9, 10, 11, 12]], ["LFO DEST", 0, [13, 14, 15, 16]]] },
   ...(pe0 >= 61 ? [{ t: "MOD", mod: 49 }] : []),   /* the matrix: P_M1SRC 49 .. P_M4AMT 60, one row per slot */
   { t: "EDIT", engine: true, pages: [["EDIT 1", 0, [pe0, pe0 + 1, pe0 + 2, pe0 + 3]], ["EDIT 2", 0, [pe0 + 4, pe0 + 5, pe0 + 6, pe0 + 7]],
-    ...(UF_ENGINES.includes(engName()) || UF2_ENGINES.includes(engName()) ? [["FILTER", 0, [45, 46, 47, 48]]] : []),   /* the multimode filter: CUT RES MODE SLOPE (DUELL 0.2.9) */
+    ...(UF_ENGINES.includes(engName()) || UF2_ENGINES.includes(engName()) ? [["MULTI FILTER", 0, [45, 46, 47, 48]]] : []),   /* the multimode filter: CUT RES MODE SLOPE (DUELL 0.2.9) */
     ...(pe0 >= 91 && engName() === "DRUM" ? [["LANES", 0, P_LANES.slice(0, 4)], ["LANES 2", 0, P_LANES.slice(4)]] : [])] },   /* lane levels 83..90 */
   ...(pe0 >= 81 && engName() === "DIGITAL" ? [{ t: "OP ENV", pages: [   /* P_FM1_ATK 61: ATK DEC SUS REL LVL per operator (a
                                                     FELUCCA_FM4=1 firmware only: DIGITAL retired, its engine is "-") */
     ...[0, 1, 2, 3].map((k) => [`OP${k + 1}`, 0, [61 + 5 * k, 62 + 5 * k, 63 + 5 * k, 64 + 5 * k]]),
     ["OP LVL", 0, [65, 70, 75, 80]]] }] : []),
   { t: "VOICE", pages: [["LEVEL", 0, [0]], ["VOICE", 0, [37, 38, 41, 42]], ["VOICE 2", 0, [43, 44, 39, 40]]] },
-  { t: "FX", pages: [["FX", 0, [33, 34, 35, 36]], ["DLY", 1, [4, 5, 6, 7]], ["REVERB", 1, [24, 8, 9]], ["CHORUS", 1, [10, 11]]] },   /* G_RTYPE 24: ROOM / SPRING / HALL */
+  { t: "FX", pages: [["FX", 0, [33, 34, 35, 36]], ["DLY", 1, [4, 5, 6, 7]], ["REVERB", 1, [24, 8, 9, 21]], ["CHORUS", 1, [10, 11]]] },   /* G_RTYPE 24: ROOM / SPRING / HALL, K4 G_RLOCUT 21: the low cut */
   { t: "SCL", pages: [["TRN", 0, [28]], ...(pe0 >= 83 ? [["CHORD", 0, P_CHORD]] : [])] },   /* CHRD VOIC 81, 82. ROOT SCL QNT (25..27) are reserved ids only (the scale is the
                                                     instrument's, set on the device: SCL page 1, global), so they are not offered here */
   { t: "ARP", pages: [["ARP", 0, [17, 18, 19, 20]], ["ARP 2", 0, [21, 22, 23, 24]]] },
@@ -2911,7 +2930,7 @@ async function connect() {
       }
       access.onstatechange = onState;
     }
-    const isF = (p) => /felucca/i.test(p.name || "") && p.state !== "disconnected";
+    const isF = (p) => /felucca|duell/i.test(p.name || "") && p.state !== "disconnected";
     const input = [...access.inputs.values()].find(isF);
     const output = [...access.outputs.values()].find(isF);
     if (!input || !output) { sayK("nodevice"); return; }
@@ -2965,7 +2984,7 @@ function disconnect(reasonKey = "disconnected") {
 
 function onState(e) {
   const p = e.port;
-  if (!p || !/felucca/i.test(p.name || "")) return;
+  if (!p || !/felucca|duell/i.test(p.name || "")) return;
   if (dev && p.state === "disconnected" && (p.id === dev.input.id || p.id === dev.output.id)) {
     disconnect("lost");
   } else if (!dev && wantConnected && p.state === "connected" && p.type === "output") {
@@ -5054,7 +5073,8 @@ $("fm6file").addEventListener("change", async (e) => {
   fm6Picked = r.voices.length === 1 ? 0 : -1;
   if (r.voices.length === 1) fm6v = Uint8Array.from(r.voices[0].v);
   renderFm6();
-  const notes = [r.badSum && t("fm6BadSum"), r.short && t("fm6Short"), r.skipped && t("fm6Skipped").replace("{x}", r.skipped)].filter(Boolean);
+  const notes = [r.badSum && t("fm6BadSum"), r.short && t("fm6Short"), r.skipped && t("fm6Skipped").replace("{x}", r.skipped),
+    r.corrupt.length && t("fm6Corrupt").replace("{x}", r.corrupt.map((c) => `#${c.index} ${c.name}`).join(", "))].filter(Boolean);
   sayK("imported", `${f.name}: ${r.voices.length}` + (notes.length ? ` (${notes.join(", ")})` : ""));
 });
 /* why a file had no 6-operator voice: [message key, what to add before the file name] */

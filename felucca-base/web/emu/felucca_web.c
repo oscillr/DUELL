@@ -67,7 +67,7 @@ static const int8_t FM1_KEYMAP[6][FM1_NCOL] = {      /* as hal/fm1_input.h: key 
     { 0,  1, 15, 14, 17, 16, 19, 18, 20, 21, 22},
     {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
 };
-static uint8_t fm1_led[FM1_NCOL], fm1_led_dim[FM1_NCOL], fm1_led_breath[FM1_NCOL], fm1_led_mid[FM1_NCOL], fm1_led_hi[FM1_NCOL];
+static uint8_t fm1_led[FM1_NCOL], fm1_led_dim[FM1_NCOL], fm1_led_breath[FM1_NCOL], fm1_led_mid[FM1_NCOL];
 static uint8_t fm1_led_scl[FM1_NCOL], fm1_led_root[FM1_NCOL];   /* (0.2.9 rev. 2 the keyboard's sets: the scale's keys, the root's, */
 static uint8_t fm1_led_kout[FM1_NCOL], fm1_led_ktop[FM1_NCOL];   /* the keys out of the scale (MAX, PLAY), the keys held (LOW)) */
 #define FM1_LED_KL_FULL 240u
@@ -91,7 +91,6 @@ static void fm1_led_anim_start(uint32_t glow)
     memset(fm1_led_dim, 0, sizeof fm1_led_dim);
     memset(fm1_led_breath, 0, sizeof fm1_led_breath);
     memset(fm1_led_mid, 0, sizeof fm1_led_mid);
-    memset(fm1_led_hi, 0, sizeof fm1_led_hi);
     memset(fm1_led_scl, 0, sizeof fm1_led_scl);
     memset(fm1_led_root, 0, sizeof fm1_led_root);
     memset(fm1_led_kout, 0, sizeof fm1_led_kout);
@@ -447,7 +446,6 @@ EXPORT uint32_t web_dim_keys(void) { return led_keys(fm1_led_dim); }
 EXPORT uint32_t web_dim_level(void) { return web_dim_lo; }
 EXPORT uint32_t web_breath_buttons(void) { return led_buttons(fm1_led_breath); }   /* #119: dark .. ~60 % of lit */
 EXPORT uint32_t web_breath_keys(void) { return led_keys(fm1_led_breath); }
-EXPORT uint32_t web_hi_keys(void) { return led_keys(fm1_led_hi); }   /* the DRUM grid's beats with MEDIUM: a steady high level, 1 frame in 2 */
 EXPORT uint32_t web_scl_keys(void) { return led_keys(fm1_led_scl); }   /* the scale display: the scale's keys, at their level */
 EXPORT uint32_t web_root_keys(void) { return led_keys(fm1_led_root); }   /* .. the root's keys: their level, steady (0.2.11) */
 EXPORT uint32_t web_kout_keys(void) { return led_keys(fm1_led_kout); }   /* .. the keys out of the scale (OFF-SCALE PLAY) at a level (MAX) */

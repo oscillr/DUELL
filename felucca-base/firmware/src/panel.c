@@ -69,7 +69,7 @@ static int32_t panel_enc(uint32_t role)
  * into the 20 palettes of earlier firmware) */
 #define SETTINGS_MAGIC 0x53455434u              /* "SET4" */
 #define SETTINGS_MAGIC_OLD 0x53455433u          /* "SET3" */
-struct { uint32_t magic, palette, lowcut, zoom; } settings __attribute__((section(".noinit")));
+struct { uint32_t magic, palette, rsv, zoom; } settings __attribute__((section(".noinit")));
 
 static void settings_save(void);              /* project.c: flash copy (FELUCCA_FLASH) */
 
@@ -103,15 +103,6 @@ static uint32_t leds_to_stored(uint32_t old, uint32_t m)
     return m != LEDS_DIM && m < LEDS_COUNT ? LEDS_TAG | m : old > 1u ? 0u : old;
 }
 static int leds_stored_ok(uint32_t v) { return v <= 1u || ((v & ~3u) == LEDS_TAG && (v & 3u) < LEDS_COUNT); }
-/* the menu's next / previous mode (KNOB 1 stops at the ends, OCT+ (s 0) cycles) */
-static uint32_t leds_step(uint32_t m, int32_t s)
-{
-    uint32_t i = 0;
-    while (i + 1u < LEDS_COUNT && LEDS_MENU[i] != m)
-        i++;
-    i = s > 0 ? (i + 1u < LEDS_COUNT ? i + 1u : i) : s < 0 ? (i ? i - 1u : 0u) : (i + 1u) % LEDS_COUNT;
-    return LEDS_MENU[i];
-}
 
 static void settings_init(void)
 {
@@ -122,9 +113,8 @@ static void settings_init(void)
     if (settings.magic != SETTINGS_MAGIC || settings.palette >= NPALETTES) {
         settings.magic = SETTINGS_MAGIC;
         settings.palette = UI_DEFAULT_INDEX;   /* the first theme */
-        settings.lowcut = 0;
+        settings.rsv = 0;
         settings.zoom = 0;                     /* (retired: the LEDS setting, settings_persist.c) */
     }
     palette_set(settings.palette);
-    fx_lowcut = (uint8_t)(settings.lowcut % 3u);
 }

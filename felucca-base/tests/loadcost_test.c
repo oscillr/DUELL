@@ -401,7 +401,7 @@ static void op_global(uint32_t a)                       /* a: which global jumps
     case 0: song.g[G_DTIME] = (int16_t)(song.g[G_DTIME] ^ 5); break;
     case 1: song.g[G_DFDBK] = 20; break;
     case 2: song.g[G_CRATE] = 100; song.g[G_CDEPTH] = 10; break;
-    case 3: song.g[G_PINGPONG] = (int16_t)!song.g[G_PINGPONG]; break;
+    case 3: song.g[G_DMODE] = (int16_t)(song.g[G_DMODE] == DMD_PING ? DMD_DIGITAL : DMD_PING); break;
     case 4: song.g[G_RSIZE] = 20; song.g[G_RDAMP] = 100; break;
     default: song.g[G_BPM] = 90; break;
     }
@@ -430,10 +430,13 @@ static void op_fader(uint32_t a)
 }
 static void op_mode(uint32_t a) { duell_mode_req = (uint8_t)a; }
 static void pre_mode(uint32_t a) { duell_mode_force(a); }
+/* DUELL 0.2.14 GLO > MODULES: a switch (a: MODS_* bit, | 0x100 for OFF); pre: that module OFF before the change */
+static void op_mods(uint32_t a) { mods_put(a & 0xFFu, (a >> 8) & 1u); }
+static void pre_mods(uint32_t a) { mods_put(a, 1u); }
 
 /* ------------------------------------------------------------------ the table --- */
 static const char *const ENGN[12] = {"ANALOG", "FM6", "PHASE", "LOFI", "SAMPLE", "VOICE", "TRIO", "WHEEL", "GRAIN", "PHYS", "NOISE", "SLICE"};
-static const char *const RN[5] = {"ROOM", "SPRING", "HALL", "SHIM", "RESO"};
+static const char *const RN[6] = {"ROOM", "SPRING", "HALL", "SHIM", "RESO", "PLATE"};
 static const char *const IN[9] = {"OFF", "SOFT", "HARD", "FOLD", "FUZZ", "CRUSH", "PHASER", "FLANGER", "CHORUS"};
 static char cname[112];
 
@@ -456,6 +459,14 @@ static void guards(void)
     check_case("mode change STEREO -> SPLIT in M15", &c, 10, 90, 1);
     c = (case_t){"", 14, pre_mode, DM_LAYER, op_mode, DM_SPLIT, 0};
     check_case("mode change LAYER -> SPLIT in M15", &c, 10, 90, 1);
+    c = (case_t){"", 14, 0, 0, op_mods, MODS_SENDS | 0x100u, 0};   /* (0.2.14: the fade, then the lines cleared a chunk a block, as the dip) */
+    check_case("MODULES SENDS OFF in M15", &c, 10, 90, 1);
+    c = (case_t){"", 14, pre_mods, MODS_SENDS, op_mods, MODS_SENDS, 0};
+    check_case("MODULES SENDS ON again in M15", &c, 10, 90, 1);
+    c = (case_t){"", 14, 0, 0, op_mods, MODS_PFX | 0x100u, 0};
+    check_case("MODULES PART FX OFF in M15", &c, 10, 90, 1);
+    c = (case_t){"", 14, pre_mods, MODS_PFX, op_mods, MODS_PFX, 0};
+    check_case("MODULES PART FX ON again in M15", &c, 10, 90, 1);
 }
 
 /* what eq_design's 64-bit divisions cost: the old shift-and-subtract __udivdi3 (kept here for the comparison) against libc.c's, on the
@@ -535,10 +546,10 @@ static void table(void)
         c = (case_t){"multi load M15 over M16", 15, 0, 0, op_multi, 14, 1};
         show(&c, "");
     }
-    for (k = 0; k < 5u; k++) {                           /* reverb type: worst over the 4 types it can come from */
+    for (k = 0; k < 6u; k++) {                           /* reverb type: worst over the 5 types it can come from */
         res_t w = {0};
         w.extra_half = -1;
-        for (from = 0; from < 5u; from++) {
+        for (from = 0; from < 6u; from++) {
             case_t c = {0, 14, pre_rtype, from, op_rtype, k, 0};
             res_t r;
             if (from == k)

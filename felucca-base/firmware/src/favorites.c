@@ -12,9 +12,9 @@ typedef struct {
 static favorites_t favorites __attribute__((section(".pool")));
 /* the byte holding factory sound `preset` of `engine`'s flag, 0 = none. Row e is engine e's, except: row 14 is the MIDI LEARN map
  * (midi_learn.c) and row 15 the settings bytes, so WAVE (engine 14, DUELL) keeps its flags in bytes 16..31 of row 1, DIGITAL's
- * retired row: DIGITAL had 8 presets (byte 0, which settings_persist.c moves to FM6's and clears on import: only bytes 0..15
- * now), its bytes 16..31 were never written, so every older setting holds no WAVE flag there (128 sounds) */
-#define FAV_WAVE_ROW ENGI_DIGITAL
+ * retired row (DIGITAL, engine 1, is gone: its byte 0 is cleared on import, settings_persist.c; its bytes 16..31 were never written, so every older
+ * setting holds no WAVE flag there (128 sounds)) */
+#define FAV_WAVE_ROW 1u
 #define FAV_WAVE_AT 16u
 static uint8_t *fav_byte(uint32_t engine, uint32_t preset)
 {

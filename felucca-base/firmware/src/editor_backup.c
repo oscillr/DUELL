@@ -4,16 +4,41 @@
  * in main-loop RAM and fully validated before the existing A/B commit path writes.
  * Ids 32..34 were the user sample slots USR1..USR3: DUELL 0.2.9 retired the sample engines and their slots, so they are listed empty
  * (the archive keeps its 16 ids); an archive's sample objects are not restored (SMP_BEGIN answers rc 6, unsupported: editor.c).
- * DUELL: ids 6, 7, 9, 10, 11 and 12 are the six chunks of the PATCH store (upreset.c: sparse records, FM6 patches inside them), ids
- * 6, 7, 9, 10, 11, 12 = OBJ_PATCH0 .. +5 (ed_bk_chunk); an archive of Felucca's banks (another shape) is refused (2). Id 8 (the FM6 patch bank of
+ * DUELL: ids 6, 7, 9, 10, 11 and 12 are the first six chunks of the PATCH store (upreset.c: sparse records, FM6 patches inside them), ids
+ * 6, 7, 9, 10, 11, 12 = OBJ_PATCH0 .. +5 (ed_bk_chunk). DUELL 0.2.15 (INFO 42 01 caps bit 4, value 16): chunks 6..15 are ids 27..31 and 35..39
+ * (OBJ_PATCHX0..9; ids 32..34, the retired sample slots, stay between them: 40 ids in all). The archive carries the PHYSICAL chunks (the
+ * smaller change, one code path with the first six; a logical "patch store" object would survive a later change of the geometry): a chunk
+ * is sent as its live records (pt_build; empty: length 0), a restore writes the chunk and reads the directory again (pt_boot). A chunk with
+ * more than PT_K records is refused (2): the guarantee that every one of the 128 slots fits rests on it. The file is "version 4" (duellbackup.js). an archive of Felucca's banks (another shape) is refused (2). Id 8 (the FM6 patch bank of
  * 1.0..1.0.2) is listed empty and a PUT of it is accepted and dropped.
  * Ids 2..5 (Felucca's project slots A..D) are listed empty since DUELL's MULTI store took their flash (project.c multi.c);
- * a PUT of one from an older archive is accepted and dropped. The multis are not in the archive (yet).
+ * a PUT of one from an older archive is accepted (whatever its length) and dropped.
+ * DUELL 0.2.14: what a PUT restores must be of this firmware's formats (project.c, multi.c, upreset.c): a project of another format
+ * or revision (2), a multi object whose record is not MU_VER with P_COUNT values (2), a patch chunk with a record without PTF_CB (2) are
+ * refused; nothing is written or changed then.
+ * DUELL 0.2.14 (INFO 42 01 caps bit 2): ids 13..20 = OBJ_MULTI0..7 (M01-02 .. M15-16, two multis an object, magic MUL1, multi.c) and ids
+ * 21..23 = OBJ_PATSLOT0..2 (P1-6, P7-12, P13-16, six slots an object, magic PTS2, patslot.c) are in the archive (27 ids). They are read
+ * where they live (a multi object from flash through st_current, a pattern object from the RAM mirror ps_bank, which is the truth while a
+ * pattern write is pending), never from the staging RAM (the runtime snapshot of id 0 sits there). An object with nothing in it (no multi
+ * record, no used pattern slot) is listed with length 0, and a PUT of length 0 writes that empty object (the factory multis show again).
+ * A pattern restore replaces the mirror and clears its dirty bit, so a pending write cannot overwrite what was restored.
+ * DUELL 0.2.14 (INFO 42 01 caps bit 3): ids 24..26 = the user wavetables USR1..USR3 (wtab.c; the object is wt_obj_t, 1228 bytes, read from the RAM
+ * mirror wt_ram; length 0 = EMPTY, a PUT of length 0 empties the slot). A restore is wt_store: the same checks and the same write as the
+ * editor's WT_PUT (the playing sequencer is stopped first, ed_flash_stop). 30 ids.
  */
-static const uint8_t ED_BK_IDS[16] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 32, 33, 34};
+#define ED_BK_MUL0 13u
+#define ED_BK_PAT0 21u
+#define ED_BK_WT0 24u
+static const uint8_t ED_BK_IDS[40] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26,
+                                      27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39};
+static uint8_t ed_wt_put;                       /* a user wavetable upload is staging (editor_wtab.c): they share ED_BK_RAW */
+static int ed_bk_wt(uint32_t id) { return id >= ED_BK_WT0 && id < ED_BK_WT0 + WV_NU ? (int)(id - ED_BK_WT0) : -1; }
+static int ed_bk_multi(uint32_t id) { return id >= ED_BK_MUL0 && id < ED_BK_MUL0 + MU_NOBJ ? (int)(id - ED_BK_MUL0) : -1; }
+static int ed_bk_pat(uint32_t id) { return id >= ED_BK_PAT0 && id < ED_BK_PAT0 + PS_NOBJ ? (int)(id - ED_BK_PAT0) : -1; }
 static int ed_bk_chunk(uint32_t id)             /* the PATCH store chunk an id is, -1 none */
 {
-    return id == 6u || id == 7u ? (int)id - 6 : id >= 9u && id <= 12u ? (int)id - 7 : -1;
+    return id == 6u || id == 7u ? (int)id - 6 : id >= 9u && id <= 12u ? (int)id - 7 : id >= 27u && id <= 31u ? (int)id - 21 :
+           id >= 35u && id <= 39u ? (int)id - 24 : -1;
 }
 #define ED_BK_N ((uint32_t)sizeof ED_BK_IDS)
 #define ED_BK_MAX ((uint32_t)sizeof proj_wire_u.raw)
@@ -37,17 +62,100 @@ static void ed_bk_pack(const uint8_t *p, uint32_t n)
         p += k; n -= k;
     }
 }
+/* a MUL1 object: the shape multi.c mu_obj_read demands, and each stored record at least a header the loader takes (version, parts, name) */
+static int ed_bk_mul_ok(const uint8_t *b, uint32_t len)
+{
+    uint32_t magic, l[2], h, at = MU_HDR, i;
+    if (len < MU_HDR || len > MU_OBJ_MAX)
+        return 0;
+    memcpy(&magic, b, 4);
+    l[0] = mu_rd16(b + 4);
+    l[1] = mu_rd16(b + 6);
+    if (magic != MU_MAGIC || l[0] > MU_REC_MAX || l[1] > MU_REC_MAX || MU_HDR + l[0] + l[1] != len)
+        return 0;
+    for (h = 0; h < 2u; at += l[h++]) {
+        if (!l[h])
+            continue;
+        if (l[h] < MU_G_AT || b[at] != MU_VER || b[at + 1] != P_COUNT)
+            return 0;
+        for (i = 0; i < PROJ_NAME_LEN; i++)
+            if (b[at + MU_NAME_AT + i] && (b[at + MU_NAME_AT + i] < 32u || b[at + MU_NAME_AT + i] > 126u))
+                return 0;
+    }
+    return 1;
+}
+static int ed_bk_mul_empty(const uint8_t *b) { return !mu_rd16(b + 4) && !mu_rd16(b + 6); }
+/* a PTS2 object: magic, record size and count, every record unused (used 0) or a valid slot (ps_valid), a used one below PS_SLOTS, names printable */
+static int ed_bk_pat_ok(uint32_t o, const uint8_t *b, uint32_t len)
+{
+    const ps_obj_t *x = (const ps_obj_t *)b;
+    uint32_t i, j;
+    if (len != sizeof *x || x->magic != PS_MAGIC || x->rsize != sizeof(ps_rec_t) || x->nslot != PS_PER_OBJ)
+        return 0;
+    for (i = 0; i < PS_PER_OBJ; i++) {
+        if (x->r[i].used == 0u)
+            continue;
+        if (o * PS_PER_OBJ + i >= PS_SLOTS || !ps_valid(&x->r[i]))
+            return 0;
+        for (j = 0; j < PS_NAME; j++)
+            if (x->r[i].name[j] && ((uint8_t)x->r[i].name[j] < 32u || (uint8_t)x->r[i].name[j] > 126u))
+                return 0;
+    }
+    return 1;
+}
+static int ed_bk_pat_empty(const ps_obj_t *x)
+{
+    for (uint32_t i = 0; i < PS_PER_OBJ; i++)
+        if (x->r[i].used)
+            return 0;
+    return 1;
+}
 static const uint8_t *ed_bk_object(uint32_t id, uint32_t *len)
 {
     *len = 0;
+    if (ed_bk_multi(id) >= 0) {                     /* DUELL 0.2.14: a MULTI object, where it lives (not in the staging RAM) */
+        uint32_t o = (uint32_t)ed_bk_multi(id), n;
+        const uint8_t *p;
+#if FELUCCA_FLASH
+        st_hdr_t h;
+        if (!flash_ok || st_current(OBJ_MULTI0 + o, &h) < 0)
+            return ED_BK_RAW;
+        n = h.len;
+        p = st_buf;                                 /* (st_current left the payload there) */
+#else
+        n = mu_ram_len[o];
+        p = mu_ram[o];
+#endif
+        if (!ed_bk_mul_ok(p, n) || ed_bk_mul_empty(p))
+            return ED_BK_RAW;                       /* (none, torn, damaged or both multis empty: length 0, as mu_obj_read reads it) */
+        *len = n;
+        return p;
+    }
+    if (ed_bk_wt(id) >= 0) {                        /* DUELL 0.2.14: a user wavetable, from the RAM mirror (EMPTY: length 0) */
+        uint32_t u = (uint32_t)ed_bk_wt(id);
+        if (!(wt_used >> u & 1u) || !wt_obj_ok((const uint8_t *)&wt_ram[u], sizeof wt_ram[u]))
+            return ED_BK_RAW;
+        *len = sizeof wt_ram[u];
+        return (const uint8_t *)&wt_ram[u];
+    }
+    if (ed_bk_pat(id) >= 0) {                       /* the pattern slots: the RAM mirror is the truth (a write may be pending) */
+        const ps_obj_t *x = &ps_bank[ed_bk_pat(id)];
+        if (!ed_bk_pat_ok((uint32_t)ed_bk_pat(id), (const uint8_t *)x, sizeof *x) || ed_bk_pat_empty(x))
+            return ED_BK_RAW;
+        *len = sizeof *x;
+        return (const uint8_t *)x;
+    }
     if (id == 0u) { *len = sizeof(project_store_t); return ED_BK_RAW; }
     if (id == 1u) { *len = sizeof ed_bk_settings; return (const uint8_t *)&ed_bk_settings; }
     if (id >= 2u && id <= 5u)                       /* the retired project slots: always empty */
         return ED_BK_RAW;
-    if (ed_bk_chunk(id) >= 0) {                     /* the PATCH store's chunks 0..5 */
+    if (ed_bk_chunk(id) >= 0) {                     /* the PATCH store's chunks 0..15: the live records, built in pt_work (length 0: none) */
         uint32_t c = (uint32_t)ed_bk_chunk(id);
-        *len = pt_len[c];
-        return pt_img[c];
+        int w = pt_n[c] ? pt_build(c, UP_SLOTS, 0) : 0;
+        if (w < 0)
+            return ED_BK_RAW;
+        *len = (uint32_t)w;
+        return pt_work;
     }
     if (id == 8u)                                   /* the retired FM6 patch bank: always empty */
         return ED_BK_RAW;
@@ -58,6 +166,7 @@ static const uint8_t *ed_bk_object(uint32_t id, uint32_t *len)
 static uint32_t ed_bk_capture(void)
 {
     if (ed_flash_stop()) return 3;
+    ed_wt_put = 0;
     project_capture(&proj_scratch);
     if (!proj_pack((project_store_t *)ED_BK_RAW, &proj_scratch)) return 2;
     ed_bk_gen = ++proj_wire_gen;
@@ -93,7 +202,7 @@ static uint32_t ed_bk_commit(void)
         return 0;
     if (ed_bk_id == 0u) {
         if (ed_bk_len && !proj_import(&proj_scratch, raw, (int)ed_bk_len)) return 2;
-        if (ed_bk_len) {                            /* an older format becomes FUN11 inside its ranges */
+        if (ed_bk_len) {                            /* the values inside their ranges, written back as FUN11 */
             proj_bound(&proj_scratch);
             if (!proj_pack((project_store_t *)raw, &proj_scratch)) return 2;
             ed_bk_len = sizeof(project_store_t);
@@ -103,22 +212,63 @@ static uint32_t ed_bk_commit(void)
     } else if (ed_bk_id == 1u) {
         const persist_t *p = (const persist_t *)raw;
         if (ed_bk_len != sizeof *p || p->magic != PERSIST_MAGIC || !palette_stored_ok(p->palette) ||
-            p->lowcut > 2u || !leds_stored_ok(p->zoom) || !hold_stored_ok(p->bold) || p->favorites.filter > 1u || !ed_bk_panel_valid(&p->panel)) return 2;
+            !leds_stored_ok(p->zoom) || !hold_stored_ok(p->bold) || p->favorites.filter > 1u || !ed_bk_panel_valid(&p->panel)) return 2;
         obj = OBJ_SETTINGS;
+    } else if (ed_bk_multi(ed_bk_id) >= 0) {   /* DUELL 0.2.14: a MULTI object (two multis); length 0 = both empty */
+        uint32_t o = (uint32_t)ed_bk_multi(ed_bk_id);
+        if (!ed_bk_len) {
+            uint32_t magic = MU_MAGIC;
+            memcpy(raw, &magic, 4);
+            memset(raw + 4, 0, 4);
+            ed_bk_len = MU_HDR;
+        } else if (!ed_bk_mul_ok(raw, ed_bk_len)) return 2;
+        if (mu_obj_write(o, ed_bk_len)) return 4;   /* (mu_buf is the staging RAM; host builds: mu_ram) */
+        mu_obj_read(o);                             /* what the unit holds now (flash, checked); its names and used mask */
+        mu_note(o);
+        sync_reload = 1; ui.force = 1;
+        return 0;
+    } else if (ed_bk_wt(ed_bk_id) >= 0) {      /* DUELL 0.2.14: a user wavetable; length 0 = EMPTY */
+        uint32_t u = (uint32_t)ed_bk_wt(ed_bk_id);
+        if (!ed_bk_len)
+            return wt_erase(u) ? 4u : 0u;
+        return (uint32_t)wt_store(u, raw, ed_bk_len);   /* 0 ok, 2 not a user table, 4 flash */
+    } else if (ed_bk_pat(ed_bk_id) >= 0) {     /* DUELL 0.2.14: a PATTERN object (six slots); length 0 = all unused */
+        uint32_t o = (uint32_t)ed_bk_pat(ed_bk_id);
+        if (!ed_bk_len) {
+            memset(raw, 0, sizeof(ps_obj_t));
+            ((ps_obj_t *)raw)->magic = PS_MAGIC;
+            ((ps_obj_t *)raw)->rsize = sizeof(ps_rec_t);
+            ((ps_obj_t *)raw)->nslot = PS_PER_OBJ;
+            ed_bk_len = sizeof(ps_obj_t);
+        } else if (!ed_bk_pat_ok(o, raw, ed_bk_len)) return 2;
+#if FELUCCA_FLASH
+        if (!flash_ok || st_save(OBJ_PATSLOT0 + o, raw, ed_bk_len)) return 4;
+#endif
+        memcpy(&ps_bank[o], raw, sizeof(ps_obj_t));  /* the mirror is the restored object; no write of the old one is pending */
+        ps_obj_check(o, (int)sizeof(ps_obj_t));
+        ps_dirty &= (uint8_t)~(1u << o);
+        sync_reload = 1; ui.force = 1;
+        return 0;
     } else if (ed_bk_chunk(ed_bk_id) >= 0) {   /* a chunk of the PATCH store: empty, or well formed */
-        uint32_t off;
+        uint32_t off, nrec = 0;
         if (ed_bk_len && (ed_bk_len < PT_HDR || ed_bk_len > PT_CAP || pt_rd16(raw) != PT_MAGIC || raw[2] != 1u)) return 2;
         for (off = PT_HDR; ed_bk_len && off < ed_bk_len;) {
             uint32_t rl = pt_rd16(raw + off);
             if (off + PT_FIX > ed_bk_len || off + rl > ed_bk_len || !pt_rec_ok(raw + off, rl)) return 2;
             off += rl;
+            nrec++;
         }
-        obj = OBJ_PATCH0 + (uint32_t)ed_bk_chunk(ed_bk_id);
+        if (nrec > PT_K) return 2;                 /* (more than PT_K records would break "all 128 slots always fit") */
+        obj = pt_obj((uint32_t)ed_bk_chunk(ed_bk_id));
     } else return 1;
 #if FELUCCA_FLASH
     if (!flash_ok || st_save(obj, raw, ed_bk_len)) return 4;
 #else
     (void)obj;
+    if (ed_bk_chunk(ed_bk_id) >= 0) {
+        memcpy(pt_ram[ed_bk_chunk(ed_bk_id)], raw, ed_bk_len);
+        pt_ramlen[ed_bk_chunk(ed_bk_id)] = (uint16_t)ed_bk_len;
+    }
 #endif
     if (ed_bk_id == 1u) {
         memcpy(&ed_bk_settings, raw, sizeof ed_bk_settings);
@@ -128,31 +278,28 @@ static uint32_t ed_bk_commit(void)
         persist_saved = ed_bk_settings; persist_pending = 0;
 #endif
     } else {
-        uint32_t c = (uint32_t)ed_bk_chunk(ed_bk_id);
-        if (ed_bk_len) memcpy(pt_img[c], raw, ed_bk_len);
-        pt_len[c] = (uint16_t)ed_bk_len;
-        pt_scan(); up_gen++;
+        pt_boot();                                  /* the directory again from all chunks (the restored one included) */
     }
     sync_reload = 1; ui.force = 1;
     return 0;
 }
-/* a project object's length: FUN10 (today's, 1.2), FUN9 (1.1), FUN8 (before the DRUM lane levels, 1.0.x), FUN7 */
-static int proj_store_len(uint32_t len)
-{
-    return len == sizeof(project_store_t) || len == PROJ_STORE_V9 || len == PROJ_STORE_V8 || len == PROJ_STORE_V7;
-}
+/* a project object's length: FUN11's (the older lengths, FUN7 .. FUN9, are no project since 0.2.14) */
+static int proj_store_len(uint32_t len) { return len == sizeof(project_store_t); }
 static uint32_t ed_bk_write(const uint8_t *a, uint32_t n)
 {
     /* the arguments first: a malformed request never stops the transport */
-    if (n < 2u || a[0] > 3u || a[1] > 12u) return 1;
+    if (n < 2u || a[0] > 3u || (a[1] > 12u && ed_bk_multi(a[1]) < 0 && ed_bk_pat(a[1]) < 0 && ed_bk_wt(a[1]) < 0 && ed_bk_chunk(a[1]) < 0)) return 1;
     if (a[0] == 0u) {
         if (n != 12u || a[6] > 15u || a[11] > 15u) return 1;
         uint32_t len = ed_bk_r32(a + 2);
         if (len > ED_BK_MAX || (a[1] == 0u && !proj_store_len(len)) ||
             (a[1] == 1u && len != sizeof(persist_t)) ||
-            (a[1] >= 2u && a[1] <= 5u && len && !proj_store_len(len)) ||
-            (ed_bk_chunk(a[1]) >= 0 && len > PT_CAP)) return 1;
+            (ed_bk_chunk(a[1]) >= 0 && len > PT_CAP) ||
+            (ed_bk_multi(a[1]) >= 0 && len && (len < MU_HDR || len > MU_OBJ_MAX)) ||
+            (ed_bk_pat(a[1]) >= 0 && len && len != sizeof(ps_obj_t)) ||
+            (ed_bk_wt(a[1]) >= 0 && len && len != sizeof(wt_obj_t))) return 1;
         if (ed_flash_stop()) return 3;
+        ed_wt_put = 0;
         ed_bk_valid = 0; ed_bk_put = 1; ed_bk_id = a[1]; ed_bk_len = len; ed_bk_gen = ++proj_wire_gen;
         ed_bk_crc = ed_bk_r32(a + 7); ed_bk_pos = 0;
         ed_bk_usb = usb.resets; ed_bk_ms = fm1_ms;

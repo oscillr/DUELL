@@ -3,7 +3,7 @@
  * step 5 (only what they had), so the same function gives the same hash there and here: tests/mode_test.c compares its
  * hash with the one the sources before step 5 gave (MODE_STEREO_HASH, made by building this file against them).
  * Two parts: part 1 ANALOG with SPREAD 100 (POLY), a PAN, DIST, the matrix's LFO -> PAN; part 2 PHASE with the INSERT
- * (CHORUS, MIX 100) and its PAN the other way; both with every send up; HALL, BASS+ (MENU > SPEAKER), the delay with
+ * (CHORUS, MIX 100) and its PAN the other way; both with every send up; HALL, the delay with
  * feedback. Chords on both, released, the tails. Must run
  * from the process's own power-on state (the first render of the process) */
 static uint32_t scn_eng(const char *n)
@@ -24,10 +24,10 @@ static uint64_t mode_stereo_scenario(void)
     host_preset(&trk[0], scn_eng("ANALOG"), 1);
     host_preset(&trk[1], scn_eng("PHASE"), 2);
     song.g[G_RTYPE] = 2;                          /* HALL (stereo) */
+    song.g[G_RLOCUT] = 0;                         /* (0.2.14: the buses as the hash was made; the reverb low cut is tests/locut_test.c) */
     song.g[G_DFDBK] = 90;
     song.g[G_DMIX] = 110;
     song.g[G_CDEPTH] = 100;
-    fx_lowcut = 2;                                /* BASS+ */
     trk[0].p[P_VOICE] = V_POLY;
     trk[0].p[P_SPRD] = 100;
     trk[0].p[P_PAN] = -30;
@@ -43,7 +43,7 @@ static uint64_t mode_stereo_scenario(void)
     trk[1].p[P_IB] = 90;
     trk[1].p[P_IMIX] = 127;
     for (k = 0; k < 2u; k++) {
-        trk[k].p[P_LEVEL] = 120;
+        trk[k].p[P_TRIM] = 120;
         trk[k].p[P_CHOR] = 100;
         trk[k].p[P_DLY] = 90;
         trk[k].p[P_REV] = 110;
@@ -69,6 +69,5 @@ static uint64_t mode_stereo_scenario(void)
             h *= 0x100000001B3ull;
         }
     }
-    fx_lowcut = 0;
     return h;
 }

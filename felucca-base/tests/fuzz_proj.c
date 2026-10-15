@@ -34,7 +34,7 @@ int main(int argc, char **argv)
             uint32_t sum = proj_hash(st.raw, PROJ_STORE_SIZE - 4u);
             memcpy(st.raw + PROJ_STORE_SIZE - 4u, &sum, 4);
         }
-        n = rnd() % 8u == 0 ? rnd() % (PROJ_STORE_SIZE + 64u) : rnd() % 8u == 0 ? PROJ_STORE_V7 : PROJ_STORE_SIZE;
+        n = rnd() % 8u == 0 ? rnd() % (PROJ_STORE_SIZE + 64u) : rnd() % 8u == 0 ? 3388u : PROJ_STORE_SIZE;
         if (proj_import(&c, &st, (int)n)) {
             imported++;
             project_restore_runtime(&c);

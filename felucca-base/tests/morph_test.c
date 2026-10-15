@@ -110,11 +110,11 @@ static void busy(track_t *t)
     t->p[P_PAN] = 10;
     t->p[P_SPRD] = 30;
 }
-static uint32_t engines_used(uint32_t *list)            /* DUELL's engines (not DIGITAL, not DRUM) */
+static uint32_t engines_used(uint32_t *list)            /* DUELL's engines (not DIGITAL 1, not DRUM 10; the retired SAMPLE GRAIN SLICE stay in) */
 {
     uint32_t e, n = 0;
     for (e = 0; e < NENGINES; e++)
-        if (e != ENGI_DIGITAL && e != ENGI_DRUM)
+        if (e != 1u && e != 10u)
             list[n++] = e;
     return n;
 }
@@ -146,8 +146,8 @@ static void test_tags(void)
     printf("\n");
     for (k = 0; k < NELEM(EXCL); k++)
         ok &= morph_tag(&ENG_ANALOG, o, EXCL[k], 1).kind <= MK_HARD;
-    ok &= morph_tag(&ENG_DRUM, o, P_FREEB, 1).kind <= MK_HARD && morph_tag(&ENG_ANALOG, o, P_FREEC, 1).kind == MK_CONT &&
-          morph_tag(&ENG_ANALOG, o, P_FREED, 1).kind == MK_FADE && morph_tag(&ENG_PHASE, o, P_FREEA, 1).kind == MK_CONT;   /* (the multimode filter's four roll on every engine with one since 0.2.9, DRUM has none) */
+    ok &= morph_tag(&ENG_RETIRED, o, P_FREEB, 1).kind <= MK_HARD && morph_tag(&ENG_ANALOG, o, P_FREEC, 1).kind == MK_CONT &&
+          morph_tag(&ENG_ANALOG, o, P_FREED, 1).kind == MK_FADE && morph_tag(&ENG_PHASE, o, P_FREEA, 1).kind == MK_CONT;   /* (the multimode filter's four roll on every engine with one since 0.2.9, a retired engine has none) */
     check("rule 3: LEVEL, TRANS, ROOT, SCALE, ARP OCT, VOICE, LFO POL, ARP MODE, INSERT TYPE, ... never rolled", ok);
     for (k = 0; k < ne; k++) {
         const engine_t *en = ENGINES[list[k]];
@@ -1496,7 +1496,7 @@ static void test_rules(void)
         for (seed = 1; seed <= 100u; seed++) {
             mrc = 0;
             morph_roll_pure(o, end, &ENG_ANALOG, 100, seed, 0, 0);
-            off_ok &= end[P_DKDEP] == 0 && end[P_DKATK] == o[P_DKATK] && end[P_DKHLD] == o[P_DKHLD] && end[P_DKRLS] == o[P_DKRLS] &&
+            off_ok &= end[P_DKDEP] == 0 && end[P_DKATK] == o[P_DKATK] && end[P_TRIM] == o[P_TRIM] && end[P_DKRLS] == o[P_DKRLS] &&
                       end[P_DKTHR] == o[P_DKTHR];
             mrc = MC_WILD;
             morph_roll_pure(o, end, &ENG_ANALOG, 100, seed, 0, 0);
@@ -1509,7 +1509,7 @@ static void test_rules(void)
             mrc = 0;
             morph_roll_pure(o, end, &ENG_ANALOG, 20, seed, 0, 0);
             on_moved += end[P_DKDEP] != 40;
-            fixed_ok &= end[P_DKATK] == o[P_DKATK] && end[P_DKRLS] == o[P_DKRLS] && end[P_DKTHR] == o[P_DKTHR] && end[P_DKHLD] == o[P_DKHLD];
+            fixed_ok &= end[P_DKATK] == o[P_DKATK] && end[P_DKRLS] == o[P_DKRLS] && end[P_DKTHR] == o[P_DKTHR] && end[P_TRIM] == o[P_TRIM];
             mrc = MC_WILD;
             morph_roll_pure(o, end, &ENG_ANALOG, 60, seed, 0, 0);
             wild_times += end[P_DKATK] != o[P_DKATK] || end[P_DKRLS] != o[P_DKRLS] || end[P_DKTHR] != o[P_DKTHR];

@@ -25,8 +25,8 @@ The brief's colours are used exactly (THEME = the blend of A, B); the contrast c
 (--report prints the misses, nothing is altered or failed). ACCENT is the other end's colour (the pair swapped).
 Where a part colour is hard to read as text the firmware draws that text in the primary text colour (gfx.c vt()).
 GREY is pure grayscale; MONO is black and white (set, not blended: src/gfx.c palette_set). Neither morphs.
-Saved settings name palettes by a tagged id (PAL_TAG + index); older firmware saved an index into its 20 palettes: all
-map to the first theme (UI_PALETTE_MIGRATE).
+Saved settings name palettes by a tagged id (PAL_TAG + index); an untagged one (older firmware saved an index into its 20
+palettes) is the first theme (firmware/src/gfx.c palette_from_stored; DUELL 0.2.14 has no table for it any more).
 --report prints the WCAG contrast of every pairing. The tool fails (exit 1) on any miss.
 """
 import argparse
@@ -294,14 +294,13 @@ def main():
                 f"#define UI_GREY_INDEX {names.index('GREY')}u          /* GREY (hidden-test palette, last but one) */",
                 f"#define UI_BW_INDEX {names.index(BW)}u          /* MONO: black and white (src/gfx.c palette_set) */",
                 f"#define UI_BW_GREY 0x{to565(BW_GREY):04x}u          /* MONO's one grey: DIM LINE RAISE LANE */",
-                f"#define UI_PAL_TAG {PAL_TAG}u          /* stored id = UI_PAL_TAG + index; below 20: an old id */",
+                f"#define UI_PAL_TAG {PAL_TAG}u          /* stored id = UI_PAL_TAG + index; an untagged id is the first theme */",
                 f"#define UI_ACC_PCT {ACC_PCT}"]
         out += [f"#define UI_{k}_PCT {v}" for k, v in PCT.items()] + [f"#define UI_RAISE_PCT {RAISE_PCT}   /* SURF -> TEXT */"]
         out += [f"#define UI_REC_DARK 0x{to565(REC_DARK):04x}u", f"#define UI_REC_LIGHT 0x{to565(REC_LIGHT):04x}u",
                 f"#define UI_QR_LIGHT 0x{to565(QR_LIGHT):04x}u", f"#define UI_QR_DARK 0x{to565(QR_DARK):04x}u",
                 f"#define UI_CRASH_BG 0x{to565(CRASH_BG):04x}u", f"#define UI_CRASH_INK 0x{to565(CRASH_INK):04x}u", "",
-                "/* the 20 palettes of earlier firmware: all map to the first theme */",
-                "static const uint8_t UI_PALETTE_MIGRATE[20] = {" + ", ".join("0" for _ in OLD) + "};", ""]
+                ""]
         Path(a.out).write_text("\n".join(out))
     for f in fails:
         print("FAIL", f)

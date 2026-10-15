@@ -66,44 +66,44 @@ static const multi_t MM[6] = {
      * acid loop on the held key, two octaves above it. 0.2.13 (owner: End B barely changed at the sounds' AMOUNT 7 %): both parts' AMOUNT 17 %,
      * End B rolled again at 17 % (seeds 11710 / 41045, picked with 'search' / 'eval': End B clearly brighter, about +55 % brightness with
      * C4 E4 G4, +46 % with C4, the level within 0.3 dB of End A) */
-    {"REESE SWAMP", {G_BPM, 124, G_DTIME, DV_8D, G_DFDBK, 41, G_DMIX, 90, G_RTYPE, RT_ROOM, G_RSIZE, 57, G_PINGPONG, 0, END}, 0, 0, {
-        {ENG_WAVE, 12, "REESE BASS", {P_AMODE, 0, P_LEVEL, 113, P_TRANS, -24, P_LSYNC, LS_1_4, P_FREEA, 52, P_M8SRC, MSRC_LFO1, P_M8DST, MDST_CUT,
+    {"REESE SWAMP", {G_BPM, 124, G_DTIME, DV_8D, G_DFDBK, 41, G_DMIX, 90, G_RTYPE, RT_ROOM, G_RSIZE, 57, G_DMODE, DMD_DIGITAL, END}, 0, 0, {
+        {ENG_WAVE, 12, "REESE BASS", {P_AMODE, 0, P_TRIM, 113, P_TRANS, -24, P_LSYNC, LS_1_4, P_FREEA, 52, P_M8SRC, MSRC_LFO1, P_M8DST, MDST_CUT,
                                       P_M8AMT, 21, END}, 0, 16, 11710, 17},
-        {ENG_ANALOG, 4, "SQUELCH", {ARP(AM_SEQ_, DV_1_16, 61, 0), P_LEVEL, 87, END},
+        {ENG_ANALOG, 4, "SQUELCH", {ARP(AM_SEQ_, DV_1_16, 61, 0), P_TRIM, 87, END},
          ". 0 +12A +10 . +3A 0 +7", 8, 41045, 17}}},
     /* M02 (0.2.13; M06 before): a wavetable sweep pad latched, a whisper choir picking the latched chord's notes at random, one a bar (1/1, long gate,
      * latched); a shimmer reverb and a long delay; End B brighter */
-    {"WHISPER TIDE", {G_BPM, 77, G_DTIME, DV_1_2, G_DFDBK, 67, G_DMIX, 91, G_RTYPE, RT_SHIM, G_RSIZE, 111, G_RDAMP, 61, G_PINGPONG, 1,
+    {"WHISPER TIDE", {G_BPM, 77, G_DTIME, DV_1_2, G_DFDBK, 67, G_DMIX, 91, G_RTYPE, RT_SHIM, G_RSIZE, 111, G_RDAMP, 61, G_DMODE, DMD_PING,
                       G_DMDEP, 17, END}, 0, 0, {
-        {ENG_WAVE, 14, "DIGITAL PAD", {HOLD_ALL, P_LEVEL, 96, P_REV, 77, P_DLY, 31, P_M8SRC, MSRC_MORPH, P_M8DST, MDST_CUT, P_M8AMT, 17, END}, 0, 16},
-        {ENG_VOICE, 6, "WHISPER PAD", {ARP(AM_RND_, DV_1_1, 120, 2), P_AOCT, 2, P_LEVEL, 91, P_REV, 91, P_DLY, 27,
+        {ENG_WAVE, 14, "DIGITAL PAD", {HOLD_ALL, P_TRIM, 96, P_REV, 77, P_DLY, 31, P_M8SRC, MSRC_MORPH, P_M8DST, MDST_CUT, P_M8AMT, 17, END}, 0, 16},
+        {ENG_VOICE, 6, "WHISPER PAD", {ARP(AM_RND_, DV_1_1, 120, 2), P_AOCT, 2, P_TRIM, 91, P_REV, 91, P_DLY, 27,
                                        P_M8SRC, MSRC_MORPH, P_M8DST, MDST_SHP, P_M8AMT, 17, END}, 0, 16}}},
     /* M07 (0.2.13; M05 before): a slow drone pad latched (HOLD ALL), a bowed bowl arpeggiating the latched chord slowly (UP, 1/2 notes, long gate,
      * latched); a long hall and delay; End B opens them (MORPH -> filter, brightness) */
-    {"COLD CHAPEL", {G_BPM, 71, G_DTIME, DV_4D, G_DFDBK, 71, G_DMIX, 97, G_RTYPE, RT_HALL, G_RSIZE, 117, G_RDAMP, 57, G_PINGPONG, 1,
+    {"COLD CHAPEL", {G_BPM, 71, G_DTIME, DV_4D, G_DFDBK, 71, G_DMIX, 97, G_RTYPE, RT_HALL, G_RSIZE, 117, G_RDAMP, 57, G_DMODE, DMD_PING,
                      G_DMDEP, 17, END}, 0, 0, {
-        {ENG_WAVE, 3, "EVOLVING PAD", {HOLD_ALL, P_LEVEL, 90, P_REV, 81, P_DLY, 37, P_M8SRC, MSRC_MORPH, P_M8DST, MDST_CUT, P_M8AMT, 24, END}, 0, 16, 38479},
-        {ENG_PHYS, 1, "SINGING BOWL", {ARP(AM_UP_, DV_1_2, 115, 2), P_VOICE, 1, P_LEVEL, 93, P_TRANS, 12, P_REV, 87, P_DLY, 27,
+        {ENG_WAVE, 3, "EVOLVING PAD", {HOLD_ALL, P_TRIM, 90, P_REV, 81, P_DLY, 37, P_M8SRC, MSRC_MORPH, P_M8DST, MDST_CUT, P_M8AMT, 24, END}, 0, 16, 38479},
+        {ENG_PHYS, 1, "SINGING BOWL", {ARP(AM_UP_, DV_1_2, 115, 2), P_VOICE, 1, P_TRIM, 93, P_TRANS, 12, P_REV, 87, P_DLY, 27,
                                        P_M8SRC, MSRC_MORPH, P_M8DST, MDST_E3, P_M8AMT, 17, END}, 0, 16, 19072}}},
     /* M08 (0.2.13; M07 before): the growl bass plays the keys (two octaves down, its vowel and low-pass gargling at 1/8, LFO 1 synced); the acid line
      * an octave above it is a 1/16 SEQUENCER arp on the held key: rests, octave jumps and accents */
-    {"GARGLE ACID", {G_BPM, 127, G_DTIME, DV_8D, G_DFDBK, 37, G_DMIX, 90, G_RTYPE, RT_ROOM, G_RSIZE, 51, G_PINGPONG, 0, END}, 0, 0, {
-        {ENG_WAVE, 11, "GROWL BASS", {P_AMODE, 0, P_LEVEL, 110, P_TRANS, -24, P_LSYNC, LS_1_8, P_FREEA, 41, P_FREEB, 39, P_FREEC, 0, P_FREED, 1,
+    {"GARGLE ACID", {G_BPM, 127, G_DTIME, DV_8D, G_DFDBK, 37, G_DMIX, 90, G_RTYPE, RT_ROOM, G_RSIZE, 51, G_DMODE, DMD_DIGITAL, END}, 0, 0, {
+        {ENG_WAVE, 11, "GROWL BASS", {P_AMODE, 0, P_TRIM, 110, P_TRANS, -24, P_LSYNC, LS_1_8, P_FREEA, 41, P_FREEB, 39, P_FREEC, 0, P_FREED, 1,
                                       P_M8SRC, MSRC_LFO1, P_M8DST, MDST_CUT, P_M8AMT, 17, END}, 0, 16},
-        {ENG_ANALOG, 4, "SQUELCH", {ARP(AM_SEQ_, DV_1_16, 64, 0), P_LEVEL, 92, P_TRANS, -12, END},
+        {ENG_ANALOG, 4, "SQUELCH", {ARP(AM_SEQ_, DV_1_16, 64, 0), P_TRIM, 92, P_TRANS, -12, END},
          "0A . +12 0 . +10 +12A . 0 . +3 0 +7A . +12 .", 16}}},
     /* M09: house, calm: the organ's minor-seventh chord (chord keys MIN7) stabbed on the off-beats of beats 1 and 3 (a 1/8 SEQUENCER
      * arp, 8 steps: a half-time feel), a long gate; the bass an off-beat 1/8 arp on the held key, the last an octave up */
-    {"NIGHT ORGAN", {G_BPM, 121, G_SWING, 17, G_DTIME, DV_8D, G_DFDBK, 31, G_DMIX, 90, G_RTYPE, RT_ROOM, G_RSIZE, 71, G_PINGPONG, 0, END}, 0, 0, {
-        {ENG_WAVE, 4, "DRAWBARS", {ARP(AM_SEQ_, DV_1_8, 100, 0), P_LEVEL, 106, P_CHRD, 7, P_VOIC, 0, P_DLY, 17, P_REV, 21, END},
+    {"NIGHT ORGAN", {G_BPM, 121, G_SWING, 17, G_DTIME, DV_8D, G_DFDBK, 31, G_DMIX, 90, G_RTYPE, RT_ROOM, G_RSIZE, 71, G_DMODE, DMD_DIGITAL, END}, 0, 0, {
+        {ENG_WAVE, 4, "DRAWBARS", {ARP(AM_SEQ_, DV_1_8, 100, 0), P_TRIM, 106, P_CHRD, 7, P_VOIC, 0, P_DLY, 17, P_REV, 21, END},
          ". 0 . . . 0A . .", 8},
-        {ENG_ANALOG, 0, "LADDER BASS", {ARP(AM_SEQ_, DV_1_8, 80, 0), P_LEVEL, 99, P_TRANS, -12, END},
+        {ENG_ANALOG, 0, "LADDER BASS", {ARP(AM_SEQ_, DV_1_8, 80, 0), P_TRIM, 99, P_TRANS, -12, END},
          ". 0 . 0 . 0 . +12", 8}}},
     /* M10: a slow brass swell latched (HOLD ALL), strings an octave up latched with it, a slower attack; a large hall; End B
      * swells the brass (MORPH -> its table position) */
-    {"FINAL REEL", {G_BPM, 71, G_DTIME, DV_1_4, G_DFDBK, 41, G_DMIX, 77, G_RTYPE, RT_HALL, G_RSIZE, 117, G_RDAMP, 51, G_PINGPONG, 1, END}, 0, 0, {
-        {ENG_WAVE, 20, "BRASS PAD", {HOLD_ALL, P_LEVEL, 86, P_REV, 71, P_DLY, 11, P_M8SRC, MSRC_MORPH, P_M8DST, MDST_SHP, P_M8AMT, 17, END}, 0, 16},
-        {ENG_TRIO, 9, "STRING MACH", {HOLD_ALL, P_ATK, 97, P_LEVEL, 71, P_TRANS, 12, P_REV, 67, P_DLY, 11, END}, 0, 16}}},
+    {"FINAL REEL", {G_BPM, 71, G_DTIME, DV_1_4, G_DFDBK, 41, G_DMIX, 77, G_RTYPE, RT_HALL, G_RSIZE, 117, G_RDAMP, 51, G_DMODE, DMD_PING, END}, 0, 0, {
+        {ENG_WAVE, 20, "BRASS PAD", {HOLD_ALL, P_TRIM, 86, P_REV, 71, P_DLY, 11, P_M8SRC, MSRC_MORPH, P_M8DST, MDST_SHP, P_M8AMT, 17, END}, 0, 16},
+        {ENG_TRIO, 9, "STRING MACH", {HOLD_ALL, P_ATK, 97, P_TRIM, 71, P_TRANS, 12, P_REV, 67, P_DLY, 11, END}, 0, 16}}},
 };
 #define NM (sizeof MM / sizeof *MM)
 static const uint8_t SLOT[NM] = {0, 1, 6, 7, 8, 9};   /* 0.2.13 (owner): M01 REESE SWAMP, M02 WHISPER TIDE, M07 COLD CHAPEL, M08 GARGLE ACID,
@@ -200,7 +200,7 @@ static void dump(uint32_t k)
     project_load(k);
     printf("M%02u %-12s MODE %s  BPM %d SWING %d  DLY %s fdbk %d mix %d  REV %s size %d damp %d  PING %d  DMOD %d  BAL %d XF %u SPLIT %u\n",
            k + 1u, proj_name, DM_NAME[duell_mode_req], song.g[G_BPM], song.g[G_SWING], N_DIV[song.g[G_DTIME] % 17], song.g[G_DFDBK],
-           song.g[G_DMIX], N_RTYPE[song.g[G_RTYPE] % 5], song.g[G_RSIZE], song.g[G_RDAMP], song.g[G_PINGPONG], song.g[G_DMDEP], mix_bal, mix_xf, mix_split);
+           song.g[G_DMIX], N_RTYPE[song.g[G_RTYPE] % 5], song.g[G_RSIZE], song.g[G_RDAMP], song.g[G_DMODE] == DMD_PING, song.g[G_DMDEP], mix_bal, mix_xf, mix_split);
     for (pi = 0; pi < NSHOWN; pi++) {
         const track_t *t = &trk[pi];
         uint8_t b[MB_N];
@@ -210,7 +210,7 @@ static void dump(uint32_t k)
         sound_name(t, nm);
         printf("  part %u: %-6s #%-2u %-12s | End B seed %u AMOUNT %u | LVL %d | VCE %s TRN %d | arp %s hold %s | CHRD %s %s | "
                "CHO %d DLY %d REV %d | M8 %s>%s %d | LEN %d | ATK %d | ARP RATE %s GATE %d OCT %d | UF CUT %d SLOPE %d\n",
-               pi + 1u, ENGINES[t->eng_req % NENGINES]->name, t->preset, nm, b[1] | b[2] << 8, morph_amount_of(pi), t->p[P_LEVEL],
+               pi + 1u, ENGINES[t->eng_req % NENGINES]->name, t->preset, nm, b[1] | b[2] << 8, morph_amount_of(pi), t->p[P_TRIM],
                N_VOICE[t->p[P_VOICE] % 4], t->p[P_TRANS], N_AMODE[t->p[P_AMODE] % 16], N_HOLD[t->p[P_AHOLD] % 3], N_CHRD[t->p[P_CHRD] % 10],
                N_VOIC[t->p[P_VOIC] % 5], t->p[P_CHOR], t->p[P_DLY], t->p[P_REV], N_MSRC[t->p[P_M8SRC] % 15], N_MDST[t->p[P_M8DST] % 23],
                t->p[P_M8AMT], t->p[P_SLEN], t->p[P_ATK], N_DIV[t->p[P_ARATE] % 17], t->p[P_AGATE], t->p[P_AOCT], t->p[P_FREEA], t->p[P_FREED]);

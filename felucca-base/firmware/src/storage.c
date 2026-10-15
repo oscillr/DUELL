@@ -16,12 +16,15 @@
 #define ST_SECTOR 4096u
 #define ST_PAYLOAD_OFF 256u
 #define ST_PAYLOAD_MAX (ST_SECTOR - ST_PAYLOAD_OFF)
+#define ST_PAYLOAD_END 0xF00u                  /* a payload that is cut to end here (the pattern slots', the patch chunks'): the sector's last 256 bytes stay erased,
+                                                * where the update loader and the SPL scan for update records (fm6_vbank.c, patslot.c) */
 
 /* flash map (FL_DATA 0x97000..0xDFFFF, FL_GLOB 0xFC000.., FL_AUTO 0xE5000..0xE6FFF, FL_VBANK 0xE7000): settings 0xFC000, DUELL's
  * MULTI store M01..M08 0x97000..0x9EFFF (Felucca's four project slots were there: OBJ_PROJECT0..3 are retired, below), the
  * user sample slots 0xA0000..0xC7FFF (USR1 0xA0000, USR2 0xB4000, 80 KiB each; DUELL retired USR3, which lay at 0xC8000..0xCDFFF;
- * DUELL 0.2.9 retired USR1 and USR2 with the SAMPLE engine: 0xA0000..0xC7FFF (160 KiB) is UNUSED, nothing reads or writes it (old
- * sample data may still lie there), FREE for future WAVE user wavetable slots), DUELL's PATCH store (upreset.c, OBJ_PATCH0..5: six A/B pairs, below) 0xC8000..0xCDFFF (chunks 0..2),
+ * DUELL 0.2.9 retired USR1 and USR2 with the SAMPLE engine: 0xA0000..0xC7FFF (160 KiB) was UNUSED, nothing read or wrote it (old
+ * sample data may still lie there). DUELL 0.2.14: the USER WAVETABLES (wtab.c, OBJ_WTAB0..2, three A/B pairs) take the first 24 KiB of it, all inside the old USR1 range,
+ * 0xA0000..0xA5FFF (USR1 0xA0000/0xA1000, USR2 0xA2000/0xA3000, USR3 0xA4000/0xA5000); DUELL 0.2.15: the PATCH store's chunks 6..15 (OBJ_PATCHX0..9, ids 33..42, ten A/B pairs) take the next 80 KiB, 0xA6000..0xB9FFF; 0xBA000..0xC7FFF (56 KiB, 14 sectors) stays FREE), DUELL's PATCH store (upreset.c, OBJ_PATCH0..5: six A/B pairs, below) 0xC8000..0xCDFFF (chunks 0..2),
  * the MULTI store M09..M16 0xCE000..0xD5FFF (taken from USR3's end), DUELL's pattern slots 0xD6000..0xDBFFF (below); the user
  * preset banks of Felucca (OBJ_UPRESET0/1, 0xDC000..0xDFFFF: since DUELL step 3.6b the PATCH store's chunks 3 and 4) and the user
  * presets' FM6 patches (OBJ_UPFM6, copy A 0x9F000, copy B 0xFE000, shared with the retired FM6 bank: the PATCH store's chunk 5)
@@ -45,14 +48,18 @@
  * retired, their numbers kept so no other object's commit records change; st_head / st_save refuse them, so nothing
  * writes there under their name and an old project's record reads as no multi), objects 4..7 at 0xCE000..0xD5FFF.
  * The factory multis M01..M10 (multi.c, build/gen/duell_multis.h) are ROM, not flash: an empty record shows them, a stored one wins. */
+#define OBJ_FM6VB 32u                          /* the voice bank's commit records (fm6_vbank.c; not an st_load object: OBJ_RETIRED, so
+                                                * st_head / st_save / st_wipe refuse it, and no object here takes its sectors) */
 enum { OBJ_SETTINGS, OBJ_PROJECT0, OBJ_UPRESET0 = OBJ_PROJECT0 + 4, OBJ_FM6BANK = OBJ_UPRESET0 + 2, OBJ_UPFM6,
        OBJ_AUTOSAVE, OBJ_PATSLOT0, OBJ_MULTI0 = OBJ_PATSLOT0 + 3,   /* DUELL: the pattern slots (patslot.c), 3 objects */
        OBJ_PATCH0 = OBJ_MULTI0 + 8,                                 /* DUELL: the MULTI store (project.c), 8 objects; the PATCH store (upreset.c), */
-       OBJ_COUNT = OBJ_PATCH0 + 6 };                                /* .. 6 objects */
+       OBJ_WTAB0 = OBJ_PATCH0 + 6,                                  /* .. 6 objects; DUELL 0.2.14: the user wavetables (wtab.c), 3 objects */
+       OBJ_PATCHX0 = OBJ_FM6VB + 1,                                 /* DUELL 0.2.15: the PATCH store's chunks 6..15 (upreset.c), 10 objects, ids 33..42: id 32 is skipped */
+       OBJ_COUNT = OBJ_PATCHX0 + 10 };
+_Static_assert(OBJ_WTAB0 + 3 <= OBJ_FM6VB, "the object ids below the voice bank's");
 /* the project slots' numbers, Felucca's user preset banks and the FM6 patch objects (DUELL: all retired, never read or written) */
-#define OBJ_RETIRED(obj) (((obj) >= OBJ_PROJECT0 && (obj) < OBJ_PROJECT0 + 4u) || ((obj) >= OBJ_UPRESET0 && (obj) <= OBJ_UPFM6))
-#define OBJ_FM6VB 32u                          /* the voice bank's commit records (fm6_vbank.c; >= OBJ_COUNT: st_load
-                                                * never takes one, no object here takes its sectors) */
+#define OBJ_RETIRED(obj) (((obj) >= OBJ_PROJECT0 && (obj) < OBJ_PROJECT0 + 4u) || ((obj) >= OBJ_UPRESET0 && (obj) <= OBJ_UPFM6) || \
+                          ((obj) >= OBJ_WTAB0 + 3u && (obj) <= OBJ_FM6VB))   /* (+ the unused ids 30, 31 and the voice bank's 32: DUELL 0.2.15, the patch chunks' ids run past them) */
 
 typedef struct {
     uint32_t magic;
@@ -86,6 +93,10 @@ static uint32_t st_sector(uint32_t obj, uint32_t copy)  /* flash offset of copy 
 {
     if (obj == OBJ_SETTINGS)
         return 0xFC000u + copy * ST_SECTOR;
+    if (obj >= OBJ_PATCHX0)                              /* DUELL 0.2.15: the PATCH store's chunks 6..15: 0xA6000..0xB9FFF (the old sample region) */
+        return 0xA6000u + (obj - OBJ_PATCHX0) * 2u * ST_SECTOR + copy * ST_SECTOR;
+    if (obj >= OBJ_WTAB0)                                /* the user wavetables USR1..USR3: 0xA0000..0xA5FFF (the old sample region) */
+        return 0xA0000u + (obj - OBJ_WTAB0) * 2u * ST_SECTOR + copy * ST_SECTOR;
     if (obj >= OBJ_PATCH0) {                             /* (the PATCH store, chunks 0..5: see the flash map) */
         uint32_t c = obj - OBJ_PATCH0;
         if (c < 3u)                                      /* USR3's old place 0xC8000..0xCDFFF */

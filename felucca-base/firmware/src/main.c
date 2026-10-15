@@ -267,7 +267,6 @@ static void fm1_main(void)
 #endif
         felucca_dbg.ui_frames++;
         felucca_dbg.page = ui.page;
-        felucca_dbg.home = ui.home;
         felucca_dbg.stage = 1;
         ui_input();
         wave_service();                               /* DUELL WAVE: a frame of a table build, if one waits (eng_wave.c) */

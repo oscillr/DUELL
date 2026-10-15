@@ -33,9 +33,9 @@
  * LESLIE STORM (a swell is their sound); nothing else.
  * Every sound must set LFO 1's and LFO 2's TRIG to FREE itself (DUELL 0.2.2; the pair is in the sound, not the default): else FAIL.
  *   build/host/sound_audit                   the table; exit 1 on a FAIL
- *   SOUND_TRIM=1 build/host/sound_audit      also the LEVEL each sound would need for AUDIT_TARGET_DB (weighted, in its
- *                                            window), its peak at most AUDIT_PEAK_DB (LEVEL: 0.5 dB a step,
- *                                            tools/gen_tables.py), to copy into tools/duell_sounds.py ("LEVEL": n); a sound
+ *   SOUND_TRIM=1 build/host/sound_audit      also the TRIM (until 0.2.18 "LEVEL") each sound would need for AUDIT_TARGET_DB (weighted, in its
+ *                                            window), its peak at most AUDIT_PEAK_DB (TRIM: 0.5 dB a step,
+ *                                            tools/gen_tables.py), to copy into tools/duell_sounds.py ("TRIM": n); a sound
  *                                            that sustains is trimmed on MED (its held body), a hit on its peak (-4.5)
  *   SOUND_BSEED=1 build/host/sound_audit     the End B seed search: per sound AUDIT_NCAND candidate seeds (the hash of
  *                                            (engine, idx) first) rolled at its bamt, each rendered in STEREO and SPLIT;
@@ -190,7 +190,7 @@ int main(void)
            "side; End B in STEREO / SPLIT against A\n", AUDIT_HOLD, LZ_TAIL);
     printf("  %-3s %-12s %-6s %-7s %6s %6s %5s %5s %5s %4s %6s %6s %8s  %-13s %-17s %-8s %s%s\n", "#", "NAME", "CAT", "ENGINE", "PEAK",
            "LOUD", "L1", "L3", "MED", "T-3", "TAP", "SPLIT", "CHORD PK", "END B dB", "BRIGHT x", "SEED/AMT", "VERDICT",
-           trim ? "              LEVEL -> TRIM" : "");
+           trim ? "              TRIM" : "");
     for (n = 0; n < N; n++) {             /* every sound: A, B STEREO, A and B SPLIT, the chord, the tap: all at once */
         uint32_t k, e = ds_list_at(n, &k);
         a[6u * n] = (au_t){e, k, DM_STEREO, 0u, 0u, 0u, 0u, 0u};
@@ -226,7 +226,7 @@ int main(void)
                    *T = &L[6u * n + 5u];
         int bok = au_b_ok(s, A, Bt) && au_b_ok(s, Ap, Bp), hit = au_hit(s, A), sound9 = A->l9 > AUDIT_SOUNDING_DB;
         const char *why = "ok";
-        int lv = ds_value(s, P_LEVEL, TP[P_LEVEL].def);
+        int lv = ds_value(s, P_TRIM, TP[P_TRIM].def);
         char cpk[16];
         if (only && !str_eq(s->name, only))
             continue;
@@ -276,7 +276,7 @@ int main(void)
             }
             to = to < 1 ? 1 : to > 127 ? 127 : to;
             printf("  %3d -> %3d%s%s", lv, to, cap ? " (peak)" : hit ? " (hit)" : "",
-                   !hit && lv + 2.0 * (AUDIT_TARGET_DB - au_lvl(s, A, A)) > 127.5 ? " (needs more than LEVEL 127)" : "");
+                   !hit && lv + 2.0 * (AUDIT_TARGET_DB - au_lvl(s, A, A)) > 127.5 ? " (needs more than TRIM 127)" : "");
         }
         printf("\n");
         if (bsrch)

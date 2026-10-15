@@ -2,9 +2,8 @@
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
 /* FELUCCA core types: tracks, voices, engines, parameters.
  * Four tracks, each a synth part: its own engine, preset, parameters, voices and 64-step
- * pattern. The parts share one budget of NVOICE sounding voices (voice.c). Drums are the DRUM
- * engine (General MIDI map) on any part; the SAMPLE engine's PERC set is retired (drum_from_perc), and DUELL 0.2.9 retired the
- * SAMPLE engine itself (ENGI_SAMPLE).
+ * pattern. The parts share one budget of NVOICE sounding voices (voice.c). DUELL 0.2.9 retired the SAMPLE, GRAIN and SLICE
+ * engines, 0.2.14 the hidden DIGITAL and DRUM ones (ENGI_RETIRED below).
  * Sections: sizes, parameters, voices and engines, tracks and the song, system. */
 #include <stdint.h>
 
@@ -22,36 +21,19 @@
                                   * and the four CPU test multis M13..M16 (tools/gen_duell_multis.py must be run with the same switch); 0 (the release default) leaves both out */
 #endif
 #define HALF_FRAMES 128          /* I2S half buffer: 2.9 ms at 44.1 kHz (a key waits 0..1 half, then plays 1 half later) */
-#ifndef FELUCCA_FM4
-#define FELUCCA_FM4 0            /* the DIGITAL engine (eng_digital.c, four-operator FM): kept in the tree, not built; its sounds
-                                  * convert to FM6 (fm4_convert.c) */
-#endif
-#if FELUCCA_FM4
-#error "DUELL: FELUCCA_FM4=1 is gone: DIGITAL's OP ENV / OP LEVEL ids (61..80) hold DUELL's own parameters (P_M5SRC..)"
-#endif
 #define NENGINES 15              /* DUELL: WAVE (14) appended after SLICE (13); the engine numbers never move (the stores and the
                                   * editor protocol hold them: append, never renumber) */
 #define ENGI_WAVE 14u            /* DUELL: the wavetable engine (eng_wave.c) */
-#define ENGI_DIGITAL 1u          /* reserved: never selectable (eng_ok), its sounds load as FM6 */
-/* DUELL 0.2.9 (owner: "REMOVE the sample engines"; WAVE replaces them): SAMPLE (4), GRAIN (8) and SLICE (13) are RETIRED. Their
- * code and the built-in sample data are gone; the numbers stay reserved as DIGITAL's does (engines.c: the silent placeholder "-",
- * never selectable, in no list). A stored sound / part / patch / multi / project that names one loads as it was stored (every value
- * kept, so a save writes it back unchanged) and plays SILENT on the placeholder; the UI says NO ENGINE once (ui_input.c
- * gone_notice) and its engine shows "-". The user sample slots USR1 / USR2 (flash 0xA0000..0xC7FFF) are free (storage.c) */
-#define ENGI_SAMPLE 4u
-#define ENGI_GRAIN 8u
-#define ENGI_SLICE 13u
-#define ENGI_RETIRED(e) ((e) == ENGI_SAMPLE || (e) == ENGI_GRAIN || (e) == ENGI_SLICE)   /* a retired engine number (0.2.9) */
-#ifndef FELUCCA_DRUM
-#define FELUCCA_DRUM 0           /* DUELL: the DRUM engine (eng_drum.c, engine 10) is hidden as DIGITAL is: kept in the tree and in
-                                  * every stored layout, never selectable (eng_ok); a sound that names it plays as ANALOG
-                                  * (engines.c eng_safe, ui.c set_engine_of, ui_input.c) */
-#endif
-#if FELUCCA_DRUM
-#error "DUELL: FELUCCA_DRUM=1 is gone: DRUM's lane level ids (83..90) hold DUELL's own parameters (P_L2SYNC..)"
-#endif
-#define NENG_SHOWN (NENGINES - !FELUCCA_FM4 - !FELUCCA_DRUM - 3)   /* the engines one can pick (not the three retired ones): PRESETS, the EDIT layer,
-                                                * the editor, in the display order of engines.c ENGINE_ORDER */
+/* Retired engine numbers. The engine numbers never move (the stores and the editor protocol hold them), so a retired engine keeps its
+ * number as a reserved one: DIGITAL (1, replaced by FM6), SAMPLE (4), GRAIN (8), the DRUM kit (10) and SLICE (13) (DUELL 0.2.9:
+ * "REMOVE the sample engines", WAVE replaces them; DUELL 0.2.14: the hidden DIGITAL and DRUM engines are gone from the code too, no
+ * conversion of their sounds). They have no code and no presets (engines.c: the silent placeholder "-"), are never selectable
+ * (eng_ok) and are in no list. A stored sound / part / patch / multi / project that names one loads as it was stored (every value
+ * kept, so a save writes it back unchanged) and plays SILENT on the placeholder; the UI says NO ENGINE once (ui_input.c gone_notice)
+ * and its engine shows "-" */
+#define ENGI_RETIRED(e) ((e) == 1u || (e) == 4u || (e) == 8u || (e) == 10u || (e) == 13u)
+#define NENG_RETIRED 5
+#define NENG_SHOWN (NENGINES - NENG_RETIRED)   /* the engines one can pick: PRESETS, the EDIT layer, the editor, in the display order of engines.c ENGINE_ORDER */
 #define UP_SLOTS 128u            /* stored patches (upreset.c): shadows of factory sounds and user patches, 128 in all */
 #define NELEM(a) (sizeof(a) / sizeof((a)[0]))
 
@@ -65,7 +47,9 @@ enum {
                                                  * 1 kHz / 8 kHz), Q (1/6 octave steps around 1.0): all 0 at their default */
     F_FILT,                                /* the MULTIMODE FILTER's CUT (DUELL 0.2.9; 0.2.2's bipolar CUT before): a dial step 0..UF_STEPS shown as its cutoff, Hz / kHz
                                             * (appended: the fmt numbers are in the protocol) */
-    F_FMODE                                /* DUELL 0.2.9: the MULTIMODE FILTER's MODE, 0 LP .. 64 BP .. 127 HP, shown "LP" "LP>BP" "BP" "BP>HP" "HP" */
+    F_FMODE,                               /* DUELL 0.2.9: the MULTIMODE FILTER's MODE, 0 LP .. 64 BP .. 127 HP, shown "LP" "LP>BP" "BP" "BP>HP" "HP" */
+    F_LOCUT,                               /* DUELL 0.2.14: the REVERB LOW CUT, 0 OFF, else its corner in Hz (LOCUT_HZ) */
+    F_BMONO                                /* DUELL 0.2.19: BASS MONO, 0 OFF, 1..BM_N the corner in Hz (BM_HZ), the number big and "Hz" as its unit (a name "100 Hz" is too wide for a card) */
 };
 
 typedef struct {
@@ -77,7 +61,9 @@ typedef struct {
 } param_desc_t;
 
 enum {                          /* per-track parameters */
-    P_LEVEL,
+    P_LEVEL,                    /* DUELL 0.2.19 (owner, 2026-10-15): the MIXER LEVEL, the part's volume the player sets on the mixer: NOT part of a patch (a sound load,
+                                 * factory or stored, never touches it; param_kept), kept with a multi and the project, default unity (112 = 0 dB). The sound's own
+                                 * loudness is P_TRIM (below); the part plays at P_TRIM x P_LEVEL (fx.c part_lvl). Through 0.2.18 this one id was both */
     P_ATK, P_DEC, P_SUS, P_REL,
     P_ED_FLT, P_ED_PIT, P_ED_SHP, P_EQLG,      /* P_EQLG: Felucca's P_ED_FX (never read), now the EQ's LOW gain (DUELL, core.h PL_*) */
     P_LRATE, P_LWAVE, P_LPHASE, P_LFADE,
@@ -91,9 +77,8 @@ enum {                          /* per-track parameters */
     P_GLMODE, P_PRIO, P_ALLOC, P_DETUNE,
     P_FREEA, P_FREEB, P_FREEC, P_FREED,        /* were the SLICER insert's SLCR PAT RATE DEPTH (removed). The MULTIMODE FILTER (DUELL 0.2.9; 0.2.2's universal
                                                 * filter): P_FREEA its CUT (0..UF_STEPS, the open end the default), P_FREEB RES (0..127), P_FREEC MODE (0 LP .. 64 BP
-                                                * .. 127 HP), P_FREED SLOPE (1 = 12 dB, 2 = 24 dB; 0 only in a store of before: uf_legacy), read only on the engines
-                                                * with engine_t.ufilt (voice.c uf_run). A store of Felucca's layout (the SLICER's values here: 1, 1, 127) takes the
-                                                * defaults (param_retired) */
+                                                * .. 127 HP), P_FREED SLOPE (1 = 12 dB, 2 = 24 dB), read only on the engines
+                                                * with engine_t.ufilt (voice.c uf_run) */
     P_M1SRC, P_M1DST, P_M1AMT,                 /* modulation matrix (mod.c): 8 slots of SRC, DST, AMT (DUELL: slots 5..8 */
     P_M2SRC, P_M2DST, P_M2AMT,                 /* on the ids that were DIGITAL's OP ENV, see PL_* below); new common */
     P_M3SRC, P_M3DST, P_M3AMT,                 /* parameters go just before P_E0 (user presets and projects map by */
@@ -115,7 +100,12 @@ enum {                          /* per-track parameters */
     P_FTYPE,                                   /* 1.5 (#104): ANALOG's filter TYPE, LP (as before) / BP / HP (eng_analog.c) */
     P_ESYNC,                                   /* 1.5 (#175): ENV SYNC: ATK DEC REL as note values of the tempo (voice.c) */
     P_EQHG, P_EQHF,                            /* DUELL EQ: HIGH gain and freq (P_COUNT 113, P_E0 105: stores map by count) */
-    P_DKCRV, P_DKNOTE, P_DKDEP, P_DKATK, P_DKHLD, P_DKRLS,   /* DUELL DUCK (SPEC 5c.4; fx.c duck_*): the sidechain (P_COUNT 119, P_E0 111). P_DKCRV: the RELEASE's CURVE (LIN, EXP); was the MIDI CH (merged into P_DKSRC) */
+    P_DKCRV, P_DKNOTE, P_DKDEP, P_DKATK,
+    P_TRIM,                                    /* DUELL 0.2.19 (owner, 2026-10-15): the PATCH TRIM, the sound's own loudness, stored WITH a patch (a factory sound's tuned level, a patch record, a multi's
+                                                * part): loading a sound sets it, SAVE stores it, RESTORE brings the factory one. On the id of the legacy DUCK HOLD (0.2.5: on no page, never read, always 0 in
+                                                * a record): P_COUNT and every format keep their size; the multi version and the project revision moved so no HOLD is read as a trim (a patch record: PTF_TR).
+                                                * 0..127 as P_LEVEL (F_DB, 112 = 0 dB), default 104 (the old default level). Not morphed (morph.c pins End B to A) */
+    P_DKRLS,                                   /* DUELL DUCK (SPEC 5c.4; fx.c duck_*): the sidechain (P_COUNT 119, P_E0 111). P_DKCRV: the RELEASE's CURVE (LIN, EXP); was the MIDI CH (merged into P_DKSRC) */
     P_DKSRC, P_DKRATE, P_DKTHR,                /* the trigger SOURCE (0 PUMP, 1 PART, 2..17 CH1..16, the MIDI channel), then KNOB 2 by SRC: PUMP's RATE, PART's THRESHOLD, a CH's NOTE (P_DKNOTE) (P_COUNT 122, P_E0 114) */
     P_E2FLT, P_E2SHP,                          /* DUELL: ENV 2 DEST (the classic arrangement, SPEC 2.4): ENV 2's direct cutoff and shape depths, */
     P_L2PIT, P_L2FLT, P_L2SHP,                 /* LFO 2 DEST: LFO 2's pitch, cutoff, shape depths (as P_ED_* / P_LD_*; voice.c track_render) (P_COUNT 127, P_E0 119: the last ids
@@ -131,39 +121,53 @@ enum {                          /* global parameters */
     G_MIDI, G_SYNC, G_ROUTE, G_INFO,   /* G_ROUTE: MIDI IN, 0 PARTS (the parts' MIDI channels, GLO > MIDI; seq.c midi_pch), 1 SEL;
                                         * 2..4 (older: CH5-8 CH9-12 CH13-16) read as PARTS */
     G_SLOT, G_NAME, G_LOAD, G_SAVE,
-    G_ENGSEL, G_ENGGO,          /* no page: the editor switches the engine with a SET of G_ENGSEL; G_ENGGO is
-                                 * unused (ids are fixed by the formats and the protocol) */
+    G_ENGSEL, G_RLOCUT,         /* G_ENGSEL: no page, the editor switches the engine with a SET of G_ENGSEL. G_RLOCUT (0.2.14, on the id of the unused
+                                 * G_ENGGO, so G_COUNT and the formats do not move): the REVERB LOW CUT, K4 of the REVERB page. 0 OFF, 1..127 a one-pole
+                                 * high-pass on the reverb bus's input, 20 Hz .. 450 Hz exponential (F_LOCUT; fx_bus.c rev_locut); default 61 (88 Hz) */
     G_CLRSEQ, G_INITSND,
-    G_RTYPE,                    /* REVERB TYPE: 0 ROOM, 1 SPRING, 2 HALL (1.2, the power-on default), 3 SHIM, 4 RESO (JIANT ports) (fx.c). Was
-                                 * G_DRCH, the GM drum part's MIDI channel (inert since 1.0, never read); projects
-                                 * of formats before FUN7 load it as ROOM (project.c proj_rtype_room) */
+    G_RTYPE,                    /* REVERB TYPE: 0 ROOM, 1 SPRING, 2 HALL (1.2, the power-on default), 3 SHIM, 4 RESO (JIANT ports), 5 PLATE (0.2.14) (fx.c). Was
+                                 * G_DRCH, the GM drum part's MIDI channel (inert since 1.0, never read) */
     G_PINGSPREAD,               /* DUELL: the PING-PONG's SPREAD (DLY 2), 0..100 %, stored directly, default 100 (GP def; 0 = the repeats
-                                 * centred). Was G_DRLVL, the GM drum part's level (inert; proj_drums_to_part reads it from an old
-                                 * project and sets 100) */
-    G_PINGPONG,                 /* DUELL (SPEC 5c.2): the delay's PING-PONG, 0 OFF (stored 0 = as before), 1 ON; was G_DRREV, the
-                                 * GM drum part's reverb send (inert since 1.0; proj_drums_to_part reads and clears it) */
+                                 * centred). Was G_DRLVL, the GM drum part's level (inert) */
+    G_FREE26,                   /* UNUSED since 0.2.16 (stored 0, read by nothing): was the delay's PING-PONG switch (0 OFF, 1 ON; before that G_DRREV, the GM
+                                 * drum part's reverb send, inert since 1.0). PING-PONG is a MODE of the delay now (G_DMODE 1). The id stays so G_COUNT
+                                 * and the formats do not move */
     G_COUNT
 };
-#define G_DRLVL G_PINGSPREAD   /* (the old name, for the import of a project with the GM drum part) */
 /* DUELL 0.2.5 (SPEC 5c.2): the delay's own modulation (DLY 2/2, fx_bus.c dly_mod) takes two global ids that nothing read: G_SYNC (a
  * placeholder, always 0: its range was the one name "--") is its DEPTH, 0 = off (every store has 0 there); G_MIDI (an USB / TRS
  * choice nothing ever read) is its RATE, a store's old 0 or 1 is only a slow rate that is heard at DEPTH > 0. G_COUNT, the project
  * formats and the protocol's ids do not move */
+/* DUELL 0.2.19 (owner request): SHIM's two settings, REVERB page 2 "SHIMMER" (shown only while TYPE is SHIM, ui.c page_visible), on the two global ids that nothing
+ * reads: G_FREE26 (the old PING-PONG switch, stored 0 since 0.2.16) is the PITCH of the return, G_NAME (a card "NAME" that no page ever showed; stored 0) its MOD.
+ * Both read 0 in every older store, and 0 is the old sound (PITCH UP, MOD 0: fx_bus.c rev_shim runs its plain loop, bit for bit), so G_COUNT, the
+ * multi version and the project revision do not move. PITCH: 0 UP (the octave up, as ever), 1 DOWN (an octave down: the same two crossfaded grains at 0.5
+ * of the write speed), 2 BOTH (the two returns, each at 1/2 and 7.9 cents sharp: fx_bus.c). MOD 0..100 %: a slow drift of the return's pitch (two sines, 0.29 and 0.47 Hz, +-25 cents at 100) */
+/* DUELL 0.2.19 (owner, 2026-10-15): BASS MONO is a SOUND setting, the page MASTER's (FX family, last page; no MENU row). Every global id is used, so it has the pseudo id
+ * G_BM = G_COUNT: not a stored global (the project and multi formats keep G_COUNT 27 and their size), it lives in song.bm and is stored in a spare byte of the
+ * project (byte 65) and of the multi record (byte 5, bits 1..4). 0 OFF, 1..BM_N the corner (fx.c BM_HZ: 40 .. 400 Hz). The page machinery (ui.c page_desc, params.c GP)
+ * treats it as a global parameter; the editor reaches it as MENU setting id 33 (editor_menu.c) */
+#define G_BM G_COUNT
+#define BM_N 11u
+static const uint16_t BM_HZ[BM_N] = {40, 50, 63, 80, 100, 125, 160, 200, 250, 315, 400};   /* the corners in Hz (fx.c bass_mono's table BM_C is computed for these) */
+#define G_SHPITCH G_FREE26
+#define G_SHMOD G_NAME
+enum { SHP_UP, SHP_DOWN, SHP_BOTH, SHP_N };
 #define G_DMDEP G_SYNC
 #define G_DMRATE G_MIDI
-
-/* stored parameters of an older layout -> today's P_* order. A store keeps np = the P_COUNT it was
- * written with; common parameters are only ever added just before P_E0, so the first np - 8 are
- * P_LEVEL.. in order and the last 8 are P_E0..P_E7; the parameters a store does not have take def[]
- * (user presets, projects of formats 1 and 2) */
-static void params_by_count(int16_t *out, const int16_t *in, uint32_t np, const int16_t *def)
-{
-    uint32_t i, nc = np - 8u;
-    for (i = 0; i < P_E0; i++)
-        out[i] = i < nc ? in[i] : def[i];
-    for (i = 0; i < 8u; i++)
-        out[P_E0 + i] = in[nc + i];
-}
+/* DUELL 0.2.16 (owner, 2026-10-15): the DELAY's MODE, the first delay setting (DELAY 1/2 K1), on the id of the inert G_INFO (a "CPU" reading nothing wrote or read
+ * since 1.2): 0 DIGITAL (the plain delay: clean repeats, low-passed feedback (COLR), the optional modulation; the old delay with PING off), 1 PING-PONG
+ * (the repeats alternate left and right, the modulation too; the old PING ON), 2 RANDOM, 3 OCT UP (clock-synced events on the repeats, 0.2.14's RAND and OCT+);
+ * a value past that plays as DIGITAL. There is no mode called DELAY: all are delays. (0.2.14/0.2.15 stored 0 DELAY / 1 RAND / 2 OCT+ here and the
+ * PING-PONG switch on G_FREE26: those records are refused, MU_VER 4 / PROJ_REV 2.) In RANDOM and OCT UP the DELAY 2/2 card MDEPTH (G_DMDEP) is CHANCE, the share of
+ * clock edges that fire an event, and RATE is faded (params.c dly_mode_why); SPREAD (G_PINGSPREAD) sets the width of PING-PONG and of the events and is
+ * faded in DIGITAL. Only in STEREO and LAYER (SPLIT keeps the plain delay) */
+#define G_DMODE G_INFO
+enum { DMD_DIGITAL, DMD_PING, DMD_RAND, DMD_OCTUP, DMD_N };
+/* The CHANCE a switch of MODE into RANDOM / OCT UP starts with when the stored DEPTH / CHANCE is 0 (owner, 2026-10-15: "a reasonable level when switching modes"). The CHOMPI
+ * TEMPO firmware has no such number: its randomness knob starts at 0 (granularDelay.h alt_control_ = 0) and an event fires on 0.5 x that share of the clock edges
+ * (at most 50 %); 40 % here is 4 edges in 10. Shown in the header ("CHANCE 40 %"). Going back to a plain mode takes it away again if the knob was not touched meanwhile */
+#define DMD_CHANCE_DEF 40
 
 /* DUELL EQ (SPEC 5c.3): the per-part 3-band EQ's parameters are offsets from their defaults, so a stored 0 (an older store on the
  * ids it reuses, a new id's default) is the EQ off: GAIN a dB step (-12..12), FREQ a semitone step around the band's centre
@@ -190,103 +194,24 @@ static uint32_t eq_hz_q8(uint32_t band, int32_t r)
 }
 
 /* DUELL (step 3): Felucca's layout gave 29 ids to things DUELL does not have: P_ED_FX (8, never read), DIGITAL's OP ENV /
- * OP LEVEL (61..80; DIGITAL is retired, its sounds convert to FM6) and DRUM's lane levels (83..90; DRUM is hidden). DUELL
- * puts its own parameters there (matrix slots 5..8, ENV 2, LFO 2; the rest P_FREE*), so P_COUNT stayed 111 (the EQ later took five of the free ids and grew it to 113) and no 7-bit
- * id (motion records, MIDI LEARN codes, the editor protocol, user preset records) has to grow. A store of Felucca's layout
- * (a project before FUN11, a user preset record before UP_VER_DUELL, a MIDI LEARN map without the DUELL mark) holds the
- * old meanings there: its loader maps it by count as before, lets DIGITAL's conversion read the operator values at their
- * old places (PL_FM*), then params_retire puts every retired id at today's default, so no old value reaches a new
- * parameter. PL_*: Felucca's ids, for reading such a store only */
+ * OP LEVEL (61..80; DIGITAL, retired) and DRUM's lane levels (83..90; DRUM, retired; both engines' code is gone since 0.2.14). DUELL
+ * puts its own parameters there (matrix slots 5..8, ENV 2, LFO 2; the rest P_FREE*), so no 7-bit id (motion records, MIDI LEARN
+ * codes, the editor protocol, user preset records) had to grow. Stores of Felucca's layout are no longer read (0.2.14), so these names
+ * are only the layout's check (the _Static_assert at track_t) and the tests' */
 #define PL_ED_FX 8u
 #define PL_FM1_ATK 61u                 /* + 5 x op (0..3) + ATK DEC SUS REL LEVEL (0..4) */
 #define PL_FM4_LEVEL 80u
 #define PL_LN0 83u                     /* DRUM's lane levels KICK .. BELL */
 #define PL_LN7 90u
-#define PL_NRETIRED 33u                /* the 29 ids above + P_FREEA..D (the SLICER's: DUELL 0.2.9's multimode filter, CUT RES MODE SLOPE) */
-static int param_retired(uint32_t id)
-{
-    return id == PL_ED_FX || (id >= PL_FM1_ATK && id <= PL_FM4_LEVEL) || (id >= PL_LN0 && id <= PL_LN7) ||
-           (id >= P_FREEA && id <= P_FREED);   /* (the SLICER's ids, in a store of Felucca's layout: the multimode filter takes its defaults: open, the bypass) */
-}
-/* Felucca's defaults at the retired ids (OP ENV ATK DEC 0, SUS 127, REL 0, LEVEL 127; the lane levels 127; ED_FX 0) into
- * def: what a store of Felucca's layout older than those ids loads there by count (DIGITAL's conversion reads them) */
-static void params_def_felucca(int16_t *def)
-{
-    uint32_t i;
-    def[PL_ED_FX] = 0;
-    for (i = PL_FM1_ATK; i <= PL_FM4_LEVEL; i++)
-        def[i] = (int16_t)((i - PL_FM1_ATK) % 5u == 2u || (i - PL_FM1_ATK) % 5u == 4u ? 127 : 0);
-    for (i = PL_LN0; i <= PL_LN7; i++)
-        def[i] = 127;
-}
-static void params_retire(int16_t *p, const int16_t *def)
-{
-    uint32_t i;
-    for (i = 0; i < P_E0; i++)
-        if (param_retired(i))
-            p[i] = def[i];
-}
 
 /* DUELL 0.2.9 MULTIMODE FILTER (SPEC 2.5, voice.c uf_run). CUT (P_FREEA) is a dial of UF_STEPS steps, each the old universal filter's
  * step (1.55 steps of the cutoff table, 30 Hz .. 16 kHz over 127): step d is table index (40 + 396 d) / 256, so 0 is 30 Hz and
- * UF_STEPS 16 kHz (the open end). SLOPE (P_FREED) is 1 or 2 in this firmware, never 0: a store that holds 0 there (or leaves it out: the
- * patch store's up_def) was written before 0.2.9 and its P_FREEA is 0.2.2's bipolar CUT (0 OFF, -64..-1 a low-pass, 1..63 a
- * high-pass). uf_legacy (serial: 1 on a ufilt 2 engine, which takes the bypass instead) makes it today's CUT + MODE + SLOPE 12 dB: OFF the open low-pass (the bypass), a low-pass the same cutoff
- * exactly (d = 82 + old), a high-pass MODE HP at d = old (0.16 of a table step higher: 0.01 octave). Every loader runs it before it
- * fits the values (upreset.c up_values; project.c proj_uf: projects, multis, the autosave); a second run changes nothing */
+ * UF_STEPS 16 kHz (the open end). SLOPE (P_FREED) is 1 or 2 (0.2.14: a store of before 0.2.9 that held 0.2.2's bipolar CUT is no longer converted) */
 #define UF_STEPS 82
 #define UF_HP 127                      /* MODE: 0 LP, 64 BP, 127 HP */
-static void uf_legacy(int16_t *p, uint32_t serial)
-{
-    int32_t c = p[P_FREEA];
-    if (p[P_FREED])
-        return;
-    if (serial) {                      /* an engine with a filter of its own (engine_t.ufilt 2: ANALOG, TRIO, NOISE) used 45..48 for nothing before 0.2.9;
-                                        * a value there is a leftover of another engine's (a switch kept it): the multimode filter, in series after
-                                        * the engine's, takes the bypass, so a sound of before plays bit for bit as it did */
-        p[P_FREEA] = UF_STEPS; p[P_FREEB] = 0; p[P_FREEC] = 0; p[P_FREED] = 1;
-        return;
-    }
-    c = c < -64 ? -64 : c > 63 ? 63 : c;
-    p[P_FREED] = 1;
-    p[P_FREEC] = (int16_t)(c > 0 ? UF_HP : 0);
-    p[P_FREEA] = (int16_t)(c > 0 ? c : UF_STEPS + c);
-}
 
 /* engine indices the stores name (engines.c ENGINES[]: append-only) */
 #define ENGI_PHYS 9u
-#define ENGI_DRUM 10u
-/* PHYS MODEL DRUM (MODEL 4, before 1.0) -> the DRUM engine, its E values in place: {MODEL, TUNE, TONE, DECY,
- * SNAP, ACC, KICK 0..127, PERC 0..127} -> {KIT, TUNE, TONE, DECY, SNAP, ACC, KICK 0..1, DRV 0}. 1 = it was one
- * (its engine is ENGI_DRUM now); projects (project.c) and user presets (upreset.c) */
-static int drum_from_phys(uint32_t engine, int16_t *e)
-{
-    if (engine != ENGI_PHYS || e[0] != 4)
-        return 0;
-    e[0] = (int16_t)((e[7] < 0 ? 0 : e[7] > 127 ? 127 : e[7]) >> 5);   /* PERC -> KIT: STD HAND CYM H+CYM */
-    e[6] = (int16_t)(e[6] >= 64);                                       /* KICK: PUNCH, ROUND */
-    e[7] = 0;
-    return 1;
-}
-
-/* SAMPLE SET 4 was PERC, the GM-mapped drum kit (tools/gen_samples.py); retired after 1.0.2: its index stays
- * (SET / GRAIN SRC 4 is an alias of PIANO, USR1..3 keep 5..7). A sound that selected it is the DRUM engine with
- * its default kit (eng_drum.c DRUM_PRESETS[0]: the same GM key map, so its patterns still play as drums): its E
- * values become the kit's, the rest of the sound (mix, sends, matrix, ..) stays. 1 = it was one (its engine is
- * ENGI_DRUM now); projects (project.c proj_perc), user presets (upreset.c up_migrate), factory preset 4 and
- * favourites (ui.c, settings_persist.c). Idempotent */
-#define SMP_SET_PERC 4u
-#define DRUM_KIT_E {0, 64, 70, 64, 64, 100, 0, 0}   /* {KIT STD, TUNE, TONE, DECY, SNAP, ACC, KICK PUNCH, DRV} */
-static int drum_from_perc(uint32_t engine, int16_t *e)
-{
-    static const int16_t KIT[8] = DRUM_KIT_E;
-    uint32_t i;
-    if (engine != ENGI_SAMPLE || e[0] != (int16_t)SMP_SET_PERC)
-        return 0;
-    for (i = 0; i < 8u; i++)
-        e[i] = KIT[i];
-    return 1;
-}
 
 /* ------------------------------------------------- voices, engines --- */
 enum { V_POLY, V_MONO, V_LEGATO, V_UNISON };   /* P_VOICE */
@@ -396,7 +321,6 @@ typedef struct {                 /* an engine (engines.c ENGINES[]; the eng_*.c 
     uint8_t sampled;             /* 1 = plays recorded material (a position, not a phase): voice.c keeps
                                   * no phases over a retrigger, spreads none for UNISON, renders at SUS 0 */
     uint8_t keep;                /* bit k: s[k] is kept when a sounding voice is retriggered (filters) */
-    uint8_t oneshot;             /* 1 = hits (DRUM): always POLY, no glide; amp ends its voices (eng_drum.c) */
     void (*note_on)(struct track *t, voice_t *v);
     void (*render)(struct track *t, voice_t *v, int32_t *out, uint32_t n, const vmod_t *m);
     /* optional (0 = none): the voice amplitude instead of the ADSR curve, once per control tick;
@@ -407,9 +331,6 @@ typedef struct {                 /* an engine (engines.c ENGINES[]; the eng_*.c 
     const param_desc_t *(*desc)(const struct track *t, uint32_t k);
     /* optional: once per block and part, before its voices (also with no voice sounding) */
     void (*block)(struct track *t);
-    /* optional: the note of key k (0 = the lowest) when the engine maps the keys itself, else -1
-     * (then the scale keyboard of seq.c kb_map) */
-    int32_t (*keys)(const struct track *t, uint32_t k);
     /* 1 = the engine's own envelopes are the voice's amplitude (FM6): voice.c renders it at 1.0 (no ADSR, no
      * velocity; LFO -> AMP, the matrix's AMP and the fades still apply; ENV is 0) and the voice ends when
      * done() says so (once per control tick, before the render), not at the end of the ADSR's release */
@@ -419,6 +340,8 @@ typedef struct {                 /* an engine (engines.c ENGINES[]; the eng_*.c 
      * in, 0 = none: a part plays one engine at a time, so they share one region; on a switch to the engine
      * (after the old one's fade) the region is zeroed when another engine had it (eng_mem_claim) */
     uint16_t mem;
+    const uint8_t *uiord;        /* DUELL 0.2.18: the order the EDIT 1 / EDIT 2 cards show the eight E slots in (card position -> E index; 0 = E1..E8 in order, the stored ids never move):
+                                  * FM6 shows SLOT first (params.c pg_id) */
     uint8_t atgt;                /* ARP TARGET's units (SPEC 2.3, params.c atgt_bits): ATG_*, 0 = none (ALL only) */
     uint8_t ufilt;               /* DUELL 0.2.2: 1 = the engine has no filter of its own: the cutoff routes (ENV / LFO FLT, the matrix's CUT) and the FILTER page's
                                   * CUT RES MODE SLOPE (P_FREEA..D) drive the per-voice multimode filter (0.2.9; voice.c uf_run) and no longer the engine's tone control.
@@ -434,22 +357,14 @@ enum { ST_NOTE, ST_TIE, ST_REST };
 #define SF_SLIDE 2u
 #define SF_RATCH_SH 3u                   /* RATCH: the hits of a NOTE step - 1 (0..3: x1..x4, seq.c seq_ratchet); */
 #define SF_RATCH (3u << SF_RATCH_SH)     /* bits 3..4, so a user preset's pattern (flag 4 = tie) carries it too */
-#define NLANE 8                  /* drum lanes of a step (the DRUM engine's: eng_drum.c DRUM_LANE_NOTE) */
-typedef struct {                 /* acid-style step: up to 4 notes (POLY), time, accent, slide; drum hits */
+typedef struct {                 /* acid-style step: up to 4 notes (POLY), time, accent, slide (DUELL 0.2.14: the drum lane hits of 1.0..0.2.13 are gone; the stores keep their two bytes, always 0) */
     uint8_t note[4];
     uint8_t n;                   /* notes in use, 0 = empty */
     uint8_t time;                /* ST_NOTE / ST_TIE / ST_REST */
     uint8_t flags;               /* SF_ACCENT | SF_SLIDE | SF_RATCH */
     uint8_t vel;
-    uint8_t hit;                 /* bit l: lane l hits (its GM note, on any engine): the DRUM grid */
-    uint8_t acc;                 /* bit l: that hit is accented (velocity 127) */
     uint8_t probability;         /* 0 = legacy 100%; 1..100 = percent, 101 = silent */
 } step_t;
-typedef struct {                 /* a step as formats 1..4 (projects to FUN4) stored it: no hits */
-    uint8_t note[4];
-    uint8_t n, time, flags, vel;
-} step8_t;
-
 /* Probability keeps zero-initialized and legacy patterns at 100%. */
 static uint32_t step_chance(const step_t *s) { return !s->probability ? 100u : s->probability <= 100u ? s->probability : 0u; }
 static void step_set_chance(step_t *s, uint32_t chance) { s->probability = (uint8_t)(chance >= 100u ? 0u : chance ? chance : 101u); }
@@ -487,25 +402,22 @@ static void step_set_nudge(step_t *s, int32_t v)
 typedef struct { uint8_t place, param; int8_t value; } motion_event_t;
 typedef struct { uint8_t count, on, rsv[2]; motion_event_t event[MOTION_MAX]; } motion_store_t;
 _Static_assert(sizeof(motion_store_t) == 388u, "motion disk layout (FUN10)");
+/* CRUSH's BITS knob, 0.2.14 (fx.c ins_bits_step): INSERT A is the detent of 1 .. 16 bits, a different depth at every detent (ins_bits.h).
+ * The stores of before 0.2.14 held 8 detents a bit; they are no longer read, so nothing converts them */
+#include "ins_bits.h"
 #define PS_SLOTS 16u             /* DUELL: the pattern slots P1..P16 (patslot.c, SAVE > PATTERNS) */
 #define MU_SLOTS 16u             /* DUELL: the multis M01..M16 (project.c multi.c, SAVE > MULTI) */
 #define CHAIN_ROWS 16u
 /* A song section (1.2, FUN10; a stored format only: DUELL has no song mode, project.c writes an empty chain and ignores
  * the one it reads): the PROJECT slot each track plays (0..3, A..D; CHAIN_SILENT "-": that track plays
- * nothing there) and its repeats (1..16). Up to 1.1 a row was {slot, repeat}, all four tracks on that slot
- * (chain_v9_t, FUN6..FUN9): it loads as a section with the four on it (project.c chain_from_v9) */
+ * nothing there) and its repeats (1..16) */
 #define CHAIN_SILENT 4u
 typedef struct { uint8_t slot[NTRK], repeat; } chain_row_t;
 typedef struct {
     uint8_t count, rsv[3];
     chain_row_t row[CHAIN_ROWS];
 } chain_config_t;
-typedef struct { uint8_t slot, repeat; } chain_row_v9_t;   /* frozen: the rows of FUN6..FUN9 */
-typedef struct {
-    uint8_t count, rsv[3];
-    chain_row_v9_t row[CHAIN_ROWS];
-} chain_v9_t;
-_Static_assert(sizeof(chain_config_t) == 84u && sizeof(chain_v9_t) == 36u, "song chain layouts (FUN10 / FUN6..FUN9)");
+_Static_assert(sizeof(chain_config_t) == 84u, "song chain layout (FUN11)");
 
 typedef struct track {
     int16_t p[P_COUNT];
@@ -546,7 +458,7 @@ typedef struct track {
     step_t step[NSTEP];
     uint32_t seq_pos;            /* q8 samples into the current step */
     uint16_t seq_idx;
-    uint8_t seq_notes[4 + NLANE];   /* sounding seq notes (the step's notes, then its hits) */
+    uint8_t seq_notes[4];       /* sounding seq notes (the step's notes) */
     uint8_t seq_n;
     uint8_t seq_hold;            /* last step slides: keep the notes until the next step */
     uint8_t slide_glide;         /* next legato note glides (slide) */
@@ -554,7 +466,7 @@ typedef struct track {
     uint32_t seq_off;
     uint8_t seq_active;          /* any step programmed */
     uint8_t rskip_idx;           /* live recording put notes into the step about to play: */
-    uint8_t rskip_n, rskip[NLANE];   /* do not trigger them again there (they sound already) */
+    uint8_t rskip_n, rskip[4];       /* do not trigger them again there (they sound already) */
     /* NUDGE (QUANTIZE OFF, seq.c seq_tick): a step plays at its start + its nudge. Latched as a step starts: */
     uint32_t nd_late;            /* the step playing now plays at this seq_pos + 1 (0: it played) */
     uint32_t nd_early;           /* the next step plays early, at this seq_pos + 1 of this one (0: on its start) */
@@ -591,7 +503,7 @@ typedef struct track {
     int32_t m_env;               /* the amp envelope of voice m_vi, last block (Q15) */
     int32_t m_env2;              /* .. its ENV 2 (DUELL), last block (Q15) */
     uint16_t lay_xg;             /* LAYER XFADE (core.h mix_xf): the gain (Q15) the next voices of this part start with, 0 = none (unity) */
-    uint8_t rsv_sz[4];           /* (sizeof(track_t) a multiple of 16: below; DUELL: 15 before ENV 2, LFO 2; 4b: 7 before mf; EQ: 4 less for P_COUNT 113; DUCK: 4 more for 119; DUCK 3: 6 more for 122, the old pad of 6 gone and 4 added; ENV 2 / LFO 2 DEST: 2 more for 127, the p[] growth padded to 4) */
+    uint8_t rsv_sz[16];          /* (sizeof(track_t) a multiple of 16: below; 0.2.14: 12 more, the step_t hit / acc bytes and the drum notes gone; DUELL: 15 before ENV 2, LFO 2; 4b: 7 before mf; EQ: 4 less for P_COUNT 113; DUCK: 4 more for 119; DUCK 3: 6 more for 122, the old pad of 6 gone and 4 added; ENV 2 / LFO 2 DEST: 2 more for 127, the p[] growth padded to 4) */
 } track_t;
 /* the audio ISR indexes trk[] with a multiply by a small immediate and a shift while the size is a multiple of 16; 1.5's
  * new track parameters (the INSERT, the filter TYPE, ENV SYNC) and state would make it no multiple (the constant
@@ -607,8 +519,7 @@ _Static_assert(sizeof(track_t) % 16u == 0, "track_t: a multiple of 16 bytes (a c
 typedef struct {
     int16_t g[G_COUNT];
     uint8_t playing, seq_mode;
-    uint8_t grid;                /* 1: the keys are the DRUM grid (ui.c grid_on): only the lane keys play (seq.c);
-                                  * 2: NAME (ui_name.c): no key plays */
+    uint8_t grid;                /* 2: NAME (ui_name.c): no key plays (0 otherwise; 1 was the DRUM grid, gone in 0.2.14) */
     uint8_t rec;                 /* live recording armed: bit per track */
     uint8_t sel;                 /* selected track 0..NTRK-1: keys, pages, editor */
     int8_t octave;
@@ -616,10 +527,16 @@ typedef struct {
     uint32_t cpu_q8;             /* audio ISR load, 1/256 */
     uint32_t master_q12;
     int32_t batt_raw;            /* smoothed ADC ch3 (battery divider), 0 = not read yet */
+    int16_t bm;                  /* G_BM: BASS MONO, 0 OFF .. BM_N (0.2.19; at the end: no other field moves) */
 } song_t;
 
 static track_t trk[NTRK];        /* the instrument: four parts */
 static song_t song;
+/* DUELL 0.2.14: G_CLOCK is the CHOICE (GLO > TEMPO K4 CLK): 0 INT, 1 USB, 2 TRS (as every older store), 3 AUTO (the default: the internal
+ * clock, or the MIDI clock arriving on USB or TRS). What reads "is an external clock running" asks clock_src() (midi_clock.c): the ACTIVE
+ * source, 0 INT, 1 USB, 2 TRS (a fixed choice: itself; AUTO: the port it locked onto, else 0) */
+#define CLK_AUTO 3
+static uint32_t clock_src(void);
 /* the CPU load meter's counters (audio.c writes them per I2S half, ui_menu.c cpu_meter_poll reads them) and the half's time */
 #define CPU_BUDGET_US (HALF_FRAMES * 1000000u / FS)
 static volatile uint32_t cpu_sum, cpu_n, cpu_pk, cpu_miss;
@@ -629,6 +546,32 @@ static volatile uint32_t cpu_sum, cpu_n, cpu_pk, cpu_miss;
 #endif
 #define TRK_HIDDEN(t) ((uint32_t)((t) - trk) >= NLIVE)   /* DUELL: tracks 3..4 never render, sound or own engine memory */
 #define TSEL (&trk[song.sel])    /* the selected track */
+
+/* DUELL 0.2.14 GLO > MODULES (SPEC "Modules"): four DEVICE switches, ARP, SEQ, SENDS, PART FX, each ON (the default) or OFF. Kept in the
+ * settings byte favorites.factory[15][10] bits 1..4 (ui.c ui_mods; a SET bit is OFF, so a new unit, ERASE DATA and every older record
+ * read all four ON), never in a patch, a multi or the project. ui_input copies them here every frame (ui.c mods_apply); the audio side
+ * reads only this byte. The stored values of the arp, the steps, the sends and the part effects are never touched by a switch */
+#define MODS_ARP 1u              /* ARP OFF: no arp plays, whatever its MODE (seq.c: arp_mode below); the keys play directly */
+#define MODS_SEQ 2u              /* SEQ OFF: no stored step plays (seq.c seq_play), nor the arp's SEQUENCER mode (it plays the steps) */
+#define MODS_SENDS 4u            /* SENDS OFF: the chorus, delay and reverb buses and SPACE skipped after a ~22 ms fade (fx.c snd_*) */
+#define MODS_PFX 8u              /* PART FX OFF: each part's DIST, INSERT, EQ and DUCK skipped after a ~22 ms crossfade (fx.c pfx_*) */
+#define MODS_ALL 15u
+static volatile uint8_t mods_off;
+/* the arp's MODE as it plays now: the stored P_AMODE, or 0 (OFF) while MODULES switches it off: ARP OFF every mode, SEQ OFF the SEQUENCER
+ * mode (15, seq.c AM_SEQ: it plays the steps). Every read that decides whether the arp plays goes through it (seq.c, params.c atgt_bits) */
+#define AM_SEQ_ID 15
+static inline int32_t arp_mode(const track_t *t)
+{
+    int32_t m = t->p[P_AMODE];
+    return !m || (mods_off & MODS_ARP) || (m == AM_SEQ_ID && (mods_off & MODS_SEQ)) ? 0 : m;
+}
+/* .. its HOLD as it acts now. HOLD ARP (1) means "the arp keeps its chord": with the arp switched off by MODULES there is no chord to
+ * keep, so no latch (0). HOLD ALL (2) latches the keys whatever the arp does. An arp whose own MODE is OFF: HOLD as stored (as ever) */
+static inline int32_t arp_hold(const track_t *t)
+{
+    int32_t h = t->p[P_AHOLD];
+    return h == 1 && t->p[P_AMODE] && !arp_mode(t) ? 0 : h;
+}
 
 /* ONE GLOBAL SCALE (DUELL; owner design 2026-10-12, replaces SCALE LINK): SCALE and ROOT are settings of the instrument, not of a patch,
  * a part, a MULTI or a factory sound: scale_g (0 = CHROMATIC, the default; an unknown value reads as it) and root_g (0 = C), and the

@@ -3,7 +3,7 @@
  *   build/host/duck_test   (DUELL/host_tests.sh "duck")
  *   CURVE    part 1 SRC CH10, NOTE ANY, DEPTH 100, ATK 5 ms, RLS 242 ms; a held tone; a note-on on channel 10: LIN (a straight line):
  *            about half in the middle of the release; EXP (the default since 0.2.5): 63 % after one time constant (RLS / 3), faster
- *            than LIN at first, full after it; a stored HOLD (legacy, no page) changes nothing (bit for bit)
+ *            than LIN at first, full after it; the legacy HOLD is gone (0.2.19: its id is the PATCH TRIM)
  *   DEFAULTS a fresh part: SRC PUMP, RATE 1/4, DEPTH 0, ATK 5 ms, RLS 242 ms, CURVE EXP; DUCK 1/2 and 2/2 list no HOLD
  *   PER PART part 2 (DEPTH 0) is not touched; then part 2's own DUCK (another channel) leaves part 1 alone
  *   SWALLOW  a trigger note plays nothing on a channel that plays no part
@@ -20,7 +20,7 @@ static double rms_win(const int32_t *x, uint32_t at, uint32_t n)
     return sqrt(s / n);
 }
 static int32_t ref_l[MAXB * CTL], ref_r[MAXB * CTL];
-static uint32_t scene_hold = 0, scene_crv = 1;       /* the scene's stored HOLD (legacy) and CURVE (0 LIN, 1 EXP) */
+static uint32_t scene_crv = 1;                         /* the scene's stored CURVE (0 LIN, 1 EXP) */
 /* the scene: two held tones, part 1 on DUCK CH ch1, part 2 on ch2 (0 = OFF); the trigger note-on(s) at 500 ms; 1200 ms in all */
 static uint32_t scene(uint32_t ch1, uint32_t ch2, uint32_t trig_ch)
 {
@@ -29,14 +29,13 @@ static uint32_t scene(uint32_t ch1, uint32_t ch2, uint32_t trig_ch)
     memset(duck_st, 0, sizeof duck_st);
     for (i = 0; i < 2u; i++) {
         host_preset(&trk[i], e, 0);
-        trk[i].p[P_LEVEL] = 100;
+        trk[i].p[P_TRIM] = 100;
         trk[i].p[P_SUS] = 127;
         trk[i].p[P_AMODE] = 0;
         trk[i].p[P_CHOR] = trk[i].p[P_DLY] = trk[i].p[P_REV] = 0;   /* (the sends' tails are not ducked) */
         trk[i].p[P_DKNOTE] = 0;
         trk[i].p[P_DKDEP] = 100;
         trk[i].p[P_DKATK] = 5;
-        trk[i].p[P_DKHLD] = (int16_t)scene_hold;         /* (legacy: ignored) */
         trk[i].p[P_DKRLS] = 36;                          /* 242 ms */
         trk[i].p[P_DKCRV] = (int16_t)scene_crv;
     }
@@ -70,7 +69,7 @@ static void pump_levels(int32_t depth, uint32_t twist_ms, double *r)
     dsp_clean(DM_SPLIT);
     memset(duck_st, 0, sizeof duck_st);
     host_preset(&trk[0], eng_of("ANALOG"), 0);
-    trk[0].p[P_LEVEL] = 100;
+    trk[0].p[P_TRIM] = 100;
     trk[0].p[P_SUS] = 127;
     trk[0].p[P_AMODE] = 0;
     trk[0].p[P_CHOR] = trk[0].p[P_DLY] = trk[0].p[P_REV] = 0;
@@ -118,7 +117,7 @@ static void part_levels(uint32_t src, uint32_t p2, double *bef, double *dur, dou
     memset(duck_st, 0, sizeof duck_st);
     for (uint32_t i = 0; i < 2u; i++) {
         host_preset(&trk[i], eng_of("ANALOG"), 0);
-        trk[i].p[P_LEVEL] = i ? 127 : 100;
+        trk[i].p[P_TRIM] = i ? 127 : 100;
         trk[i].p[P_SUS] = 127;
         trk[i].p[P_AMODE] = 0;
         trk[i].p[P_CHOR] = trk[i].p[P_DLY] = trk[i].p[P_REV] = 0;
@@ -149,7 +148,7 @@ static double ping_lr(int32_t spread)
     dsp_clean(DM_STEREO);
     memset(duck_st, 0, sizeof duck_st);
     host_preset(&trk[0], eng_of("ANALOG"), 0);
-    trk[0].p[P_LEVEL] = 100;
+    trk[0].p[P_TRIM] = 100;
     trk[0].p[P_PAN] = 0;
     trk[0].p[P_SPRD] = 0;
     trk[0].p[P_AMODE] = 0;
@@ -158,7 +157,7 @@ static double ping_lr(int32_t spread)
     song.g[G_DTIME] = 40;
     song.g[G_DFDBK] = 80;
     song.g[G_DMIX] = 127;
-    song.g[G_PINGPONG] = 1;
+    song.g[G_DMODE] = DMD_PING;
     song.g[G_PINGSPREAD] = (int16_t)spread;
     trk_note_on(&trk[0], 57, 100);
     rec_n = 0;
@@ -195,16 +194,7 @@ int main(void)
         expect("CURVE LIN (as before): about half in the middle (0.35..0.65 at 125 ms), full after; EXP is the faster at first (28 ms)", l_mid > 0.35 && l_mid < 0.65 && lback >= 0.97 && e30 > l30 + 0.1);
         scene_crv = 1;
     }
-    {
-        int32_t hold_l[MAXB * CTL];
-        scene_hold = 100;                                /* a stored HOLD of 500 ms: ignored, the render is the same bit for bit */
-        scene(10, 0, 10);
-        memcpy(hold_l, rec_l, sizeof hold_l);
-        scene_hold = 0;
-        scene(10, 0, 10);
-        expect("HOLD (legacy, no page): a stored 500 ms HOLD changes nothing (bit for bit)", memcmp(hold_l, rec_l, sizeof hold_l) == 0);
-        scene(10, 0, 10);                                /* the reference again for the checks below */
-    }
+    scene(10, 0, 10);                                    /* (0.2.19: the legacy HOLD's id is the PATCH TRIM now; its scene, a stored 500 ms HOLD changing nothing, is gone) */
     expect("PER PART: part 2 (CH OFF) identical all through (0.99 .. 1.01)", lo > 0.99 && hi < 1.01);
     expect("SWALLOW: the trigger note started no voice", v_on == v_ref);
     scene(0, 11, 11);                                    /* part 2 on channel 11, part 1 OFF */
@@ -230,16 +220,16 @@ int main(void)
     {   /* DEFAULTS: a fresh part, DEPTH 0 (the ducker off) and nothing else touched, is a house / techno pump once DEPTH is turned up */
         const param_desc_t *d;
         uint32_t ok = TP[P_DKDEP].def == 0 && TP[P_DKSRC].def == 0 && TP[P_DKRATE].def == 0 && TP[P_DKATK].def == 5 && TP[P_DKRLS].def == 36 &&
-                      TP[P_DKCRV].def == 1 && TP[P_DKHLD].def == 0 && TP[P_DKTHR].def == 30, nohold = 1, k;
+                      TP[P_DKCRV].def == 1 && TP[P_DKTHR].def == 30, nohold = 1, k;
         d = &TP[P_DKRATE];
         printf("duck: defaults SRC %s, RATE %s (index %d), DEPTH %d, ATK %d ms, RLS step %d, CURVE %s\n", N_DKSRC[TP[P_DKSRC].def], d->names[TP[P_DKRATE].def],
                TP[P_DKRATE].def, TP[P_DKDEP].def, TP[P_DKATK].def, TP[P_DKRLS].def, N_DKCRV[TP[P_DKCRV].def]);
-        expect("DEFAULTS: SRC PUMP, RATE 1/4, DEPTH 0, ATK 5 ms, RLS 242 ms (step 36), CURVE EXP, THR 30, HOLD 0", ok && str_eq(d->names[0], "1/4"));
+        expect("DEFAULTS: SRC PUMP, RATE 1/4, DEPTH 0, ATK 5 ms, RLS 242 ms (step 36), CURVE EXP, THR 30", ok && str_eq(d->names[0], "1/4"));
         for (k = 0; k < NPAGES; k++)
             for (uint32_t j = 0; j < 4u; j++)
-                if (PAGES[k].scope == SC_TRACK && PAGES[k].id[j] == P_DKHLD)
+                if (PAGES[k].scope == SC_TRACK && PAGES[k].id[j] == P_TRIM && !str_eq(PAGES[k].title, "VOICE 2/2"))
                     nohold = 0;
-        expect("HOLD is on no page (DUCK 1/2: SRC, RATE, DEPTH, ATK; DUCK 2/2: RLS, CURVE)", nohold);
+        expect("HOLD is gone (0.2.19: its id is the PATCH TRIM, on VOICE 2/2 only; DUCK 1/2: SRC, RATE, DEPTH, ATK; DUCK 2/2: RLS, CURVE)", nohold);
     }
     printf("duck: %d checks, %d failed\n", ncheck, bad);
     return bad ? 1 : 0;

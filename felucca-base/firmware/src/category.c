@@ -9,10 +9,9 @@
 #ifndef FELUCCA_CATEGORY
 #define FELUCCA_CATEGORY 1
 enum { CAT_NONE, CAT_BASS, CAT_LEAD, CAT_PAD, CAT_PLUCK, CAT_KEYS, CAT_PERC, CAT_FX, CAT_OTHER, CAT_N };
-#define CAT_DRUM CAT_PERC                         /* (its name before DUELL: the same stored number 6) */
 static const char *const CAT_NAME[CAT_N] = {"-", "BASS", "LEAD", "PAD", "PLUCK", "KEYS", "PERC", "FX", "OTHER"};
-/* the category a sound without one is listed under: a kit (DRUM, SLICE: engines 10, 13; SLICE retired in DUELL 0.2.9, its stored
- * records keep it) PERC, any other OTHER */
+/* the category a sound without one is listed under: a kit (the retired DRUM and SLICE, engines 10, 13; their stored records keep them)
+ * PERC, any other OTHER */
 static uint32_t cat_of_engine(uint32_t e) { return e == 10u || e == 13u ? CAT_PERC : CAT_OTHER; }
 
 #ifndef UP_HOST

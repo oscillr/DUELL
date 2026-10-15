@@ -136,7 +136,7 @@ static uint64_t phrase_child(uint32_t e, uint32_t pi, void (*setup)(track_t *t))
 static void test_matrix(void)
 {
     static const char *const SRC_V12[] = {"OFF", "LFO", "ENV", "VEL", "KEY", "RAND", "MODW", "AT", "EXPR"};
-    static const char *const DST_V12[] = {"OFF", "PITCH", "CUT", "SHP", "AMP", "PAN", "DIST", "CHO", "DLY", "REV", "RATE",
+    static const char *const DST_V12[] = {"OFF", "PITCH", "CUT", "SHP", "AMP", "PAN", "SAT", "CHO", "DLY", "REV", "RATE",
                                           "VIB", "E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8"};
     track_t *t = &trk[0];
     uint32_t i, k, steps = 0, changes_in_cycle = 0, pos = 0, neg = 0, same_as_wave = 1;

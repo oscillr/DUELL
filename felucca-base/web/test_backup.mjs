@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
 // fm1backup.js against a simulated device: 7-bit packing, CRC, manifest checks, a full capture,
 // validation before the first write, restore order (live music last) and abort on a failed chunk.
-import { BACKUP_IDS, BACKUP_CMD, bkU32, bkR32, bkPack, bkUnpack, bkCrc, bkManifest, readBackup, captureBackup, restoreBackup } from "./fm1backup.js";
+import { BACKUP_IDS, BACKUP_IDS_FULL, BACKUP_IDS_WT, BACKUP_IDS_P16, isSampleId, parseInfo, BACKUP_CMD, bkU32, bkR32, bkPack, bkUnpack, bkCrc, bkManifest, readBackup, captureBackup, restoreBackup } from "./fm1backup.js";
 
 let fails = 0;
 const ok = (c, what) => { console.log(`${what.padEnd(72)} ${c ? "ok" : "FAIL"}`); if (!c) fails++; };
@@ -66,12 +66,14 @@ await restoreBackup(target.request, file);
 const order = target.log.filter((x) => typeof x === "number");
 ok(order.at(-1) === 0 && order.at(-2) === 1 && order.indexOf(2) < order.indexOf(1), "backup: restore order: projects, banks, samples, settings, live music last");
 ok([0, 1, 2, 6].every((id) => target.objs.get(id).every((v, i) => v === objs.find((o) => o[0] === id)[1][i])), "backup: restored objects equal the source");
-{   /* the FM6 patch bank (id 8) and the archives of firmware before it (11 objects, no id 8) */
-  ok(BACKUP_IDS.length === 13 && file.objects.some((o) => o.id === 8) && file.objects.some((o) => o.id === 9),
-    "backup: 13 objects: id 8 (the retired FM6 bank, empty) and id 9 (the user presets' FM6 patches)");
-  const v2 = JSON.parse(JSON.stringify(file)); v2.objects = v2.objects.filter((o) => o.id !== 9);
+{   /* the FM6 patch bank (id 8) and the archives of firmware before it (11 objects, no id 8); DUELL's patch store has six chunks (ids 10..12 too) */
+  ok(BACKUP_IDS.length === 16 && file.objects.some((o) => o.id === 8) && file.objects.some((o) => o.id === 9) && file.objects.some((o) => o.id === 12),
+    "backup: 16 objects: id 8 (the retired FM6 bank, empty), id 9 and 10..12 (the patch store's chunks)");
+  const v3 = JSON.parse(JSON.stringify(file)); v3.objects = v3.objects.filter((o) => o.id < 10 || o.id > 12);
+  ok(readBackup(v3).objects.length === 13, "backup: an archive of the patch store's first three chunks (13 objects) still reads");
+  const v2 = JSON.parse(JSON.stringify(v3)); v2.objects = v2.objects.filter((o) => o.id !== 9);
   ok(readBackup(v2).objects.length === 12, "backup: an archive of 1.0..1.0.2 (12 objects, the bank as id 8) still reads");
-  const old = JSON.parse(JSON.stringify(file)); old.objects = old.objects.filter((o) => o.id !== 8 && o.id !== 9);
+  const old = JSON.parse(JSON.stringify(v2)); old.objects = old.objects.filter((o) => o.id !== 8);
   ok(readBackup(old).objects.length === 11, "backup: an archive of the 11 objects before FM6 still reads");
   const odd = JSON.parse(JSON.stringify(file)); odd.objects = odd.objects.filter((o) => o.id !== 33);
   ok(throws(() => readBackup(odd)), "backup: an archive missing another object is refused");
@@ -83,7 +85,7 @@ ok([0, 1, 2, 6].every((id) => target.objs.get(id).every((v, i) => v === objs.fin
     const r = await v2dev.request([cmd, a]);
     if (cmd !== BACKUP_CMD.LIST) return r;
     const n = r[2], keep = [];
-    for (let i = 0; i < n; i++) if (r[3 + i * 11] !== 9) keep.push(...r.slice(3 + i * 11, 14 + i * 11));
+    for (let i = 0; i < n; i++) if (r[3 + i * 11] < 9 || r[3 + i * 11] > 12) keep.push(...r.slice(3 + i * 11, 14 + i * 11));
     return [1, 0, keep.length / 11, ...keep];
   }, "1.0.2");
   const to103 = device([]);
@@ -99,6 +101,24 @@ ok([0, 1, 2, 6].every((id) => target.objs.get(id).every((v, i) => v === objs.fin
   const to103b = device([]);
   await restoreBackup(to103b.request, newFile);
   ok(to103b.objs.get(9).every((v, i) => v === patches[i]), "backup: a 1.0.3 archive restores id 9");
+}
+{   /* DUELL 0.2.15: 40 ids; 35..39 are patch chunks, only 32..34 are sample slots; 0.2.14: 27 and 30 ids */
+  const empty = (ids) => [1, 0, ids.length, ...ids.flatMap((id) => [id, ...bkU32(0), ...bkU32(0)])];
+  ok(bkManifest(empty(BACKUP_IDS_P16)).length === 40 && bkManifest(empty(BACKUP_IDS_WT)).length === 30 && bkManifest(empty(BACKUP_IDS_FULL)).length === 27, "backup: the manifests of 40, 30 and 27 ids are accepted");
+  ok(throws(() => bkManifest(empty(BACKUP_IDS_P16).map((v, i) => (i === 3 + 38 * 11 ? 99 : v)))), "backup: a manifest with an id out of order is refused");
+  ok([32, 33, 34].every(isSampleId) && [31, 35, 39].every((id) => !isSampleId(id)), "backup: only ids 32..34 are sample slots");
+  const chunk = rnd(1500, 11), p16 = device([...objs, [38, chunk], [29, rnd(900, 12)]], { maxId: 39 });
+  const list40 = async (req) => { const a = await p16.request(req); if (req[0] !== BACKUP_CMD.LIST) return a;
+    const out = []; for (let id = 0; id < 40; id++) { const v = p16.objs.get(id) || new Uint8Array(0); out.push(id, ...bkU32(v.length), ...bkU32(v.length ? bkCrc(v) : 0)); } return [1, 0, 40, ...out]; };
+  const f40 = await captureBackup(list40, "FELUCCA DUELL 0.2.15 bet");
+  ok(f40.objects.length === 40 && f40.objects[38].id === 38 && f40.objects[38].size === 1500 && readBackup(JSON.stringify(f40)).objects[29].size === 900, "backup: a 40-object capture keeps the patch chunks 29 and 38 (38 is not read as a sample)");
+  const to40 = device([], { maxId: 39 }); await restoreBackup(to40.request, f40);
+  const lg = to40.log.filter((x) => typeof x === "number");
+  ok(to40.objs.get(38).every((v, i) => v === chunk[i]) && lg.indexOf(38) >= 0 && lg.at(-1) === 0, "backup: a 40-object restore writes 38 as an object (not a sample), live music last");
+  const to16 = device([], { maxId: 9 }); await restoreBackup(to16.request, f40);
+  ok(to16.log.includes("refused 38") && to16.log.includes("refused 12") && !to16.objs.has(38) && to16.log.at(-1) === 0, "backup: a 40-object file onto older firmware: the ids it refuses are skipped, the rest restored");
+  const info = parseInfo([...Array.from("FELUCCA DUELL 0.2.15 bet", (c) => c.charCodeAt(0)), 0, 1, 127, 127, 16, 0, 69, 78, 71, 0, 4, 0, 0x55, 1, 9, 0x4d, 1, 64, 1, 0x42, 1, 31, 0x58, 1, 0, 1]);
+  ok(info.caps === 31 && info.tags.has(0x55) && info.patchCap === 128 && /DUELL/.test(info.version), "backup: INFO with song rows 0 gives its caps and the patch capacity");
 }
 const failing = device([], { failChunk: 2 });
 ok(await athrows(() => restoreBackup(failing.request, file)) && failing.log.includes("abort 2") && !failing.log.includes(0), "backup: a refused chunk aborts that object and stops before the live music");

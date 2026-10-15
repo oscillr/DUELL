@@ -82,14 +82,6 @@ static void overload(void)
     check("a lead alone on each part stays protected", lead->gate && bass->gate && shed_count == 1u);
 
     fresh();
-    host_preset(&trk[0], ENGI_DRUM, 0);
-    trk_note_on(&trk[0], 36, 100); trk_note_on(&trk[0], 38, 100);
-    lead = held(&trk[0], 36); extra = held(&trk[0], 38);
-    shed_voice(); mix_block(out, CTL);
-    check("overload frees a held one-shot drum without waiting for its decay",
-          lead && extra && lead->active && !extra->active && voices_busy() == 1u);
-
-    fresh();
     trk[0].p[P_VOICE] = V_UNISON;
     trk_note_on(&trk[0], 55, 100);
     shed_voice(); mix_block(out, CTL);
@@ -219,7 +211,6 @@ static double usb_run(uint32_t fixed, uint32_t master, int dac_is_tap_scaled_ok[
     trk_note_on(&trk[0], 48, 110); trk_note_on(&trk[0], 55, 110); trk_note_on(&trk[0], 64, 110);
     memset(&pf, 0, sizeof pf);                         /* (PERFORM from rest, as perform_test.c perf_reset: runs compare) */
     pf.src = pf.next = PF_N;
-    pf.lc = PF_TOP;
     pf.pbeat = perf_beat;
     pf.mg[0] = pf.mg[1] = pf.mg[2] = pf.mg[3] = 32768;
     perf_held = perf_act = 0;
@@ -308,7 +299,6 @@ static void usb_level(void)
         usb_perf = 0;
         memset(&pf, 0, sizeof pf);                     /* (PERFORM at rest again for the tests after) */
         pf.src = pf.next = PF_N;
-        pf.lc = PF_TOP;
         pf.pbeat = perf_beat;
         pf.mg[0] = pf.mg[1] = pf.mg[2] = pf.mg[3] = 32768;
         printf("audio: USB LEVEL FIXED, PERFORM busy: USB rms %.0f (MASTER 2048 and FIXED at every knob); limiter env min: MASTER 2048 %d, FIXED %d\n",

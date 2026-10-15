@@ -1148,69 +1148,6 @@ int main(void)
             check(what, mean * N >= 1000u && mean * N <= 1000u + 1000u * N / 12u && mean * 256u < (lo ? FM1_LED_BREATH_PK_LO : FM1_LED_BREATH_PK) * 1000u);
             memset(fm1_led_mid, 0, sizeof fm1_led_mid);
         }
-        {   /* 0.2.5 the high level (fm1_led_hi, the scale display): lit FM1_LED_HI_ON frames of every FM1_LED_HI_OF (1 of 2) as a lit LED, dark on the rest, no glow */
-            enum { HF = 240u };                         /* (a multiple of 6) */
-            static uint32_t on[HF][FM1_NCOL][5];
-            const uint32_t TICK = FM1_LED_TICK_US * FM1_TICKS_PER_US;
-            uint32_t t, f, c, r, i, bad = 0, others = 0, nlit = 0, run = 0, lit = 0, tstart, lastw = 0, lastt = 0;
-            uint64_t litsum = 0, hisum = 0;
-            reset();
-            fm1_led_dim_level(0);
-            FM1_PR(FM1_PA, FM1_IN) = FM1_PR(FM1_PB, FM1_IN) = 0xFFFFFFFFu;
-            memset(fm1_led, 0, sizeof fm1_led);
-            memset(fm1_led_dim, 0, sizeof fm1_led_dim);
-            memset(fm1_led_breath, 0, sizeof fm1_led_breath);
-            memset(fm1_led_mid, 0, sizeof fm1_led_mid);
-            memset(fm1_led_hi, 0, sizeof fm1_led_hi);
-            fm1_led[7] = 1u << 3;                       /* the reference: lit */
-            fm1_led_hi[6] = 1u << 1;                    /* column 6 row 1: the high level alone */
-            host_step = 1u;
-            host_bus = 1u;
-            for (t = 0; t < 20u * FM1_NCOL || fm1__tick_col; t++)
-                fm1_input_tick();
-            memset(on, 0, sizeof on);
-            tstart = host_now + TICK;
-            for (t = 0; t <= HF * FM1_NCOL; t++) {
-                uint32_t p = fm1__tick_col;
-                f = t / FM1_NCOL;
-                if (host_now < tstart + t * TICK)
-                    host_now = tstart + t * TICK;
-                led_nw = 0;
-                fm1_input_tick();
-                if (t) {
-                    uint32_t fl = (t - 1u) / FM1_NCOL;
-                    for (r = 1; r < 5u; r++)
-                        on[fl][p][r] += (lastw >> r & 1u) * (led_wt[0] - lastt);
-                }
-                if (t == HF * FM1_NCOL)
-                    break;
-                for (i = 0; i + 1u < led_nw; i++)
-                    for (r = 1; r < 5u; r++)
-                        on[f][p][r] += (led_w[i] >> r & 1u) * (led_wt[i + 1u] - led_wt[i]);
-                lastw = led_w[led_nw - 1u];
-                lastt = led_wt[led_nw - 1u];
-            }
-            for (f = 0; f < HF; f++)
-                litsum += on[f][7][3];
-            lit = (uint32_t)(litsum / HF);
-            for (f = 0; f < HF; f++) {
-                hisum += on[f][6][1];
-                if (on[f][6][1] * 10u >= lit * 9u) {
-                    nlit++;
-                    run = 0;
-                } else {
-                    others += on[f][6][1] != 0u;        /* no glow between */
-                    bad += ++run > 1u;                  /* a dark run of one frame at most */
-                }
-                for (c = 0; c < FM1_NCOL; c++)
-                    for (r = 1; r < 5u; r++)
-                        others += on[f][c][r] && !((c == 7u && r == 3u) || (c == 6u && r == 1u));
-            }
-            check("high level: lit on 1 frame in 2 as a lit LED, dark on the other (no glow), nothing else", !bad && !others && nlit == HF * FM1_LED_HI_ON / FM1_LED_HI_OF);
-            check("  its level ~1/2 (50 %) of lit", hisum * FM1_LED_HI_OF >= (uint64_t)lit * HF * FM1_LED_HI_ON * 95u / 100u &&
-                                              hisum * FM1_LED_HI_OF <= (uint64_t)lit * HF * FM1_LED_HI_ON * 105u / 100u);
-            memset(fm1_led_hi, 0, sizeof fm1_led_hi);
-        }
         {   /* 0.2.11 the keyboard's sets (fm1_led_kout, _scl, _root: steady; fm1_led_ktop: pulsing), each at a level /240 set by
              * fm1_led_key_levels (the UI's table, ui_input.c KEY_LV): lit on exactly level frames of 240 as a lit LED, dark between (no glow),
              * the dark runs as short as can be; the played keys' level goes peak -> trough -> peak once in FM1_LED_PULSE_FRAMES (~0.9 Hz) */
@@ -1232,7 +1169,6 @@ int main(void)
                     memset(fm1_led_dim, 0, sizeof fm1_led_dim);
                     memset(fm1_led_breath, 0, sizeof fm1_led_breath);
                     memset(fm1_led_mid, 0, sizeof fm1_led_mid);
-                    memset(fm1_led_hi, 0, sizeof fm1_led_hi);
                     memset(fm1_led_kout, 0, sizeof fm1_led_kout);
                     memset(fm1_led_scl, 0, sizeof fm1_led_scl);
                     memset(fm1_led_root, 0, sizeof fm1_led_root);

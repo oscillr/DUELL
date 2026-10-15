@@ -88,6 +88,8 @@ static void fill(void)                                /* every kind of user data
         junk[i] = (uint8_t)(i * 7u + 1u);
     boot();
     settings.palette = 4u;                            /* COBALT-ish: not VIOLET */
+    ui_prefs = 0; ui_rec_prefs = 2u;                  /* (0.2.14: the user's KNOB ACCEL OFF, USB SERIAL ON, CLICK ON, the flag set) */
+    ui_prefs2 = (uint8_t)(ui_prefs2 | PREF_DEFAULTS >> 16);
     favorites.user = 0x1234u;
     favorites.factory[0][0] = 0x55u;
     persist_pending = 1;
@@ -97,6 +99,8 @@ static void fill(void)                                /* every kind of user data
     apply_preset_to(&trk[0], 3u);
     up_store_trk(&trk[0], 7u, "TEST A", CAT_BASS);
     up_store_trk(&trk[0], 20u, "TEST B", CAT_LEAD);
+    for (i = 30; i < 128u; i++)                       /* DUELL 0.2.15: 100 patches in all, the PATCH store's chunks 0..12, the ten new ones too */
+        up_store_trk(&trk[0], i, "FILL", CAT_PAD);
     ps_save_trk(&trk[0], 2u, "ACID DUB");
     ps_save_trk(&trk[0], 12u, "DEEP");
     flush();
@@ -104,9 +108,9 @@ static void fill(void)                                /* every kind of user data
     transport_req = 0;
     project_save(4u);
     project_save(11u);
-    for (i = 0; i < 4096u; i++) {                     /* what must stay: USR1 / USR2 samples, the FM6 voice bank sector */
-        nor[0xA0000u + i] = (uint8_t)(i ^ 0x5Au);
-        nor[0xB4000u + i] = (uint8_t)(i ^ 0xA5u);
+    for (i = 0; i < 4096u; i++) {                     /* what must stay: the old sample region beyond the wavetables, the FM6 voice bank sector */
+        nor[0xBA000u + i] = (uint8_t)(i ^ 0x5Au);      /* (0xBA000..0xC7FFF: the free range after the patch chunks, DUELL 0.2.15) */
+        nor[0xC0000u + i] = (uint8_t)(i ^ 0xA5u);
         nor[0xE7000u + i] = (uint8_t)(i * 3u);
     }
 }
@@ -123,7 +127,7 @@ static int kept_ok(void)
 {
     uint32_t i;
     for (i = 0; i < 4096u; i++)
-        if (nor[0xA0000u + i] != (uint8_t)(i ^ 0x5Au) || nor[0xB4000u + i] != (uint8_t)(i ^ 0xA5u) || nor[0xE7000u + i] != (uint8_t)(i * 3u))
+        if (nor[0xBA000u + i] != (uint8_t)(i ^ 0x5Au) || nor[0xC0000u + i] != (uint8_t)(i ^ 0xA5u) || nor[0xE7000u + i] != (uint8_t)(i * 3u))
             return 0;
     return 1;
 }
@@ -144,12 +148,12 @@ int main(void)
     memset(nor, 0xFF, sizeof nor);
     fill();
     memcpy(snap, nor, sizeof nor);
-    ck("filled: settings, autosave, 2 patches, 2 pattern slots, 2 multis stored", st_load(OBJ_SETTINGS, &persist_saved, sizeof persist_saved) > 0 &&
-       up_count() == 2u && ps_used(2) && ps_used(12) && project_used(4) && project_used(11));
+    ck("filled: settings, autosave, 100 patches (chunks 0..12), 2 pattern slots, 2 multis stored", st_load(OBJ_SETTINGS, &persist_saved, sizeof persist_saved) > 0 &&
+       up_count() == 100u && pt_n[12] > 0u && ps_used(2) && ps_used(12) && project_used(4) && project_used(11));
 
     /* 1: the dialog */
     ck("ERASE DATA is the last row of the SYSTEM tab, label of at most 12 characters", MI_TAB[MI_ERASE] == MTAB_SYSTEM && MI_ERASE == MI_COUNT - 1u &&
-       str_len(MI_NAME[MI_ERASE]) <= 12u && mtab_rows(MTAB_SYSTEM) <= MTAB_ROWS);
+       str_len(MI_NAME[MI_ERASE]) <= 12u && menu_place(MI_ERASE, 0) + 1u == mtab_pages(MTAB_SYSTEM));   /* (0.2.14: on SYSTEM's last page) */
     for (i = 0; i < 5u; i++)
         if (text_w(&AF_S, ERASE_LINES[i]) > 200)
             break;
@@ -199,7 +203,7 @@ int main(void)
                 press(PB[b].btn);
                 frames(32);
                 n++;
-                good += ok &= !ui.menu && !ui.confirm && !ui.home && cur_page()->fam == PB[b].fam && n_erase == e0 && n_prog == w0 &&
+                good += ok &= !ui.menu && !ui.confirm && !at_home() && cur_page()->fam == PB[b].fam && n_erase == e0 && n_prog == w0 &&
                               !memcmp(nor, snap, sizeof nor) && !erase_busy();
                 if (!ok) {
                     str_cpy(what, CTX[c], sizeof what);
@@ -215,7 +219,7 @@ int main(void)
         go_main();
         ui.menu = 1; ui.menu_sel = MI_COLOR; ui.force = 1; frames(48);
         press(B_HOME);
-        ck("HOME from the menu: closes it, the main page (as before)", !ui.menu && !ui.home && cur_page()->fam == FAM_TRK && n_prog == w0 && n_erase == e0);
+        ck("HOME from the menu: closes it, the main page (as before)", !ui.menu && cur_page()->fam == FAM_TRK && n_prog == w0 && n_erase == e0);
         ui.menu = 0;
     }
     memcpy(snap, nor, sizeof nor);
@@ -259,7 +263,7 @@ int main(void)
     ck("YES: everything stored is gone (settings, autosave, patches, multis, pattern slots), the restart pending", ui.confirm == CF_ERASE_ALL);
     press(B_OCTUP);
     ck("  the dialog closes with ERASED, RESTARTING; every storage object reads empty", !ui.confirm && msg_is("ERASED, RESTARTING") && erase_busy() && all_gone());
-    ck("  the user sample slots (USR1, USR2) and the FM6 voice bank are untouched", kept_ok());
+    ck("  the old sample region (0xA8000, 0xB4000: free; 0xA0000..0xA5FFF are the user wavetables, erased with the rest) and the FM6 voice bank are untouched", kept_ok());
     ck("  the restart is not due at once (the message is seen), nothing is written meanwhile", !erase_restart_due());
     {
         uint32_t p0 = n_prog, e1 = n_erase;
@@ -281,10 +285,22 @@ int main(void)
     if (autosave_boot(1))
         first_boot_pending = 0;
     ck("  no autosave to restore", first_boot_pending == 1u);
+    ck("  0.2.14's defaults: KNOB ACCEL ON, CLICK REC, USB SERIAL OFF (the user's OFF / ON / ON before the erase gone)",
+       (ui_prefs & PREF_ACCEL) && (ui_prefs & PREF_SERIAL_OFF) && rp_get(RP_CLICK) == 1u && (ui_prefs2 & (PREF_DEFAULTS >> 16)));
     frames(160);
     ck("  MODE is LAYER and factory multi M01 (REESE SWAMP since 0.2.13) is loaded", duell_mode_req == DM_LAYER && project_cur_slot() == 0u && first_boot_pending == 0u &&
        str_eq(proj_name, "REESE SWAMP"));
     ck("  no patches, no pattern slots, no user favourites", up_count() == 0u && !ps_used(2) && !ps_used(12) && favorites.user == 0u);
+    {   /* the ten new patch chunks (OBJ_PATCHX0..9, 0xA6000..0xB9FFF) are blank sectors again, the free range behind them untouched */
+        uint32_t o, i, blank = 1;
+        for (o = 0; o < 16u; o++)
+            for (i = 0; i < 2u; i++) {
+                uint32_t b = st_sector(pt_obj(o), i), j;
+                for (j = 0; j < 4096u; j++)
+                    blank &= nor[b + j] == 0xFFu;
+            }
+        ck("  all sixteen patch chunks (32 sectors, 0xA6000..0xB9FFF among them) are blank", blank && kept_ok());
+    }
     ck("  the factory multis M01..M10 and M13..M16 show again (nothing stored in the slots)",
        project_factory(0) && project_factory(3) && project_factory(4) && project_factory(9) && !project_used(10) && !project_used(11));
     frames(2400);
@@ -302,7 +318,7 @@ int main(void)
         boot();
         n_erase = 0;
         total = erase_data_run() == 0 ? n_erase : 0;
-        ck("  (reference run: rc 0; it erased only the sectors that held data: fewer than all 38)", total > 0 && total < 38u);
+        ck("  (reference run: rc 0; it erased only the sectors that held data: fewer than all 64)", total > 0 && total < 64u);
         for (k = 0; k <= total + 1u; k++) {
             int rc, objs = 1;
             memcpy(nor, snap, sizeof nor);
@@ -365,10 +381,10 @@ int main(void)
         ui.force = 1;
         frame();
         e0 = n_erase;
-        press(B_OCTUP);
-        ck("MENU > KNOB ACCEL (a two-value switch): saved at once", ui.menu == 1u && (ui_prefs & PREF_ACCEL) && n_erase > e0 && !persist_pending);
+        press(B_OCTDN);                                 /* (0.2.14: ON on a new unit; OFF is the change) */
+        ck("MENU > KNOB ACCEL (a two-value switch): saved at once", ui.menu == 1u && !(ui_prefs & PREF_ACCEL) && n_erase > e0 && !persist_pending);
         boot();
-        ck("  a power cycle right after: ON is kept (and the colour)", (ui_prefs & PREF_ACCEL) && settings.palette == pal1);
+        ck("  a power cycle right after: OFF is kept (and the colour)", !(ui_prefs & PREF_ACCEL) && settings.palette == pal1);
         hold(B_HOME);
         ui.menu_sel = MI_PREVIEW;
         ui.force = 1;
@@ -379,12 +395,12 @@ int main(void)
         pal0 = settings.palette;
         frames(2200);
         boot();
-        ck("  several settings changed in one visit (STEP PREVIEW, COLOR): all kept", (ui_prefs2 & (PREF_PREVIEW >> 16)) && (ui_prefs & PREF_ACCEL) && settings.palette == pal0);
+        ck("  several settings changed in one visit (STEP PREVIEW, COLOR): all kept", (ui_prefs2 & (PREF_PREVIEW >> 16)) && !(ui_prefs & PREF_ACCEL) && settings.palette == pal0);
         hold(B_HOME);
         ui.menu_sel = MI_ACCEL;
         ui.force = 1;
         frame();
-        press(B_OCTDN);
+        press(B_OCTUP);
         press(B_HOME);
         ck("leaving the menu after a change shows no message", !ui.menu && ui.msg_t == 0u);
     }

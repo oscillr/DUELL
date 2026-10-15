@@ -319,6 +319,137 @@ static void dc_clip(void)
     check("no DC: |mean| below 1 % of VOICE_FS", okdc);
 }
 
+/* ------------------------------------------- amplitude modulation (AMS) --- */
+/* DX7: an operator's AMS scales how far the LFO's AMD pulls its level down; AMD 0 (or no LFO yet) = no change at all.
+ * Before 0.2.14 the AMS path shifted the wrong way (16384 x too big): every AMS > 0 operator was garbage, AMD 0 included. */
+static void ams_patch(uint8_t *v, int ams, int amd, int lfw)
+{
+    static const int r[4] = {99, 99, 99, 99}, l[4] = {99, 99, 99, 0};
+    uint32_t k;
+    init_patch(v);
+    for (k = 1; k <= 6u; k++)
+        op_set(v, k, r, l, k == 1u ? 99 : 0, 1);
+    v[FP_ALG] = 31;                                /* algorithm 32: six carriers; only operator 1 sounds */
+    v[FP_FB] = 0;
+    v[(6u - 1u) * FP_OP + FP_AMS] = (uint8_t)ams;
+    v[FP_LFS] = 35;                                /* about 5.8 Hz */
+    v[FP_LFD] = 0;
+    v[FP_LPMD] = 0;
+    v[FP_LPMS] = 0;
+    v[FP_LAMD] = (uint8_t)amd;
+    v[FP_LFW] = (uint8_t)lfw;
+}
+
+static void ams_wave(const uint8_t *v, double *y, uint32_t n)
+{
+    setup(v, 0);
+    voice_render(69, 100, y, n, 0);
+}
+
+/* the engine's attenuation of the LFO's low-amplitude half against its other half, in octaves of the Q24 level (6.02 dB each), from
+ * the peaks of 400 samples: the operator level L(1 - pt / 2^24) with pt the AMS curve, so the dB difference is 6.02 * L * pt / 2^24 */
+static double ams_db(int ams, int amd)
+{
+    static double y[FS], ref[FS];
+    uint8_t v[FP_SIZE + 1u];
+    double lo = 1e30, hi = 0;
+    uint32_t i, k, w = 400;                        /* about four periods of the note: the peak is independent of the window's phase */
+    ams_patch(v, 0, amd, 3);
+    ams_wave(v, ref, FS);
+    ams_patch(v, ams, amd, 3);                     /* LFO: square, so two steady levels */
+    ams_wave(v, y, FS);
+    (void)ref;
+    for (i = FS / 4u; i + w < FS; i += w) {
+        double r = 0;
+        for (k = i; k < i + w; k++)
+            r = fabs(y[k]) > r ? fabs(y[k]) : r;
+        lo = r < lo ? r : lo;
+        hi = r > hi ? r : hi;
+    }
+    return hi > 0 && lo > 0 ? 20.0 * log10(hi / lo) : 1e9;
+}
+
+static void ams_tests(void)
+{
+    static double y0[FS], y1[FS], y2[FS];
+    static const char *const flute[3] = {
+        "384e2d2b6328160027000000300b2604003c4b2d2d632d1900270000002a132d0c0040482d2f63321c0027000000490f34060044452d3163371f0027000000400b3b021e48422d33633c2200270000003a13420a005f3f2d3563554b0027000000310f5c020063636363323232321f0d37000c633b184b49434b203036202020",
+        "384e2d2b6328160027000000480a1e06003c4b2d2d632d190027000000421224020040482d2f63321c0027000000390e2b0a0044452d3163371f0027000000300a32043248422d33633c2200270000002a123902005f3f2d3563554b0027000000490e5c020063636363323232320d0b2d000046071842454c4c203034202020",
+        "384e2d2b6328160027000000400b2002003c4b2d2d632d1900270000003a1327020040482d2f63321c0027000000310f2e040044452d3163371f0027000000280b350c3248422d33633c2200270000004a133c06005f3f2d3563554b0027000000410f5c02006363636332323232160f1e000c3233184f5247414e2030382020"};
+    static const char *const fname[3] = {"synthetic KICK 06 (AMS 3, AMD 99)", "synthetic BELL 04 (AMS 2, AMD 70)", "synthetic ORGAN 08 (AMS 3, AMD 50)"};
+    uint8_t v[FP_SIZE + 1u], pk[128];
+    uint32_t i, a, same, f, ok;
+    double pk_max = 0;
+    /* 1. AMD 0: any AMS, any LFO wave and speed, gives exactly the AMS 0 output (the LFO runs, the depth is 0) */
+    for (a = 1, same = 1; a <= 3u; a++) {
+        uint32_t w;
+        for (w = 0; w < 6u; w++) {
+            ams_patch(v, 0, 0, (int)w);
+            ams_wave(v, y0, FS / 2u);
+            ams_patch(v, (int)a, 0, (int)w);
+            ams_wave(v, y1, FS / 2u);
+            for (i = 0; i < FS / 2u; i++)
+                same &= y0[i] == y1[i];
+        }
+    }
+    check("AMS 1..3 with AMD 0 (every LFO wave): the output is bit for bit the AMS 0 output", same);
+    /* the same on a modulator of a stacked algorithm, with an LFO PMD on (the pitch LFO must not leak into the level) */
+    ams_patch(v, 0, 0, 4);
+    v[FP_ALG] = 0;                                 /* algorithm 1 */
+    {
+        static const int r[4] = {99, 99, 99, 99}, l[4] = {99, 99, 99, 0};
+        op_set(v, 2, r, l, 80, 1);
+        op_set(v, 3, r, l, 70, 1);
+    }
+    ams_wave(v, y0, FS / 2u);
+    v[(6u - 2u) * FP_OP + FP_AMS] = 3;
+    v[(6u - 3u) * FP_OP + FP_AMS] = 2;
+    ams_wave(v, y1, FS / 2u);
+    for (i = 0, same = 1; i < FS / 2u; i++)
+        same &= y0[i] == y1[i];
+    check("AMS on two modulators with AMD 0 (algorithm 1): the output is the AMS 0 output bit for bit", same);
+    /* 2. AMD > 0: the depth. With a square LFO the output has two steady levels; the low one is the operator's level L (log2, Q24)
+     * pulled down by L * pt / 2^24, so the level difference is 6.02 dB * L * pt / 2^24 with pt = e^(sensamp / 262144 * 0.07 + 12.2)
+     * - e^12.2 (the DX7 curve, as msfa's exponential; the constant e^12.2 off so that depth 0 is no attenuation), sensamp = the
+     * AMS factor (0, 0.2588, 0.4274, 1) * the LFO amplitude at AMD (AMD * 165 >> 6, of 256). dB / pt must then be the same number
+     * for every AMS and AMD (it is 6.02 * L, L about 15 octaves at OL 99) */
+    {
+        static const double ams_f[4] = {0, 4342338.0 / 16777216.0, 7171437.0 / 16777216.0, 1.0};
+        static const int cs[6][2] = {{1, 20}, {1, 60}, {2, 30}, {2, 60}, {3, 20}, {3, 50}};
+        double q[6], mean = 0, dev = 0;
+        for (i = 0; i < 6u; i++) {
+            double sens = ((cs[i][1] * 165) >> 6) / 256.0 * ams_f[cs[i][0]] * 16777216.0;
+            double pt = (exp(sens / 262144.0 * 0.07 + 12.2) - exp(12.2)) / 16777216.0;
+            q[i] = ams_db(cs[i][0], cs[i][1]) / pt;
+            mean += q[i] / 6.0;
+        }
+        for (i = 0; i < 6u; i++)
+            dev = fabs(q[i] / mean - 1.0) > dev ? fabs(q[i] / mean - 1.0) : dev;
+        printf("fm6: AMS depth (square LFO) dB per unit of the curve, AMS/AMD 1/20 1/60 2/30 2/60 3/20 3/50: %.1f %.1f %.1f %.1f %.1f %.1f (L = %.2f octaves)\n",
+               q[0], q[1], q[2], q[3], q[4], q[5], mean / 6.0206);
+        check("AMS depth: dB follows the curve over AMS 1..3 and AMD 20..60 (one factor, within 1 %)", dev < 0.01);
+        check("AMS depth: that factor is 6.02 dB x the operator level (14 .. 16 octaves)", mean / 6.0206 > 14.0 && mean / 6.0206 < 16.0);
+    }
+    /* 3. three synthetic loud voices of our own (web/test_dx7_synth.mjs, algorithms with several carriers, AMS on every operator, an amplitude LFO): no sample beyond int16 */
+    for (f = 0, ok = 1; f < 3u; f++) {
+        double pkv = 0;
+        for (i = 0; i < 128u; i++) {
+            unsigned x;
+            sscanf(flute[f] + 2u * i, "%2x", &x);
+            pk[i] = (uint8_t)x;
+        }
+        fm6_unpack(pk, v);
+        setup(v, 0);
+        voice_render(60, 100, y2, FS * 3u / 2u, FS * 3u / 2u);
+        for (i = 0; i < FS * 3u / 2u; i++)
+            pkv = fabs(y2[i]) > pkv ? fabs(y2[i]) : pkv;
+        printf("fm6: voice %s: peak %.0f (int16 limit 32767)\n", fname[f], pkv);
+        ok &= pkv <= 32767.0;
+        pk_max = pkv > pk_max ? pkv : pk_max;
+    }
+    check("three synthetic DX7 style voices (AMS + amplitude LFO): no sample beyond int16", ok);
+}
+
 /* ---------------------------------------------------------------- macros --- */
 static double centroid_of(const uint8_t *v, const int16_t *e, uint32_t vel, uint32_t at)
 {
@@ -435,10 +566,30 @@ static void macros(void)
         trk[0].p[P_E7] = FM6_OWN;
         fm6_poll();
         check("SLOT back to OWN: the own patch again", fm6_slot[0] == FM6_OWN && !memcmp(fm6_patch[0], own, FP_SIZE));
-        check("SLOT: F1..F8, OWN, then B1..B32 (1.4.1, the voice bank), nothing past it",
-              ENG_FM6.edit[7].max == FM6_OWN + FM6_NBANK && FM6_OWN == FM6_NFACTORY && FM6_NBANK == 32u &&
+        check("SLOT: F1..F8, OWN, B1..B32 (1.4.1, the voice bank), then F9..F11 behind the bank (0.2.17), nothing past it",
+              ENG_FM6.edit[7].max == FM6_OWN + FM6_NBANK + FM6_NXF && FM6_OWN == FM6_NFACTORY && FM6_NBANK == 32u && FM6_NXF == 3u &&
               !strcmp(ENG_FM6.edit[7].names[FM6_OWN], "OWN") && !strcmp(ENG_FM6.edit[7].names[FM6_OWN + 1], "B1") &&
-              !strcmp(ENG_FM6.edit[7].names[FM6_OWN + FM6_NBANK], "B32") && !ENG_FM6.edit[7].names[FM6_OWN + FM6_NBANK + 1]);
+              !strcmp(ENG_FM6.edit[7].names[FM6_OWN + FM6_NBANK], "B32") && !strcmp(ENG_FM6.edit[7].names[FM6_XBASE], "F9") &&
+              !strcmp(ENG_FM6.edit[7].names[FM6_XBASE + 2u], "F11") && !ENG_FM6.edit[7].names[FM6_XBASE + FM6_NXF]);
+        {   /* 0.2.17: the factory patches behind the bank load like F1..F8; the stored SLOT values of OWN and the bank are untouched */
+            uint8_t v[FP_SIZE + 1u];
+            uint32_t x;
+            for (x = 0; x < FM6_NXF; x++) {
+                trk[0].p[P_E7] = (int16_t)(FM6_XBASE + x);
+                fm6_poll();
+                fm6_unpack(FM6_XFACTORY[x], v);
+                check("SLOT F9.. (behind the bank) loads its own factory patch", fm6_slot[0] == FM6_XBASE + x && !memcmp(fm6_patch[0], v, FP_SIZE));
+                check("  and a patch equal to it shows as that slot (project load: fm6_adopt_slot)", fm6_adopt_slot(v, 0) == (int32_t)(FM6_XBASE + x));
+            }
+            check("  F9 FM BASS 2, F11 FRETLESS (the sounds' voices): the names", !memcmp(FM6_XFACTORY[0] + 118, "FM BASS 2 ", 10));
+            check("  a stored SLOT above OWN is OWN (params.c param_fit)", param_fit(&ENG_FM6.edit[7], (int32_t)FM6_XBASE) == (int32_t)FM6_OWN &&
+                  param_fit(&ENG_FM6.edit[7], 3) == 3);
+            check("  the SLOT knob (no bank here): OWN up goes on to F9, F11 is the end, F9 down is OWN again",
+                  param_turn(&ENG_FM6.edit[7], FM6_OWN, 1) == (int32_t)FM6_XBASE && param_turn(&ENG_FM6.edit[7], (int32_t)FM6_XBASE + 2, 1) == (int32_t)FM6_XBASE + 2 &&
+                  param_turn(&ENG_FM6.edit[7], (int32_t)FM6_XBASE, -1) == (int32_t)FM6_OWN);
+            trk[0].p[P_E7] = FM6_OWN;
+            fm6_poll();
+        }
         trk[0].p[P_E7] = FM6_OWN + 3;                /* B3 without a bank (no store here): refused, SLOT back */
         fm6_poll();
         check("SLOT B3 with no bank: refused (SLOT back to OWN), the patch unchanged", fm6_slot[0] == FM6_OWN &&
@@ -663,6 +814,7 @@ int main(int argc, char **argv)
     envelopes();
     retrigger();
     dc_clip();
+    ams_tests();
     macros();
     formats();
     voices();

@@ -3,16 +3,15 @@
 /* Felucca 1.2: the SEQ TOOLS layer's actions (ui_layer.c: SEQ held, on every page). Included by ui_layer.c. The white
  * keys from F3 (TL_*):
  *   F3 CLEAR  G3 REVERSE  A3 SHIFT <  B3 SHIFT >       the whole sequence
- *   C4 RANDOM D4 COOK     E4 BEAT (DRUM)                 new / a little changed
- *   G4 CLEAR  A4 REVERSE  B4 FILL  C5 RANDOM             the selected lane (DRUM: ui.lane, black keys 1..8 pick it)
+ *   C4 RANDOM D4 COOK                                    new / a little changed
+ * (DUELL 0.2.14: the DRUM engine is gone, and with it E4 BEAT and the four lane tools G4..C5)
  * Each works on the selected track's steps 1..LEN (the steps past LEN stay) and is one undo: SAVE held swaps back
  * the copy taken just before it (ui.c undo, UNDO_PAT; unlike a load the track's automation stays), so after a few
  * COOKs SAVE held takes back the last one only; the layer's OCT- puts back the track as the layer opened (tl_open).
  * A step that held something and is empty after loses its locks (as EDIT's step clear); REVERSE and SHIFT move the
  * steps' automation and locks with them. RANDOM and COOK draw from libc.c rng(): no seed is kept, each press
  * differs. A sequence of ties reversed keeps its note first: N T T -> N T T at the mirrored place */
-enum { TL_CLEAR, TL_REV, TL_LEFT, TL_RIGHT, TL_RANDOM, TL_COOK, TL_BEAT, TL_GAP, TL_LCLR, TL_LREV, TL_LFILL, TL_LRND,
-       TL_N };
+enum { TL_CLEAR, TL_REV, TL_LEFT, TL_RIGHT, TL_RANDOM, TL_COOK, TL_N };
 
 /* the track as the layer opened (OCT-): in the pool (RAM's .bss is tight), taken by layer_opened */
 static struct { step_t step[NSTEP]; motion_store_t mo; } tl_open __attribute__((section(".pool")));
@@ -20,9 +19,8 @@ static struct { step_t step[NSTEP]; motion_store_t mo; } tl_open __attribute__((
 static uint32_t tl_len(const track_t *t) { return (uint32_t)clamp(t->p[P_SLEN], 1, NSTEP); }
 static uint32_t tl_rnd(uint32_t n) { return n ? rng() % n : 0u; }
 static int tl_gate(const step_t *s) { return s->time == ST_NOTE && s->n; }
-static uint32_t tl_lane(const step_t *s, uint32_t l) { return (step_lanes(s) >> l) & 1u; }
-/* place p's action is there for this track (the lane row and BEAT: DRUM only) */
-static int tl_cell(const track_t *t, uint32_t p) { return p < TL_N && p != TL_GAP && (p < TL_BEAT || drum_track(t)); }
+/* place p's action is there */
+static int tl_cell(uint32_t p) { return p < TL_N; }
 
 /* the undo copy of t as it is now (ui.c load_begin, but the automation is copied and stays): one action */
 static void tl_undo_take(track_t *t)
@@ -111,127 +109,6 @@ static void tl_shift(track_t *t, uint32_t len, uint32_t d)
     for (j = 0; j < len; j++)
         src[j] = (uint8_t)((j + len - d) % len);
     tl_order(t, len, src);
-}
-
-/* ------------------------------------------------------------- drums --- */
-/* hits per 16 steps -> per len (at least one when any) */
-static uint32_t tl_per(uint32_t k16, uint32_t len) { return !k16 ? 0u : k16 * len < 16u ? 1u : (k16 * len + 8u) / 16u; }
-/* k hits spread evenly over len steps (euclidean: the first on step rot; mir: mirrored around it) into lane l */
-static void tl_euclid(track_t *t, uint32_t len, uint32_t l, uint32_t k, uint32_t rot, uint32_t mir)
-{
-    uint32_t i;
-    for (i = 0; k && i < len; i++)
-        if ((i * k) % len < k)
-            grid_hit(t, ((mir ? len - i : i) + rot) % len, l, 1);
-}
-static void tl_lane_clear(track_t *t, uint32_t len, uint32_t l)
-{
-    uint32_t i;
-    for (i = 0; i < len; i++)
-        grid_hit(t, i, l, 0);
-}
-/* lane l at random, the drum machine way: the kick 3..5 a bar (one on step 1), the snare on beats 2 and 4, the
- * closed hat 8..12, the others sparse (any: they may stay empty, RANDOM; else at least one hit, RANDOM LANE) */
-static void tl_lane_rnd(track_t *t, uint32_t len, uint32_t l, int any)
-{
-    tl_lane_clear(t, len, l);
-    if (l == DV_KICK)
-        tl_euclid(t, len, l, tl_per(3u + tl_rnd(3), len), 0, tl_rnd(2));
-    else if (l == DV_SNARE)
-        tl_euclid(t, len, l, tl_per(2, len), 4u % len, 0);
-    else if (l == DV_HATC)
-        tl_euclid(t, len, l, tl_per(8u + tl_rnd(5), len), tl_rnd(2), 0);
-    else if (!any || !tl_rnd(l == DV_HATO ? 2u : 3u))
-        tl_euclid(t, len, l, tl_per(1u + tl_rnd(2), len), l == DV_HATO ? (2u + 4u * tl_rnd(4)) % len : tl_rnd(len), 0);
-    if (l == DV_SNARE && !tl_rnd(3))
-        grid_hit(t, tl_rnd(len), l, 1);                 /* (a ghost snare now and then) */
-}
-
-/* the lane hits of steps 1..len (n-th: its step and lane), the kick on step 1 not counted (it stays) */
-static uint32_t tl_hit_nth(const track_t *t, uint32_t len, uint32_t n, uint32_t *ip, uint32_t *lp)
-{
-    uint32_t i, l, c = 0;
-    for (i = 0; i < len; i++)
-        for (l = 0; l < NLANE; l++)
-            if (tl_lane(&t->step[i], l) && (i || l != DV_KICK) && c++ == n) {
-                *ip = i;
-                *lp = l;
-                return 1;
-            }
-    return c;
-}
-static uint32_t tl_lane_hits(const track_t *t, uint32_t len, uint32_t l)
-{
-    uint32_t i, c = 0;
-    for (i = 0; i < len; i++)
-        c += tl_lane(&t->step[i], l);
-    return c;
-}
-/* COOK on drums: 10..20 % of the hits (at least one) moved a step, or one added on a lane in use, or one taken
- * away (never a lane's last, never the kick on step 1). A try that cannot (the step taken, a lane's last hit) does
- * not count: another one is made (at most a few times as many) */
-static uint32_t tl_cook_hit(track_t *t, uint32_t len)
-{
-    uint32_t i = 0, l = 0, j, r = tl_rnd(4), n = tl_hit_nth(t, len, ~0u, &i, &l);   /* (n: the count) */
-    if (r == 2u || !n) {                                /* add: on a lane in use (none: the closed hat) */
-        uint32_t used = 0;
-        for (j = 0; j < len; j++)
-            used |= step_lanes(&t->step[j]);
-        for (l = DV_HATC, j = tl_rnd(NLANE); used && j < 2u * NLANE; j++)
-            if ((used >> (j % NLANE)) & 1u) {
-                l = j % NLANE;
-                break;
-            }
-        j = tl_rnd(len);
-        if (tl_lane(&t->step[j], l))
-            return 0;
-        grid_hit(t, j, l, 1);
-        return 1;
-    }
-    tl_hit_nth(t, len, tl_rnd(n), &i, &l);
-    if (r == 3u) {                                      /* take one away */
-        if (tl_lane_hits(t, len, l) < 2u)
-            return 0;
-        grid_hit(t, i, l, 0);
-        return 1;
-    }
-    j = (i + (tl_rnd(2) ? 1u : len - 1u)) % len;        /* move one a step on (or back) */
-    if (tl_lane(&t->step[j], l))
-        return 0;
-    r = (step_accents(&t->step[i]) >> l) & 1u;
-    grid_hit(t, i, l, 0);
-    grid_hit(t, j, l, 1);
-    if (r)
-        grid_acc(t, j, l, 1);
-    return 1;
-}
-static void tl_cook_drum(track_t *t, uint32_t len, uint32_t hits)
-{
-    uint32_t m = hits * (10u + tl_rnd(11)) / 100u, n, sig = steps_sig(t);
-    for (m = m ? m : 1u, n = 4u * m + 64u; n; n--) {
-        if (tl_cook_hit(t, len) && m)
-            m--;
-        if (!m && steps_sig(t) != sig)                  /* (a hit moved there and back: one more) */
-            break;
-    }
-}
-
-/* FILL LANE: each press the next of every step, every 2nd, every 4th, none (anything else: every step).
- * Returns the division now (0: cleared) */
-static uint32_t tl_fill(track_t *t, uint32_t len, uint32_t l)
-{
-    static const uint8_t E[3] = {1, 2, 4};
-    uint32_t e, i, now = 0;
-    for (e = 0; e < 3u && !now; e++) {
-        for (i = 0; i < len && tl_lane(&t->step[i], l) == (i % E[e] == 0u); i++)
-            ;
-        if (i == len)
-            now = e + 1u;
-    }
-    e = now == 3u ? 0u : E[now % 3u];
-    for (i = 0; i < len; i++)
-        grid_hit(t, i, l, e && i % e == 0u);
-    return e;
 }
 
 /* ----------------------------------------------------------- melodic --- */
@@ -330,18 +207,15 @@ static void tl_cook_notes(track_t *t, uint32_t len, uint32_t g)
 }
 
 /* ------------------------------------------------------------ actions --- */
-/* the action of place p on track t (lane l): its message; 0 = nothing done (said why) */
-static const char *tl_do(track_t *t, uint32_t p, uint32_t l)
+/* the action of place p on track t: its message; 0 = nothing done (said why) */
+static const char *tl_do(track_t *t, uint32_t p)
 {
-    static char b[24];
     uint32_t len = tl_len(t), i, n = 0;
     uint64_t was = tl_used(t, len);
-    int drum = drum_track(t);
     const char *msg = 0;
-    l %= NLANE;
     if (p == TL_COOK) {                                 /* (nothing there: nothing to cook, no undo copy) */
         for (i = 0; i < len; i++)
-            n += drum ? (uint32_t)__builtin_popcount(step_lanes(&t->step[i])) : (uint32_t)tl_gate(&t->step[i]);
+            n += (uint32_t)tl_gate(&t->step[i]);
         if (!n) {
             ui_message("NOTHING TO COOK");
             return 0;
@@ -358,55 +232,14 @@ static const char *tl_do(track_t *t, uint32_t p, uint32_t l)
     case TL_LEFT: tl_shift(t, len, len - 1u); msg = "SHIFTED LEFT"; break;
     case TL_RIGHT: tl_shift(t, len, 1u); msg = "SHIFTED RIGHT"; break;
     case TL_RANDOM:
-        if (drum) {
-            for (i = 0; i < len; i++)
-                step_clear(&t->step[i]);
-            for (i = 0; i < NLANE; i++)
-                tl_lane_rnd(t, len, i, 1);
-            msg = "RANDOM BEAT";
-        } else {
-            tl_random_notes(t, len);
-            msg = "RANDOM NOTES";
-        }
+        tl_random_notes(t, len);
+        msg = "RANDOM NOTES";
         break;
     case TL_COOK:
-        if (drum)
-            tl_cook_drum(t, len, n);
-        else
-            tl_cook_notes(t, len, n);
+        tl_cook_notes(t, len, n);
         msg = "COOKED";
         break;
-    case TL_BEAT:                                       /* four on the floor, the backbeat, 8th hats */
-        for (i = 0; i < len; i++) {
-            step_clear(&t->step[i]);
-            if (i % 4u == 0u) grid_hit(t, i, DV_KICK, 1);
-            if (i % 8u == 4u) grid_hit(t, i, DV_SNARE, 1);
-            if (i % 2u == 0u) grid_hit(t, i, DV_HATC, 1);
-        }
-        msg = "BASIC BEAT";
-        break;
-    default:                                            /* the lane's */
-        str_cpy(b, drum_lane_name(t, l), sizeof b);
-        if (p == TL_LCLR) {
-            tl_lane_clear(t, len, l);
-            msg = " CLEARED";
-        } else if (p == TL_LREV) {
-            for (i = 0; i < len; i++) {
-                const step_t *s = &undo.step[len - 1u - i];
-                grid_hit(t, i, l, tl_lane(s, l));
-                if (tl_lane(s, l))
-                    grid_acc(t, i, l, (step_accents(s) >> l) & 1u);
-            }
-            msg = " REVERSED";
-        } else if (p == TL_LFILL) {
-            n = tl_fill(t, len, l);
-            msg = n == 1u ? " EVERY STEP" : n == 2u ? " EVERY 2ND" : n ? " EVERY 4TH" : " CLEARED";
-        } else {
-            tl_lane_rnd(t, len, l, 0);
-            msg = " RANDOM";
-        }
-        str_cpy(b + str_len(b), msg, sizeof b - str_len(b));
-        msg = b;
+    default:
         break;
     }
     tl_unlock(t, was, len);

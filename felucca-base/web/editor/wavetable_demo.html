@@ -1,0 +1,125 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<!-- DUELL user wavetables, a standalone try-out page (not the editor page): pick a WAV, see what the converter makes of it, listen to a rough
+     preview, and send it to the SIMULATED unit (mockunit.js: the unit's rules for commands 81..83, not real hardware).
+     Serve felucca-base/web with a static server (python3 -m http.server -d felucca-base/web 8000) and open
+     http://localhost:8000/editor/wavetable_demo.html (the page loads modules, so it does not work from a file). -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>DUELL user wavetable try-out</title>
+<style>
+  body { font: 14px/1.4 system-ui, sans-serif; margin: 16px auto; max-width: 980px; padding: 0 12px; color: #222; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  fieldset { margin: 12px 0; border: 1px solid #bbb; border-radius: 6px; }
+  legend { font-weight: 700; padding: 0 6px; }
+  label { margin-right: 14px; white-space: nowrap; }
+  canvas { border: 1px solid #888; background: #111; display: block; margin-top: 6px; image-rendering: pixelated; }
+  .note { background: #fff6dc; border: 1px solid #e0c060; padding: 8px 10px; border-radius: 6px; margin: 8px 0; }
+  .note p { margin: 2px 0; }
+  .err { color: #a00; font-weight: 700; }
+  pre { background: #f4f4f4; padding: 8px; overflow: auto; max-height: 200px; }
+  button { padding: 4px 12px; }
+</style>
+</head>
+<body>
+<h1>DUELL user wavetable try-out</h1>
+<p>A WAV file with single-cycle frames becomes a user table of the WAVE engine: 19 frames x 64 harmonics, one byte each. This page talks to a <b>simulated</b> unit.</p>
+
+<fieldset><legend>1. The WAV file</legend>
+  <input type="file" id="file" accept=".wav,audio/wav,audio/x-wav">
+  <label>frame size <select id="fs"><option value="0">auto (clm chunk, 2048, or the whole file as one cycle)</option>
+    <option>256</option><option>512</option><option>1024</option><option>2048</option><option>4096</option><option>600</option></select></label>
+  <label>custom <input type="number" id="fscustom" min="130" max="65536" style="width:6em" placeholder="samples"></label>
+  <label>noise floor <select id="floor"><option value="-66">-66 dB (clean file)</option><option value="-54">-54 dB</option><option value="-48">-48 dB (8 bit or noisy)</option><option value="-80">-80 dB</option></select></label>
+  <p id="info"></p><p id="err" class="err"></p>
+</fieldset>
+
+<fieldset><legend>2. What the unit will have</legend>
+  <div id="lost" class="note" hidden></div>
+  <div>spectra, 19 frames (rows, 0 at the top) x 64 harmonics (columns): level in 0.38 dB steps, black = off
+    <canvas id="spec" width="64" height="19" style="width:768px;height:228px"></canvas></div>
+  <div style="margin-top:8px">POS <input type="range" id="pos" min="0" max="18" step="0.01" value="0" style="width:400px"> <span id="posv">0</span>
+    <button id="play">Listen</button> note <select id="note"><option value="110">A2</option><option value="220" selected>A3</option><option value="440">A4</option></select>
+    (a rough preview of the harmonics in your browser, not the unit's WAVE engine)
+    <canvas id="wave" width="512" height="100" style="width:512px;height:100px"></canvas></div>
+</fieldset>
+
+<fieldset><legend>3. Send to the simulated unit</legend>
+  <label>name <input id="name" maxlength="8" size="9" value="MYTABLE"></label>
+  <label>slot <select id="slot"><option value="0">USR1</option><option value="1">USR2</option><option value="2">USR3</option></select></label>
+  <label><input type="checkbox" id="playing"> the sequencer is playing</label>
+  <button id="send" disabled>Send</button> <button id="read">Read slot back</button> <button id="erase">Erase slot</button> <button id="list">List</button>
+  <pre id="log"></pre>
+</fieldset>
+
+<script type="module">
+import { WT, convertWav, lostNote, spectraOf, renderCycle, parseObject, listTables, readTable, writeTable, eraseTable, cleanName } from "./wavetable.js";
+import { MockUnit } from "./mockunit.js";
+
+const $ = (id) => document.getElementById(id), unit = new MockUnit({ seed: false }), rq = (r, o) => unit.request(r, o);
+let result = null, audio = null, osc = null, gain = null;
+const log = (s) => { $("log").textContent += s + "\n"; $("log").scrollTop = 1e9; };
+
+async function convertNow(buf) {
+  $("err").textContent = ""; $("lost").hidden = true; $("send").disabled = true; result = null;
+  try {
+    const custom = +$("fscustom").value, sel = +$("fs").value;
+    result = convertWav(buf, { frameSize: custom || sel || null, floorDb: +$("floor").value });
+    const w = result.wav;
+    $("info").textContent = `${w.samples.length} samples, ${w.sampleRate} Hz, ${w.bits} bit ${w.format}, ${w.channels} channel(s); frame size ${result.frameSize} (${result.sourceFrames} frames)`;
+    const L = $("lost"); L.replaceChildren(...lostNote(result).map((t) => Object.assign(document.createElement("p"), { textContent: t }))); L.hidden = false;
+    draw(); $("send").disabled = false;
+  } catch (e) { $("err").textContent = e.message; }
+}
+function draw() {
+  const c = $("spec").getContext("2d"), img = c.createImageData(64, 19);
+  for (let f = 0; f < 19; f++) for (let k = 0; k < 64; k++) {
+    const b = result.data[f * 64 + k], o = (f * 64 + k) * 4, v = b ? 40 + Math.round((b / 255) * 215) : 0;
+    img.data[o] = v; img.data[o + 1] = b ? Math.min(255, v * 0.9 + 20) : 0; img.data[o + 2] = b ? 60 + (255 - v) / 2 : 0; img.data[o + 3] = 255;
+  }
+  c.putImageData(img, 0, 0); wave();
+}
+function wave() {
+  if (!result) return;
+  const pos = +$("pos").value, w = renderCycle(result.data, pos, 512), c = $("wave").getContext("2d");
+  $("posv").textContent = pos.toFixed(2);
+  c.fillStyle = "#111"; c.fillRect(0, 0, 512, 100); c.strokeStyle = "#7fd"; c.beginPath();
+  w.forEach((v, i) => { const y = 50 - v * 45; i ? c.lineTo(i, y) : c.moveTo(i, y); }); c.stroke();
+  if (osc) osc.setPeriodicWave(periodic(pos));
+}
+function periodic(pos) {   // the harmonics of the two frames around POS, mixed as the engine mixes them (sine phase)
+  const f = Math.min(18, Math.floor(pos)), t = pos - f, g = Math.min(18, f + 1), re = new Float32Array(65), im = new Float32Array(65), sp = spectraOf(result.data);
+  for (let k = 1; k <= 64; k++) im[k] = sp[f][k - 1] * (1 - t) + sp[g][k - 1] * t;
+  return audio.createPeriodicWave(re, im);
+}
+$("file").addEventListener("change", async (e) => { const f = e.target.files[0]; if (f) { window.lastBuf = await f.arrayBuffer(); convertNow(window.lastBuf); } });
+for (const id of ["fs", "fscustom", "floor"]) $(id).addEventListener("change", () => window.lastBuf && convertNow(window.lastBuf));
+$("pos").addEventListener("input", wave);
+$("play").addEventListener("click", () => {
+  if (!result) return;
+  if (osc) { osc.stop(); osc = null; $("play").textContent = "Listen"; return; }
+  audio = audio || new AudioContext(); osc = audio.createOscillator(); gain = audio.createGain(); gain.gain.value = 0.15;
+  osc.frequency.value = +$("note").value; osc.setPeriodicWave(periodic(+$("pos").value)); osc.connect(gain).connect(audio.destination); osc.start(); $("play").textContent = "Stop";
+});
+$("send").addEventListener("click", async () => {
+  unit.playing = $("playing").checked;
+  try {
+    await writeTable(rq, +$("slot").value, $("name").value, result.data);
+    log(`sent to USR${+$("slot").value + 1} as "${cleanName($("name").value)}": ok`);
+  } catch (e) { log(`the unit said no: ${e.message}`); }
+});
+$("read").addEventListener("click", async () => {
+  try {
+    const r = await readTable(rq, +$("slot").value);
+    log(`USR${+$("slot").value + 1}: "${r.name}", ${r.data.length} bytes, equal to what was sent: ${result ? r.data.every((b, i) => b === result.data[i]) : "?"}`);
+  } catch (e) { log(e.message); }
+});
+$("erase").addEventListener("click", async () => { unit.playing = $("playing").checked; try { await eraseTable(rq, +$("slot").value); log("erased"); } catch (e) { log(e.message); } });
+$("list").addEventListener("click", async () => {
+  const l = await listTables(rq);
+  log(l.tables.map((t) => `USR${t.slot + 1}: ${t.used ? `"${t.name}" crc ${t.crc.toString(16)}` : "EMPTY"}`).join("   "));
+});
+</script>
+</body>
+</html>

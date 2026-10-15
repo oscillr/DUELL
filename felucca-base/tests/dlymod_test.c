@@ -36,11 +36,11 @@ static void scene(uint32_t mode, uint32_t pp, int d1, int r1, int d2)
     song.g[G_DFDBK] = 60;
     song.g[G_DMIX] = 127;
     song.g[G_DCOLOR] = 127;
-    song.g[G_PINGPONG] = (int16_t)pp;
+    song.g[G_DMODE] = (int16_t)(pp ? DMD_PING : DMD_DIGITAL);
     song.g[G_PINGSPREAD] = 100;
     for (k = 0; k < 2u; k++) {
         host_preset(&trk[k], eng_of("ANALOG"), 0);
-        trk[k].p[P_LEVEL] = 100;
+        trk[k].p[P_TRIM] = 100;
         trk[k].p[P_PAN] = 0;
         trk[k].p[P_SUS] = 127;
         trk[k].p[P_AMODE] = 0;

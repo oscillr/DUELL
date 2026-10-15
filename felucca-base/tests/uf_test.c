@@ -103,11 +103,6 @@ static void dsp_clean(void)                              /* the DSP as at power-
     memset(&hl_b, 0, sizeof hl_b);
     lim_env = lim_env_r = LIM_T;
     dc_l = dc_r = dce_l = dce_r = 0;
-    memset(lce, 0, sizeof lce);
-    lc_l1 = lc_l2 = lc_r1 = lc_r2 = 0;
-    memset(&sb, 0, sizeof sb);
-    memset(&sb_r, 0, sizeof sb_r);
-    fx_lowcut = 0;
     host_tracks_init();
     song.sel = 0;
     song.playing = 0;
@@ -148,7 +143,7 @@ static void render_child(uint32_t e, setup_t setup, uint32_t vel)
     t->p[P_SUS] = 127;
     t->p[P_ATK] = 0;
     t->p[P_AMODE] = 0;
-    t->p[P_LEVEL] = 60;                                     /* (well under the master limiter: its gain does not follow the filter) */
+    t->p[P_TRIM] = 60;                                     /* (well under the master limiter: its gain does not follow the filter) */
     t->p[P_ED_FLT] = t->p[P_LD_FLT] = t->p[P_E2FLT] = t->p[P_L2FLT] = 0;
     t->p[P_FREEA] = UF_STEPS;                               /* (the bypass: the defaults) */
     t->p[P_FREEB] = t->p[P_FREEC] = 0;
@@ -248,8 +243,8 @@ static void t_who_params(void)
         ok &= ENGINES[e]->ufilt == want;
         n += ENGINES[e]->ufilt != 0;
     }
-    expect("engine_t.ufilt: 1 on PHASE LOFI VOICE WHEEL PHYS FM6 WAVE (7), 2 on ANALOG TRIO NOISE (own filter + the multimode one in series); DIGITAL, DRUM and the retired ones none",
-           ok && n == 10u && ENGINES[eng_named("ANALOG")]->ufilt == 2u && !ENGINES[ENGI_DRUM]->ufilt);
+    expect("engine_t.ufilt: 1 on PHASE LOFI VOICE WHEEL PHYS FM6 WAVE (7), 2 on ANALOG TRIO NOISE (own filter + the multimode one in series); the retired ones (DIGITAL, SAMPLE, GRAIN, DRUM, SLICE) none",
+           ok && n == 10u && ENGINES[eng_named("ANALOG")]->ufilt == 2u && !ENGINES[10]->ufilt);
     expect("ids 45 CUT (F_FILT 0..82, default 82: open), 46 RES (0..127, 0), 47 MODE (F_FMODE 0..127, 0: LP), 48 SLOPE (enum 1..2, 1: 12 dB)",
            P_FREEA == 45u && TP[P_FREEA].fmt == F_FILT && TP[P_FREEA].min == 0 && TP[P_FREEA].max == UF_STEPS && TP[P_FREEA].def == UF_STEPS &&
            str_eq(TP[P_FREEA].label, "CUT") && P_FREEB == 46u && TP[P_FREEB].min == 0 && TP[P_FREEB].max == 127 && !TP[P_FREEB].def &&
@@ -280,7 +275,7 @@ static uint32_t uf_page(void)
 {
     uint32_t i;
     for (i = 0; i < NPAGES; i++)
-        if (PAGES[i].id[0] == P_FREEA)
+        if (PAGES[i].id[0] == P_FREEA && PAGES[i].id[3] == P_FREED)   /* (0.2.20: CUT RES MODE SLOPE) */
             return i;
     return NPAGES;
 }
@@ -306,10 +301,10 @@ static void t_page(void)
     uint32_t pv = page_named("VCF"), pt = page_named("TRIO FILTER"), pn = page_named("NOISE FILT"), nf = 0;
     int16_t e0[8];
     for (r = 0; r < NPAGES; r++)
-        nf += PAGES[r].fam == FAM_EDIT && str_eq(PAGES[r].title, "FILTER");
+        nf += PAGES[r].fam == FAM_EDIT && str_eq(PAGES[r].title, "MULTI FILTER");
     expect("one page called FILTER, the multimode filter's, on every engine: K1 CUT, K2 RES, K3 MODE, K4 SLOPE (no other page is called FILTER)",
-           nf == 1u && k < NPAGES && PAGES[k].fam == FAM_EDIT && str_eq(PAGES[k].title, "FILTER") && PAGES[k].scope == SC_TRACK &&
-           PAGES[k].id[1] == P_FREEB && PAGES[k].id[2] == P_FREEC && PAGES[k].id[3] == P_FREED);
+           nf == 1u && k < NPAGES && PAGES[k].fam == FAM_EDIT && str_eq(PAGES[k].title, "MULTI FILTER") && PAGES[k].scope == SC_TRACK &&
+           PAGES[k].id[0] == P_FREEA && PAGES[k].id[1] == P_FREEB && PAGES[k].id[2] == P_FREEC && PAGES[k].id[3] == P_FREED);
     expect("the engines' own filters have pages of their own, after FILTER: VCF (ANALOG), TRIO FILTER, NOISE FILT (titles of 11 characters at most)",
            pv == k + 1u && pt == k + 2u && pn == k + 3u && str_len(PAGES[pt].title) <= 11u && PAGES[pv].id[0] == P_FTYPE && PAGES[pt].id[0] == P_E4 &&
            PAGES[pn].id[0] == P_E2);
@@ -351,7 +346,7 @@ static void t_page(void)
     page_entered();
     frame();
     memcpy(e0, TSEL->p + P_E0, sizeof e0);
-    ok = TSEL->p[P_FREEA] == UF_STEPS && TSEL->p[P_FREEC] == 0 && TSEL->p[P_FREED] == 1 && str_eq(cur_page()->title, "FILTER");
+    ok = TSEL->p[P_FREEA] == UF_STEPS && TSEL->p[P_FREEC] == 0 && TSEL->p[P_FREED] == 1 && str_eq(cur_page()->title, "MULTI FILTER");
     turn(EN_K1, -7);
     ok &= TSEL->p[P_FREEA] == UF_STEPS - 7;
     turn(EN_K2, 5);
@@ -804,7 +799,7 @@ static void render_blk_child(uint32_t e)
     host_preset(t, e, 0);
     t->p[P_VOICE] = V_POLY;
     t->p[P_DIST] = t->p[P_CHOR] = t->p[P_DLY] = t->p[P_REV] = 0;
-    t->p[P_SUS] = 127; t->p[P_ATK] = 0; t->p[P_AMODE] = 0; t->p[P_LEVEL] = 60;
+    t->p[P_SUS] = 127; t->p[P_ATK] = 0; t->p[P_AMODE] = 0; t->p[P_TRIM] = 60;
     t->p[P_ED_FLT] = t->p[P_LD_FLT] = t->p[P_E2FLT] = t->p[P_L2FLT] = 0;
     set_f(t);
     rec_n = 0;
@@ -1007,15 +1002,15 @@ static void t_routes(void)
             set_engine_of(&trk[0], eng_named(SER_ENGS[k]));
             ok3 &= !mod_dst_why(&trk[0], MD_RES);
         }
-        trk[0].eng_req = ENGI_DRUM;                          /* (hidden: set_engine_of would give ANALOG) */
-        expect("the FRES card is live on ANALOG TRIO NOISE (it was faded ENGINE); still faded on an engine with no multimode filter (DRUM)",
+        trk[0].eng_req = 10;                                 /* (a retired engine: set_engine_of would give ANALOG) */
+        expect("the FRES card is live on ANALOG TRIO NOISE (it was faded ENGINE); still faded on an engine with no multimode filter (a retired one)",
                ok3 && mod_dst_why(&trk[0], MD_RES));
         set_engine_of(&trk[0], eng_named("ANALOG"));
         {
             char ln[32];
             const char *more;
             mod_dst_line(&trk[0], MD_RES, ln, &more);
-            expect("  .. its DEST line says FILTER RESONANCE (not ANALOG's own RES, an EDIT slot: no DST name is an engine knob label)", str_eq(ln, "DEST: FILTER RESONANCE") && !more);
+            expect("  .. its DEST line says MULTI FILTER RESONANCE (not ANALOG's own RES, an EDIT slot: no DST name is an engine knob label)", str_eq(ln, "DEST: MULTI FILTER RESONANCE") && !more);
         }
     }
     {   /* CC74 / CC71 on a ufilt engine set the new ids over their ranges; on ANALOG its own */
@@ -1095,76 +1090,35 @@ static int ufv(const int16_t *v, int32_t cut, int32_t mode, int32_t slope)
 }
 static void t_migrate(void)
 {
-    int16_t v[P_COUNT], def[P_COUNT];
+    int16_t v[P_COUNT];
     up_rec_t r;
     uint32_t i, ph = eng_named("PHASE");
-    for (i = 0; i < P_COUNT; i++) {
-        def[i] = TP[i].def;
-        v[i] = def[i];
-    }
-    v[P_FREEA] = 1; v[P_FREEB] = 1; v[P_FREEC] = 127; v[P_FREED] = 5;    /* a store of Felucca's layout: the SLICER's SLCR PAT RATE DEPTH */
-    params_retire(v, def);
-    expect("a store of Felucca's layout (the SLICER's values on ids 45..48) loads the filter's defaults: the bypass (params_retire)",
-           ufv(v, UF_STEPS, 0, 1) && v[P_FREEB] == 0);
-    rec_fill(&r, UP_VER_FEL, 111u, ph);
-    up_set_value(&r, 45u, 2); up_set_value(&r, 46u, 1); up_set_value(&r, 47u, 127); up_set_value(&r, 48u, 127);
-    up_values(&r, v);
-    expect("a user patch of Felucca's layout (SLCR 2, PAT 1, RATE 127, DEPTH 127 on ids 45..48): the bypass when it loads", ufv(v, UF_STEPS, 0, 1) && v[P_FREEB] == 0);
-    expect("the patch store keeps 0 as its default for CUT and SLOPE (a record of before left CUT OFF out and has no SLOPE; one of today always stores SLOPE)",
+    /* DUELL 0.2.14: nothing converts 0.2.2's bipolar CUT or the SLICER's values (ids 45..48 of Felucca's layout) any more: those stores are no longer
+     * read. The patch store still keeps 0 as its default for CUT and SLOPE (the format leaves out what equals it) */
+    expect("the patch store keeps 0 as its default for CUT and SLOPE (a record of today always stores SLOPE, 1 or 2)",
            up_def(ph, P_FREEA) == 0 && up_def(ph, P_FREED) == 0 && up_def(ph, P_FREEB) == 0 && up_def(ph, P_FREEC) == 0);
-    rec_fill(&r, UP_VER, P_COUNT, ph);                    /* DUELL's layout of before 0.2.9: no CUT stored (OFF), no SLOPE */
-    up_values(&r, v);
-    expect("a patch record of before with no CUT stored (OFF): the bypass (MODE LP, CUT 82, SLOPE 12 dB)", ufv(v, UF_STEPS, 0, 1));
+    rec_fill(&r, UP_VER, P_COUNT, ph);                    /* a record that holds no SLOPE (0): clamped, never converted */
     up_set_value(&r, P_FREEA, -28); up_set_value(&r, P_FREEB, 40);
     up_values(&r, v);
-    expect("  .. 0.2.2's CUT -28 (LP, BREATH PAD's): CUT 54, MODE LP, SLOPE 12 dB, RES kept (the same cutoff, 1.9 kHz)", ufv(v, 54, 0, 1) && v[P_FREEB] == 40);
-    up_set_value(&r, P_FREEA, -64);
-    up_values(&r, v);
-    expect("  .. CUT -64 (its far end, 120 Hz): CUT 18", ufv(v, 18, 0, 1));
-    up_set_value(&r, P_FREEA, 30);
-    up_values(&r, v);
-    expect("  .. CUT +30 (HP): CUT 30, MODE HP (127)", ufv(v, 30, UF_HP, 1));
-    up_set_value(&r, P_FREEA, 63);
-    up_values(&r, v);
-    expect("  .. CUT +63 (HP's far end, 3.7 kHz): CUT 63, MODE HP", ufv(v, 63, UF_HP, 1));
+    expect("a record with SLOPE 0 and a CUT of -28 (0.2.2's): values clamped to their ranges (CUT 0, SLOPE 12 dB), RES kept, no conversion",
+           v[P_FREEA] >= 0 && v[P_FREEA] <= UF_STEPS && v[P_FREED] == 1 && v[P_FREEB] == 40 && v[P_FREEA] == 0);
     rec_fill(&r, UP_VER, P_COUNT, ph);                    /* a record of today: SLOPE stored */
     up_set_value(&r, P_FREEA, 30); up_set_value(&r, P_FREEC, 90); up_set_value(&r, P_FREED, 2);
     up_values(&r, v);
     expect("a record of today (SLOPE 24 dB stored): CUT 30, MODE 90 kept as they are", ufv(v, 30, 90, 2));
     up_set_value(&r, P_FREEA, 0); up_set_value(&r, P_FREEC, 0); up_set_value(&r, P_FREED, 1);
     up_values(&r, v);
-    expect("  .. CUT 0 (the closed end, the pair left out as the store's default) with SLOPE 12 dB stored: CUT 0, not the old OFF", ufv(v, 0, 0, 1));
-    {   /* ANALOG TRIO NOISE (ufilt 2): ids 45..48 meant nothing there before 0.2.9; a leftover of another engine's (an engine switch kept it) must not
-         * switch the multimode filter on: a record of before takes the bypass whatever it holds; a record of today is kept */
-        uint32_t k, ok1 = 1, ok2 = 1, ok3 = 1;
+    expect("  .. CUT 0 (the closed end, the pair left out as the store's default) with SLOPE 12 dB stored: CUT 0", ufv(v, 0, 0, 1));
+    {   /* ANALOG TRIO NOISE (ufilt 2): a record of today keeps its CUT, RES, MODE, SLOPE */
+        uint32_t k, ok3 = 1;
         for (k = 0; k < NELEM(SER_ENGS); k++) {
             uint32_t se = eng_named(SER_ENGS[k]);
-            rec_fill(&r, UP_VER, P_COUNT, se);
-            up_set_value(&r, P_FREEA, -28); up_set_value(&r, P_FREEB, 40);          /* 0.2.2's CUT -28 (LP) and RES 40 left from another engine */
-            up_values(&r, v);
-            ok1 &= ufv(v, UF_STEPS, 0, 1) && v[P_FREEB] == 0;
-            up_set_value(&r, P_FREEA, 30);                                           /* a leftover high-pass */
-            up_values(&r, v);
-            ok1 &= ufv(v, UF_STEPS, 0, 1) && v[P_FREEB] == 0;
-            rec_fill(&r, UP_VER, P_COUNT, se);                                       /* no CUT stored (OFF) */
-            up_values(&r, v);
-            ok2 &= ufv(v, UF_STEPS, 0, 1);
-            rec_fill(&r, UP_VER_FEL, 111u, se);                                      /* Felucca's layout: the SLICER's values */
-            up_set_value(&r, 45u, 2); up_set_value(&r, 46u, 1); up_set_value(&r, 47u, 127); up_set_value(&r, 48u, 127);
-            up_values(&r, v);
-            ok2 &= ufv(v, UF_STEPS, 0, 1) && v[P_FREEB] == 0;
             rec_fill(&r, UP_VER, P_COUNT, se);                                       /* today's: SLOPE stored, kept as it is */
             up_set_value(&r, P_FREEA, 30); up_set_value(&r, P_FREEB, 7); up_set_value(&r, P_FREEC, 90); up_set_value(&r, P_FREED, 2);
             up_values(&r, v);
             ok3 &= ufv(v, 30, 90, 2) && v[P_FREEB] == 7;
         }
-        expect("ANALOG TRIO NOISE: a user patch of before 0.2.9 with a leftover CUT / RES on 45 / 46 (LP or HP) loads as the bypass, whatever it holds (a render of before stays)", ok1);
-        expect("  .. no CUT stored, and a record of Felucca's layout: the bypass too", ok2);
-        expect("  .. a record of today (SLOPE stored) keeps its CUT, RES, MODE, SLOPE on these engines", ok3);
-        rec_fill(&r, UP_VER, P_COUNT, ph);
-        up_set_value(&r, P_FREEA, -28);
-        up_values(&r, v);
-        expect("  .. the engines with no filter of their own still convert 0.2.2's CUT (PHASE: -28 -> CUT 54)", ufv(v, 54, 0, 1));
+        expect("ANALOG TRIO NOISE: a record of today (SLOPE stored) keeps its CUT, RES, MODE, SLOPE on these engines", ok3);
     }
     {   /* the record as the store writes it: SLOPE always there (and CUT unless 0); read back the same */
         ui_power_on();
@@ -1190,63 +1144,27 @@ static void t_migrate(void)
             expect("a patch of today (the bypass) is stored with CUT 82 and SLOPE 12 dB (4 bytes more than before: the mark of today's CUT)", len > PT_FIX && has45 && has48);
         }
     }
-    {   /* projects, multis, the autosave: proj_uf in project_restore_runtime, the CUT automation with them */
+    {   /* projects: 0.2.14 converts no 0.2.2 CUT (SLOPE 0) any more; a project of today restores as it is, the CUT automation too */
         static project_t q;
-        motion_event_t *ev;
         ui_power_on();
         set_engine_of(&trk[0], ph);
         set_engine_of(&trk[1], eng_named("WAVE"));
+        trk[0].p[P_FREEA] = 54; trk[0].p[P_FREEC] = 0; trk[0].p[P_FREED] = 1;
+        trk[1].p[P_FREEA] = 30; trk[1].p[P_FREEC] = UF_HP; trk[1].p[P_FREED] = 2;
         project_capture(&q);
-        q.t[0].p[P_FREEA] = -28; q.t[0].p[P_FREEC] = 0; q.t[0].p[P_FREED] = 0;   /* as stored before 0.2.9 */
-        q.t[1].p[P_FREEA] = 30; q.t[1].p[P_FREEC] = 0; q.t[1].p[P_FREED] = 0;
-        q.t[2].engine = (uint8_t)eng_named("ANALOG");                       /* ufilt 2: a leftover CUT -28 / HP +30 on 45, SLOPE 0 (before 0.2.9) */
-        q.t[2].p[P_FREEA] = -28; q.t[2].p[P_FREEB] = 40; q.t[2].p[P_FREEC] = 0; q.t[2].p[P_FREED] = 0;
-        q.t[3].engine = (uint8_t)eng_named("TRIO");
-        q.t[3].p[P_FREEA] = 30; q.t[3].p[P_FREEB] = 40; q.t[3].p[P_FREEC] = 0; q.t[3].p[P_FREED] = 0;
         memset(&q.motion, 0, sizeof q.motion);
-        ev = q.motion.event;
-        ev[0] = (motion_event_t){0u << 6 | 3u, P_FREEA, -40};   /* LP track: a lock at -40 (LP), 0 (OFF), +20 (HP) */
-        ev[1] = (motion_event_t){0u << 6 | 5u, P_FREEA, 0};
-        ev[2] = (motion_event_t){0u << 6 | 7u, P_FREEA, 20};
-        ev[3] = (motion_event_t){1u << 6 | 3u, P_FREEA, 45};    /* HP track: +45 (HP), -10 (LP) */
-        ev[4] = (motion_event_t){1u << 6 | 4u, P_FREEA, -10};
-        ev[5] = (motion_event_t){0u << 6 | 9u, P_FREEB, -40 + 100};   /* (RES: not touched) */
-        ev[6] = (motion_event_t){2u << 6 | 3u, P_FREEA, -40};   /* the ANALOG part: a leftover lock on 45 -> the open end (the multimode filter stays off) */
-        ev[7] = (motion_event_t){3u << 6 | 3u, P_FREEA, 20};
-        q.motion.count = 8;
+        q.motion.count = 2;
+        q.motion.event[0] = (motion_event_t){0u << 6 | 3u, P_FREEA, 42};
+        q.motion.event[1] = (motion_event_t){1u << 6 | 3u, P_FREEA, 45};
         q.sum = proj_sum(&q);
-        expect("a project of before 0.2.9 restores (project_restore_runtime)", !project_restore_runtime(&q) || 1);
-        project_restore_runtime(&q);
-        expect("  .. part A (CUT -28, LP): CUT 54 MODE LP SLOPE 12 dB; part B (CUT +30, HP): CUT 30 MODE HP",
-               ufv(trk[0].p, 54, 0, 1) && ufv(trk[1].p, 30, UF_HP, 1));
-        expect("  .. its CUT automation: on the LP part -40 -> 42, OFF -> 82 (open), an HP lock +20 -> 82 (open); on the HP part +45 -> 45, an LP lock -> 0 (open); RES untouched",
-               motion.count == 8u && motion.event[0].value == 42 && motion.event[1].value == UF_STEPS && motion.event[2].value == UF_STEPS &&
-               motion.event[3].value == 45 && motion.event[4].value == 0 && motion.event[5].value == 60);
-        expect("  .. an ANALOG part and a TRIO part with a leftover CUT / RES (SLOPE 0): the bypass (CUT 82, RES 0, MODE LP, SLOPE 12 dB), their CUT locks the open end",
-               ufv(trk[2].p, UF_STEPS, 0, 1) && ufv(trk[3].p, UF_STEPS, 0, 1) && !trk[2].p[P_FREEB] && !trk[3].p[P_FREEB] &&
-               motion.event[6].value == UF_STEPS && motion.event[7].value == UF_STEPS);
+        expect("a project of today restores (project_restore_runtime)", !project_restore_runtime(&q));
+        expect("  .. part A (CUT 54, LP, 12 dB) and part B (CUT 30, HP, 24 dB) and their CUT automation come back as they were",
+               ufv(trk[0].p, 54, 0, 1) && ufv(trk[1].p, 30, UF_HP, 2) && motion.count == 2u && motion.event[0].value == 42 &&
+               motion.event[1].value == 45);
         project_capture(&q);
         project_restore_runtime(&q);
-        expect("  .. captured and restored again (today's, SLOPE set): unchanged", ufv(trk[0].p, 54, 0, 1) && ufv(trk[1].p, 30, UF_HP, 1) &&
+        expect("  .. captured and restored again: unchanged", ufv(trk[0].p, 54, 0, 1) && ufv(trk[1].p, 30, UF_HP, 2) &&
                motion.event[0].value == 42);
-    }
-    {   /* a multi of before: the record's bytes as 0.2.8 wrote them (SLOPE 0), through mu_unpack and the restore */
-        static project_t q, q2;
-        static uint8_t rec[MU_REC_MAX + 16u];
-        uint8_t blk[NSHOWN][MB_N], amt[NSHOWN], set[6];
-        uint32_t cut, len;
-        ui_power_on();
-        set_engine_of(&trk[0], eng_named("FM6"));
-        project_capture(&q);
-        q.t[0].p[P_FREEA] = -12; q.t[0].p[P_FREEC] = 0; q.t[0].p[P_FREED] = 0;
-        memset(&q.motion, 0, sizeof q.motion);
-        memset(blk, 0, sizeof blk);
-        len = mu_pack(rec, &q, (const uint8_t (*)[MB_N])blk, &cut);
-        q2 = q;
-        expect("a multi of before 0.2.9 (part A FM6, CUT -12 stored, SLOPE 0) unpacks", mu_unpack(&q2, blk, amt, set, rec, len) == 1);
-        proj_bound(&q2);                                 /* (as multi.c's load: the values fitted, then the restore) */
-        project_restore_runtime(&q2);
-        expect("  .. and loads as CUT 70, MODE LP, SLOPE 12 dB (the same low-pass, 6.4 kHz)", ufv(trk[0].p, 70, 0, 1));
     }
 }
 

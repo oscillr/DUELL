@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
-/* A project as firmware before 1.2 wrote it (the host tests' old images; included after src/project.c):
+/* A project as firmware before 1.2 wrote it (the host tests' old images; included after src/project.c). DUELL 0.2.14 reads none of
+ * these any more: the tests use the images to show that they are refused (project_test.c, step3_test.c, fun10_test.c, ratchet_test.c):
  *   FUN9 (1.1: np 99, 3648 bytes), FUN8 (1.0.x: np 91, 3584), FUN7 (np as given, 3388, no patches)
  * byte for byte as their proj_pack: np parameters mapped by count (the first np - 8 are today's ids 0.., the last 8
  * P_E0..P_E7), 9-byte steps without a nudge (bit 7 of the note bytes 0), the motion block of 260 bytes (count <= 64,
@@ -8,6 +9,8 @@
  * patches at name - 512 (not FUN7), the name, the FNV-1a hash. -> its size, 0 when q does not fit the old format.
  * The song's chain as rows {slot, repeat} (chain_v9_t, 36 bytes): a section with its four tracks on one slot each (a
  * section of several slots or a "-" does not fit) */
+typedef struct { uint8_t slot, repeat; } chain_row_v9_t;   /* the rows of FUN6..FUN9 (core.h had them until 0.2.14) */
+typedef struct { uint8_t count, rsv[3]; chain_row_v9_t row[CHAIN_ROWS]; } chain_v9_t;
 #define OLD_FUN9 0x46554E39u
 #define OLD_FUN8 0x46554E38u
 #define OLD_FUN7 0x46554E37u
@@ -36,8 +39,8 @@ static uint32_t old_pack(uint8_t *b, const project_t *q, uint32_t magic, uint32_
                 b[pos++] = s->note[j] & 127u;
             b[pos++] = (uint8_t)(s->n | s->time << 3 | (s->flags & 3u) << 5);
             b[pos++] = (uint8_t)((s->vel & 127u) | (r & 1u) << 7);
-            b[pos++] = s->hit;
-            b[pos++] = s->acc & s->hit;
+            b[pos++] = 0;                                  /* (the drum lane hits and accents: gone in 0.2.14, the bytes stay) */
+            b[pos++] = 0;
             b[pos++] = (uint8_t)(s->probability | (r >> 1) << 7);
         }
     }
@@ -113,8 +116,8 @@ static uint32_t old_pack10(uint8_t *b, const project_t *q, uint32_t np)
                 b[pos++] = (uint8_t)((s->note[j] & 127u) | (nd >> j & 1u) << 7);
             b[pos++] = (uint8_t)(s->n | s->time << 3 | (s->flags & 3u) << 5);
             b[pos++] = (uint8_t)((s->vel & 127u) | (r & 1u) << 7);
-            b[pos++] = s->hit;
-            b[pos++] = s->acc & s->hit;
+            b[pos++] = 0;                                  /* (the drum lane hits and accents: gone in 0.2.14, the bytes stay) */
+            b[pos++] = 0;
             b[pos++] = (uint8_t)(s->probability | (r >> 1) << 7);
         }
     }

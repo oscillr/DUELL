@@ -550,8 +550,8 @@ static int demos(const char *dir)
         fclose(f);
         n++;
     }
-    /* VEL -> AMP: DIGITAL E.PIANO (without FELUCCA_FM4: converted, FM6), the same note at velocities 10 .. 127, twice as much dynamics */
-    fresh(1, 0);
+    /* VEL -> AMP: FM6 TINE EP (DIGITAL E.PIANO until 0.2.13), the same note at velocities 10 .. 127, twice as much dynamics */
+    fresh(ENGI_FM6, 0);
     slot(t, 0, MS_VEL, MD_AMP, 63);
     slot(t, 1, MS_VEL, MD_CUT, 30);
     if ((f = demo_open(dir, "vel_amp", 16u * (FS / 4u / CTL) * CTL + FS / CTL * CTL))) {
@@ -851,7 +851,7 @@ static uint64_t route_child(uint32_t e, int32_t d, int32_t a)
 
 static void test_dest027(void)
 {
-    static const char *const OLD[MD_N_026] = {"OFF", "PITCH", "CUT", "SHP", "AMP", "PAN", "DIST", "CHO", "DLY", "REV", "RAT1", "VIB",
+    static const char *const OLD[MD_N_026] = {"OFF", "PITCH", "CUT", "SHP", "AMP", "PAN", "SAT", "CHO", "DLY", "REV", "RAT1", "VIB",
                                               "E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8", "DEP1", "RAT2", "DEP2"};
     static const uint8_t PART[] = {MD_LEVEL, MD_INSA, MD_INSB, MD_INSC, MD_IMIX, MD_EQLO, MD_EQMID, MD_EQHI, MD_DUCK, MD_E2ATK,
                                    MD_E2DEC, MD_E2SUS, MD_E2REL, MD_E2FLT, MD_E2SHP, MD_RES};
@@ -957,7 +957,7 @@ static void test_dest027(void)
     }
     {   /* a faded slot does nothing: the phrase bit for bit as with no route (FM6 SLOT, a retired engine's slot (SAMPLE, GRAIN, SLICE:
          * DUELL 0.2.9, silent, every slot "-"), WAVE TABLE and E7) */
-        static const uint8_t EK[6][2] = {{ENGI_FM6, 7}, {ENGI_SLICE, 0}, {ENGI_SAMPLE, 0}, {ENGI_GRAIN, 3}, {ENGI_WAVE, 0}, {ENGI_WAVE, 6}};
+        static const uint8_t EK[6][2] = {{ENGI_FM6, 7}, {13, 0}, {4, 0}, {8, 3}, {ENGI_WAVE, 0}, {ENGI_WAVE, 6}};
         static const char *const WHY[6] = {"LOADS", "UNUSED", "UNUSED", "UNUSED", "REBUILD", "UNUSED"};
         for (k = 0, ok = 1; k < 6u; k++) {
             uint64_t h0 = route_child(EK[k][0], 0, 0), h1 = route_child(EK[k][0], MD_E1 + EK[k][1], 63);

@@ -3,6 +3,8 @@
 /* Host test of the USB descriptor layouts in src/usb.c (#67), one build per variant:
  *   -DT_CDC=0/1 (FELUCCA_CDC)  -DT_UAC=0/1 (FELUCCA_UAC)  -DT_LAYOUT=0..3 (FELUCCA_USB_LAYOUT)
  *   -DT_ON=0/1 (usb_cdc_on: the console presented or not)  -DT_48K=0/1 (FELUCCA_UAC_48K, default 1)
+ *   -DT_ASF=0/1 (FELUCCA_UAC_AS_FIRST, default 1: DUELL 0.2.14, from Felucca 1.5.1 (#67): the audio streaming
+ *   interface first in the AC collection, bcdDevice + 0.08; the interface numbers and endpoints do not move)
  * The device and configuration descriptors come from get_desc(), as GET_DESCRIPTOR sends them, and are
  * parsed as a host does: lengths and wTotalLength, bNumInterfaces, interface numbers 0..n-1 in order, the
  * endpoints of each setting and their addresses (EP1 MIDI, EP2 / EP3 CDC, EP4 audio, each once), the IADs
@@ -30,6 +32,10 @@
 #define T_48K 1
 #endif
 #define FELUCCA_UAC_48K T_48K
+#ifndef T_ASF
+#define T_ASF 1
+#endif
+#define FELUCCA_UAC_AS_FIRST T_ASF
 static void fm1_delay_ms(uint32_t ms) { (void)ms; }
 #pragma GCC diagnostic ignored "-Wint-to-pointer-cast"   /* SIE register macros (never touched here) */
 #include "../firmware/src/usb.c"
@@ -49,6 +55,49 @@ static uint32_t le16(const uint8_t *p) { return p[0] | (uint32_t)p[1] << 8; }
 
 #define CDC_SHOWN (T_CDC && T_ON)
 #define AUDIO_48K (T_UAC && T_48K)
+#define AS_FIRST (T_UAC && T_ASF)
+#define BCD_EXPECT (0x300u + 0x10 * (T_UAC + AUDIO_48K) + 0x08 * AS_FIRST + (CDC_SHOWN ? 1 + 2 * T_LAYOUT : 0))
+
+/* from Felucca 1.5.1 (#67): a model of the kernel AppleUSBAudio parser of macOS up to 15 (AppleUSBAudio-273.4.1,
+ * AUAConfigurationDictionary::parseConfigurationDescriptor), reduced to its walk of the AC collection: the list of
+ * baInterfaceNr is walked with the count bInCollection; at a MIDI streaming interface the matching entry is removed
+ * from the list while the walk goes on, at an audio streaming interface the walk stops at the match. A look-up past
+ * the end of the (shortened) list fails and the parse ends there. 1: the audio streaming interface is parsed. */
+static int aua_parses_as(const uint8_t *c, uint32_t n)
+{
+    uint8_t list[8], len = 0, num = 0;
+    uint32_t off, i, k;
+    int have_ac = 0;
+    for (off = 0; off < n && c[off] >= 2; off += c[off]) {
+        const uint8_t *d = c + off;
+        if (d[1] == 4 && d[5] == 1 && d[6] == 1)
+            have_ac = 2;                               /* the AC interface: its header follows */
+        else if (d[1] == 0x24 && d[2] == 1 && have_ac == 2) {
+            num = d[7];
+            for (len = 0; len < num && len < sizeof list; len++)
+                list[len] = d[8 + len];
+            have_ac = 1;
+        } else if (d[1] == 4 && d[5] == 1 && d[6] == 3) {    /* MIDI streaming: pruned from the list */
+            for (i = 0; i < num; i++) {
+                if (i >= len)
+                    return 0;                          /* the look-up fails: the parse ends */
+                if (list[i] == d[2]) {
+                    for (k = i; k + 1 < len; k++)
+                        list[k] = list[k + 1];
+                    len--;
+                }
+            }
+        } else if (d[1] == 4 && d[5] == 1 && d[6] == 2 && have_ac == 1) {   /* audio streaming */
+            for (i = 0; i < num; i++) {
+                if (i >= len)
+                    return 0;
+                if (list[i] == d[2])
+                    return 1;                          /* found: the audio streaming interface is parsed */
+            }
+        }
+    }
+    return 0;
+}
 
 /* the 1.0 descriptors with 1.1's 48 kHz changes, nothing else: the format descriptor 11 -> 14 bytes
  * (bSamFreqType 2: 44100, 48000), EP 0x84's wMaxPacketSize 184 -> 196, wTotalLength + 3, bcdDevice x.1x -> x.2x */
@@ -84,9 +133,23 @@ static uint32_t v11_from_v10(const uint8_t *dev, const uint8_t *cfg, uint32_t n)
 static int same_as(const uint8_t *dev, const uint8_t *c, uint32_t n, const uint8_t *rdev, const uint8_t *rcfg,
                    uint32_t rn)
 {
-    if (!AUDIO_48K)
-        return !memcmp(dev, rdev, 18) && n == rn && !memcmp(c, rcfg, n);
-    rn = v11_from_v10(rdev, rcfg, rn);
+    uint32_t off;
+    if (AUDIO_48K) {
+        rn = v11_from_v10(rdev, rcfg, rn);
+    } else {
+        memcpy(v11_dev, rdev, 18);
+        memcpy(v11_cfg, rcfg, rn);
+    }
+    if (AS_FIRST) {                                    /* 0.2.14 (#67): the AC collection's two bytes swapped, bcdDevice + 0.08 */
+        v11_dev[12] = (uint8_t)(v11_dev[12] + 0x08);
+        for (off = 0; off < rn; off += v11_cfg[off])
+            if (v11_cfg[off + 1] == 0x24 && v11_cfg[off + 2] == 1 && v11_cfg[off] == 10 && v11_cfg[off + 7] == 2) {
+                uint8_t t = v11_cfg[off + 8];
+                v11_cfg[off + 8] = v11_cfg[off + 9];
+                v11_cfg[off + 9] = t;
+                break;
+            }
+    }
     return !memcmp(dev, v11_dev, 18) && n == rn && !memcmp(c, v11_cfg, n);
 }
 
@@ -106,9 +169,9 @@ int main(void)
     memset(if_sub, 0, sizeof if_sub);
     memset(in_iad, 0, sizeof in_iad);
     memset(seen, 0, sizeof seen);
-    printf("-- USB descriptors: CDC %d (%s), UAC %d%s, layout %d\n", T_CDC,
+    printf("-- USB descriptors: CDC %d (%s), UAC %d%s%s, layout %d\n", T_CDC,
            !T_CDC ? "not built" : T_ON ? "presented" : "left out", T_UAC, AUDIO_48K ? " (44.1 / 48 kHz)" : "",
-           T_LAYOUT);
+           T_UAC ? (AS_FIRST ? ", AS first" : ", MIDI first") : "", T_LAYOUT);
     check("GET_DESCRIPTOR device", get_desc(0x0100, &dev, &dev_len) && dev_len == 18 && dev[0] == 18 && dev[1] == 1);
     check("GET_DESCRIPTOR configuration", get_desc(0x0200, &c, &n) && c[1] == 2);
 
@@ -123,8 +186,8 @@ int main(void)
               le16(dev + 2) == 0x0200 && !dev[4] && !dev[5] && dev[6] == (T_LAYOUT == 2));
     check("VID 1209 PID 0001, strings 1 2, one configuration",
           le16(dev + 8) == 0x1209 && le16(dev + 10) == 1 && dev[14] == 1 && dev[15] == 2 && dev[17] == 1);
-    snprintf(name, sizeof name, "bcdDevice 3.%02X", 0x10 * (T_UAC + AUDIO_48K) + (CDC_SHOWN ? 1 + 2 * T_LAYOUT : 0));
-    check(name, le16(dev + 12) == 0x300u + 0x10 * (T_UAC + AUDIO_48K) + (CDC_SHOWN ? 1 + 2 * T_LAYOUT : 0));
+    snprintf(name, sizeof name, "bcdDevice 3.%02X", BCD_EXPECT & 0xFFu);
+    check(name, le16(dev + 12) == BCD_EXPECT);
 
     /* ---- the configuration, walked as a host does ---- */
     check("wTotalLength = the bytes sent", le16(c + 2) == n);
@@ -219,7 +282,10 @@ int main(void)
     }
     if (cur_if >= 0 && got != cur_neps)
         eps_ok = 0;
-    coll_ok = ncoll == 1 + T_UAC && coll[0] == midi_if && (!T_UAC || coll[1] == as_if);
+    if (AS_FIRST)                                      /* 0.2.14 (#67): audio streaming, then MIDI */
+        coll_ok = ncoll == 2 && coll[0] == as_if && coll[1] == midi_if;
+    else
+        coll_ok = ncoll == 1 + T_UAC && coll[0] == midi_if && (!T_UAC || coll[1] == as_if);
 
     check("descriptor lengths add up to wTotalLength", lens_ok && off == n);
     snprintf(name, sizeof name, "bNumInterfaces %u = the interfaces, numbered 0..n-1 in order", (unsigned)c[4]);
@@ -240,7 +306,12 @@ int main(void)
         check("no IAD, audio from IF 0", niad == 0 && aud_if == 0);
     }
     check("audio function: AC, MIDI, AS in a row", midi_if == aud_if + 1 && (!T_UAC || as_if == aud_if + 2));
-    check("AC header 1.00, collection = the MIDI (and audio streaming) interfaces", ac_ok && coll_ok);
+    check(AS_FIRST ? "AC header 1.00, collection = the audio streaming, then the MIDI interface"
+                   : "AC header 1.00, collection = the MIDI (and audio streaming) interfaces", ac_ok && coll_ok);
+    if (T_UAC)                                         /* #67: macOS 10.14 .. 15 (kernel AppleUSBAudio) */
+        check(AS_FIRST ? "AppleUSBAudio (macOS <= 15) parser model reaches the audio streaming interface"
+                       : "AppleUSBAudio (macOS <= 15) parser model stops before it (up to 0.2.13, #67)",
+              aua_parses_as(c, n) == AS_FIRST);
     check("UAC_AS_IF (SET_INTERFACE / GET_INTERFACE) = the audio streaming interface",
           !T_UAC || (int)UAC_AS_IF == as_if);
     check("CDC union and call management name the data interface", union_ok && cm_ok &&
@@ -248,13 +319,15 @@ int main(void)
 
     /* ---- the released bytes ---- */
     if (CDC_SHOWN && T_LAYOUT == 0)
-        check(AUDIO_48K ? "layout 0 = Felucca 1.0 + the 48 kHz rate (format, EP 0x84 size, bcdDevice), nothing else"
-                        : "layout 0 = Felucca 1.0 byte for byte",
+        check(AS_FIRST    ? "layout 0 = Felucca 1.0 + the 48 kHz rate (if built) + the AC collection order, nothing else"
+              : AUDIO_48K ? "layout 0 = Felucca 1.0 + the 48 kHz rate (format, EP 0x84 size, bcdDevice), nothing else"
+                          : "layout 0 = Felucca 1.0 byte for byte",
               T_UAC ? same_as(dev, c, n, V10_CDC_DEV, V10_CDC_CFG, sizeof V10_CDC_CFG)
                     : same_as(dev, c, n, V10_CDC_NOUAC_DEV, V10_CDC_NOUAC_CFG, sizeof V10_CDC_NOUAC_CFG));
     if (!CDC_SHOWN)
-        check(AUDIO_48K ? "without the console = 1.0's FELUCCA_CDC=0 build + the 48 kHz rate, nothing else"
-                        : "without the console = a FELUCCA_CDC=0 build of 1.0 byte for byte",
+        check(AS_FIRST    ? "without the console = 1.0's FELUCCA_CDC=0 build + 48 kHz (if built) + the AC order"
+              : AUDIO_48K ? "without the console = 1.0's FELUCCA_CDC=0 build + the 48 kHz rate, nothing else"
+                          : "without the console = a FELUCCA_CDC=0 build of 1.0 byte for byte",
               T_UAC ? same_as(dev, c, n, V10_NOCDC_DEV, V10_NOCDC_CFG, sizeof V10_NOCDC_CFG)
                     : same_as(dev, c, n, V10_MIDI_DEV, V10_MIDI_CFG, sizeof V10_MIDI_CFG));
     if (T_UAC) {                                       /* the audio streaming format, as a host lists the rates */

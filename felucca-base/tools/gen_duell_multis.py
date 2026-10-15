@@ -10,7 +10,7 @@ which it is (DF_TEST_MULTIS) and multi.c refuses a header that does not match it
 
 The records are the source (built in the emulator, downloaded with the saved-data file, extracted with
 tools/flash_dump.py --extract-multis, renamed in place); the firmware shows them in the slots M01..M10 while the slot's
-flash record is empty, and ERASE of a saved overwrite restores them (multi.c). Checked here: version 2, the name is the
+flash record is empty, and ERASE of a saved overwrite restores them (multi.c). Checked here: version 5 (multi.c MU_VER: the only one it loads; 0.2.19 moved the level split: tools/factory_multis_levelsplit.py; none of the records holds CRUSH, so 0.2.14 changed no byte but the version; 0.2.16 moved the ping-pong switch into the delay MODE: tools/factory_multis_delaymode.py), the name is the
 expected one (ASCII, at most 12), each part's engine + factory index names the intended sound, the record is not longer than MU_REC_MAX (1916).
 M13..M16 (test mode only) are the CPU TEST multis (TEST 1 BASE, TEST 2 PHASE, TEST 3 HEAVY, TEST 4 MIX), built by tests/gen_test_multis.c with the firmware's own code
 (the sound loader and multi.c's packer); 0.2.11's six (since 0.2.13 in M01 M02 M07..M10) are built the same way by tests/gen_factory_multis.c; M11, M12 have no factory multi.
@@ -48,8 +48,8 @@ def die(msg):
 
 def check(k, b, counts):
     slot = SLOTS[k] + 1
-    if len(b) > REC_MAX or len(b) < MU_G_AT or b[0] != 2:
-        die("M%02d: not a version 2 record of at most %d bytes" % (slot, REC_MAX))
+    if len(b) > REC_MAX or len(b) < MU_G_AT or b[0] != 5:
+        die("M%02d: not a version 5 record of at most %d bytes" % (slot, REC_MAX))
     raw = b[8:20].split(b"\0")[0]
     if raw.decode("ascii", "replace") != NAMES[k] or any(not 32 <= c <= 126 for c in raw):
         die("M%02d: name is %r, expected %r" % (slot, raw, NAMES[k]))
@@ -61,6 +61,8 @@ def check(k, b, counts):
             die("M%02d part %d: engine %d sound %d is %r, expected %r" % (slot, t + 1, eng, idx, have, PARTS[k][t]))
         if not any(b[pos + 4:pos + 4 + MB_N]):
             die("M%02d part %d: no End B block" % (slot, t + 1))
+        if b[pos + 4 + MB_N + 48] - 64 not in (1, 2):    # SLOPE (P_FREED, id 48): 1 or 2; 0 is a record of before 0.2.9, which 0.2.14 no longer converts
+            die("M%02d part %d: the multimode filter's SLOPE is %d, not 1 or 2 (a record of before 0.2.9: convert it)" % (slot, t + 1, b[pos + 4 + MB_N + 48] - 64))
         pos += 4 + MB_N + np_
         pos += 8 + PS_STEP * sum(bin(x).count("1") for x in b[pos:pos + 8]) + (128 if b[pos - 4 - MB_N - np_ + 3] & 1 else 0)
     n = b[pos]

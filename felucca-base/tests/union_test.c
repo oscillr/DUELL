@@ -53,7 +53,7 @@ static void uplay(track_t *t, uint32_t e, uint32_t pi, uint32_t base, uint32_t w
     urun(250);                                   /* still ringing at the next switch */
 }
 
-static const uint32_t UE[] = {0 /* ANALOG */, 7 /* WHEEL */, ENGI_PHYS, ENGI_DRUM, ENGI_FM6};   /* (DUELL 0.2.9: SAMPLE, GRAIN, SLICE
+static const uint32_t UE[] = {0 /* ANALOG */, 7 /* WHEEL */, ENGI_PHYS, ENGI_WAVE, ENGI_FM6};   /* (DUELL 0.2.9: SAMPLE, GRAIN, SLICE
                                                                                       * retired: their sequences left the golden file) */
 #define UNE (sizeof UE / sizeof UE[0])
 

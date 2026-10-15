@@ -16,7 +16,7 @@ MAGIC = b"DUELLFLASH1"
 SECTOR, PAYLOAD_OFF, PAYLOAD_MAX = 4096, 256, 4096 - 256
 ST_MAGIC = 0x554C4546
 MU_MAGIC = b"MUL1"
-OBJ_SETTINGS, OBJ_UPRESET0, OBJ_UPFM6, OBJ_AUTOSAVE, OBJ_PATSLOT0, OBJ_MULTI0, OBJ_PATCH0, OBJ_COUNT = 0, 5, 8, 9, 10, 13, 21, 27
+OBJ_SETTINGS, OBJ_UPRESET0, OBJ_UPFM6, OBJ_AUTOSAVE, OBJ_PATSLOT0, OBJ_MULTI0, OBJ_PATCH0, OBJ_WTAB0, OBJ_PATCHX0, OBJ_COUNT = 0, 5, 8, 9, 10, 13, 21, 27, 33, 43   # (ids 30..32: unused, and the FM6 voice bank's commit records)
 ENGINES = ["ANALOG", "DIGITAL", "PHASE", "LOFI", "SAMPLE", "VOICE", "TRIO", "WHEEL", "GRAIN", "PHYS",
            "DRUM", "NOISE", "FM6", "SLICE"]
 MODES = ["DUEL", "STEREO", "LAYER"]
@@ -45,6 +45,10 @@ def read_file(path):
 def sector_addr(obj, copy):
     if obj == OBJ_SETTINGS:
         return 0xFC000 + copy * SECTOR
+    if obj >= OBJ_PATCHX0:                       # DUELL 0.2.15: the PATCH store's chunks 6..15, 0xA6000..0xB9FFF
+        return 0xA6000 + (obj - OBJ_PATCHX0) * 2 * SECTOR + copy * SECTOR
+    if OBJ_WTAB0 <= obj < OBJ_WTAB0 + 3:         # the user wavetables, 0xA0000..0xA5FFF
+        return 0xA0000 + (obj - OBJ_WTAB0) * 2 * SECTOR + copy * SECTOR
     if obj >= OBJ_PATCH0:                        # the PATCH store: chunks 0..2 USR3's old place, 3..4 the old preset banks, 5 the FM6 bank's pair
         c = obj - OBJ_PATCH0
         if c < 3:
@@ -131,11 +135,13 @@ def main():
     print("%s: %d sectors" % (args.file, len(flash)))
     names = {OBJ_SETTINGS: "settings", OBJ_AUTOSAVE: "autosave", OBJ_UPFM6: "user presets' FM6 patches (retired)"}
     for obj in range(OBJ_COUNT):
-        if OBJ_MULTI0 <= obj < OBJ_PATCH0 or 1 <= obj <= 4 or obj == 7:
+        if OBJ_MULTI0 <= obj < OBJ_PATCH0 or 1 <= obj <= 4 or obj == 7 or OBJ_WTAB0 + 3 <= obj < OBJ_PATCHX0:
             continue
         c = current(flash, obj)
         if c:
-            label = names.get(obj) or ("patch store chunk %d" % (obj - OBJ_PATCH0) if obj >= OBJ_PATCH0 else
+            label = names.get(obj) or ("patch store chunk %d" % (obj - OBJ_PATCHX0 + 6) if obj >= OBJ_PATCHX0 else
+                                       "user wavetable %d" % (obj - OBJ_WTAB0 + 1) if obj >= OBJ_WTAB0 else
+                                       "patch store chunk %d" % (obj - OBJ_PATCH0) if obj >= OBJ_PATCH0 else
                                        "pattern slots %d" % (obj - OBJ_PATSLOT0) if obj >= OBJ_PATSLOT0 else "user presets %d (retired)" % (obj - OBJ_UPRESET0))
             print("  object %2d %-26s copy %s seq %d, %d bytes" % (obj, label, c[2], c[0], len(c[1])))
     if args.extract_multis:

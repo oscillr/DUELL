@@ -50,10 +50,10 @@ LEGACY = {
     "tempo": "symbol_tempo", "scale": "control_arow_scale", "quantize": "symbol_grid",
     "glide": "symbol_transition", "slide": "symbol_rise", "voice": "symbol_primitives_o", "mod": "symbol_modular",
     "noise": "waveform_noise_white", "sub": "symbol_bass", "ratio": "function_multiply",
-    "algorithm": "symbol_node", "sample": "symbol_audio", "steps": "symbol_grid_nine", "accent": "symbol_thunder_f",
+    "algorithm": "symbol_node", "steps": "symbol_grid_nine", "accent": "symbol_thunder_f",
     "time": "symbol_clock", "phase": "function_phase", "fade": "waveform_fade", "mix": "symbol_combine",
     "keytrack": "symbol_keyboard", "size": "control_arrow_both", "damp": "symbol_weight",
-    "tone": "function_filter_band", "sweep": "symbol_warp", "vibrato": "waveform_cos", "loop": "waveform_loop",
+    "tone": "function_filter_band", "sweep": "symbol_warp", "vibrato": "waveform_cos",
     "hold": "symbol_lock_close_f", "order": "symbol_sort", "prob": "symbol_dice",
     "length": "control_arrow_end", "division": "note_quarter", "chip": "symbol_primitives_f",
     "midi": "port_midi", "save": "symbol_download_as", "load": "symbol_folder_open", "clear": "symbol_trash",
@@ -61,9 +61,8 @@ LEGACY = {
     "w_sqr": "waveform_square", "w_pls": "waveform_pulse_quarter", "w_pwm": "waveform_pulse_half",
     "w_sh": "waveform_noise_step", "w_dsin": "function_signal_double", "w_spls": "waveform_pulse_eighth",
     "w_rsaw": "waveform_sawtooth_ac_inv", "w_rtri": "waveform_triangle_dc", "w_rtrp": "waveform_triangle_dc_inv",
-    "tape": "symbol_tape", "mouth": "symbol_mouth", "trio": "symbol_primitives_o",
-    "drawbar": ("symbol_drawbar", "ui_slider_vertical"), "slice": "symbol_comb", "grain": "symbol_cloud_o", "phys": "symbol_pick",
-    "drum": "symbol_drum",
+    "mouth": "symbol_mouth", "trio": "symbol_primitives_o",
+    "drawbar": ("symbol_drawbar", "ui_slider_vertical"), "grain": "symbol_cloud_o", "phys": "symbol_pick",
 }
 
 # icons the redesign adds (header, dialogs, lists, menu); name -> Fukiai glyph
@@ -109,7 +108,7 @@ SMALL_EXTRA = ["x_star", "x_lock", "x_cog", "x_usb", "x_warn", "x_folder", "x_le
                "x_mixer", "x_pattern", "x_song", "x_motion", "x_motion_rec", "x_motion_del",
                "x_hpf", "x_repeat", "x_reverse", "x_tstop", "x_freeze"]
 # legacy names no screen draws (1.1): kept in the enum (assets/icons.json's order), not rasterised (no cell)
-NOT_DRAWN = ["tape", "slice", "loop"]   # (slice, loop: the SLICE and SAMPLE engines, retired in DUELL 0.2.9)
+NOT_DRAWN = []   # (tape, slice, loop: gone in DUELL 0.2.14; sample, drum too)
 
 # the 24 px set: the header battery (Fukiai's battery is a wide, short glyph: at 16 px its body was 12 x 6)
 # (up to 1.1.5 also the FX map's effect cells; 1.2's map names the 16 keys' effects instead, ui_layer.c layer_fx)
@@ -119,8 +118,8 @@ HUGE_DEFAULT = ["x_bat0", "x_bat1", "x_bat3", "x_bat4", "x_bat_chg", "x_usb"]   
 # (1.0.5: the MENU rows lost their icons, the tabs carry them)
 BIG_DEFAULT = ["x_play", "x_stop", "x_rec", "x_rec_o", "x_usb", "x_star",
                "x_cog", "x_warn", "x_speaker", "x_info", "x_eye", "midi",
-               "wave", "algorithm", "phase", "bits", "sample", "mouth", "trio", "drawbar", "slice", "grain",
-               "phys", "drum", "noise", "mod", "tempo",
+               "wave", "algorithm", "phase", "bits", "mouth", "trio", "drawbar", "grain",
+               "phys", "noise", "mod", "tempo",
                "x_song", "x_motion", "x_motion_del", "x_doctor", "x_knob", "rate", "x_bat0", "x_bat1", "x_bat3", "x_bat4", "x_bat_chg",
                "x_nofile"]
 

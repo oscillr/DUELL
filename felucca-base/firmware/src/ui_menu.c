@@ -129,7 +129,7 @@ typedef struct { const char *text; uint8_t kind; } menu_credit_t;
 static const menu_credit_t MENU_CREDITS[] = {
     {"H\xFCgelton Instruments", MC_TITLE},  /* Felucca's own: above; these are ours too */
     {"Leo Kuroshita", MC_TEXT},
-    {"CrispyZebra (PHASE waveforms), the DRUM voices: GPL-3.0", MC_TEXT},
+    {"CrispyZebra (PHASE waveforms): GPL-3.0", MC_TEXT},
     {"Fukiai icon font: MIT", MC_TEXT},
     {"https://github.com/hugelton", MC_URL},
     {"", MC_TEXT},
@@ -151,6 +151,10 @@ static const menu_credit_t MENU_CREDITS[] = {
     {"Emilie Gillet / MIT", MC_TEXT},
     {"https://github.com/pichenettes/eurorack", MC_URL},
     {"", MC_TEXT},
+    {"CHOMPI CLUB", MC_TITLE},
+    {"The PLATE reverb and the delay modes RAND and OCT+ are based on the CHOMPI firmware (MIT)", MC_TEXT},
+    {"https://github.com/CHOMPI-Club/CHOMPI", MC_URL},
+    {"", MC_TEXT},
     {"INTER TIGHT", MC_TITLE},
     {"The Inter Project Authors", MC_TEXT},
     {"SIL Open Font License 1.1", MC_TEXT},
@@ -161,6 +165,16 @@ static const menu_credit_t MENU_CREDITS[] = {
     {"https://doi.org/10.1121/1.383940", MC_URL},
     {"Hillenbrand, Getty, Clark and Wheeler (1995)", MC_TEXT},
     {"https://doi.org/10.1121/1.411872", MC_URL},
+    {"", MC_TEXT},
+    {"WAVE USER TABLES", MC_TITLE},                /* DUELL 0.2.14: the editor's WAV converter (web/editor/wavetable.js); ideas, no code */
+    {"Cooley and Tukey (1965): the FFT", MC_TEXT},
+    {"https://doi.org/10.1090/S0025-5718-1965-0178586-1", MC_URL},
+    {"Xfer Serum: wavetable WAV files", MC_TEXT},
+    {"of 2048 sample frames (Vital, Surge)", MC_TEXT},
+    {"", MC_TEXT},
+    {"FM VOICE", MC_TITLE},                        /* DUELL 0.2.17: FM BASS 2 (FM6 factory patch F9), a DX7 voice import */
+    {"One FM voice: aquanodemusic (Aquanode Soundscapes), CC0 1.0 Universal", MC_TEXT},
+    {"https://github.com/aquanodemusic/aquanode-soundscapes", MC_URL},
 };
 
 static int32_t menu_text(const char *s, int32_t y, uint16_t col, int draw)
@@ -246,7 +260,6 @@ static int32_t menu_document(int32_t y, int draw)
     }
     about_sec[1] = y + 12 - y0;
     y = menu_text("LICENSES + SOURCE", y + 12, T_THEME, draw);
-    y = menu_text("DRUM + own samples: GPL-3.0-only", y, T_TEXT, draw);
     y = menu_text("Fonts and icons: their licences travel with the source and the release files.", y, T_TEXT, draw);
     y = menu_text("NO WARRANTY", y, T_TEXT, draw);
     y = menu_text("Full notices in source:", y + 8, T_TEXT, draw);
@@ -303,10 +316,11 @@ static void menu_head(void)
  *                   (mt_follow), the gaps kept
  *   rows    59..    one SURF panel, a row a label and its value, 1 px rules
  *                   between them; the selected row THEME with INK, as the browser's. A value THEME (M) at the right,
- *                   ON / OFF as a switch, COLOR its palette's five colours, CALIBRATION and ABOUT a chevron (OCT+
- *                   opens them); the labels in M too (a list's rows)
+ *                   ON / OFF as a switch, COLOR its palette's five colours, BUTTON MAP, TEST, GUIDE, ABOUT and ERASE DATA a
+ *                   chevron (OCT+ opens them); the labels in M too (a list's rows). 0.2.14: rows of one or two units
+ *                   (a two-line label), at most MPAGE_UNITS a page; a tab with more has pages ("CONTROL 1/2" in its pill)
  *   keys   224      SELECT ROW and, on a row with a value, KNOB 1 VALUE (SPEC 1.1a: no OCT / HOME keycap; OCT+ still opens
- *                   CALIBRATION / TEST / ABOUT and clears LEARN, OCT- goes back, HOME closes, unadvertised)
+ *                   BUTTON MAP / TEST / ABOUT, OCT- goes back, HOME closes, unadvertised)
  * Drawn in two bands (the canvas holds 124 rows) split in a gap between two rows; while the tabs slide only their
  * strip (24..58) is drawn again */
 static const uint16_t MTAB_ICON[MTAB_COUNT] = {ICON_X_EYE, ICON_X_KNOB, ICON_X_SPEAKER, ICON_X_COG};
@@ -328,16 +342,26 @@ static const uint16_t MTAB_ICON[MTAB_COUNT] = {ICON_X_EYE, ICON_X_KNOB, ICON_X_S
 #define MR_VR 224                                      /* its value's right edge */
 #define MK_Y 224                                       /* the key hints: the footer's row 2 band (its keycaps centred on its names) */
 static uint32_t menu_tab(void) { return MI_TAB[ui.menu_sel % MI_COUNT]; }
-/* the shown tab's rows: 24 px, 2 px apart (a tab of 6: 1 px, its panel then ends
- * 6 px above the key hints as the others do; the rule between two rows is that gap row; 1.2, a tab of 7: 21 px rows
- * 1 px apart, its panel then ends 4 px lower; 1.3, a tab of 8: 18 px rows 1 px apart, the same end) */
-static int32_t mr_h(void)
+/* DUELL 0.2.14: the rows in units (menu_items.c menu_units, menu_place): a unit is 21 px and a 1 px rule (1.2's 7-row look), a two-line
+ * row two units (43 px); MPAGE_UNITS (7) units a page, the panel then ends 4 px lower than a 6-row tab did and 6 px above the key
+ * hints. The page shown is the selected row's (SELECT walks every row, so it turns the pages too) */
+#define MU_H 21                                        /* a unit's height */
+#define MU_P 22                                        /* .. and its pitch (the rule between two rows is the gap row) */
+static int32_t mu_y(uint32_t u) { return MP_Y + MP_PAD + (int32_t)u * MU_P; }
+static uint32_t menu_page(void) { return menu_place(ui.menu_sel % MI_COUNT, 0); }   /* the page shown (0 ..) */
+static void mtab_label(uint32_t t, char *b)            /* the tab's pill: its name, "CONTROL 1/2" when it has pages (b: 16) */
 {
-    uint32_t n = mtab_rows(menu_tab());
-    return n > 7u ? 18 : n > 6u ? 21 : 24;
+    uint32_t n = mtab_pages(t), k;
+    str_cpy(b, MTAB_NAME[t % MTAB_COUNT], 16);
+    if (n > 1u) {                                      /* (a tab shown: its page; another: 1, its pill is an icon then) */
+        k = str_len(b);
+        b[k] = ' ';
+        b[k + 1u] = (char)('0' + (t == menu_tab() ? menu_page() + 1u : 1u));
+        b[k + 2u] = '/';
+        b[k + 3u] = (char)('0' + n);
+        b[k + 4u] = 0;
+    }
 }
-static int32_t mr_gap(void) { return mtab_rows(menu_tab()) <= 5u ? 2 : 1; }
-static int32_t mr_y(uint32_t k) { return MP_Y + MP_PAD + (int32_t)k * (mr_h() + mr_gap()); }
 
 /* the tab bar's place: the tab shown at pos tab * MT_ONE; with ANIM ON it follows in halving steps, a frame each
  * (a frame missed, as when the menu opens: it snaps, as ui_graph.c pr_follow) */
@@ -360,7 +384,9 @@ static void mt_layout(int32_t *a, int32_t *x, int32_t *w)
         int32_t d = mt.pos - (int32_t)k * MT_ONE;
         a[k] = MT_ONE - (d < 0 ? -d : d);
         if (a[k] < 0) a[k] = 0;
-        w[k] = MT_IW + (MT_NX - MT_IW + text_w(&AF_S, MTAB_NAME[k]) + 10) * a[k] / MT_ONE;
+        char b[16];
+        mtab_label(k, b);
+        w[k] = MT_IW + (MT_NX - MT_IW + text_w(&AF_S, b) + 10) * a[k] / MT_ONE;
         tot += w[k];
     }
     cum = MT_X0 + HALF_UP(MT_X1 - MT_X0 - tot - (int32_t)(MTAB_COUNT - 1u) * MT_GAP);   /* (the bar centred) */
@@ -380,9 +406,11 @@ static void menu_tabs(void)                            /* (in screen rows: cv_oy
         cv_rrect(x[k], MT_Y, w[k], MT_H, -8, bg, T_BG);
         GFX_HOOK_ALIGN(x[k], MT_Y, x[k] + MT_IW, MT_Y + MT_H, AL_HV, "menu tab icon centred in its cushion");
         cv_icon_in(x[k], MT_Y, MT_IW, MT_H, 16, MTAB_ICON[k], on ? T_INK : T_MID, bg);
-        if (a[k] == MT_ONE) {                          /* (settled: its name) */
+        if (a[k] == MT_ONE) {                          /* (settled: its name; 0.2.14: and its page, "CONTROL 1/2") */
+            char b[16];
+            mtab_label(k, b);
             GFX_HOOK_ALIGN(0, MT_Y, 0, MT_Y + MT_H, AL_V, "menu tab name centred up/down");
-            cv_text_on(x[k] + MT_NX, MT_Y + CAP_IN(S, MT_H), &AF_S, MTAB_NAME[k],
+            cv_text_on(x[k] + MT_NX, MT_Y + CAP_IN(S, MT_H), &AF_S, b,
                        T_INK, T_ACCENT);
         }
     }
@@ -408,20 +436,42 @@ static void menu_switch(int32_t xr, int32_t y, int32_t h, int on, int sel)
     cv_rrect(x, ty, 26, 14, -7, track, under);
     cv_rrect(on ? x + 14 : x + 2, ty + 2, 10, 10, -5, knob, track);
 }
-/* the tab's row k (menu_items.c row `row`) */
-static void menu_row(uint32_t k, uint32_t row)
+/* a row (menu_items.c row `row`) of the page shown: its units' place, the label at the left (a two-line label: its first line in M,
+ * the second small (S, MID), the pair centred in the row), the value at the right centred on the whole row */
+static void menu_row(uint32_t row)
 {
-    int32_t y = mr_y(k), h = mr_h(), vy = y + CAP_IN(M, h);   /* the label and its value: M (a list's rows) */
+    uint32_t u;
+    int32_t y, h, vy;
     int sel = row == ui.menu_sel;
     uint16_t bg = sel ? T_THEME : T_SURF, fg = sel ? T_INK : T_TEXT, val = sel ? T_INK : T_THEME;
-    const char *v = menu_valued(row) ? menu_vname(row, menu_get(row)) : "";
+    const char *v = menu_valued(row) ? menu_vname(row, menu_get(row)) : "", *l = menu_label(row);
+    char l1[24];
+    uint32_t n = 0;
+    menu_place(row, &u);
+    y = mu_y(u);
+    h = (int32_t)menu_units(row) * MU_P - 1;
+    vy = y + CAP_IN(M, h);                             /* the label and its value: M (a list's rows) */
     if (sel)
         cv_rrect(MR_X, y, MR_W, h, 6, T_THEME, T_SURF);
-    else if (k && row - 1u != ui.menu_sel)             /* a rule from the row above (none beside the selected one) */
+    else if (u && row - 1u != ui.menu_sel)             /* a rule from the row above (none beside the selected one, none at a page's top) */
         cv_rect(MR_X + 6, y - 1, MR_W - 12, 1, T_LINE);
-    GFX_HOOK_ALIGN(0, y, 0, y + h, AL_V, "menu row name centred up/down");
-    cv_text_on(MR_LX, vy, &AF_M, MI_NAME[row], fg, bg);
-    if (row >= MI_VALUES) {                            /* CALIBRATION, ABOUT: OCT+ opens them */
+    while (l[n] && l[n] != '\n' && n + 1u < sizeof l1) {
+        l1[n] = l[n];
+        n++;
+    }
+    l1[n] = 0;
+    if (l[n] == '\n') {                                /* two lines: M 11 px caps, 6 px, S 9 px caps, centred in h */
+        int32_t top = y + HALF_UP(h - (AF_M_CAP_H + 6 + AF_S_CAP_H));
+        GFX_HOOK_ALIGN(0, top, 0, top + AF_M_CAP_H, AL_V, "menu row name's first line");
+        cv_text_on(MR_LX, top - AF_M_CAP_Y, &AF_M, l1, fg, bg);
+        top += AF_M_CAP_H + 6;
+        GFX_HOOK_ALIGN(0, top, 0, top + AF_S_CAP_H, AL_V, "menu row name's second line");
+        cv_text_on(MR_LX, top - AF_S_CAP_Y, &AF_S, l + n + 1, sel ? T_INK : T_MID, bg);
+    } else {
+        GFX_HOOK_ALIGN(0, y, 0, y + h, AL_V, "menu row name centred up/down");
+        cv_text_on(MR_LX, vy, &AF_M, l1, fg, bg);
+    }
+    if (!menu_valued(row)) {                           /* BUTTON MAP, TEST, GUIDE, ABOUT, ERASE DATA: OCT+ opens them */
         GFX_HOOK_ALIGN(0, y, 0, y + h, AL_V, "menu row chevron centred up/down");
         cv_icon_in(MR_VR - 12, y, 0, h, 12, ICON_X_RIGHT, sel ? T_INK : T_MID, bg);
         return;
@@ -575,11 +625,10 @@ static void graph_test(void)
     cv_text_r(x - 6, 107, &AF_S, "VOICES", T_MID, T_SURF);
 }
 /* The TEST screen (ui.menu 3): the page TEST_PAGE drawn by the page code (header with its name TEST in the top middle, the K1..K4 cards, the
- * panel graph_test, the footer), page_over making it the current page; HOME / LAYER state is put aside while it draws */
+ * panel graph_test, the footer), page_over making it the current page; the LAYER state is put aside while it draws */
 static void draw_test_screen(void)
 {
-    uint8_t home = ui.home, layer = ui.layer;
-    ui.home = 0;
+    uint8_t layer = ui.layer;
     ui.layer = 0;
     page_over = &TEST_PAGE;
     if (ui.force)
@@ -596,19 +645,19 @@ static void draw_test_screen(void)
         ui.hot_t--;
     draw_foot();
     page_over = 0;
-    ui.home = home;
     ui.layer = layer;
 }
 static void edit_param(uint32_t slot, int32_t steps);   /* ui_input.c: the TEST screen's knobs */
 #endif                                                 /* (TEST screen) */
 
-/* the rows' two bands meet at `split`: in the gap above a row (or below the last), each band at most 124 rows */
-static uint32_t menu_split(uint32_t n)
+/* the rows' two bands meet at `split`: in the gap above a row of the page (or below its last, at unit `end`), each band at most 124 rows */
+static uint32_t menu_split(uint32_t first, uint32_t n, uint32_t pg, uint32_t end)
 {
-    int32_t s = mr_y(n) - 1;
-    uint32_t k = n;
-    while (s > H_HEAD + 124 && k > 1u)
-        s = mr_y(--k) - 1;
+    int32_t s = mu_y(end) - 1, y;
+    uint32_t k, u;
+    for (k = 0; k < n; k++)                            /* (the lowest row top that keeps the upper band within 124) */
+        if (menu_place(first + k, &u) == pg && (y = mu_y(u) - 1) <= H_HEAD + 124 && (s > H_HEAD + 124 || y > s))
+            s = y;
     return (uint32_t)(s < 240 - 124 ? 240 - 124 : s);
 }
 static void draw_menu(void)
@@ -616,7 +665,7 @@ static void draw_menu(void)
     /* SPEC 1.1a: SELECT picks the row (across the tabs), KNOB 1 the value (an action row has none: SELECT alone;
      * no OCT+ OPEN / CLEAR hint) */
     static const khint_t KEYS[3] = {{KC_SELECT, "ROW"}, {KC_K1, "VALUE"}, {KC_K1, "OPEN"}};
-    uint32_t pass, k, first, n, split, sig;
+    uint32_t pass, k, first, n, split, sig, pg, end, u;
     int32_t pos0 = mt.pos;
 #if DUELL_TEST_MODE
     if (ui.menu == 3) {                                /* TEST: the page code draws it, whole each frame (it checks its own signatures) */
@@ -626,11 +675,10 @@ static void draw_menu(void)
 #endif
     if (ui.menu == 1)
         mt_follow();
-    sig = ui.menu * 7u + ui.menu_sel * 131u + settings.palette * 1009u + settings.lowcut * 7919u + settings_hold * 3511u +
+    sig = ui.menu * 7u + ui.menu_sel * 131u + settings.palette * 1009u + settings_hold * 3511u +
           settings_leds * 6151u + ui_prefs * 4099u + song.rec * 65537u + song.sel * 13u +
           ui_rec_prefs * 92821u + ui_scr * 131071u +          /* (#157: SCREEN OFF's value redraws its row) */
           ui_prefs2 * 524287u + ui_idle * 1048573u +      /* (1.2: ANIM IDLE's value redraws its row) */
-          ui_home_view * 7340033u +    /* (1.3: HOME) */
           (uint32_t)(song.g[G_TUNE] + 64) * 8191u + ui_home_pg * 27449u +   /* (1.2: the project's row; DUELL: HOME OPENS) */
           (ui.menu == 2 ? ui.menu_scroll * 48611u + about_sig() * 40507u + about_step() * 6007u : 0u);
     if (!ui.force && sig == ui.menu_sig) {
@@ -671,17 +719,21 @@ static void draw_menu(void)
     }
     first = mtab_first(menu_tab());
     n = mtab_rows(menu_tab());
-    split = menu_split(n);
+    pg = menu_page();
+    for (k = 0, end = 0; k < n; k++)                   /* (the page's last unit: the panel's end) */
+        if (menu_place(first + k, &u) == pg && u + menu_units(first + k) > end)
+            end = u + menu_units(first + k);
+    split = menu_split(first, n, pg, end);
     for (pass = 0; pass < 2u; pass++) {
         int32_t top_y = pass ? (int32_t)split : H_HEAD;
         cv_begin(240, pass ? 240u - split : split - H_HEAD, T_BG);
         cv_oy = -top_y;                               /* drawn in screen rows */
         if (!pass)
             menu_tabs();
-        cv_rrect(4, MP_Y, 232, mr_y(n) - mr_gap() + MP_PAD - MP_Y, 8, T_SURF, T_BG);
+        cv_rrect(4, MP_Y, 232, mu_y(end) - 1 + MP_PAD - MP_Y, 8, T_SURF, T_BG);
         for (k = 0; k < n; k++)
-            if (mr_y(k) + mr_h() > top_y && mr_y(k) - 1 < top_y + (int32_t)cv_h)
-                menu_row(k, first + k);
+            if (menu_place(first + k, &u) == pg && mu_y(u) + (int32_t)menu_units(first + k) * MU_P - 1 > top_y && mu_y(u) - 1 < top_y + (int32_t)cv_h)
+                menu_row(first + k);
         if (pass) {
             if (MI_READONLY(ui.menu_sel))                 /* TEST, ABOUT: SELECT picks the row, KNOB 1 right opens it */
                 cv_key_row(8, 232, MK_Y, (const khint_t[2]){KEYS[0], KEYS[2]}, 2u, 3u, T_BG);
@@ -732,13 +784,12 @@ static void menu_input(uint32_t oct)                  /* oct: ui_input.c oct_tap
 #if DUELL_TEST_MODE
     if (ui.menu == 3) {                                /* TEST: KNOB 1..4 are its own (K1 MORPH both ways: not a way back); OCT- goes back to the
                                                         * tabs, HOME and a page button close the menu; SELECT and OCT+ do nothing here */
-        uint8_t home = ui.home, layer = ui.layer;
+        uint8_t layer = ui.layer;
         if (dn) {
             ui.menu = 1, ui.force = 1;
             enc_drop();
             return;
         }
-        ui.home = 0;
         ui.layer = 0;
         page_over = &TEST_PAGE;
         for (k = 0; k < 4u; k++)
@@ -748,7 +799,6 @@ static void menu_input(uint32_t oct)                  /* oct: ui_input.c oct_tap
                 edit_param(k, s);
             }
         page_over = 0;
-        ui.home = home;
         ui.layer = layer;
         enc_drop();
         return;
@@ -788,7 +838,7 @@ static void menu_input(uint32_t oct)                  /* oct: ui_input.c oct_tap
                 }
             }
         }
-    } else if (up || (s > 0 && MI_READONLY(ui.menu_sel))) {   /* OCT+ opens the three; a knob right too TEST and ABOUT */
+    } else if (up || (s > 0 && MI_READONLY(ui.menu_sel))) {   /* OCT+ opens BUTTON MAP, ERASE DATA and the three; a knob right too TEST, GUIDE and ABOUT */
         if (ui.menu_sel == MI_PANEL) {
             panel_setup();
             scrn.idle = fm1_ms;                         /* (SCREEN OFF: its own loop had the input) */

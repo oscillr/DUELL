@@ -55,8 +55,8 @@ static void ps_pack_step(const step_t *s, uint8_t *b)
         b[j] = (uint8_t)((s->note[j] & 127u) | (nd >> j & 1u) << 7);
     b[4] = (uint8_t)((s->n > 4u ? 4u : s->n) | (s->time > ST_REST ? ST_REST : s->time) << 3 | (s->flags & 3u) << 5);
     b[5] = (uint8_t)((s->vel & 127u) | (r & 1u) << 7);
-    b[6] = s->hit;
-    b[7] = s->acc & s->hit;
+    b[6] = 0;                                      /* (the drum lane hits and accents: gone in 0.2.14, the two bytes stay) */
+    b[7] = 0;
     b[8] = (uint8_t)((s->probability > 101u ? 0u : s->probability) | (r >> 1) << 7);
 }
 /* 9 bytes -> step s; 0: not a step ps_pack_step writes (flash may hold anything) */
@@ -71,10 +71,8 @@ static int ps_unpack_step(const uint8_t *b, step_t *s)
     s->time = (b[4] >> 3) & 3u;
     s->flags = (b[4] >> 5) & 3u;
     s->vel = b[5] & 127u;
-    s->hit = b[6];
-    s->acc = b[7];
     s->probability = b[8] & 127u;
-    if ((b[4] & 128u) || s->n > 4u || s->time > ST_REST || s->probability > 101u || (s->acc & ~s->hit))
+    if ((b[4] & 128u) || s->n > 4u || s->time > ST_REST || s->probability > 101u)
         return 0;
     step_set_ratchet(s, r + 1u);
     step_set_nudge(s, (int32_t)(nd ^ 8u) - 8);

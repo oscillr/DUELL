@@ -202,7 +202,7 @@ static void test_filter(void)
                 k = i + 1u;
         check("EDIT > VCF: TYPE CUT RES KTR (ANALOG's own filter), after EDIT 2 and the multimode FILTER",
               k && PAGES[k - 1u].fam == FAM_EDIT && PAGES[k - 1u].id[0] == P_FTYPE && PAGES[k - 1u].id[1] == P_E4 &&
-              PAGES[k - 1u].id[2] == P_E5 && PAGES[k - 1u].id[3] == P_E7 && str_eq(PAGES[k - 2u].title, "FILTER") && str_eq(PAGES[k - 3u].title, "EDIT 2"));
+              PAGES[k - 1u].id[2] == P_E5 && PAGES[k - 1u].id[3] == P_E7 && str_eq(PAGES[k - 2u].title, "MULTI FILTER") && str_eq(PAGES[k - 3u].title, "EDIT 2"));
     }
     /* every engine but ANALOG ignores TYPE; ANALOG's LP is the golden renders' (regress.c) */
     for (e = 1; e < NENGINES; e++) {
@@ -566,7 +566,7 @@ static int demos(const char *dir)
     t->p[P_FTYPE] = 1;
     t->p[P_E5] = 105;
     t->p[P_E6] = 50;                                      /* some drive: the band's edge */
-    t->p[P_LEVEL] = 112;
+    t->p[P_TRIM] = 112;
     if ((f = demo_open(dir, "analog_bp", 9u * FS / CTL * CTL))) {
         uint32_t st = FS / 8u / CTL;                      /* a 1/16 at 120 BPM */
         for (k = 0; k < 64u; k++) {

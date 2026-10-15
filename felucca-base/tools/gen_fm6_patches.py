@@ -121,6 +121,43 @@ PATCHES = [
 ]
 
 
+# DUELL 0.2.17: factory patches AFTER the bank slots (SLOT 41 and up, "F9", "F10": eng_fm6.c FM6_XFACTORY). They go behind B32 so the stored
+# SLOT values of F1..F8, OWN (8) and B1..B32 (9..40) keep their meaning. TUBE BELLS is our own (a tubular bell by FM: Chowning's 1973
+# bell, carrier : modulator = 1 : 1.4 = 5 : 7, the index and the amplitude both falling); FM BASS 2 is a voice of the CC0 collection
+# of aquanodemusic (Aquanode Soundscapes, CC0 1.0 Universal, https://github.com/aquanodemusic/aquanode-soundscapes), imported from its
+# DX7 voice file (Aquanode Aquazone Dexed Presets, voice 12) as the packed 128-byte record; changed: the name bytes and the level 3 of the two carriers (below).
+FM_BASS_2 = [99, 99, 32, 99, 99, 99, 0, 0, 0, 0, 0, 3, 3, 28, 73, 0, 0, 99, 99, 46, 73, 99, 94, 99, 0, 41, 0, 0, 0, 58, 24, 0, 2, 0,
+             99, 99, 68, 99, 99, 99, 51, 0, 34, 0, 0, 0, 57, 24, 0, 0, 0, 99, 99, 27, 99, 99, 97, 0, 0, 0, 0, 0, 0, 57, 4, 99, 0, 0,
+             99, 99, 31, 30, 99, 99, 0, 0, 0, 0, 0, 0, 9, 4, 72, 0, 0, 99, 39, 17, 43, 99, 99, 0, 0, 0, 0, 0, 0, 2, 4, 90, 0, 0,
+             99, 67, 95, 60, 50, 50, 50, 50, 21, 7, 30, 0, 0, 0, 56, 26, 68, 88, 32, 66, 97, 115, 115, 32, 49, 32]
+assert len(FM_BASS_2) == 128
+FM_BASS_2[118:128] = [ord(c) for c in "FM BASS 2 "]
+# the two carriers (OP1, OP3) of the voice fall to nothing under a held key (level 3 = 0: a plucked bass); a factory BASS holds its note, so
+# their level 3 is raised (OP1 90, OP3 85) and the strike's bright decay is the voice's own
+FM_BASS_2[91] = 95
+FM_BASS_2[57] = 96
+EXTRA = [
+    ("FM BASS 2", FM_BASS_2),
+    ("TUBE BELLS", pack(voice("TUBE BELL", 5, [
+        op(r=(99, 28, 24, 44), l=(99, 88, 0, 0), ol=98, kvs=2, rs=2),
+        op(r=(99, 40, 28, 46), l=(99, 72, 0, 0), ol=78, fc=1, ff=40, kvs=4, rs=2),
+        op(r=(99, 38, 26, 46), l=(99, 80, 0, 0), ol=74, fc=2, ff=76, kvs=2, rs=3),
+        op(r=(99, 48, 30, 46), l=(99, 60, 0, 0), ol=62, fc=1, ff=40, kvs=4, rs=3),
+        op(r=(99, 50, 32, 46), l=(99, 70, 0, 0), ol=62, fc=5, ff=40, kvs=1, rs=3),
+        op(r=(99, 60, 40, 48), l=(99, 50, 0, 0), ol=50, fc=1, ff=40, kvs=3, rs=3)], fb=2, lpms=0))),
+    # FRETLESS (F11, our own): a warm, sine-like bass for the 'mwah'. Pair 1: a sine carrier at 1:1 with a sine modulator at 1:1 whose level
+    # opens slowly after the pluck (attack rate 52: the index swells over ~0.2 s, the vowel-like 'mwah') and settles low; pair 2: a quiet
+    # carrier an octave down (ratio 0.5) with a soft 1:1 modulator for the round body; a little feedback on the pair-1 modulator side.
+    ("FRETLESS", pack(voice("FRETLESS", 5, [
+        op(r=(56, 40, 30, 55), l=(99, 94, 88, 0), ol=99, kvs=1),
+        op(r=(52, 35, 30, 50), l=(86, 80, 76, 0), ol=78, kvs=3, det=8),
+        op(r=(56, 40, 30, 55), l=(99, 94, 88, 0), ol=58, fc=0, kvs=1),
+        op(r=(55, 35, 30, 50), l=(80, 70, 64, 0), ol=36, kvs=3),
+        op(ol=0),
+        op(ol=0)], fb=0, lpms=0))),
+]
+
+
 def c_rows(b):
     return ",\n".join("     " + ", ".join(f"{x:3d}" for x in b[i:i + 16]) for i in range(0, len(b), 16))
 
@@ -132,6 +169,11 @@ def main(path):
          f"static const uint8_t FM6_FACTORY[{len(PATCHES)}][128] = {{"]
     for name, v in PATCHES:
         L += [f"    {{/* {name} */", c_rows(pack(v)) + "},"]
+    L += ["};", f"#define FM6_NXF {len(EXTRA)}   /* DUELL 0.2.17: the factory patches behind the bank slots (SLOT 41 and up) */",
+          f"static const uint8_t FM6_XFACTORY[FM6_NXF][128] = {{"]
+    for name, b in EXTRA:
+        assert len(b) == 128 and all(0 <= x < 128 for x in b)
+        L += [f"    {{/* {name} */", c_rows(b) + "},"]
     L += ["};"]
     Path(path).write_text("\n".join(L) + "\n")
     print(f"fm6 patches: {len(PATCHES)} -> {path}")

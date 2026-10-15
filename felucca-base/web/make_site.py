@@ -12,6 +12,8 @@
                               {"version": "VER"} (VER is read from the file name; + LICENSE, LICENSING.md, LICENSES/: the
                               package holds JieLi SDK files under Apache-2.0, see LICENSING.md)
   fm1pkg.js fm1ota.js fm1backup.js installer_state.js   imported by the installer page as "../fm1*.js"
+  editor/                     the editor (web/editor/: index.html the sound editor, backup.html the Backup page, layout.json from the firmware tables, the modules; ?mock=1 needs mockunit.js); it imports ../fm1backup.js
+                              and ../installer_state.js
   .nojekyll
 
   web/make_site.py [--pkg FILE.fwsc] [--emu DIR] [OUT_DIR]
@@ -91,6 +93,8 @@ def main():
     shutil.copy(HERE / "landing.html", out / "index.html")
     for js in ("fm1pkg.js", "fm1ota.js", "fm1backup.js", "installer_state.js"):
         shutil.copy(HERE / js, out / js)
+
+    shutil.copytree(HERE / "editor", out / "editor", ignore=shutil.ignore_patterns(".DS_Store"))
 
     # installer page (+ the package, when there is one)
     html = (HERE / "install" / "index.html").read_text(encoding="utf-8")

@@ -99,7 +99,8 @@ static uint32_t mod_param(uint32_t d)
 {
     static const uint8_t ID[MD_BUS] = {[MD_PAN] = P_PAN, [MD_DIST] = P_DIST, [MD_CHO] = P_CHOR, [MD_DLY] = P_DLY,
                                        [MD_REV] = P_REV, [MD_RATE] = P_LRATE, [MD_VIB] = P_LD_PIT, [MD_RATE2] = P_L2RATE,
-                                       [MD_LEVEL] = P_LEVEL, [MD_INSA] = P_IA, [MD_INSB] = P_IB, [MD_INSC] = P_IC,
+                                       [MD_LEVEL] = P_TRIM,   /* 0.2.19: the matrix is the sound's: DST TRIM moves the PATCH TRIM, not the player's mixer level */
+                                       [MD_INSA] = P_IA, [MD_INSB] = P_IB, [MD_INSC] = P_IC,
                                        [MD_IMIX] = P_IMIX, [MD_EQLO] = P_EQLG, [MD_EQMID] = P_EQMG, [MD_EQHI] = P_EQHG,
                                        [MD_DUCK] = P_DKDEP, [MD_E2ATK] = P_E2ATK, [MD_E2DEC] = P_E2DEC, [MD_E2SUS] = P_E2SUS,
                                        [MD_E2REL] = P_E2REL, [MD_E2FLT] = P_E2FLT, [MD_E2SHP] = P_E2SHP, [MD_RES] = P_FREEB};
@@ -456,6 +457,8 @@ static __attribute__((noinline)) const char *mod_dst_name(const track_t *t, int3
         if (l && l[0] && l[0] != '-')
             return l;
     }
+    if (v == MD_BUS + 3 && dly_ev_ui())  /* 0.2.16 DELAY MODE: the delay's DEPTH is CHANCE in RANDOM / OCT UP */
+        return "CHNC";
     return N_MDST[v];
 }
 
@@ -472,6 +475,8 @@ static __attribute__((noinline)) const char *mod_dst_why(const track_t *t, int32
     }
     if (v == MD_PAN && duell_mode_req == DM_SPLIT)
         return "DUEL";
+    if (v == MD_BUS + 4 && dly_mode_why(G_DMRATE))      /* 0.2.14 DELAY MODE: the delay modulation's RATE does nothing in RANDOM / OCT UP (the mode's name) */
+        return dly_mode_why(G_DMRATE);
     if (v >= MD_INSA && v <= MD_IMIX && !t->p[P_ITYPE])
         return "INS OFF";
     if (v == MD_RES && !ENGINES[eng_idx(t->eng_req)]->ufilt)
@@ -485,11 +490,11 @@ static __attribute__((noinline)) void mod_dst_line(const track_t *t, int32_t v, 
 {
     /* every destination's name in full, one after the other (none for E1..E8 and the INSERT's A B C: named by their owner) */
     static const char FULL[] =
-        "NONE\0""PITCH\0""FILTER CUTOFF\0""SHAPE (TIMBRE)\0""VOICE AMP (TREMOLO)\0""PAN\0""DISTORTION\0""CHORUS SEND\0"
+        "NONE\0""PITCH\0""MULTI FILTER CUTOFF\0""SHAPE (TIMBRE)\0""VOICE AMP (TREMOLO)\0""PAN\0""SATURATION\0""CHORUS SEND\0"
         "DELAY SEND\0""REVERB SEND\0""LFO 1 RATE\0""LFO 1 PITCH DEPTH\0""\0""\0""\0""\0""\0""\0""\0""\0""LFO 1 DEPTH\0"
         "LFO 2 RATE\0""LFO 2 DEPTH\0""PART LEVEL\0""\0""\0""\0""INSERT MIX\0""EQ LOW GAIN\0""EQ MID GAIN\0""EQ HIGH GAIN\0"
         "DUCK DEPTH\0""ENV 2 ATTACK\0""ENV 2 DECAY\0""ENV 2 SUSTAIN\0""ENV 2 RELEASE\0""ENV 2 FILTER DEPTH\0"
-        "ENV 2 SHAPE DEPTH\0""FILTER RESONANCE\0""CHORUS RATE\0""CHORUS DEPTH\0""DELAY FEEDBACK\0""DELAY MOD DEPTH\0"
+        "ENV 2 SHAPE DEPTH\0""MULTI FILTER RESONANCE\0""CHORUS RATE\0""CHORUS DEPTH\0""DELAY FEEDBACK\0""DELAY MOD DEPTH\0"
         "DELAY MOD RATE\0""REVERB SIZE\0""REVERB DAMP\0";
     const char *f = FULL;
     const char *why;
@@ -516,9 +521,9 @@ static __attribute__((noinline)) void mod_dst_line(const track_t *t, int32_t v, 
             str_cpy(b + n + 1u, nm == N_MDST[v] && !MD_ENGINE(v) ? nm + 4 : nm, 32 - n - 1u);
         }
     } else {
-        str_cpy(b + n, f, 32 - n);
+        str_cpy(b + n, v == MD_BUS + 3 && dly_ev_ui() ? "DELAY EVENT CHANCE" : f, 32 - n);
     }
-    *more = !why ? 0 : why[0] == 'U' ? "NOT USED BY THIS ENGINE" : why[0] == 'R' ? "A TABLE CHANGE IS A REBUILD"
+    *more = !why ? 0 : v == MD_BUS + 4 ? "NOT USED IN THIS DELAY MODE" : why[0] == 'U' ? "NOT USED BY THIS ENGINE" : why[0] == 'R' ? "A TABLE CHANGE IS A REBUILD"
           : why[0] == 'L' ? "SLOT LOADS A WHOLE PATCH" : why[0] == 'A' ? "READ ONLY AS A NOTE STARTS"
           : why[0] == 'D' ? "DUEL: EACH PART ON ITS SIDE" : why[0] == 'I' ? "THE INSERT TYPE IS OFF"
           : "THIS ENGINE HAS ITS OWN FILTER";

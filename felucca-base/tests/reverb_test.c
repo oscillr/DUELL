@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
-/* The reverb bus's models (src/fx.c: REVERB TYPE, G_RTYPE: ROOM, SPRING, 1.2's HALL) on the Mac, through
+/* The reverb bus's models (src/fx.c: REVERB TYPE, G_RTYPE: ROOM, SPRING, 1.2's HALL; SHIM, RESO and PLATE have their own tests: mode_test.c, plate_test.c) on the Mac, through
  * hostsim.c as regress.c.
  *   build/host/reverb_test [DEMODIR [DEMODIR2]]          (run_tests.sh: build/fx_demo build/reverb_demo)
  * 1. ROOM bit-identical: fx_buses against a copy of the buses as they were before SPRING (chorus, delay and the
@@ -128,7 +128,7 @@ static void test_room_identical(void)
 {
     static int32_t c[CTL], d[CTL], r[CTL], w0[CTL], w1[CTL];
     uint32_t b, i, diff = 0, nb = 30u * FS / CTL;
-    host_tracks_init();
+    host_tracks_init(), song.g[G_RLOCUT] = 0;   /* (0.2.14: these tests are of the models; the low cut is locut_test.c) */
     song.g[G_RTYPE] = 0;                                        /* (HALL is the default since 1.2) */
     for (b = 0; b < nb; b++) {
         if (b % 700u == 0u) {                                   /* the settings move now and then */
@@ -136,7 +136,8 @@ static void test_room_identical(void)
             song.g[G_RDAMP] = (int16_t)((uint32_t)noise(1 << 30) % 128u);
             song.g[G_DTIME] = (int16_t)((uint32_t)noise(1 << 30) % 6u);
             song.g[G_DFDBK] = (int16_t)((uint32_t)noise(1 << 30) % 121u);
-            song.g[G_CDEPTH] = (int16_t)((uint32_t)noise(1 << 30) % 128u);
+            if (!b)                                             /* (the chorus depth once: since 0.2.9 it glides over a block when it moves, cho_glide; the */
+                song.g[G_CDEPTH] = (int16_t)((uint32_t)noise(1 << 30) % 128u);   /* reference below keeps the old jump. A depth that holds is bit for bit) */
         }
         for (i = 0; i < CTL; i++) {
             int32_t on = (b / 300u) % 3u != 2u;                 /* bursts and silences: the tails too */
@@ -157,6 +158,7 @@ static void test_room_identical(void)
 static int32_t ir[IRN];
 static void spring_reset(int32_t size, int32_t damp)
 {
+    song.g[G_RLOCUT] = 0;
     song.g[G_RTYPE] = 1;
     song.g[G_RSIZE] = (int16_t)size;
     song.g[G_RDAMP] = (int16_t)damp;
@@ -221,7 +223,7 @@ static void test_spring(void)
     double r[3];
     char what[200];
     uint32_t k, i;
-    host_tracks_init();
+    host_tracks_init(), song.g[G_RLOCUT] = 0;   /* (0.2.14: these tests are of the models; the low cut is locut_test.c) */
     for (k = 0; k < 3u; k++) {
         spring_reset(SZ[k], 60);
         spring_run(imp, 1, IRN);
@@ -270,7 +272,7 @@ static void test_spring(void)
         double er = 0, es = 0;
         uint32_t t, m;
         for (m = 0; m < 2u; m++) {
-            host_tracks_init();
+            host_tracks_init(), song.g[G_RLOCUT] = 0;   /* (0.2.14: these tests are of the models; the low cut is locut_test.c) */
             rev_clear();
             fx.sp_size = 0;
             xs = 99;
@@ -301,7 +303,7 @@ static void test_spring_identical(void)
     static int32_t c[CTL], d[CTL], r[CTL], w[CTL];
     uint32_t b, i, h = 2166136261u, nb = 20u * FS / CTL, x0 = xs;
     char what[200];
-    host_tracks_init();
+    host_tracks_init(), song.g[G_RLOCUT] = 0;   /* (0.2.14: these tests are of the models; the low cut is locut_test.c) */
     memset(&fx, 0, sizeof fx);                                  /* (as a fresh start) */
     memset(dly_buf, 0, sizeof dly_buf);
     memset(cho_buf, 0, sizeof cho_buf);
@@ -324,7 +326,9 @@ static void test_spring_identical(void)
     }
     xs = x0;
     snprintf(what, sizeof what, "SPRING (and ROOM <-> SPRING) bit for bit as before HALL: 20 s of sends, hash 0x%08x", h);
-    check(what, h == 0xdd93d2f8u);
+    /* (0.2.14: the golden was 0xdd93d2f8 until SPRING's SIZE began to glide in 0.2.9, spring_glide: the settings change here every 700
+     * blocks, so the render changed on purpose. Re-baselined 2026-10-15 at 0.2.14, with PLATE added: ROOM <-> SPRING unchanged by it) */
+    check(what, h == 0x6490249au);
     song.g[G_RTYPE] = 0;
     rev_clear();
     fx.rtype = 0;
@@ -580,7 +584,7 @@ static void test_hall(void)
     quality_t qa[4];
     char what[240];
     uint32_t k, i, m;
-    host_tracks_init();
+    host_tracks_init(), song.g[G_RLOCUT] = 0;   /* (0.2.14: these tests are of the models; the low cut is locut_test.c) */
     for (i = 0; i < 64u; i++)                           /* (a click of noise: the send of a drum hit) */
         burst[i] = noise(1 << 17);
     for (k = 0; k < 4u; k++) {
@@ -708,7 +712,7 @@ static void test_hall(void)
           qa[M_HALL].ned >= qa[M_ROOM].ned - 0.02 && qa[M_HALL].ring < 0.5 * qa[M_ROOM].ring &&
           qa[M_HALL].ring < qa[M_COMB8].ring && qa[M_HALL].flut < qa[M_ROOM].flut);
     model_reset(M_ROOM, 90, 60);
-    host_tracks_init();
+    host_tracks_init(), song.g[G_RLOCUT] = 0;   /* (0.2.14: these tests are of the models; the low cut is locut_test.c) */
 }
 
 /* --------------------------------------------------------- model change --- */
@@ -743,7 +747,7 @@ static void test_switch(void)
             int32_t prev = 0, step = 0, own = 0, after = 0;
             if (q && (from != 2 && to != 2))
                 continue;
-            host_tracks_init();
+            host_tracks_init(), song.g[G_RLOCUT] = 0;   /* (0.2.14: these tests are of the models; the low cut is locut_test.c) */
             rev_clear();
             memset(dly_buf, 0, sizeof dly_buf);                 /* (the delay and chorus quiet: only the reverb) */
             memset(cho_buf, 0, sizeof cho_buf);
@@ -784,7 +788,7 @@ static double cost_of(int m, int bus)        /* model m alone (rev_room, rev_spr
     static int32_t c[CTL], d[CTL], r[CTL], w[CTL];
     uint32_t b, i, nb = 4u * FS / CTL;
     uint64_t i0;
-    host_tracks_init();
+    host_tracks_init(), song.g[G_RLOCUT] = 0;   /* (0.2.14: these tests are of the models; the low cut is locut_test.c) */
     rev_clear();
     song.g[G_RTYPE] = (int16_t)m;
     fx.rtype = (uint8_t)m;
@@ -840,7 +844,7 @@ static void demo(const char *dir, const char *name, int rtype, int pluck)
     int32_t o[2 * CTL];
     track_t *tr = &trk[0];
     memset(trk, 0, sizeof trk);
-    host_tracks_init();
+    host_tracks_init(), song.g[G_RLOCUT] = 0;   /* (0.2.14: these tests are of the models; the low cut is locut_test.c) */
     rev_clear();
     fx.rtype = (uint8_t)rtype;
     song.g[G_RTYPE] = (int16_t)rtype;
@@ -919,7 +923,7 @@ static void demo2(const char *dir, int src, int m, int size)
     int32_t o[2 * CTL];
     track_t *tr = &trk[0];
     memset(trk, 0, sizeof trk);
-    host_tracks_init();
+    host_tracks_init(), song.g[G_RLOCUT] = 0;   /* (0.2.14: these tests are of the models; the low cut is locut_test.c) */
     model_reset(m < 0 ? M_ROOM : m, size, 60);
     song.g[G_BPM] = 100;
     if (src == 1) {

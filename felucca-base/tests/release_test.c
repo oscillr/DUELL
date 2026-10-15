@@ -45,9 +45,17 @@ int main(void)
         test_rows += str_eq(MI_NAME[k], "TEST");
         sys_rows += MI_TAB[k] == MTAB_SYSTEM;
     }
-    ck("MENU has no TEST row (SYSTEM: USB SERIAL, RESTORE LAST, CALIBRATION, GUIDE, ABOUT, ERASE DATA)", test_rows == 0u && sys_rows == 6u && MI_TAB[MI_ABOUT] == MTAB_SYSTEM &&
+    ck("MENU has no TEST row (SYSTEM: RESTORE LAST, BUTTON MAP, USB SERIAL, GUIDE, ABOUT, ERASE DATA)", test_rows == 0u && sys_rows == 6u && MI_TAB[MI_ABOUT] == MTAB_SYSTEM &&
        MI_TAB[MI_GUIDE] == MTAB_SYSTEM && MI_READONLY(MI_GUIDE) &&
-       MI_READONLY(MI_ABOUT) && !MI_READONLY(MI_PANEL));
+       MI_READONLY(MI_ABOUT) && !MI_READONLY(MI_PANEL) && !menu_valued(MI_PANEL) && str_eq(MI_NAME[MI_PANEL], "BUTTON MAP") &&
+       MI_PANEL == MI_RESTORE + 1u && MI_SERIAL == MI_PANEL + 1u && MI_GUIDE == MI_SERIAL + 1u && MI_ERASE == MI_COUNT - 1u);
+    for (k = 0, ok = 1; k < MTAB_COUNT; k++)            /* (0.2.14: the release's tabs fit one page each: SYSTEM 7 units with USB SERIAL's two) */
+        ok &= mtab_pages(k) == 1u;
+    {
+        uint32_t u;
+        ok &= menu_place(MI_ERASE, &u) == 0u && u == 6u && menu_units(MI_SERIAL) == 2u;
+    }
+    ck("MENU (0.2.14): every tab one page in the release (SYSTEM: 7 units, ERASE DATA the last)", ok);
     for (k = 0, ok = 1; k < NPAGES; k++)
         ok &= !str_eq(PAGES[k].title, "TEST");
     ck("no page is called TEST (the GLO round is untouched)", ok);

@@ -42,21 +42,20 @@ static uint32_t fam_step(uint32_t from, int dir)    /* the table walk the page b
     }
     return i;
 }
-/* HOME's round (SPEC 3.5): HOME's pages in table order (MORPH, MORPH SET, MODE, MIXER), then OVERVIEW (ui.home, r[m - 1] = 0xFF) */
+/* HOME's round (SPEC 3.5): HOME's pages in table order (MORPH, MORPH SET, MODE, MIXER); 0.2.14: no OVERVIEW after them */
 static uint32_t home_round(uint8_t *r)
 {
     uint32_t i, m = 0;
     for (i = 0; i < NPAGES; i++)
         if (PAGES[i].fam == FAM_TRK && page_visible(i))
             r[m++] = (uint8_t)i;
-    r[m++] = 0xFFu;
     return m;
 }
-static uint32_t where(void) { return ui.home ? 0xFFu : ui.page; }
+static uint32_t where(void) { return ui.page; }
 static void enter(uint32_t i)
 {
     ui.menu = 0; ui.confirm = 0; ui.layer = 0;
-    ui.home = 0; ui.page = (uint8_t)i; page_entered();
+    ui.page = (uint8_t)i; page_entered();
     frames(48);
 }
 static void settle(void) { fm1_in.buttons = 0; frames(64); }
@@ -100,7 +99,7 @@ static void sweep_pages(void)
                 }
 
                 turn(EN_SELECT, 1);
-                expect(w, song.g[G_BPM] == 117 && !ui.home && !ui.menu);
+                expect(w, song.g[G_BPM] == 117 && !ui.menu);
                 if (n > 1) {
                     expect("SELECT right: the next sub-page", ui.page == nxt);
                     moved++;
@@ -153,8 +152,8 @@ static void sweep_buttons(void)
         }
 }
 
-/* HOME has its own round (SPEC 3.5): MORPH, MORPH SET, MODE, MIXER, OVERVIEW (the old HOME screen), MORPH again; SELECT
- * right and HOME's taps go round it the same way, SELECT left backwards */
+/* HOME has its own round (SPEC 3.5): MORPH, MORPH SET, MODE, MIXER, MORPH again (0.2.14: OVERVIEW, the old HOME screen, is no
+ * longer on it); SELECT right and HOME's taps go round it the same way, SELECT left backwards */
 static void sweep_home(void)
 {
     static const char *const ORDER[4] = {"MORPH", "MORPH SET", "MODE", "MIXER"};
@@ -163,11 +162,11 @@ static void sweep_home(void)
     ui_power_on();
     song.g[G_BPM] = 117;
     m = home_round(r);
-    c = m - 1u;
-    ok = m == 5u && r[c] == 0xFFu;
-    for (k = 0; ok && k < c; k++)
+    c = 0;
+    ok = m == 4u;
+    for (k = 0; ok && k < m; k++)
         ok &= str_eq(PAGES[r[k]].title, ORDER[k]);
-    expect("HOME's round: MORPH, MORPH SET, MODE, MIXER, OVERVIEW", ok);
+    expect("HOME's round: MORPH, MORPH SET, MODE, MIXER (0.2.14: no OVERVIEW)", ok);
     {   /* ENV's last two pages are the matrix pages again (MOD 1 / MOD 2): the same slots and graph as LFO's */
         uint32_t e = 0, l = 0, n = 0, i, j;
         for (i = 0; i < NPAGES; i++) {
@@ -200,12 +199,13 @@ static void sweep_home(void)
               PAGES[l2].id[0] == P_L2PIT && PAGES[l2].id[1] == P_L2FLT && PAGES[l2].id[2] == P_L2SHP;
         expect("ENV: AMP ENV, AMP DEST, ENV 2, ENV 2 DEST, MOD 1, MOD 2; LFO: LFO 1, 1 TRIG, 1 DEST, LFO 2, 2 TRIG, 2 DEST, MOD 1, MOD 2", ok);
     }
-    expect("the harness starts on OVERVIEW (ui.home)", ui.home);
-    for (ok = 1, k = 1; k <= m; k++) {
+    expect("the harness starts on HOME OPENS' page: MORPH, the round's first", where() == r[0] && at_home());
+    ok = 1;
+    for (k = 1; k <= m; k++) {
         turn(EN_SELECT, 1);
         ok &= where() == r[(c + k) % m];
     }
-    expect("SELECT right: MORPH, MORPH SET, MODE, MIXER, OVERVIEW, MORPH", ok);
+    expect("SELECT right: MORPH SET, MODE, MIXER, MORPH", ok);
     for (ok = 1, k = 1; k <= m; k++) {
         turn(EN_SELECT, -1);
         ok &= where() == r[(c + m * 2u - k) % m];
@@ -216,7 +216,7 @@ static void sweep_home(void)
         frames(64);
         ok &= where() == r[(c + k) % m];
     }
-    expect("HOME tapped: the same round", ok);
+    expect("HOME tapped: the same round (MIXER, then MORPH)", ok);
     expect("HOME: tempo untouched", song.g[G_BPM] == 117);
 }
 
@@ -316,16 +316,16 @@ static void sweep_menu(void)
     }
     /* KNOB 1 changes the selected row's value, and only that row's */
     for (i = 0; i < sizeof VR; i++) {
-        uint32_t v, w[MI_VALUES], j, other = 1;
+        uint32_t v, w[MI_COUNT], j, other = 1;
         ui.menu_sel = VR[i]; frames(4);
-        for (j = 0; j < MI_VALUES; j++)
-            w[j] = menu_get(j);
+        for (j = 0; j < MI_COUNT; j++)
+            w[j] = menu_valued(j) ? menu_get(j) : 0u;
         v = menu_get(VR[i]);
         turn(EN_K1, 1);
         if (menu_get(VR[i]) == v)                              /* at its top: the other way */
             turn(EN_K1, -1);
-        for (j = 0; j < MI_VALUES; j++)
-            other &= j == VR[i] || menu_get(j) == w[j];
+        for (j = 0; j < MI_COUNT; j++)
+            other &= j == VR[i] || !menu_valued(j) || menu_get(j) == w[j];
         expect(MI_NAME[VR[i]], menu_get(VR[i]) != v && other && ui.menu_sel == VR[i] && ui.menu == 1u);
     }
     ui.menu = 0; frames(16);
@@ -347,7 +347,7 @@ static void sweep_layers(void)
         frames(1200);                                    /* held past the threshold: the layer is open */
         turn(EN_SELECT, 1); turn(EN_SELECT, -2);
         expect("layer held: tempo untouched", song.g[G_BPM] == 117);
-        expect("layer held: SELECT turns no page", ui.page == pg && !ui.home);
+        expect("layer held: SELECT turns no page", ui.page == pg);
         btn_up(LB[l]);
         frames(64);
         turn(EN_SELECT, 0);
@@ -356,7 +356,7 @@ static void sweep_layers(void)
     }
 }
 
-/* TEMPO: the TEMPO page KNOB 1; KNOB 2 TAP, KNOB 3 SWG, KNOB 4 CLK */
+/* TEMPO (0.2.18): the TEMPO page KNOB 1 CLK, KNOB 2 TEMPO, KNOB 3 TAP, KNOB 4 SWG */
 static void test_tempo(void)
 {
     char val[8];
@@ -366,13 +366,15 @@ static void test_tempo(void)
     ui_power_on();
     for (i = 0; i < NPAGES; i++)
         ck = PAGES[i].fam == FAM_GLO && str_eq(PAGES[i].title, "TEMPO") ? i : ck;
-    expect("GLO's pages in order: GLO, TEMPO, SIDECHAIN, MIDI, MIDI LEARN (TEMPO: KNOB 1 is G_BPM, KNOB 2 TAP, KNOB 3 G_SWING, KNOB 4 G_CLOCK), no TEST page (it is MENU > SYSTEM > TEST)",
+    expect("GLO's pages in order: GLO, TEMPO, SIDECHAIN, BASS MONO (0.2.19, the master-stage page), MIDI, MODULES (0.2.14), MIDI LEARN (TEMPO, 0.2.18: KNOB 1 is G_CLOCK, KNOB 2 G_BPM, KNOB 3 TAP, KNOB 4 G_SWING), no TEST page (it is MENU > SYSTEM > TEST)",
            PAGES[glo1].graph == GR_GLO && str_eq(PAGES[glo1].title, "GLO") && str_eq(PAGES[glo1 + 1u].title, "TEMPO") &&
-           str_eq(PAGES[glo1 + 2u].title, "SIDECHAIN") && str_eq(PAGES[glo1 + 3u].title, "MIDI") && PAGES[glo1 + 3u].graph == GR_MIDI &&
-           str_eq(PAGES[glo1 + 4u].title, "MIDI LEARN") &&
-           ck == glo1 + 1u && PAGES[ck].id[0] == G_BPM && PAGES[ck].id[TEMPO_TAP_SLOT] == 0xFFu && TEMPO_TAP_SLOT == 1u && PAGES[ck].id[2] == G_SWING &&
-           PAGES[ck].id[3] == G_CLOCK &&
-           PAGES[ck].scope == SC_GLOBAL && PAGES[ck].graph == GR_TEMPO && PAGES[glo1 + 5u].fam != FAM_GLO);
+           str_eq(PAGES[glo1 + 2u].title, "SIDECHAIN") && str_eq(PAGES[glo1 + 3u].title, MASTER_PAGE_TITLE) && PAGES[glo1 + 3u].scope == SC_GLOBAL &&
+           str_eq(PAGES[glo1 + 4u].title, "MIDI") && PAGES[glo1 + 4u].graph == GR_MIDI &&
+           str_eq(PAGES[glo1 + 5u].title, "MODULES") && PAGES[glo1 + 5u].scope == SC_MODS && PAGES[glo1 + 5u].graph == GR_MODS &&
+           str_eq(PAGES[glo1 + 6u].title, "MIDI LEARN") &&
+           ck == glo1 + 1u && PAGES[ck].id[0] == G_CLOCK && PAGES[ck].id[1] == G_BPM && PAGES[ck].id[TEMPO_TAP_SLOT] == 0xFFu && TEMPO_TAP_SLOT == 2u &&
+           PAGES[ck].id[3] == G_SWING &&
+           PAGES[ck].scope == SC_GLOBAL && PAGES[ck].graph == GR_TEMPO && PAGES[glo1 + 7u].fam != FAM_GLO);
     for (i = 0, g0 = 0; i < NPAGES; i++)
         g0 += PAGES[i].scope == SC_TEST || PAGES[i].graph == GR_TEST || str_eq(PAGES[i].title, "TEST");
     expect("  .. no page named TEST or of its kind is in the table at all", g0 == 0u);
@@ -385,84 +387,90 @@ static void test_tempo(void)
         expect("no other page holds G_BPM", n == 1u);
     }
     press(B_GLO);                                    /* the first tap of GLO */
-    expect("GLO tapped from HOME: the main GLO page", !ui.home && ui.page == glo1);
+    expect("GLO tapped from HOME: the main GLO page", ui.page == glo1);
     settle();
     enter(ck);                                       /* the clock page */
     b0 = song.g[G_BPM];
-    expect("INT clock", song.g[G_CLOCK] == 0);
-    turn(EN_K1, 3);
-    expect("KNOB 1 right x3: TEMPO +3", song.g[G_BPM] == b0 + 3);
-    turn(EN_K1, -5);
-    expect("KNOB 1 left x5: TEMPO -2 from the start", song.g[G_BPM] == b0 - 2);
-    turn(EN_K1, 1000);
-    expect("KNOB 1 clamps at 240", song.g[G_BPM] == 240);
-    turn(EN_K1, -1000);
-    expect("KNOB 1 clamps at 40", song.g[G_BPM] == 40);
+    expect("CLK AUTO (the default since 0.2.14), no clock arriving: the internal clock", song.g[G_CLOCK] == CLK_AUTO && clock_src() == 0u);
+    turn(EN_K2, 3);
+    expect("KNOB 2 right x3: TEMPO +3", song.g[G_BPM] == b0 + 3);
+    turn(EN_K2, -5);
+    expect("KNOB 2 left x5: TEMPO -2 from the start", song.g[G_BPM] == b0 - 2);
+    turn(EN_K2, 1000);
+    expect("KNOB 2 clamps at 240", song.g[G_BPM] == 240);
+    turn(EN_K2, -1000);
+    expect("KNOB 2 clamps at 40", song.g[G_BPM] == 40);
     song.g[G_BPM] = 100;
-    turn(EN_K3, 1); turn(EN_K2, 0);
-    expect("KNOB 2, 3 are not the tempo", song.g[G_BPM] == 100);
+    turn(EN_K4, 1); turn(EN_K3, 0);
+    expect("KNOB 3, 3 are not the tempo", song.g[G_BPM] == 100);
     param_format(&GP[G_BPM], 100, val, &unit);
     expect("INT clock: the card shows 100 BPM", str_eq(val, "100") && str_eq(unit, "BPM"));
-    for (c = 1; c <= 2u; c++) {              /* USB, TRS */
+    for (c = 1; c <= 3u; c++) {              /* USB, TRS, AUTO locked on USB */
         song.g[G_CLOCK] = (int16_t)c;
+        midi_clock.lock = (uint8_t)(c == CLK_AUTO);
         song.g[G_BPM] = 100;
-        turn(EN_K1, 7); turn(EN_K1, -3);
-        expect("external clock: KNOB 1 is inert", song.g[G_BPM] == 100);
+        turn(EN_K2, 7); turn(EN_K2, -3);
+        expect("external clock: KNOB 2 is inert", song.g[G_BPM] == 100);
         param_format(&GP[G_BPM], 100, val, &unit);
         expect("external clock: the card shows EXT", str_eq(val, "EXT") && str_eq(unit, ""));
         turn(EN_SELECT, 1); turn(EN_SELECT, -1);
         expect("external clock: SELECT leaves it", song.g[G_BPM] == 100);
         draw_columns();
     }
+    midi_clock.lock = 0;
+    param_format(&GP[G_BPM], 100, val, &unit);
+    expect("AUTO, the clock gone: numbers again", str_eq(val, "100"));
     song.g[G_CLOCK] = 0;
     param_format(&GP[G_BPM], 100, val, &unit);
     expect("INT again: numbers", str_eq(val, "100"));
-    turn(EN_K1, 1);
-    expect("INT again: KNOB 1 edits", song.g[G_BPM] == 101);
-    /* KNOB 2 TAP: each detent, either way, one tap; 2 s of rest start over; the tempo is the mean of the last 4 taps */
+    turn(EN_K2, 1);
+    expect("INT again: KNOB 2 edits", song.g[G_BPM] == 101);
+    /* KNOB 3 TAP: each detent, either way, one tap; 2 s of rest start over; the tempo is the mean of the last 4 taps */
     song.g[G_BPM] = 90; song.g[G_SWING] = 0;
     frames(2200);
-    turn(EN_K2, 1);
+    turn(EN_K3, 1);
     expect("TAP: the first tap alone changes nothing", song.g[G_BPM] == 90 && ui.tap_n == 1u);
-    fm1_ms += 484; turn(EN_K2, -1);                  /* 500 ms after the first, turned the other way */
+    fm1_ms += 484; turn(EN_K3, -1);                  /* 500 ms after the first, turned the other way */
     expect("TAP: a second tap (the other direction) 500 ms later: 120 BPM", song.g[G_BPM] == 120 && ui.tap_n == 2u);
-    fm1_ms += 484; turn(EN_K2, 1);
-    fm1_ms += 484; turn(EN_K2, 1);
+    fm1_ms += 484; turn(EN_K3, 1);
+    fm1_ms += 484; turn(EN_K3, 1);
     expect("TAP: four taps 500 ms apart: still 120", song.g[G_BPM] == 120 && ui.tap_n == 4u);
-    fm1_ms += 384; turn(EN_K2, 1);                   /* 400 ms: the last four taps are 500, 500, 400 apart */
+    fm1_ms += 384; turn(EN_K3, 1);                   /* 400 ms: the last four taps are 500, 500, 400 apart */
     expect("TAP: the fifth tap, 400 ms after the fourth: the mean of the last 4 taps (3 intervals in 1400 ms = 129 BPM)", song.g[G_BPM] == 129 && ui.tap_n == 4u);
     expect("  .. the card shows the BPM while tapping", tempo_tapping() == 4u);
     draw_columns();
     fm1_ms += 2100;
     expect("  .. 2 s later the card is TAP again", tempo_tapping() == 0u);
     b0 = song.g[G_BPM];
-    turn(EN_K2, 1);
+    turn(EN_K3, 1);
     expect("TAP: after the 2 s a new run starts, one tap changes nothing", song.g[G_BPM] == b0 && ui.tap_n == 1u);
-    fm1_ms += 584; turn(EN_K2, 1);
+    fm1_ms += 584; turn(EN_K3, 1);
     expect("  .. the next 600 ms later: 100 BPM", song.g[G_BPM] == 100 && ui.tap_n == 2u);
-    turn(EN_K2, 40);
+    turn(EN_K3, 40);
     expect("  .. a fast twist is one tap per frame, not one per detent", ui.tap_n == 3u);
     song.g[G_BPM] = 100; frames(2200);
     song.g[G_CLOCK] = 1;
-    turn(EN_K2, 1); fm1_ms += 484; turn(EN_K2, 1);
-    expect("TAP with an external clock: the tempo untouched (TAP: CLK IS EXT)", song.g[G_BPM] == 100 && msg_is("TAP: CLK IS EXT"));
+    ui.msg_t = 0;
+    turn(EN_K3, 1); fm1_ms += 484; turn(EN_K3, 1);
     draw_columns();
+    expect("TAP with an external clock: the TEMPO and TAP cards are not drawn; the knobs do nothing and say nothing", song.g[G_BPM] == 100 && !ui.msg_t &&
+           ui.col[1][0] == 0x7f && ui.col[2][0] == 0x7f && ui.col[0][0] != 0x7f);
     song.g[G_CLOCK] = 0;
     g0 = (uint32_t)song.g[G_SWING];
-    turn(EN_K3, 4);
-    expect("TEMPO KNOB 3 is SWING", (uint32_t)song.g[G_SWING] != g0);
-    /* KNOB 4 CLK (moved here from the MIDI page): INT / USB / TRS, a detent a step, clamped; the tempo and the MIDI settings untouched */
+    turn(EN_K4, 4);
+    expect("TEMPO KNOB 4 is SWING", (uint32_t)song.g[G_SWING] != g0);
+    /* KNOB 1 CLK (moved here from the MIDI page): INT / USB / TRS, a detent a step, clamped; the tempo and the MIDI settings untouched */
     song.g[G_BPM] = 100; song.g[G_ROUTE] = 0; song.g[G_CLOCK] = 0;
-    turn(EN_K4, 1);
-    expect("TEMPO KNOB 4 CLK right: USB", song.g[G_CLOCK] == 1 && msg_is("CLOCK USB"));
-    turn(EN_K4, 1);
+    turn(EN_K1, 1);
+    expect("TEMPO KNOB 1 CLK right: USB", song.g[G_CLOCK] == 1 && msg_is("CLOCK USB"));
+    turn(EN_K1, 1);
     expect("  .. right again: TRS", song.g[G_CLOCK] == 2);
-    turn(EN_K4, 3);
+    turn(EN_K1, 3);
     expect("  .. clamps at TRS", song.g[G_CLOCK] == 2);
     draw_columns();
-    turn(EN_K4, -1);
+    turn(EN_K1, -1);
     expect("  .. left: USB", song.g[G_CLOCK] == 1);
-    turn(EN_K4, -4);
+    turn(EN_K1, -4);
     expect("  .. left: INT (clamped), the tempo and MIDI IN untouched", song.g[G_CLOCK] == 0 && song.g[G_ROUTE] == 0 && song.g[G_BPM] == 100);
     /* the keys play notes on the TEMPO page (the page is not a layer) */
     frames(48);
@@ -484,7 +492,7 @@ static void test_glo_page(void)
     press(B_GLO);
     frames(48);
     expect("GLO tapped: its main page (graph GR_GLO), no layer held, the keys are the page's (kb_lock 0)",
-           !ui.home && ui.page == glo1 && !ui.layer && kb_lock == 0u && cur_page()->graph == GR_GLO);
+           ui.page == glo1 && !ui.layer && kb_lock == 0u && cur_page()->graph == GR_GLO);
     trk[0].p[P_MUTE] = trk[1].p[P_MUTE] = 0;
     key_down(1);                                         /* F#3 plays a note: it was MUTE part 1 */
     frames(48);
@@ -570,6 +578,11 @@ static void test_glo_page(void)
     }
     turn(EN_SELECT, 1);
     frames(48);
+    expect("  .. SELECT right: BASS MONO (0.2.19; one global card, K1 BMONO: hidden in DUEL, where ui_power_on leaves the mode), the keys play notes", str_eq(cur_page()->title, MASTER_PAGE_TITLE) && kb_lock == 0u && song.g[G_BPM] == 117);
+    turn(EN_K1, 3); turn(EN_K2, 3); turn(EN_K4, 3);
+    expect("  .. its knobs change nothing here (DUEL: no BASS MONO card; K2..K4 are empty)", song.bm == 0 && song.g[G_BPM] == 117);
+    turn(EN_SELECT, 1);
+    frames(48);
     expect("  .. SELECT right: the MIDI page, the keys play notes", str_eq(cur_page()->title, "MIDI") && kb_lock == 0u && song.g[G_BPM] == 117);
     turn(EN_K1, 4);
     turn(EN_K2, 5);
@@ -581,6 +594,9 @@ static void test_glo_page(void)
     song.g[G_CLOCK] = 0;
     turn(EN_K4, 3);
     expect("  .. KNOB 4: nothing (CLK is on TEMPO)", song.g[G_CLOCK] == 0 && midi_pch[0] == 4u && song.g[G_ROUTE] == 0 && song.g[G_BPM] == 117);
+    turn(EN_SELECT, 1);
+    frames(48);
+    expect("  .. SELECT right: MODULES (0.2.14), the keys play notes, all four ON", str_eq(cur_page()->title, "MODULES") && kb_lock == 0u && mods_get() == 0u);
     turn(EN_SELECT, 1);
     frames(48);
     expect("  .. SELECT right: MIDI LEARN", str_eq(cur_page()->title, "MIDI LEARN"));
@@ -662,33 +678,37 @@ static void sweep_readonly(void)
     press(B_OCTDN);
     ui.menu_sel = MI_PANEL; frames(4);
     turn(EN_K1, 1);
-    expect("CALIBRATION: KNOB 1 right does not start it (OCT+ only)", ui.menu == 1u && ui.menu_sel == MI_PANEL);
+    expect("BUTTON MAP (was CALIBRATION): KNOB 1 right does not start it (OCT+ only)", ui.menu == 1u && ui.menu_sel == MI_PANEL);
     ui.menu = 0; frames(8);
 }
 
-/* DUELL 0.1: MENU > CONTROL > HOME OPENS: the page HOME opens from another page, at power-on and when the menu closes */
+/* DUELL 0.1: MENU > CONTROL > HOME OPENS: the page HOME opens from another page, at power-on and when the menu closes.
+ * 0.2.14: MORPH, MODE, MIXER (OVERVIEW is gone with its page; a stored 3, OVERVIEW up to 0.2.13, reads as MORPH) */
 static void sweep_homepg(void)
 {
-    static const char *const T[4] = {"MORPH", "MODE", "MIXER", "OVERVIEW"};
+    static const char *const T[3] = {"MORPH", "MODE", "MIXER"};
     uint32_t v, ok;
+    expect("HOME OPENS: three values, MORPH MODE MIXER", HP_COUNT == 3 && menu_n(MI_HOMEPG) == 3u && str_eq(menu_vname(MI_HOMEPG, 2), "MIXER"));
     for (v = 0; v < HP_COUNT; v++) {
         ui_power_on();
         menu_put(MI_HOMEPG, v);
         go_main(); frames(32);
-        ok = v == HP_OVERVIEW ? ui.home == 1u : (!ui.home && str_eq(cur_page()->title, T[v]));
+        ok = str_eq(cur_page()->title, T[v]);
         go_title("AMP ENV"); frames(16);
         press(B_HOME); frames(32);
-        ok &= v == HP_OVERVIEW ? ui.home == 1u : (!ui.home && str_eq(cur_page()->title, T[v]));
+        ok &= str_eq(cur_page()->title, T[v]);
         hold(B_HOME); frames(16);                         /* the menu, then HOME closes it: the same page */
         press(B_HOME); frames(32);
-        ok &= !ui.menu && (v == HP_OVERVIEW ? ui.home == 1u : (!ui.home && str_eq(cur_page()->title, T[v])));
+        ok &= !ui.menu && str_eq(cur_page()->title, T[v]);
         expect(T[v], ok);
     }
     ui_power_on();
-    menu_put(MI_HOMEPG, HP_OVERVIEW);
+    ui_home_pg = 3;                                       /* OVERVIEW stored by 0.2.13: MORPH, never the old page */
     go_main(); frames(16);
+    ok = str_eq(cur_page()->title, "MORPH") && menu_get(MI_HOMEPG) == 0u && ui_home_pg == 3u;
+    go_title("AMP ENV"); frames(16);
     press(B_HOME); frames(16);
-    expect("HOME OPENS OVERVIEW: HOME on OVERVIEW goes round to MORPH, not stuck", !ui.home && str_eq(cur_page()->title, "MORPH"));
+    expect("HOME OPENS stored OVERVIEW (0.2.13): MORPH, the byte kept as stored", ok && str_eq(cur_page()->title, "MORPH"));
     ui_home_pg = 77;
     expect("  an unknown stored code reads as MORPH", menu_get(MI_HOMEPG) == 0u);
     ui_power_on();
@@ -700,22 +720,19 @@ static void sweep_footstrip(void)
 {
     uint32_t pg, ok = 1, seq = 0;
     ui_power_on();
-    ui.home = 0;
     for (pg = 0; pg < NPAGES; pg++) {
         ui.page = (uint8_t)pg;
         ok &= foot_steps() == (PAGES[pg].fam == FAM_SEQ);
         seq += foot_steps();
     }
-    ui.home = 1;
+    go_main_to(HP_MORPH);
     ok &= !foot_steps();
-    ui.home = 0;
     ui.layer = LAYER_SEQ;
     ok &= foot_steps() != 0;
     ui.layer = 0;
     expect("footer: the step strip on SEQ's pages only (STEP, AUTOMATION) and SEQ TOOLS; not on HOME, not on any other page", ok && seq == 2u);
     {   /* 0.2.9: the ARP pages show it too, while the part's arp MODE is SEQUENCER (AM_SEQ); the playhead is the arp's own step */
         uint32_t arp = 0, none = 1, five = 1;
-        ui.home = 0;
         TSEL->p[P_AMODE] = AM_SEQ;
         TSEL->p[P_SLEN] = 16;
         for (pg = 0; pg < NPAGES; pg++) {
@@ -723,9 +740,8 @@ static void sweep_footstrip(void)
             ok &= foot_steps() == (PAGES[pg].fam == FAM_SEQ || PAGES[pg].fam == FAM_ARP);
             arp += PAGES[pg].fam == FAM_ARP && foot_steps();
         }
-        ui.home = 1;
+        go_main_to(HP_MORPH);
         ok &= !foot_steps();
-        ui.home = 0;
         TSEL->p[P_AMODE] = AM_UP;
         for (pg = 0; pg < NPAGES; pg++) {
             ui.page = (uint8_t)pg;
@@ -884,17 +900,19 @@ static void sweep_rec_hold(void)
         mix_bal = b0;
     }
     ui_power_on();
-    {   /* VOICE 2/2 keeps the voice's PAN (the second voice's, not GLO's) and it stays step-lockable; MUTE is not on a VOICE page */
+    {   /* VOICE 2/2 (0.2.19): the glide, SPREAD (step-lockable) and the sound's TRIM last (a patch setting: no step lock); PAN (a mixer setting) and MUTE are on no VOICE page */
         uint32_t p, vp = 0, mute = 0, ok = 0;
         for (p = 0; p < NPAGES; p++) {
             vp += str_eq(PAGES[p].title, "VOICE 2/2");
             mute += PAGES[p].fam == FAM_EDIT && (PAGES[p].id[0] == P_MUTE || PAGES[p].id[1] == P_MUTE || PAGES[p].id[2] == P_MUTE || PAGES[p].id[3] == P_MUTE);
             if (str_eq(PAGES[p].title, "VOICE 2/2")) {
                 go_title("VOICE 2/2");
-                ok = PAGES[p].id[3] == P_PAN && lock_page_ok(p) && ui.plk_src == p + 1u && lock_id(3) == P_PAN;
+                ok = PAGES[p].id[3] == P_TRIM && lock_page_ok(p) && ui.plk_src == p + 1u && lock_id(2) == P_SPRD && lock_id(3) == 0xFFu;
             }
         }
-        expect("VOICE: two pages, PAN on VOICE 2/2 K4 and step-lockable (lock_id), MUTE on no VOICE page", vp == 1u && mute == 0u && ok);
+        for (p = 0; p < NPAGES; p++)
+            mute += PAGES[p].fam == FAM_EDIT && (PAGES[p].id[0] == P_PAN || PAGES[p].id[1] == P_PAN || PAGES[p].id[2] == P_PAN || PAGES[p].id[3] == P_PAN);
+        expect("VOICE: two pages, TRIM on VOICE 2/2 K4 (no step lock), SPRD step-lockable (lock_id), PAN and MUTE on no EDIT page", vp == 1u && mute == 0u && ok);
     }
 }
 
@@ -917,7 +935,7 @@ static void sweep_quick(void)
 {
     static const uint8_t QB[4] = {B_EDIT, B_LFO, B_ENV, B_ARP}, QL[4] = {LAYER_EDIT, LAYER_LFO, LAYER_ENV, LAYER_ARP};
     static const uint8_t QF[4] = {FAM_EDIT, FAM_LFO, FAM_ENV, FAM_ARP};
-    static const char *const QH[4] = {"QUICK FILTER", "QUICK LFO", "QUICK ENV", "QUICK ARP"};
+    static const char *const QH[4] = {"QUICK MULTI", "QUICK LFO", "QUICK ENV", "QUICK ARP"};
     static const uint8_t QID[4][4] = {{P_FREEA, P_FREEB, P_FREEC, P_REL}, {P_LRATE, P_LD_FLT, P_L2RATE, P_L2FLT},
                                       {P_ATK, P_REL, P_E2FLT, P_E2DEC}, {P_AMODE, P_ARATE, P_AGATE, P_AOCT}};
     uint32_t q, k, l;
@@ -933,7 +951,7 @@ static void sweep_quick(void)
         press(QB[q]);
         first = ui.page;
         snprintf(w, sizeof w, "%s tap: its page when let go, no layer", QH[q]);
-        expect(w, !ui.home && cur_page()->fam == QF[q] && !ui.layer && !ui.lock);
+        expect(w, cur_page()->fam == QF[q] && !ui.layer && !ui.lock);
         if (q) {
             frames(96);                                  /* (within the 300 ms of a double tap) */
             press(QB[q]);
@@ -948,7 +966,7 @@ static void sweep_quick(void)
         expect("  held 0.24 s: no layer yet", !ui.layer);
         frames(400);
         snprintf(w, sizeof w, "  %s held past HOLD: its layer, the page under it unchanged", QH[q]);
-        expect(w, ui.layer == QL[q] && ui.page == pg && !ui.home);
+        expect(w, ui.layer == QL[q] && ui.page == pg);
         snprintf(w, sizeof w, "  header \"%s\"", QH[q]);
         expect(w, str_eq(layer_head(), QH[q]));
         frame();
@@ -959,7 +977,7 @@ static void sweep_quick(void)
             expect(w, qp->id[k] == QID[q][k]);
         }
         btn_up(QB[q]); frames(64);
-        expect("  let go: no page, no layer", !ui.layer && ui.page == pg && !ui.home);
+        expect("  let go: no page, no layer", !ui.layer && ui.page == pg);
         settle(); frames(400);
         /* a knob with the button held: the layer at once (a combo), the id edited and recorded as a knob move; let go: no tap */
         {
@@ -975,7 +993,7 @@ static void sweep_quick(void)
             snprintf(w, sizeof w, "  %s + KNOB 2: the layer at once, its id turned (and recorded)", QH[q]);
             expect(w, ui.layer == QL[q] && TSEL->p[id] != v0 && (!motion_param(id) || motion_count(TSEL) > mc));
             btn_up(QB[q]); frames(64);
-            expect("  .. let go: no page (a combo)", ui.page == pg && !ui.home);
+            expect("  .. let go: no page (a combo)", ui.page == pg);
             song.rec = 0; song.playing = 0; transport_req = 0;
             settle(); frames(400);
         }
@@ -994,7 +1012,7 @@ static void sweep_quick(void)
             settle(); frames(400);
             btn_down(QB[q]); key_down(white(5)); frame(); key_up(white(5)); frame(); btn_up(QB[q]); frame();
             snprintf(w, sizeof w, "  %s + a quick key, let go soon: still a tap (its page)", QH[q]);
-            expect(w, !ui.home && cur_page()->fam == QF[q]);
+            expect(w, cur_page()->fam == QF[q]);
             usb.config = 0;
         }
     }
@@ -1013,22 +1031,6 @@ static void sweep_quick(void)
         }
         btn_up(B_EDIT); frames(64);
         expect("QUICK FILTER (EDIT held): all 27 keys play notes, none opens INIT's dialog or is the layer's", ok && TSEL->p[P_E0] == e0);
-    }
-    usb.config = 0;
-    ui_power_on();
-    {
-        uint32_t i, ok = 1, drum = 0;
-        for (i = 0; i < NENGINES; i++)
-            if (ENGINES[i] == &ENG_DRUM)
-                drum = i;
-        set_engine_of(TSEL, drum);
-        usb.config = 1;
-        btn_down(B_EDIT); frames(400);
-        key_down(black(0)); frame();
-        ok &= gates() > 0 && !((kb_layer >> black(0)) & 1u);
-        key_up(black(0)); btn_up(B_EDIT); frames(64);
-        usb.config = 0;
-        expect("  .. a DRUM part's pad (black key 1) plays too", ok && ui.layer == 0);
     }
     /* QUICK GLO (0.2.11): hold GLO over the PERFORM page, the page stays under it and comes back; a tap is GLO's page as before */
     ui_power_on();
@@ -1056,7 +1058,7 @@ static void sweep_quick(void)
         expect("  .. the keys are not the layer's", !((kb_layer >> white(3)) & 1u) && ui.layer == LAYER_GLO);
         key_up(white(3)); frame();
         btn_up(B_GLO); frames(64);
-        expect("  .. let go: closed, PERFORM and its page back, no GLO page", !ui.layer && ui.perf == pm && ui.page == pg && !ui.home &&
+        expect("  .. let go: closed, PERFORM and its page back, no GLO page", !ui.layer && ui.perf == pm && ui.page == pg &&
                cur_page()->graph != GR_GLO);
         settle(); frames(400);
     }
@@ -1103,18 +1105,32 @@ static void sweep_quick(void)
     expect("QUICK LFO: OCT+ is the octave (no put back)", ui.layer == LAYER_LFO && song.octave != 0);
     btn_up(B_LFO); frames(64);
     song.octave = 0;
-    /* the engine's own filter; a synced LFO's SYNC card */
+    /* 0.2.14 (owner): QUICK FILTER is the MULTIMODE filter's CUT RES MODE and REL on every engine that can be picked (ANALOG TRIO NOISE
+     * too: their own filters stay on their EDIT pages); a synced LFO's SYNC card */
     ui_power_on();
-    set_engine_of(TSEL, 0u);                             /* ANALOG: CUT RES TYPE */
-    expect("QUICK FILTER on ANALOG: its CUT RES TYPE", ly_page(LAYER_EDIT)->id[0] == P_E4 && ly_page(LAYER_EDIT)->id[1] == P_E5 &&
-           ly_page(LAYER_EDIT)->id[2] == P_FTYPE && ly_page(LAYER_EDIT)->id[3] == P_REL);
-    for (k = 0; k < NENGINES; k++)
-        if (ENGINES[k] == &ENG_TRIO || ENGINES[k] == &ENG_NOISE) {
+    {
+        uint32_t ok = 1, n = 0;
+        for (k = 0; k < NENGINES; k++) {
+            const page_t *qp;
+            if (!eng_ok(k))
+                continue;
             set_engine_of(TSEL, k);
-            expect(ENGINES[k] == &ENG_TRIO ? "QUICK FILTER on TRIO: CUT RES MODE" : "QUICK FILTER on NOISE: FREQ RES, K3 empty",
-                   ENGINES[k] == &ENG_TRIO ? ly_page(LAYER_EDIT)->id[0] == P_E5 && ly_page(LAYER_EDIT)->id[1] == P_E6 && ly_page(LAYER_EDIT)->id[2] == P_E4
-                                           : ly_page(LAYER_EDIT)->id[0] == P_E2 && ly_page(LAYER_EDIT)->id[1] == P_E3 && ly_page(LAYER_EDIT)->id[2] == 0xFFu);
+            qp = ly_page(LAYER_EDIT);
+            n++;
+            ok &= qp->id[0] == P_FREEA && qp->id[1] == P_FREEB && qp->id[2] == P_FREEC && qp->id[3] == P_REL && ENGINES[k]->ufilt;
         }
+        expect("QUICK FILTER: CUT RES MODE (ids 45..47) + REL on all ten engines, one mapping", ok && n == 10u);
+        set_engine_of(TSEL, 0u);                         /* ANALOG: K3 is the multimode MODE, its TYPE untouched */
+        {
+            int16_t ft = TSEL->p[P_FTYPE], m0 = TSEL->p[P_FREEC];
+            go_title("MIXER");
+            btn_down(B_EDIT); frames(640);
+            turn(EN_K3, 6);
+            btn_up(B_EDIT); frames(64);
+            expect("  ANALOG: QUICK FILTER K3 turns the multimode MODE, not the VCF's TYPE", TSEL->p[P_FREEC] != m0 && TSEL->p[P_FTYPE] == ft);
+            settle(); frames(400);
+        }
+    }
     TSEL->p[P_LSYNC] = 5;
     expect("QUICK LFO: LFO 1 synced, KNOB 1 is its SYNC; LFO 2 free, KNOB 3 RATE2", ly_page(LAYER_LFO)->id[0] == P_LSYNC &&
            ly_page(LAYER_LFO)->id[2] == P_L2RATE);
@@ -1127,6 +1143,47 @@ static void sweep_quick(void)
         snprintf(w, sizeof w, "header \"%s\": QUICK, fits in M with the bolt and the lock", LAYERS[l].head);
         expect(w, !strncmp(LAYERS[l].head, "QUICK ", 6) && text_w(&AF_M, LAYERS[l].head) + b[2] - b[0] + KH_GAP + 15 <= HEAD_MSG_W);
     }
+}
+
+/* DUELL 0.2.14, HOME > MIXER: both parts side by side (ui_layer.c mixer_panel, GLO's layout and meters), the selected part's cell outlined
+ * 2 px in its colour, the other 1 px RAISE; the cards edit the selected part (K1 LEVEL, K2 PAN, K3 SPACE, K4 MUTE) and ALGORITHM moves
+ * the selection and the outline; nothing is drawn again while nothing changes (the panel's signature, the meters' own strip) */
+static uint16_t mx_px(int32_t x, int32_t y) { return swap16(host_screen[(uint32_t)y * 240u + (uint32_t)x]); }
+static void sweep_mixer(void)
+{
+    uint32_t k, ok = 1;
+    int16_t l0, l1;
+    ui_power_on();
+    trk[0].peak = trk[1].peak = 0;
+    go_title("MIXER");
+    frames(8);
+    expect("MIXER: the page is HOME's GR_TRK, cards MUTE PAN SPACE LEVEL", cur_page()->graph == GR_TRK && cur_page()->scope == SC_TRK);
+    for (k = 0; k < 2u; k++) {                           /* the outline: 2 px in the part's colour on the selected cell, RAISE on the other */
+        int32_t x = GC_X(k), y = Y_GRAPH + MC_Y + MC_H / 2;
+        uint16_t c0 = mx_px(x, y), c1 = mx_px(x + 1, y);
+        ok &= k == song.sel ? c0 == T_PTHEME(k) && c1 == T_PTHEME(k) : c0 == T_RAISE && c1 == T_SURF;
+    }
+    expect("MIXER: two cells side by side, part 1's (selected) outlined 2 px in its colour, part 2's 1 px RAISE", ok && song.sel == 0u);
+    l0 = trk[0].p[P_LEVEL]; l1 = trk[1].p[P_LEVEL];
+    turn(EN_K4, -3); frame();
+    expect("MIXER: K4 turns the selected part's LEVEL only", trk[0].p[P_LEVEL] != l0 && trk[1].p[P_LEVEL] == l1);
+    turn(EN_ALGO, 1); frames(4);
+    ok = song.sel == 1u && mx_px(GC_X(1), Y_GRAPH + MC_Y + MC_H / 2) == T_PTHEME(1) && mx_px(GC_X(1) + 1, Y_GRAPH + MC_Y + MC_H / 2) == T_PTHEME(1) &&
+         mx_px(GC_X(0), Y_GRAPH + MC_Y + MC_H / 2) == T_RAISE;
+    expect("MIXER: ALGORITHM selects part 2, its cell gets the outline", ok);
+    l0 = trk[0].p[P_LEVEL]; l1 = trk[1].p[P_LEVEL];
+    turn(EN_K1, 2); turn(EN_K4, 1); frame();
+    expect("  .. K1 LEVEL and K4 MUTE now part 2's", trk[1].p[P_LEVEL] != l1 && trk[0].p[P_LEVEL] == l0 && trk[1].p[P_MUTE] && !trk[0].p[P_MUTE]);
+    frames(600);                                         /* (past the knob's accent) */
+    trk[0].peak = trk[1].peak = 0;
+    frames(80);                                          /* (the meters fall to rest) */
+    host_blit_rows = 0;
+    for (k = 0; k < 8u; k++) { trk[0].peak = trk[1].peak = 0; frame(); }
+    expect("MIXER: nothing changes, nothing is drawn (8 frames, no blit)", host_blit_rows == 0u);
+    trk[0].p[P_REV] = (int16_t)(trk[0].p[P_REV] == 64 ? 65 : 64);
+    host_blit_rows = 0; frame();
+    expect("  .. part 1's REV send changed (not the selected part's): the panel is drawn again", host_blit_rows >= (uint32_t)H_GRAPH);
+    turn(EN_ALGO, -1); frames(4);
 }
 
 /* ALGORITHM (0.2.9, owner 2026-10-14): on the MORPH page (HOME 1/5) PART 1, BOTH, PART 2 from left to right, clamped, BOTH the
@@ -1177,11 +1234,6 @@ static void sweep_algo(void)
     turn(EN_ALGO, -1);
     ok &= song.sel == 1u && morph.target == MT_BOTH && badge_lit() == 3u;
     expect("MORPH page: ALGORITHM PART 1 | BOTH | PART 2, clamped; BOTH keeps the selected part, both badges", ok);
-    ui.home = 1; page_entered(); frames(48);
-    turn(EN_ALGO, -1);
-    frame();
-    expect("OVERVIEW: ALGORITHM picks the part only, one badge", ui.home && song.sel == 0u && morph.target == MT_BOTH && badge_lit() == 1u);
-    ui.home = 0;
     morph.target = MT_SELECTED;
     song.sel = 0;
     frames(48);
@@ -1223,6 +1275,62 @@ static void sweep_leds_play_rec(void)
     ui_power_on();
 }
 
+/* 0.2.18, the page-order audit (docs/PAGE_ORDER_AUDIT.md), the UI-only reorders: top-down (a mode or type first, an amount next, a level or mix last). The stored ids never move */
+static const page_t *pg_titled(const char *t)
+{
+    uint32_t i;
+    for (i = 0; i < NPAGES; i++)
+        if (str_eq(PAGES[i].title, t))
+            return &PAGES[i];
+    return &PAGES[0];
+}
+static void test_page_order(void)
+{
+    const page_t *a1 = pg_titled("ARP 1/3"), *a2 = pg_titled("ARP 2/3"), *a3 = pg_titled("ARP 3/3"), *v1 = pg_titled("VOICE 1/2"), *v2 = pg_titled("VOICE 2/2");
+    const page_t *d2 = pg_titled("DUCK 2/2"), *mf = pg_titled("MULTI FILTER");
+    uint32_t k, ok = 1;
+    expect("ARP: 1/3 MODE HOLD ORD OCT, 2/3 RATE GATE SWG PROB, 3/3 TRGT",
+           a1->id[0] == P_AMODE && a1->id[1] == P_AHOLD && a1->id[2] == P_AORDER && a1->id[3] == P_AOCT &&
+           a2->id[0] == P_ARATE && a2->id[1] == P_AGATE && a2->id[2] == P_ASWING && a2->id[3] == P_APROB && a3->id[0] == P_ATGT);
+    expect("VOICE: 1/2 VCE PRIO ALLOC DTUNE, 2/2 GLMOD GLD SPRD TRIM",
+           v1->id[0] == P_VOICE && v1->id[1] == P_PRIO && v1->id[2] == P_ALLOC && v1->id[3] == P_DETUNE &&
+           v2->id[0] == P_GLMODE && v2->id[1] == P_GLIDE && v2->id[2] == P_SPRD && v2->id[3] == P_TRIM);
+    expect("DUCK 2/2: CURVE ATK RLS", d2->id[0] == P_DKCRV && d2->id[1] == P_DKATK && d2->id[2] == P_DKRLS);
+    expect("MULTI FILTER: CUT RES MODE SLOPE", mf->id[0] == P_FREEA && mf->id[1] == P_FREEB && mf->id[2] == P_FREEC && mf->id[3] == P_FREED);
+    /* every id of a reordered page is still on exactly that page set (nothing lost or doubled) */
+    {
+        static const uint8_t ARPIDS[9] = {P_AMODE, P_AHOLD, P_AORDER, P_AOCT, P_ARATE, P_AGATE, P_ASWING, P_APROB, P_ATGT};
+        uint32_t n[9] = {0}, i, c;
+        for (i = 0; i < NPAGES; i++)
+            if (PAGES[i].fam == FAM_ARP)
+                for (c = 0; c < 4u; c++)
+                    for (k = 0; k < 9u; k++)
+                        n[k] += PAGES[i].id[c] == ARPIDS[k];
+        for (k = 0; k < 9u; k++)
+            ok &= n[k] == 1u;
+        expect("ARP: each of the nine cards is on exactly one page", ok);
+    }
+    /* FM6: SLOT first on EDIT 1 (stored ids unchanged: the card shows P_E7, K2 ALG is P_E0 ...) */
+    ui_power_on();
+    set_engine_of(TSEL, ENGI_FM6);
+    {
+        const page_t *e1 = pg_titled("EDIT 1"), *e2 = pg_titled("EDIT 2");
+        int16_t *vp;
+        static const uint8_t WANT1[4] = {7, 0, 1, 2}, WANT2[4] = {3, 4, 5, 6};
+        ok = 1;
+        for (k = 0; k < 4u; k++) {
+            ok &= page_desc(e1, k, &vp) && vp == &TSEL->p[P_E0 + WANT1[k]];
+            ok &= page_desc(e2, k, &vp) && vp == &TSEL->p[P_E0 + WANT2[k]];
+        }
+        page_desc(e1, 0, &vp);
+        expect("FM6 EDIT 1: SLOT ALG FB MLVL, EDIT 2: MRAT MEG VMOD DTUN (the cards move, the stored E slots do not)", ok && !strcmp(page_desc(e1, 0, &vp)->label, "SLOT") &&
+               !strcmp(page_desc(e2, 0, &vp)->label, "MRAT"));
+        set_engine_of(TSEL, 0u);
+        ok = page_desc(e1, 0, &vp) && vp == &TSEL->p[P_E0] && page_desc(e2, 3, &vp) && vp == &TSEL->p[P_E7];
+        expect("every other engine: EDIT 1 / EDIT 2 in the engine's own order, E1..E8", ok);
+    }
+}
+
 int main(void)
 {
     setvbuf(stdout, NULL, _IONBF, 0);
@@ -1240,6 +1348,8 @@ int main(void)
     sweep_rec_hold();
     sweep_rec_hold_layer();
     sweep_quick();
+    sweep_mixer();
+    test_page_order();
     sweep_algo();
     sweep_leds_play_rec();
     printf("select: %d checks, %d failed\n", ncheck, bad);

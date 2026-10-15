@@ -117,7 +117,7 @@ static void t_layout(void)
     uint32_t i, n = 0, dk = 0, ok = P_E0 + 8u == P_COUNT && P_M5SRC == P_M4AMT + 1u && P_M8AMT == 72u &&
                                      MSLOT_ID(7u) + 2u == P_M8AMT && NMSLOT == 8u;
     for (i = 0; i < P_COUNT; i++)
-        if (param_retired(i)) {
+        if (ui_id_retired(i)) {
             n++;
             if (TP[i].label[0] == '-')                   /* free: no label, no range, on no page */
                 ok &= TP[i].min == 0 && TP[i].max == 0 && TP[i].def == 0 && !motion_param(i);
@@ -130,15 +130,16 @@ static void t_layout(void)
                   PAGES[i].id[c] == 0xFFu || PAGES[i].id[c] >= P_E0 || TP[PAGES[i].id[c]].label[0] != '-';
     printf("step3: retired ids %u: DUELL parameters on them %u, free %u (the EQ's five are DUELL's now)\n", n, dk, n - dk);
     ck("layout: P_E0 + 8 == P_COUNT (the ids DUELL added all go before P_E0; no 7-bit id overflows); matrix slots 1..8 in a row (49..72); 33 retired ids (29 + the SLICER's four), the "
-       "free ones inert and on no page", ok && n == PL_NRETIRED);
+       "free ones inert and on no page", ok && n == 33u);
     ok = 1;
     for (i = 0; i < NELEM(MIDI_CC_MAP); i++)
-        ok &= MIDI_CC_MAP[i][1] >= MCC_CUT || !param_retired(MIDI_CC_MAP[i][1]);
+        ok &= MIDI_CC_MAP[i][1] >= MCC_CUT || !ui_id_retired(MIDI_CC_MAP[i][1]);
     ck("MIDI's CC map: no CC on a retired id (the matrix's MIDI handling as before)", ok);
 }
 
 /* ------------------------------------------------------------------ 2 --- */
-/* a project of Felucca's layout (four tracks): the retired ids as Felucca held them */
+/* DUELL 0.2.14 reads no store of Felucca's layout (core.h PL_*) any more: here the old images are REFUSED (a user preset record of
+ * another version, a project FUN10 / FUN9, a backup PUT of them), and the formats of today carry DUELL's values on the reused ids. */
 static void felucca_values(int16_t *p, int32_t seed)
 {
     uint32_t i;
@@ -148,78 +149,32 @@ static void felucca_values(int16_t *p, int32_t seed)
     for (i = PL_LN0; i <= PL_LN7; i++)
         p[i] = (int16_t)(90 - seed);
 }
-static int retired_defaults(const int16_t *p, uint32_t e)
-{
-    uint32_t i;
-    int ok = 1;
-    for (i = 0; i < P_E0; i++)
-        ok &= !param_retired(i) || p[i] == param_desc_of(e, i)->def;
-    return ok;
-}
 
 static void t_old_presets(void)
 {
     static up_rec_t r;
-    int16_t v[P_COUNT], def[P_COUNT], p[P_COUNT];
+    int16_t v[P_COUNT], p[P_COUNT];
     uint32_t i;
     int ok;
-    /* a record of Felucca 1.5 (version 4, 111 values): its retired ids hold OP ENV / lanes / ED FX */
+    /* a record of DUELL's layout (version 6): its slot 5..8 values are kept */
     memset(&r, 0, sizeof r);
-    r.used = UP_USED; r.ver = UP_VER_FEL; r.engine = 0; r.np = P_COUNT;
-    memcpy(r.name, "OLD", 3);
+    r.used = UP_USED; r.ver = UP_VER; r.engine = 0; r.np = P_COUNT;
+    memcpy(r.name, "NEW", 3);
     def_of(0, p);
-    felucca_values(p, 3);
-    p[P_REV] = 33; p[P_M2SRC] = MS_MODW; p[P_M2DST] = MD_CUT; p[P_M2AMT] = -20; p[P_E0 + 2] = 7;
-    for (i = 0; i < P_COUNT; i++)
-        up_set_value(&r, i, p[i]);
-    up_values(&r, v);
-    ok = retired_defaults(v, 0) && v[P_REV] == 33 && v[P_M2SRC] == MS_MODW && v[P_M2AMT] == -20 && v[P_E0 + 2] == 7;
-    for (i = P_M5SRC; i <= P_M8AMT; i++)
-        ok &= v[i] == 0;
-    ck("user preset of Felucca (version 4, 111): matrix slots 5..8 OFF, every retired id its default, the rest kept", ok);
-    /* 1.2 .. 1.4 (104 values): mapped by count, then the same */
-    r.np = 104;
-    for (i = 0; i < 96u; i++) up_set_value(&r, i, p[i]);
-    for (i = 0; i < 8u; i++) up_set_value(&r, 96u + i, p[P_E0 + i]);
-    up_values(&r, v);
-    ok = retired_defaults(v, 0) && v[P_REV] == 33 && v[P_M2AMT] == -20 && v[P_E0 + 2] == 7 && v[P_ITYPE] == 0;
-    ck("user preset of Felucca 1.2 (104): mapped by count, retired ids at their defaults", ok);
-    /* a version 6 record (DUELL's): its slot 5..8 values are kept */
-    r.ver = UP_VER; r.np = P_COUNT;
     p[P_M5SRC] = MS_LFO; p[P_M5DST] = MD_PAN; p[P_M5AMT] = 30; p[P_M8SRC] = MS_AT; p[P_M8DST] = MD_E1 + 3; p[P_M8AMT] = -9;
     for (i = 0; i < P_COUNT; i++)
         up_set_value(&r, i, (int16_t)param_fit(&TP[i < P_E0 ? i : 0], p[i]));
     up_values(&r, v);
-    ok = v[P_M5SRC] == MS_LFO && v[P_M5DST] == MD_PAN && v[P_M5AMT] == 30 && v[P_M8SRC] == MS_AT && v[P_M8AMT] == -9;
-    ck("user preset of DUELL (version 6): matrix slots 5..8 as stored", ok);
-    /* a grid record of Felucca (version 5) stays Felucca's on a rename (version 4 / 5 keep their layout) */
-    r.ver = UP_VER_FEL_GRID;
-    ck("a Felucca grid record is a grid, of Felucca's layout", up_grid(&r) && !up_duell(&r) && up_valid(&r));
-    def_of(0, def);
-    (void)def;
-}
-
-/* a DIGITAL sound of Felucca (its OP ENV values at 61..80): converted to FM6 with them, not without. (DUELL: the user preset
- * banks are gone: the PATCHES store holds DUELL's layout only, so an up_put / up_load of a Felucca record is no path any
- * more; the conversion itself (fm4_convert with fm4_ops) is what is left to test.) */
-static void t_old_digital_preset(void)
-{
-    int16_t p[P_COUNT], q[P_COUNT], ops[FM4_NOPS];
-    uint8_t v[FP_SIZE + 1u], w[FP_SIZE + 1u];
-    uint32_t i;
-    ui_power_on();
-    for (i = 0; i < P_COUNT; i++)
-        p[i] = param_desc_of(ENGI_DIGITAL, i)->def;
-    fm4_preset_values(p, 5);                           /* DIGITAL PAD */
-    for (i = 0; i < FM4_NOPS; i++)
-        p[PL_FM1_ATK + i] = FM4_OPS_DEF[i];
-    p[PL_FM1_ATK + 5u] = 30;                           /* op 2 ATK */
-    p[PL_FM1_ATK + 9u] = 100;                          /* op 2 LEVEL */
-    memcpy(q, p, sizeof q);
-    fm4_convert(q, fm4_ops(p, ops), v);
-    memcpy(q, p, sizeof q);
-    fm4_convert(q, 0, w);
-    ck("a DIGITAL sound of Felucca: its OP ENV values matter: the conversion without them differs", memcmp(v, w, FP_SIZE) != 0);
+    ok = up_valid(&r) && v[P_M5SRC] == MS_LFO && v[P_M5DST] == MD_PAN && v[P_M5AMT] == 30 && v[P_M8SRC] == MS_AT && v[P_M8AMT] == -9;
+    ck("user preset of DUELL (version 6): valid, matrix slots 5..8 as stored", ok);
+    /* Felucca's versions 1..5 (OP ENV / lanes / ED FX on the reused ids) and the drum-grid version 7 are no record */
+    ok = 1;
+    for (i = 0; i < 16u; i++) {
+        r.ver = (uint8_t)i;
+        ok &= (up_valid(&r) != 0) == (i == UP_VER);
+    }
+    r.ver = UP_VER;
+    ck("a record of version 1..5 (Felucca's layout), 7 (a drum grid) or any other: not valid (reads as empty); only version 6", ok);
 }
 
 static void t_old_projects(void)
@@ -227,8 +182,6 @@ static void t_old_projects(void)
     static project_t a, c, d;
     static uint8_t b10[3840], b9[3648];
     static project_store_t st;
-    int16_t ops[FM4_NOPS], q[P_COUNT];
-    uint8_t v[FP_SIZE + 1u], pk[FM6_PACKED];
     uint32_t t, i;
     int ok;
     ui_power_on();
@@ -238,68 +191,39 @@ static void t_old_projects(void)
     a.sel = 3;
     a.t[0].p[P_REV] = 40;
     a.t[0].p[P_M2SRC] = MS_LFO; a.t[0].p[P_M2DST] = MD_SHP; a.t[0].p[P_M2AMT] = 11;
-    a.t[1].engine = ENGI_DIGITAL;                       /* part B: a DIGITAL sound, its op 2 edited */
-    for (i = 0; i < P_E0; i++)
-        if (!param_retired(i)) a.t[1].p[i] = param_desc_of(ENGI_DIGITAL, i)->def;
-    fm4_preset_values(a.t[1].p, 5);
-    for (i = 0; i < FM4_NOPS; i++)
-        a.t[1].p[PL_FM1_ATK + i] = FM4_OPS_DEF[i];
-    a.t[1].p[PL_FM1_ATK + 5u] = 30;
-    a.t[1].p[PL_FM1_ATK + 9u] = 100;
+    a.t[1].engine = ENGI_FM6;                           /* part B */
     a.t[2].engine = 6; a.t[2].p[P_LEVEL] = 50;          /* tracks 3..4: not DUELL's parts */
     a.t[3].engine = 9; a.t[3].p[P_LEVEL] = 51;
-    a.t[2].step[0] = (step_t){{60}, 1, ST_NOTE, 0, 96, 0, 0, 0};
-    a.motion.count = 6; a.motion.on = 15;
-    a.motion.event[0] = (motion_event_t){0u << 6 | 1u, P_REV, 90};                           /* kept */
-    a.motion.event[1] = (motion_event_t){0u << 6 | 2u, (uint8_t)((PL_LN0 + 2u) | MOTION_LOCK), 40};   /* a lane: goes */
-    a.motion.event[2] = (motion_event_t){1u << 6 | 3u, (uint8_t)(PL_FM1_ATK + 4u), 50};      /* OP1 LEVEL: goes */
-    a.motion.event[3] = (motion_event_t){2u << 6 | 4u, P_REV, 10};                           /* track 3: goes */
-    a.motion.event[4] = (motion_event_t){0u << 6 | 6u, (uint8_t)(P_E5 | MOTION_LOCK), -3};   /* kept */
-    a.motion.event[5] = (motion_event_t){0u << 6 | 7u, PL_ED_FX, 5};                         /* ED FX: goes */
-    memcpy(q, a.t[1].p, sizeof q);
-    fm4_convert(q, fm4_ops(a.t[1].p, ops), v);
-    fm6_pack(v, pk);
-    ok = old_pack10(b10, &a, 111u) == sizeof b10 && proj_import(&c, b10, sizeof b10);
-    ck("a FUN10 of Felucca (four tracks, 111): loads", ok);
-    ok &= retired_defaults(c.t[0].p, c.t[0].engine) && retired_defaults(c.t[1].p, c.t[1].engine) && c.t[0].p[P_REV] == 40 &&
-          c.t[0].p[P_M2SRC] == MS_LFO && c.t[0].p[P_M2AMT] == 11 && c.t[0].p[P_M5SRC] == 0 && c.t[0].p[P_M8AMT] == 0 &&
-          c.sel == 0;
-    ck("  parts A B: matrix slots 5..8 OFF, every retired id its default, the rest as stored, track 4 selected -> A", ok);
-    ck("  part B's DIGITAL sound: FM6, converted with its OP ENV values (read before they were retired)",
-       c.t[1].engine == ENGI_FM6 && !memcmp(c.fm6[1], pk, FM6_PACKED));
-    ok = 1;
-    for (t = NSHOWN; t < NTRK; t++)
-        ok &= c.t[t].preset == PROJ_DEF_SOUND && c.t[t].engine == trk_def_engine(t) && c.t[t].step[0].time == ST_REST;
-    ck("  tracks 3..4 not kept: their power-on sound, no steps", ok);
-    ck("  its motion: REV and the E5 lock kept; a lane lock, OP LEVEL, ED FX and track 3's record dropped",
-       c.motion.count == 2u && c.motion.event[0].param == P_REV && c.motion.event[1].param == (P_E5 | MOTION_LOCK) &&
-       !(c.motion.on >> NSHOWN) && motion_valid(&c.motion));
+    a.motion.count = 3; a.motion.on = 15;
+    a.motion.event[0] = (motion_event_t){0u << 6 | 1u, P_REV, 90};
+    a.motion.event[1] = (motion_event_t){0u << 6 | 2u, (uint8_t)((PL_LN0 + 2u) | MOTION_LOCK), 40};   /* a lane lock */
+    a.motion.event[2] = (motion_event_t){1u << 6 | 3u, (uint8_t)(PL_FM1_ATK + 4u), 50};      /* OP1 LEVEL */
+    chain_defaults(&a.chain);
+    ok = old_pack10(b10, &a, 111u) == sizeof b10 && !proj_import(&c, b10, sizeof b10);
+    ck("a FUN10 of Felucca (four tracks, 111, the reused ids as Felucca held them): refused", ok);
+    a.motion.count = 1;
+    ok = old_pack(b9, &a, OLD_FUN9, 99u) == sizeof b9 && !proj_import(&c, b9, sizeof b9);
+    ck("a FUN9 of Felucca (99): refused", ok);
     /* FUN11: written as DUELL's, read back the same; its parts A B only */
+    project_capture(&c);
+    c.t[0].p[P_REV] = 40;
     c.t[0].p[P_M5SRC] = MS_VEL; c.t[0].p[P_M5DST] = MD_AMP; c.t[0].p[P_M5AMT] = 21;
     c.t[1].p[P_M8SRC] = MS_KEY; c.t[1].p[P_M8DST] = MD_DEPTH; c.t[1].p[P_M8AMT] = -40;
+    c.motion.count = 1; c.motion.event[0] = (motion_event_t){0u << 6 | 1u, P_REV, 90};
     c.sum = proj_sum(&c);
     ok = proj_pack(&st, &c) && ((uint32_t *)st.raw)[0] == 0x46554E42u && proj_import(&d, &st, sizeof st) &&
          !memcmp(d.t, c.t, NSHOWN * sizeof c.t[0]) && !memcmp(&d.motion, &c.motion, sizeof c.motion) &&
          d.t[0].p[P_M5AMT] == 21 && d.t[1].p[P_M8AMT] == -40;
     ck("FUN11 round trip: DUELL's values on the reused ids kept (slots 5..8), parts A B, motion", ok);
-    /* FUN9 (1.1: 99 parameters) with a lock on a lane level and on OP LEVEL: loads (they go), it is not refused */
-    a.motion.count = 3;
-    a.motion.event[2] = (motion_event_t){0u << 6 | 3u, (uint8_t)(PL_FM1_ATK + 9u), 60};
-    a.motion.event[3] = (motion_event_t){0};
-    a.motion.event[4] = (motion_event_t){0};
-    a.motion.event[5] = (motion_event_t){0};
-    chain_defaults(&a.chain);
-    ok = old_pack(b9, &a, OLD_FUN9, 99u) == sizeof b9 && proj_import(&c, b9, sizeof b9) && c.motion.count == 1u &&
-         c.motion.event[0].param == P_REV && retired_defaults(c.t[0].p, c.t[0].engine);
-    ck("FUN9 of Felucca with motion on a lane level and on OP LEVEL: loads, those records go", ok);
-    /* restored onto the device: no crash, the parts have DUELL's defaults there */
-    ok = proj_import(&c, b10, sizeof b10) && !project_restore_runtime(&c);
+    /* restored onto the device: no crash, the parts have what the project holds there */
+    ok = !project_restore_runtime(&d);
     for (t = 0; t < NSHOWN; t++)
-        ok &= retired_defaults(trk[t].p, trk[t].eng_req) && trk[t].p[P_M5SRC] == 0;
-    ck("  restored onto the device: parts A B with DUELL's defaults on the reused ids", ok && trk[0].p[P_REV] == 40);
+        for (i = 0; i < P_E0; i++)
+            ok &= trk[t].p[i] == (int16_t)param_fit(param_desc_of(trk[t].eng_req, i), c.t[t].p[i]) || i == P_SCALE || i == P_QUANT;
+    ck("  restored onto the device: parts A B with DUELL's values on the reused ids", ok && trk[0].p[P_M5AMT] == 21 && trk[1].p[P_M8AMT] == -40);
 }
 
-/* the backup (editor_backup.c): an archive of Felucca's (its project, user preset bank and settings) restored */
+/* the backup (editor_backup.c): an archive's project is refused when it is not this firmware's FUN11; the settings object of DUELL's keeps its map */
 static uint32_t bk_put(uint32_t id, const void *v, uint32_t len)
 {
     ed_bk_id = (uint8_t)id;
@@ -309,16 +233,28 @@ static uint32_t bk_put(uint32_t id, const void *v, uint32_t len)
     ed_bk_crc = st_crc32(ED_BK_RAW, len);
     return ed_bk_commit();
 }
-/* (DUELL: the project-object and user-bank halves of this test went with the PROJECT slots (proj_slot) and the user preset
- * banks (up_bank_t); tests/project_test.c holds the old project imports, patch_test / patslot_test the PATCHES store.
- * What stays: the settings object of Felucca with a MIDI LEARN map) */
 static void t_old_backup(void)
 {
     static persist_t ps;
-    uint32_t e0, e1, e2;
+    static project_t pr;
+    static project_store_t st;
+    static uint8_t b10[3840];
+    uint32_t e0, e1, e2, sum;
     int ok;
     ui_power_on();
-    /* settings of Felucca with a MIDI LEARN map: CC 20 on a lane level (84: a DUELL id now), CC 21 on REV; DUELL's mark 0 */
+    project_capture(&pr);
+    ok = proj_pack(&st, &pr) && bk_put(0, &st, sizeof st) == 0u;
+    ck("backup: this firmware's FUN11 (id 0) is restored", ok);
+    st.raw[67] = 0;                                      /* 0.2.13's FUN11: revision 0, the hash right */
+    sum = proj_hash(st.raw, sizeof st - 4u); memcpy(st.raw + sizeof st - 4u, &sum, 4);
+    song.g[G_BPM] = 111;
+    ok = bk_put(0, &st, sizeof st) == 2u && song.g[G_BPM] == 111;
+    ck("backup: a FUN11 of 0.2.13 (revision 0) is refused (rc 2), the music is untouched", ok);
+    ok = old_pack10(b10, &pr, 111u) == sizeof b10 && bk_put(0, b10, sizeof b10) == 2u && song.g[G_BPM] == 111;
+    ck("backup: a FUN10 of Felucca is refused (rc 2), the music is untouched", ok);
+    ok = bk_put(2, b10, 3648u) == 0u && bk_put(3, b10, 7u) == 0u;
+    ck("backup: a project slot of an older archive (ids 2..5) is accepted and dropped, whatever its length", ok);
+    /* settings with a MIDI LEARN map: 0.2.14 reads the mark byte [15][25] no more; every entry is kept as saved */
     settings_export(&ps);
     ps.favorites.factory[15][25] = 0;
     e0 = 20u | 0u << 7 | (PL_LN0 + 1u + 1u) << 9;
@@ -328,12 +264,8 @@ static void t_old_backup(void)
     ps.favorites.factory[14][2] = (uint8_t)e1; ps.favorites.factory[14][3] = (uint8_t)(e1 >> 8);
     ps.favorites.factory[14][4] = (uint8_t)e2; ps.favorites.factory[14][5] = (uint8_t)(e2 >> 8);
     ok = bk_put(1, &ps, sizeof ps) == 0u;
-    ok &= ml_get(0) == 0u && ml_get(1) == e1 && ml_get(2) == 0u && favorites.factory[15][25] == 1u;
-    ck("backup: settings of Felucca: MIDI LEARN entries on retired ids dropped (REV kept), DUELL's mark set", ok);
-    settings_export(&ps);                               /* DUELL's own map: an entry on id 84 stays */
-    ps.favorites.factory[14][0] = (uint8_t)e0; ps.favorites.factory[14][1] = (uint8_t)(e0 >> 8);
-    ok = ps.favorites.factory[15][25] == 1u && bk_put(1, &ps, sizeof ps) == 0u && ml_get(0) == e0;
-    ck("  settings of DUELL (marked): an entry on a reused id is DUELL's and stays", ok);
+    ok &= ml_get(0) == e0 && ml_get(1) == e1 && ml_get(2) == e2;
+    ck("backup: settings with a MIDI LEARN map: restored as saved, no entry converted (Felucca's map is no longer recognised)", ok);
     memset(favorites.factory[14], 0, sizeof favorites.factory[14]);
 }
 
@@ -518,7 +450,7 @@ static void t_env2(void)
     fresh(0, 0);
     t->p[P_VOICE] = V_MONO;
     t->p[P_ATK] = 0; t->p[P_SUS] = 127; t->p[P_REL] = 100; t->p[P_ED_FLT] = 0; t->p[P_LD_AMP] = 0;
-    t->p[P_LEVEL] = 60; t->p[P_DIST] = 0;              /* (well below the limiter: the level is the amplitude) */
+    t->p[P_TRIM] = 60; t->p[P_DIST] = 0;              /* (well below the limiter: the level is the amplitude) */
     t->p[P_E2ATK] = 60; t->p[P_E2DEC] = 0; t->p[P_E2SUS] = 127; t->p[P_E2REL] = 20;
     t->p[P_CHOR] = t->p[P_DLY] = t->p[P_REV] = 0;
     mslot(t, 4, MS_ENV2, MD_AMP, 63);
@@ -846,7 +778,6 @@ int main(void)
 {
     t_layout();
     t_old_presets();
-    t_old_digital_preset();
     t_old_projects();
     t_old_backup();
     t_slots();

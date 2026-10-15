@@ -176,17 +176,8 @@ static void classic(void)
 
 static void stores(void)
 {
-    int16_t in[P_COUNT], out[P_COUNT], def[P_COUNT];
-    uint32_t i;
-    for (i = 0; i < P_COUNT; i++) {
-        def[i] = TP[i].def;
-        in[i] = 5;
-    }
-    params_retire(in, def);
-    params_by_count(out, in, P_COUNT - 30u, def);     /* (a store with fewer common ids: P_ATGT not in it) */
-    check("old stores: P_ATGT on id 86 (DRUM's lane), retired in Felucca's layout -> ALL; default ALL; a short store",
-          P_ATGT == 86 && param_retired(P_ATGT) && TP[P_ATGT].def == 0 && in[P_ATGT] == 0 && out[P_ATGT] == 0 &&
-          TP[P_ATGT].max == 8);
+    /* (0.2.14: stores of Felucca's layout are no longer read, so nothing maps P_ATGT on id 86, DRUM's lane in that layout, by count) */
+    check("P_ATGT on id 86: default ALL (0), range 0..8", P_ATGT == 86 && TP[P_ATGT].def == 0 && TP[P_ATGT].max == 8);
 }
 
 int main(void)

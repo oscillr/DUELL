@@ -17,7 +17,7 @@ static int32_t abuf[2u * HALF_WORDS] __attribute__((aligned(4)));
 struct felucca_dbg {
     uint32_t magic, halves, max_us, nested, in_audio, late, timer_irqs, ui_frames;
     uint32_t last_us, cpu_q8, boots;
-    uint32_t stage, page, home;           /* where the main loop is (breadcrumbs) */
+    uint32_t stage, page, home;           /* where the main loop is (breadcrumbs); home: always 0 since 0.2.14 (the OVERVIEW screen is gone; the field keeps the layout) */
     uint32_t prev_stage, prev_page, prev_home, prev_rst, prev_frames;   /* as found at boot */
     uint32_t erase_max_us, erase_last_us, prog_max_us, erases;   /* DUELL 0.2.11: the flash driver's own times (storage_hw.c), since boot */
 } felucca_dbg __attribute__((section(".noinit")));

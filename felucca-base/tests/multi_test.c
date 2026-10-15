@@ -270,10 +270,13 @@ int main(void)
     motion.on = 2;
     song.g[G_BPM] = 137;
     song.g[G_DTIME] = 5;
-    song.g[G_PINGPONG] = 1;
+    song.g[G_DMODE] = DMD_PING;
     song.g[G_DMDEP] = 37;                                /* the delay's modulation (0.2.5) travels with the multi */
     song.g[G_DMRATE] = 51;
     song.g[G_RTYPE] = 3;
+    song.g[G_RLOCUT] = 77;                               /* the reverb's low cut (0.2.14) travels with the multi */
+    song.g[G_SHPITCH] = SHP_BOTH;                        /* SHIM's PITCH and MOD (0.2.19) travel with the multi */
+    song.g[G_SHMOD] = 37;
     frame();
     duell_mode_req = DM_LAYER;
     morph_set_target(1);
@@ -323,8 +326,9 @@ int main(void)
     ck("  part 2's FM6 patch (edited) equal; the automation lock equal", !memcmp(fm6_patch[1], patch, sizeof patch) &&
        motion.count == mref.count && !memcmp(&motion.event[0], &mref.event[0], sizeof mref.event[0]) && motion.on == mref.on);
     ck("  TEMPO, DLY TIME, PING-PONG, DLY MODULATION DEPTH / RATE, REVERB TYPE; MODE LAYER; WILD; the saved TARGET BOTH not loaded (0.2.9: ALGORITHM's, not saved)",
-       song.g[G_BPM] == 137 && song.g[G_DTIME] == 5 && song.g[G_PINGPONG] == 1 && song.g[G_DMDEP] == 37 && song.g[G_DMRATE] == 51 && song.g[G_RTYPE] == 3 &&
+       song.g[G_BPM] == 137 && song.g[G_DTIME] == 5 && song.g[G_DMODE] == DMD_PING && song.g[G_DMDEP] == 37 && song.g[G_DMRATE] == 51 && song.g[G_RTYPE] == 3 && song.g[G_RLOCUT] == 77 &&
        duell_mode_req == DM_LAYER && morph.target == MT_SELECTED && (morph.cfg & MC_WILD));
+    ck("  SHIM's PITCH BOTH and MOD 37 (0.2.19: the ids of the old PING-PONG switch and NAME card) are back", song.g[G_SHPITCH] == SHP_BOTH && song.g[G_SHMOD] == 37);
     ok = 1;
     for (pi = 0; pi < NSHOWN; pi++)
         ok &= morph_seed_of(pi, 1) == seedb[pi] && !memcmp(morph_cur(&mph[pi], 1), endb[pi], P_COUNT) &&
@@ -430,12 +434,13 @@ int main(void)
         set_engine_of(&trk[1], ENGI_FM6);
         trk[1].p[P_LEVEL] = 55;
         memcpy(p0, trk[0].p, sizeof p0);
-        e = preset_all_at(3, &kk);
+        e = ds_list_at(3, &kk);                          /* (program 3 = slot 3 = the factory sound at browse position 3) */
         for (i = 0; i < sizeof TRS_PC; i++)
             um_byte(TRS_PC[i]);
         events_block(CTL); frame();
         ok = e < NENGINES && trk[1].eng_req == e && trk[1].preset == kk && !trk[1].user &&   /* (DUELL: a factory sound's */
-             trk[1].p[P_LEVEL] == ds_value(ds_get(e, kk), P_LEVEL, TP[P_LEVEL].def) &&       /* LEVEL is its trim) */
+             trk[1].p[P_TRIM] == ds_value(ds_get(e, kk), P_TRIM, TP[P_TRIM].def) &&          /* TRIM is its loudness; 0.2.19: the mixer level 55 stays) */
+             trk[1].p[P_LEVEL] == 55 &&
              !memcmp(trk[0].p, p0, sizeof p0) && song.sel == 0u;
         up_store_trk(&trk[0], 5u, "PC USER", 0);              /* a user sound in STORE slot 5 */
         midi_in_event(0x0Bu | 0xB1u << 8 | 0u << 16 | 0u << 24);    /* bank 0 / 1 on ch 2 */
@@ -443,10 +448,13 @@ int main(void)
         midi_in_event(0x0Cu | 0xC1u << 8 | 5u << 16);
         events_block(CTL); frame();
         ok &= trk[1].user == 6u && trk[1].eng_req == trk[0].eng_req;
-        midi_in_event(0x0Cu | 0xC1u << 8 | 7u << 16);         /* bank 1 kept: slot 7 empty, nothing */
+        midi_in_event(0x0Cu | 0xC1u << 8 | 7u << 16);         /* bank 1 kept: slot 7 holds no saved sound, its factory sound loads */
         events_block(CTL); frame();
-        ck("SPLIT: PC 3 ch 2 (TRS) = list entry 4 on part 2 only (LEVEL: the sound's trim); bank 1 + PC 5 = STORE 5; empty slot nothing",
-           ok && trk[1].user == 6u);
+        {
+            uint32_t k7, e7 = ds_list_at(7, &k7);
+            ck("SPLIT: PC 3 ch 2 (TRS) = slot 3 on part 2 only (TRIM: the sound's; the mixer LEVEL stays); bank 1 + PC 5 = slot 5 (saved); PC 7 = slot 7 (the factory sound)",
+               ok && trk[1].user == 0u && trk[1].eng_req == e7 && trk[1].preset == k7 && slot_of(&trk[1]) == 7u);
+        }
 
         morph_set_target(0);
         midi_in_event(0x0Bu | 0xB0u << 8 | 1u << 16 | 127u << 24);  /* the wheel on ch 1 */
@@ -591,7 +599,7 @@ int main(void)
         }
         ck("LOAD of M13..M16: engines, sounds, arp ON, MAJ7 chords, POLY, INSERT, EQ, ducker, sends, 138 BPM, SPLIT only for TEST 3", ok);
         project_load(14);
-        ck("  TEST 3 HEAVY: SHIM reverb, PING-PONG on, FLANGER inserts on both parts", song.g[G_RTYPE] == 3 && song.g[G_PINGPONG] == 1 &&
+        ck("  TEST 3 HEAVY: SHIM reverb, PING-PONG on, FLANGER inserts on both parts", song.g[G_RTYPE] == 3 && song.g[G_DMODE] == DMD_PING &&
            trk[0].p[P_ITYPE] == 7 && trk[1].p[P_ITYPE] == 7);
         /* the TEST screen: MENU > SYSTEM > TEST (K1 right on the item opens it), not a page of GLO */
         ui.menu = 1; ui.menu_sel = MI_TEST; frames(16);
@@ -851,7 +859,7 @@ int main(void)
         ck("  (M01 overwritten with part 2 muted)", project_save(0) == 0 && !project_factory(0));
         project_load(0);
         ck("  a LOAD of that multi keeps its stored mute (part 2 MUTED on the GLO page)", trk[1].p[P_MUTE] == 1 && !trk[0].p[P_MUTE]);
-        /* the shorter record of the first DUELL builds (no user_hi) still reads as valid */
+        /* DUELL 0.2.14: the shorter record of the first DUELL builds (no user_hi) is no record any more: refused, the unit starts as a new one */
         memset(nor, 0xFF, sizeof nor);
         power_cycle();
         memset(&pb, 0, sizeof pb);
@@ -865,8 +873,8 @@ int main(void)
         persist_boot();
         settings_init();
         frames(100);
-        ck("  and it counts as valid too: theme 4, an old HOME view byte (1) still reads PARTS, HOME OPENS = MORPH",
-           first_boot_pending == 0u && settings.palette == palette_from_stored(pb.palette) && menu_get(MI_HOME) == 1u && menu_get(MI_HOMEPG) == 0u);
+        ck("  and it is refused (0.2.14): the unit starts as new (its default theme, the home byte 0), nothing of the record taken over, no crash",
+           settings.palette != palette_from_stored(pb.palette) && favorites.factory[15][26] == 0u && menu_get(MI_HOMEPG) == 0u);
     }
 
 
@@ -877,9 +885,9 @@ int main(void)
         uint32_t m, k, pi;
         memset(nor, 0xFF, sizeof nor);
         power_cycle();
-        ok = !(ui_prefs2 & (PREF_MODE_RECALL >> 16)) && menu_get(MI_MODERECALL) == 0u && str_eq(menu_vname(MI_MODERECALL, 0), "OFF") &&
-             str_eq(menu_vname(MI_MODERECALL, 1), "ON") && str_eq(MI_NAME[MI_MODERECALL], "MODE RECALL") && MI_TAB[MI_MODERECALL] == MTAB_CONTROL;
-        ck("MODE RECALL: KEEP by default (CONTROL tab)", ok);
+        ok = !(ui_prefs2 & (PREF_MODE_RECALL >> 16)) && menu_get(MI_MODERECALL) == 0u && str_eq(menu_vname(MI_MODERECALL, 0), "KEEPS MODE") &&
+             str_eq(menu_vname(MI_MODERECALL, 1), "SETS MODE") && str_eq(MI_NAME[MI_MODERECALL], "MULTI LOAD") && MI_TAB[MI_MODERECALL] == MTAB_CONTROL;
+        ck("MODE RECALL (0.2.14: MULTI LOAD KEEPS MODE / SETS MODE): KEEP by default (CONTROL tab)", ok);
         ok = 1;
         for (m = 0; m < 3u; m++)                      /* KEEP: M01, M02, M04 (all LAYER): the mode stays */
             for (k = 0; k < 3u; k++) {
@@ -958,12 +966,61 @@ int main(void)
         ck("  ..reads MODE RECALL KEEP (editor id 27 value 0), the other three flags kept", menu_get(MI_MODERECALL) == 0u && (ui_prefs2 & 7u) == 7u);
         menu_put(MI_MODERECALL, 1);
         settings_export(&pb);
-        ck("  LOAD is saved in bit 6 of favorites.factory[15][24]", pb.favorites.factory[15][24] == 0x47u);
+        ck("  LOAD is saved in bit 6 of favorites.factory[15][24]", pb.favorites.factory[15][24] == (0x47u | 0x80u));   /* (+ 0.2.14's defaults flag, bit 7) */
         memset(&favorites, 0, sizeof favorites);
         ck("  ..and imported again as LOAD", settings_import(&pb, (int)sizeof pb) && menu_get(MI_MODERECALL) == 1u);
         ui_prefs2 &= (uint8_t)~(PREF_MODE_RECALL >> 16);
     }
 
+    {   /* DUELL 0.2.14: a multi record of firmware before (version 2 or 1, or another P_COUNT) in flash is no multi: its slot lists as empty,
+         * a LOAD changes nothing and does not crash, a factory slot shows its factory multi, the next SAVE replaces the old record */
+        static uint8_t old[MU_REC_MAX], keep[MU_REC_MAX];
+        uint32_t len, cut = 0, o, v, ok2 = 1;
+        char nm[PROJ_NAME_LEN + 1u];
+        ui_power_on();
+        trk[0].p[P_LEVEL] = 77;
+        ok2 &= project_save_as(10u, "OLD ONE") == 0 && project_used(10u);
+        for (v = 0; v < 3u; v++) {
+            o = 10u / 2u;
+            mu_obj_read(o);
+            {
+                const uint8_t *r = mu_rec(10u & 1u, &len);
+                memcpy(old, r, len);
+            }
+            if (v == 0u) old[0] = 2u; else if (v == 1u) old[0] = 1u; else { old[0] = 3u; old[1] = (uint8_t)(P_COUNT - 1u); }
+            memcpy(keep, old, len);
+            mu_obj_read(o);
+            ok2 &= mu_obj_write(o, mu_put_rec(10u & 1u, 1, 0, &cut, keep, len)) == 0;
+            mu_obj_read(o);
+            mu_note(o);
+            trk[0].p[P_LEVEL] = 55;
+            ok2 &= !project_used(10u) && !project_info(10u, nm) && !nm[0] && !project_factory(10u);
+            project_load(10u);                       /* (EMPTY SLOT: nothing loaded) */
+            ok2 &= trk[0].p[P_LEVEL] == 55;
+            ok2 &= project_erase(10u) == 1;          /* (an empty slot: nothing to erase) */
+            trk[0].p[P_LEVEL] = 77;
+        }
+        ck("a multi record of version 2 / 1 or another P_COUNT: the slot lists empty (\"--\"), a LOAD and an ERASE change nothing", ok2);
+        /* a factory slot (M01) holding such a record shows its factory multi */
+        o = 0;
+        mu_obj_read(o);
+        {
+            uint32_t l0;
+            const uint8_t *r = mu_rec(0u, &l0);
+            ok2 = DM_LEN[df_of(0u)] <= sizeof old;
+            memcpy(old, DM_REC + DM_AT[df_of(0u)], DM_LEN[df_of(0u)]);
+            old[0] = 2u;
+            (void)r;
+            ok2 &= mu_obj_write(o, mu_put_rec(0u, 1, 0, &cut, old, DM_LEN[df_of(0u)])) == 0;
+        }
+        mu_obj_read(o);
+        mu_note(o);
+        ok2 &= project_used(0u) && project_factory(0u) && project_info(0u, nm) && !strcmp(nm, "REESE SWAMP");
+        ck("  a factory slot (M01) holding one shows its factory multi (REESE SWAMP) and loads it", ok2 && (project_load(0u), 1));
+        ok2 = project_save_as(10u, "NEW ONE") == 0 && project_used(10u) && project_info(10u, nm) && !strcmp(nm, "NEW ONE");
+        ck("  a SAVE over the old record replaces it, the multi loads again", ok2);
+        project_erase(10u);
+    }
     keys_drive();                                    /* 6: M05..M10 played from the keys (0.2.12) */
     printf(bad ? "multi: FAILED (%d)\n" : "multi: all ok\n", bad);
     return bad ? 1 : 0;

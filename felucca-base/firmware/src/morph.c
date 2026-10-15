@@ -168,7 +168,7 @@ static const mtag_t MT[P_E0] = {
     [P_ESYNC] = T_HARD,
     [P_EQHG] = T_W(MF_CAP, 6), [P_EQHF] = T_W(0, 0),
     [P_DKCRV] = T_NEV, [P_DKNOTE] = T_NEV, [P_DKSRC] = T_NEV, [P_DKRATE] = T_NEV,   /* DUCK (SPEC 5c.4): a mix tool; the sidechain INPUT never rolls (not in WILD either); */
-    [P_DKDEP] = T_CF(MF_DUCK | MF_CEIL, 50), [P_DKATK] = T_CF(MF_DUCK, 0), [P_DKHLD] = T_CF(MF_DUCK, 0), [P_DKRLS] = T_CF(MF_DUCK, 0),   /* ducker on: SMART rolls them; off: only WILD */
+    [P_DKDEP] = T_CF(MF_DUCK | MF_CEIL, 50), [P_DKATK] = T_CF(MF_DUCK, 0), [P_TRIM] = T_CF(MF_DUCK, 0), [P_DKRLS] = T_CF(MF_DUCK, 0),   /* ducker on: SMART rolls them; off: only WILD */
     [P_DKTHR] = T_CF(MF_DUCK, 0),                              /* its times, THR and DEPTH (never above 50 %): SMART only with the ducker on, WILD also from off; SRC, NOTE, RATE, CURVE never (T_NEV, also in WILD) */
     [P_E2FLT] = T_C, [P_E2SHP] = T_C,                   /* ENV 2 DEST, LFO 2 DEST (SPEC 2.4): as ENV 1's and LFO 1's (the pitch one */
     [P_L2PIT] = T_CF(MF_ZERO, 0), [P_L2FLT] = T_CF(MF_CAP, 32), [P_L2SHP] = T_C,   /* a pitch item, zero stays zero); drawn from a stream of their own */
@@ -953,8 +953,9 @@ static void morph_roll_pure(const int8_t *o, int8_t *end, const engine_t *e, uin
                 end[id] = 0;
     if (!(mrc & (MC_WILD | MC_LIST)))
         morph_wake_half(o, end, e, seed, part);
-    end[P_DKHLD] = o[P_DKHLD];                          /* DUELL 0.2.5: HOLD is legacy (on no page, never read): its draw stays, so the streams of old seeds (a
-                                                         * patch's saved End B) stay, but its value never moves */
+    end[P_TRIM] = o[P_TRIM];                            /* DUELL 0.2.19: the PATCH TRIM never moves (a morph keeps the sound's loudness; the MIXER level, P_LEVEL, is T_NEV). Its table
+                                                         * entry and draw are those of the legacy DUCK HOLD (0.2.5: never read, value never moved) it replaced, so the streams of old seeds
+                                                         * (a patch's saved End B) stay */
     if (mrc & MC_WILD)                                  /* SMART adds no route (owner, 2026-10-12) */
         morph_add_routes(&rs, e, o, end, amount, stereo);
     if (!(mrc & MC_WILD))

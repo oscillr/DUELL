@@ -2,11 +2,12 @@
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
 /* Felucca UI: NAME, naming a user preset or a project on the device (included by ui_input.c).
  *
- * Where: SAVE > USER, SAVE (KNOB 4, OCT+) and SAVE > MULTI (Felucca's PROJECT), SAVE: after the OVERWRITE? dialog when the slot is
+ * Where: SAVE > MULTI (Felucca's PROJECT) and SAVE > PATTERNS: after the OVERWRITE? dialog when the slot is
  * used, the NAME screen opens before anything is written; OCT+ writes, OCT- cancels (back to the page, nothing
  * written). Any page button or HOME cancels it too (NOT SAVED, nothing written; ui_input.c). The name is prefilled:
- * USER the sound's own (the user preset it came from) or the automatic one ("DIGITAL 14"), PROJECT the current
- * multi's (as loaded or last saved; none: "MULTI M01"), so SAVE, OCT+, OCT+ saves with the default name.
+ * PROJECT the current multi's (as loaded or last saved; none: "MULTI M01"), so SAVE, OCT+, OCT+ saves with the default name.
+ * (DUELL 0.2.17: a PATCH SLOT has no NAME screen on the device: hold SAVE overwrites a slot under the sound's own name; NK_USER_SAVE /
+ * NK_USER_RENAME are kept for the tests and a later rename, no page opens them.)
  * Writing needs the transport stopped (STOP TO SAVE; the screen stays).
  *
  * The keys type and never sound, record or send MIDI (seq.c keyboard_block: song.grid 2). Upper case, at most 12:
@@ -27,7 +28,7 @@
  *                keeps (a rename; overwriting a named sound; a multi with a name) or, if there is none, a random one.
  *   LEDs         only the five black function keys are lit (both octaves); the white keys stay dark.
  * Spaces at either end are dropped when it is written; an empty name: USER the automatic one, PROJECT none. */
-enum { NK_NONE, NK_USER_SAVE, NK_USER_RENAME, NK_PROJ_SAVE, NK_PROJ_RENAME, NK_PATCH_NEW, NK_PATTERN };   /* NK_PATCH_NEW: SAVE held, a new sound; NK_PATTERN: SAVE > PATTERNS */
+enum { NK_NONE, NK_USER_SAVE, NK_USER_RENAME, NK_PROJ_SAVE, NK_PROJ_RENAME, NK_PATTERN };   /* NK_PATTERN: SAVE > PATTERNS (0.2.17: no NAME screen for patches: SAVE overwrites a slot, the sound keeps its name) */
 #define NM_LEN 12u
 #define NM_TAP_MS 800u                                 /* multi-tap: the next letter within this */
 #define NM_REP_MS 450u                                 /* a held arrow / DELETE repeats after this, */
@@ -61,9 +62,9 @@ static void name_close(void)
         ui.force = 1;
     nm.kind = NK_NONE;
 }
-/* the keys: 2 = NAME's (silent), 1 = the DRUM grid, 0 = notes (seq.c keyboard_block
+/* the keys: 2 = NAME's (silent), 0 = notes (seq.c keyboard_block
  * reads song.grid) */
-static uint32_t keys_mode(void) { return name_on() ? 2u : grid_on() ? 1u : 0u; }
+static uint32_t keys_mode(void) { return name_on() ? 2u : 0u; }
 
 static const char *nm_group(uint32_t p)                /* white key place p's characters */
 {
@@ -98,18 +99,15 @@ static void name_open(uint32_t kind, uint32_t slot)
         up_auto_name(nm.ph, e, slot);
         if (kind == NK_USER_RENAME)
             up_name(slot, b);
-        else if (user_of(TSEL) < UP_SLOTS)             /* the sound's own name */
-            up_name(user_of(TSEL), b);
-        nm.cat = (uint8_t)(kind == NK_USER_RENAME ? up_cat(slot) : track_cat(TSEL));
+        else if (slot_of(TSEL) < UP_SLOTS)             /* the sound's own name */
+            sl_name(slot_of(TSEL), b);
+        nm.cat = (uint8_t)(kind == NK_USER_RENAME ? sl_cat(slot) : track_cat(TSEL));
     } else if (kind == NK_PATTERN) {                   /* SAVE > PATTERNS: the slot's name (a factory one counts), else random */
         char tag[4];
         str_cpy(nm.ph, "PATTERN", sizeof nm.ph);
         pat_label(slot % PS_SLOTS, tag, b);
         if (!ps_used(slot % PS_SLOTS) && slot >= NPATTERNS)
             b[0] = 0;                                  /* ("--": an empty slot has no name) */
-    } else if (kind == NK_PATCH_NEW) {                 /* SAVE held, a patch-less sound / an empty PATCHES place: a new patch, a random name */
-        uint32_t f = up_free_slot();
-        up_auto_name(nm.ph, TSEL->eng_req, f < UP_SLOTS ? f : UP_SLOTS - 1u);
     } else {
         str_cpy(nm.ph, "MULTI ", sizeof nm.ph);       /* DUELL: "MULTI M05" (SAVE > MULTI) */
         mu_label(nm.ph + 6, slot % MU_SLOTS);
@@ -283,13 +281,6 @@ static void name_ok(void)
     case NK_USER_RENAME:
         up_ui_named(3, nm.slot, b, nm.cat);
         break;
-    case NK_PATCH_NEW:                                 /* SAVE held: the patch saved into a free slot under this name */
-        up_pname = b[0] ? b : 0;
-        up_new_only = (uint8_t)(nm.slot != 0u);        /* (PATCHES, an empty place: a new patch whatever the part plays) */
-        patch_save_do(0);
-        up_new_only = 0;
-        up_pname = 0;
-        break;
     case NK_PATTERN:
         pslot_save_ui(nm.slot, b[0] ? b : "SAVED");
         break;
@@ -361,10 +352,8 @@ static uint32_t name_leds(void)
 #define NM_CX(i) (12 + 18 * (int32_t)(i))              /* cell i: 18 x 22 at y 18 of the card */
 static void nm_title(char *b)
 {
-    str_cpy(b, nm.kind == NK_USER_SAVE || nm.kind == NK_PROJ_SAVE || nm.kind == NK_PATCH_NEW ? "SAVE " : "NAME ", 8);
-    if (nm.kind == NK_PATCH_NEW)
-        str_cpy(b + 5, "NEW SOUND", 12);
-    else if (nm.kind == NK_PATTERN)
+    str_cpy(b, nm.kind == NK_USER_SAVE || nm.kind == NK_PROJ_SAVE ? "SAVE " : "NAME ", 8);
+    if (nm.kind == NK_PATTERN)
         str_cpy(b + 5, "PATTERN", 12);
     else if (nm.kind <= NK_USER_RENAME)
         up_slot_label(b + 5, nm.slot);
@@ -463,7 +452,7 @@ static void nm_draw_foot(void)
 {
     khint_t a[3], b[4];
     int ok = nm.kind == NK_PATTERN || !transport_busy();
-    a[0] = (khint_t){KC_OCTUP, nm.kind == NK_USER_SAVE || nm.kind == NK_PROJ_SAVE || nm.kind == NK_PATCH_NEW || nm.kind == NK_PATTERN ? "SAVE" : "RENAME"};
+    a[0] = (khint_t){KC_OCTUP, nm.kind == NK_USER_SAVE || nm.kind == NK_PROJ_SAVE || nm.kind == NK_PATTERN ? "SAVE" : "RENAME"};
     a[1] = (khint_t){KC_OCTDN, "CANCEL"};
     a[2] = (khint_t){KC_K4, "RANDOM"};                 /* (every NAME screen: a new random name) */
     b[0] = (khint_t){KC_K1, "MOVE"};

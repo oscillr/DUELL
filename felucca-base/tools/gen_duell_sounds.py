@@ -8,7 +8,7 @@
 A sound is a SPARSE list of (parameter, value) pairs on top of INIT: the track parameters' defaults (params.c TP)
 and the engine's EDIT defaults (eng_*.c .edit). The names an author writes are resolved here, from the sources:
   - the engine's EDIT labels (eng_*.c .edit: ANALOG WAVE DTN MIX NOIS CUT RES DRV KTR), or E1..E8;
-  - the P_ ids of core.h without the P_ (ATK DEC SUS REL LEVEL GLIDE VOICE CHOR DLY REV FTYPE E2FLT L2PIT ...);
+  - the P_ ids of core.h without the P_ (ATK DEC SUS REL TRIM GLIDE VOICE CHOR DLY REV FTYPE E2FLT L2PIT ...);
   - the aliases in ALIAS below (ENV2 FLT, LFO2 RATE, ARP MODE, ...);
   - MOD1..MOD8: a matrix slot, (SRC, DST, AMT) with N_MSRC / N_MDST names (DST may also be an EDIT label: RES = E6).
 Values: an int (range-checked against TP / the EDIT table), or a value name of that parameter (SAW, LP, LEG, UPDN, 1/16).
@@ -42,15 +42,15 @@ ALIAS = {
     "LFO2 PIT": "L2PIT", "LFO2 FLT": "L2FLT", "LFO2 SHP": "L2SHP",
     "ARP MODE": "AMODE", "ARP RATE": "ARATE", "ARP OCT": "AOCT", "ARP GATE": "AGATE", "ARP SWING": "ASWING",
     "ARP PROB": "APROB", "ARP HOLD": "AHOLD", "ARP ORDER": "AORDER",
-    "DST": "DIST", "CHO": "CHOR", "INSERT": "ITYPE", "INS A": "IA", "INS B": "IB", "INS C": "IC", "INS MIX": "IMIX",
+    "SAT": "DIST", "DST": "DIST", "CHO": "CHOR", "INSERT": "ITYPE", "INS A": "IA", "INS B": "IB", "INS C": "IC", "INS MIX": "IMIX",
     "UF CUT": "FREEA", "UF RES": "FREEB", "UF MODE": "FREEC", "UF SLOPE": "FREED",   # DUELL 0.2.9: the multimode filter's CUT (0..82, 82 open: the default), RES, MODE
                                                 # (0 LP .. 64 BP .. 127 HP), SLOPE (1 12 dB, 2 24 dB), on PHASE LOFI VOICE WHEEL PHYS FM6 WAVE
     "FILTER": "FTYPE", "STEREO SPRD": "SPRD", "REVERB": "REV",   # (GRAIN, retired in 0.2.9, had an EDIT label SPRD)
 }
-# a sound load leaves these to the track (ui.c param_kept), so a sound may not set them; P_LEVEL, the arp (AMODE..
-# AORDER) and the chord keys (CHRD VOIC) are the exceptions: a factory sound sets its level (its loudness trim)
+# a sound load leaves these to the track (ui.c param_kept), so a sound may not set them (0.2.19: nor the MIXER LEVEL, P_LEVEL: it is the player's);
+# TRIM (the PATCH TRIM, its loudness), the arp (AMODE.. AORDER) and the chord keys (CHRD VOIC) are the exceptions: a factory sound sets its trim
 # and may lend the arp and the keys (ui.c ds_arp, ds_keys)
-TRACK_ONLY = {"PAN", "MUTE", "ROOT", "QUANT", "TRANS", "SLEN", "SDIV", "SSWING", "SGATE", "SQNT"}
+TRACK_ONLY = {"LEVEL", "PAN", "MUTE", "ROOT", "QUANT", "TRANS", "SLEN", "SDIV", "SSWING", "SGATE", "SQNT"}
 KEY_IDS = ["CHRD", "VOIC"]               # lent like the arp (ui.c ds_keys): a pad may set chord keys. No SCALE: the scale is the instrument's (core.h)
 ARP_IDS = ["AMODE", "ARATE", "AOCT", "AGATE", "ASWING", "APROB", "AHOLD", "AORDER"]
 CATS = ["BASS", "LEAD", "PAD", "PLUCK", "KEYS", "PERC", "FX", "OTHER"]
@@ -199,7 +199,7 @@ def build(data):
     engines, order = parse_engines()
     cats = parse_cats()
     eng_by_name = {e["name"]: i for i, e in engines.items()}
-    hidden = {"DRUM", "DIGITAL"}
+    hidden = set()   # (DUELL 0.2.14: DRUM and DIGITAL are retired engines with no name here, so no sound can name them)
     sounds = []
     seen = {}
     for n, s in enumerate(data.SOUNDS):

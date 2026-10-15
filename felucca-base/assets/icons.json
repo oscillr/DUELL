@@ -45,7 +45,6 @@
   "sub",
   "ratio",
   "algorithm",
-  "sample",
   "steps",
   "accent",
   "time",
@@ -58,7 +57,6 @@
   "tone",
   "sweep",
   "vibrato",
-  "loop",
   "hold",
   "order",
   "prob",
@@ -81,13 +79,10 @@
   "w_rsaw",
   "w_rtri",
   "w_rtrp",
-  "tape",
   "mouth",
   "trio",
   "drawbar",
-  "slice",
   "grain",
-  "phys",
-  "drum"
+  "phys"
  ]
 }

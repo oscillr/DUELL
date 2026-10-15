@@ -13,8 +13,7 @@
  *        the next, an octave up); +OCT (the root an octave down added; a seventh drops its fifth). At most
  *        CHORD_MAX notes, notes outside 0..127 left out.
  * The key is mapped first (kb_map: the octave, TRN, OFF-SCALE SNAP), the chord is built on the note it gives.
- * MONO / LEGATO / UNISON parts play the chord's root only; a kit (the DRUM engine, slices: an
- * engine that maps the keys itself) ignores CHRD. Every source keeps the notes it started (kb_chord for a
+ * MONO / LEGATO / UNISON parts play the chord's root only. Every source keeps the notes it started (kb_chord for a
  * key, mchord for a MIDI note) and its release ends exactly those, so CHRD / VOIC changed while it is held
  * leave nothing hanging. A note several sources hold sounds once and ends with the last of them. */
 enum { CH_OFF, CH_DIA3, CH_DIA7, CH_MAJ, CH_MIN, CH_DOM7, CH_MAJ7, CH_MIN7, CH_SUS4, CH_POW };
@@ -33,13 +32,6 @@ static mchord_t mchord[MCHORD_N];
 /* the last chord played per track (the CHORD page shows it): its root, notes, and the shape's tones above the
  * root (bit i = i semitones, 0..11) */
 static struct { uint8_t root, n, note[CHORD_MAX]; uint16_t mask; uint8_t gen; } chord_last[NTRK];
-
-/* 1 = the track's keys are a kit: no chords */
-static int chord_kit(const track_t *t)
-{
-    const engine_t *e = ENGINES[eng_idx(t->eng_req)];
-    return e->oneshot || (e->keys && e->keys(t, 0) >= 0);
-}
 
 /* the tones of the chord (semitones above *root, ascending, iv[0] = 0) -> their number. *root is never moved:
  * a DIA chord on a root outside the scale (OFF-SCALE PLAY) has the shape of the scale note below it, built on that root (C# in
@@ -79,19 +71,19 @@ static uint32_t chord_tones(const track_t *t, uint32_t mode, int32_t *root, int3
 
 /* the chord on note `root` as track t plays it now -> out (ascending), the number of notes (1..CHORD_MAX);
  * *rp its root, *maskp its tones above the root (bit i: i semitones; 0 = no chord). The root alone when CHRD
- * is OFF, on a kit, or for MONO / LEGATO / UNISON (their chord's root) */
+ * is OFF, or for MONO / LEGATO / UNISON (their chord's root) */
 static uint32_t chord_make(const track_t *t, uint32_t root, uint8_t *out, int32_t *rp, uint16_t *maskp)
 {
     int32_t iv[CHORD_MAX + 1u], r = (int32_t)root, x;
     uint32_t mode = (uint32_t)t->p[P_CHRD], n, i, j, m = 0;
     uint16_t mask = 0;
-    if (!chord_kit(t) && !(root & ~127u)) {              /* OFF-SCALE SNAP: the played note first (a kit's notes are its own map) */
+    if (!(root & ~127u)) {                               /* OFF-SCALE SNAP: the played note first */
         r = clamp(note_snap(t, r), 0, 127);
         root = (uint32_t)r;
     }
     *rp = r;
     *maskp = 0;
-    if (!mode || mode > CH_POW || chord_kit(t)) {
+    if (!mode || mode > CH_POW) {
         out[0] = (uint8_t)root;
         return 1;
     }

@@ -135,27 +135,12 @@ static int len_edit(void)
     ok = t->step[3].time == ST_TIE;
     turn(EN_K3, -1);
     ok &= t->step[3].time == ST_NOTE;   /* (empty: still TIME) */
-    t->step[4] = (step_t){{0}, 0, ST_REST, 0, 0, 1, 0, 0};    /* a REST keeping a hit: not overwritten */
+    t->step[4] = (step_t){{70}, 1, ST_REST, 0, 0, 0};    /* a REST keeping a note: not overwritten */
     put(t, 3, 50, ST_NOTE);
     turn(EN_K3, 1);
-    ok &= note_len(t, 3) == 1u && msg_is("NOTE AHEAD") && t->step[4].hit == 1u;
-    bad += check("  a REST / TIE / empty step: KNOB 3 TIME (NOTE TIE REST); a REST keeping notes or hits is kept", ok);
+    ok &= note_len(t, 3) == 1u && msg_is("NOTE AHEAD") && t->step[4].note[0] == 70u;
+    bad += check("  a REST / TIE / empty step: KNOB 3 TIME (NOTE TIE REST); a REST keeping notes is kept", ok);
 
-    ui_power_on();                                    /* the DRUM grid: KNOB 3 is still HIT */
-    song.sel = 3;
-    t = &trk[3];
-    track_defaults_steps(t);
-    t->p[P_SLEN] = 16;
-    go_page(GR_ROLL);
-    ui.cursor = 2;
-    ui.lane = 0;
-    frame();
-    grid_hit(t, 2, 0, 1);
-    turn(EN_K3, 1);
-    ok = drum_track(t) && t->step[3].time != ST_TIE && (step_lanes(&t->step[2]) & 1u);
-    turn(EN_K3, -1);
-    ok &= !(step_lanes(&t->step[2]) & 1u) && t->step[3].time != ST_TIE;
-    bad += check("  the DRUM grid: KNOB 3 HIT as before, no TIE written", ok);
     return bad;
 }
 
@@ -246,7 +231,7 @@ static int vel(void)
     ok &= msg_is("VEL HIDDEN") && ev_list(rw) == 3u;
     press(B_OCTUP);
     ok &= ev_list(rw) > 3u;
-    go_home(); frame();
+    go_main_to(HP_MORPH); frame();
     go_auto_top(); frame();
     ok &= ev_list(rw) == 3u;
     bad += check("  HIDE hides them; leaving the page too", ok);

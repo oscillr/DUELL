@@ -107,7 +107,7 @@ static uint32_t ed_step_sig(const step_t *s)
 {
     return ((uint32_t)s->note[0] | (uint32_t)s->note[1] << 7 | (uint32_t)s->note[2] << 14 | (uint32_t)s->note[3] << 21) ^
            ((uint32_t)s->n << 28) ^ ((uint32_t)s->time * 0x9E3779B1u) ^ ((uint32_t)s->flags * 0x85EBCA6Bu) ^
-           ((uint32_t)s->vel * 0xC2B2AE35u) ^ ((uint32_t)(s->hit | s->acc << 8) * 0x27D4EB2Fu) ^ ((uint32_t)s->probability * 0x165667B1u);
+           ((uint32_t)s->vel * 0xC2B2AE35u) ^ ((uint32_t)s->probability * 0x165667B1u);
 }
 static void ed_shadow(void)                              /* the editor is in sync */
 {
@@ -246,10 +246,10 @@ static const param_desc_t *ed_desc(uint32_t scope, uint32_t id, int16_t **vp)
     return 0;
 }
 
-/* a step as STEP_SET / TRACK_STEP send it (na bytes): n, 4 notes, time, flags, vel, then (v5) the lane hits
- * and their accents: hit & 127, acc & 127, bit 7 of each (bit 0 hit, bit 1 acc), (v7) the chance, (RATCH, INFO
+/* a step as STEP_SET / TRACK_STEP send it (na bytes): n, 4 notes, time, flags, vel, then (v5) three bytes that
+ * held the drum lane hits and their accents (DUELL 0.2.14: the grid is gone; read and dropped, sent as 0), (v7) the chance, (RATCH, INFO
  * 52 01) the hits 1..4, (NUDGE, INFO 54 01, 1.2) the nudge + 8 (0..15: -8..+7 sixteenths of the step); each value
- * made valid. 8 bytes (an editor of before the grid): the hits stay; without the chance, the ratchet or the nudge
+ * made valid. 8 bytes (an editor of before the grid): without the chance, the ratchet or the nudge
  * the step keeps its own (flags carry accent and slide only) */
 static void ed_step_put(step_t *st, const uint8_t *a, uint32_t na)
 {
@@ -260,10 +260,6 @@ static void ed_step_put(step_t *st, const uint8_t *a, uint32_t na)
     st->time = (uint8_t)(a[5] > ST_REST ? ST_REST : a[5]);
     st->flags = (uint8_t)((a[6] & (SF_ACCENT | SF_SLIDE)) | (st->flags & (SF_RATCH | SF_NUDGE)));
     st->vel = a[7] & 0x7Fu;
-    if (na >= 11u) {
-        st->hit = (uint8_t)((a[8] & 0x7Fu) | (a[10] & 1u) << 7);
-        st->acc = (uint8_t)(((a[9] & 0x7Fu) | (a[10] & 2u) << 6) & st->hit);
-    }
     if (na >= 12u) step_set_chance(st, a[11] <= 100u ? a[11] : 100u);
     if (na >= 13u) step_set_ratchet(st, a[12]);
     if (na >= 14u) step_set_nudge(st, (int32_t)(a[13] & 15u) - 8);
@@ -278,9 +274,9 @@ static void ed_step_reply(const step_t *st)              /* the same 14 bytes */
     ed_b(st->time);
     ed_b(st->flags & (SF_ACCENT | SF_SLIDE));
     ed_b(st->vel);
-    ed_b(st->hit & 0x7Fu);
-    ed_b(st->acc & 0x7Fu);
-    ed_b((uint32_t)(st->hit >> 7) | (uint32_t)(st->acc >> 7) << 1);
+    ed_b(0);                                             /* (the lane hits, accents and their bit 7: gone in 0.2.14) */
+    ed_b(0);
+    ed_b(0);
     ed_b(step_chance(st));
     ed_b(step_ratchet(st));
     ed_b((uint32_t)(step_nudge(st) + 8));
@@ -301,6 +297,8 @@ static int ed_flash_stop(void)
 
 #include "editor_preferences.c"
 #include "editor_backup.c"
+#include "editor_wtab.c"
+#include "editor_patchraw.c"             /* DUELL 0.2.19: PATCH_RAW (cmd 84), a slot's stored record whole */
 #include "editor_fm6.c"
 #include "editor_menu.c"
 #include "editor_learn.c"                    /* 1.5: MIDI LEARN's map (cmds 78, 79) */
@@ -352,7 +350,7 @@ static int ed_args_ok(uint32_t cmd, const uint8_t *a, uint32_t n)
     case ED_MENU_SET:
         return n == 3u;
     case ED_STEP_SET:
-        return n == 9u || n == 12u || (n == 13u && a[12] <= 100u) ||               /* notes only, or the complete grid extension, */
+        return n == 9u || n == 12u || (n == 13u && a[12] <= 100u) ||               /* notes only, or the complete extension, */
                ((n == 14u || (n == 15u && a[14] <= 15u)) && a[12] <= 100u && a[13] >= 1u && a[13] <= 4u);   /* its chance,
                                                                                 * its ratchet, its nudge (1.2) */
     case ED_TRACK:
@@ -383,11 +381,13 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
     if (!ed_args_ok(cmd, a, na))
         return;
     if ((cmd >= ED_SMP_BEGIN && cmd <= ED_SMP_INFO) || (cmd >= ED_BACKUP_LIST && cmd <= ED_BACKUP_PUT) ||
-        (cmd >= ED_FM6B_BEGIN && cmd <= ED_FM6B_END))
+        (cmd >= ED_FM6B_BEGIN && cmd <= ED_FM6B_END) || (cmd >= ED_WT_LIST && cmd <= ED_WT_PUT) || cmd == ED_PATCH_RAW)
         autosave_hold();                                /* (a transfer: no autosave meanwhile, project.c) */
     ed_begin(cmd);
     if (ed_ui_handle(cmd, a, na)) { ed_send(); return; }
     if (ed_backup_handle(cmd, a, na)) { ed_send(); return; }
+    if (ed_wt_handle(cmd, a, na)) { ed_send(); return; }
+    if (ed_patchraw_handle(cmd, a, na)) { ed_send(); return; }
     if (ed_fm6_handle(cmd, a, na)) { ed_send(); return; }
     if (ed_menu_handle(cmd, a, na)) { ed_send(); return; }
     if (ed_learn_handle(cmd, a, na)) { ed_send(); return; }
@@ -423,7 +423,9 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
         ed_b(0);                                           /* v6: song rows (DUELL: none, no song mode) */
         ed_b(0x55); ed_b(1); ed_b(ed_ui_caps());             /* tagged preferences v1: commands 34..38 */
         ed_b(0x4d); ed_b(1); ed_b(64); ed_b(1);   /* motion + chance v1 (64: what it said before 1.2; 41 01 has the real count) */
-        ed_b(0x42); ed_b(1); ed_b(3); /* bounded full-backup read + restore */
+        ed_b(0x42); ed_b(1); ed_b(31); /* bounded full-backup read + restore; bit 2 (DUELL 0.2.14): multis 13..20 and pattern slots 21..23 are in it;
+                                         * bit 3 (value 8): the user wavetables 24..26 are in it, and cmds 81..83 (editor_wtab.c);
+                                         * bit 4 (value 16, DUELL 0.2.15): the patch store's chunks 6..15 are backup ids 27..31 and 35..39 */
         ed_b(0x46); ed_b(1); ed_b(FM6_NFACTORY); ed_b(0);   /* FM6 patches: cmds 68..71 (no bank since 1.0.3) */
         ed_b(0x53); ed_b(1); ed_b(3);   /* live sync: bit 0 WATCH while on keeps the shadow, bit 1 no RELOAD echo */
         ed_b(0x50); ed_b(1); ed_b(3);   /* FM6 patches v2: bit 0 no bank (SLOT F1..F8, 8 OWN), bit 1 user preset
@@ -435,20 +437,21 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
         ed_b(0x54); ed_b(1); ed_b(NUDGE_DIV);   /* 1.2: a step's nudge (1/16 step) after its ratchet; LFO 2, QNTZ */
         ed_b(0x56); ed_b(1); ed_b(FM6_NBANK);   /* 1.4.1: FM6's voice bank (cmds 74..77; SLOT 9..40 = B1..B32) */
         ed_b(0x43); ed_b(1); ed_b(ML_N);   /* 1.5: MIDI LEARN's map (cmds 78, 79; editor_learn.c) */
+        ed_b(0x58); ed_b(1); ed_b(UP_SLOTS & 127u); ed_b(UP_SLOTS >> 7);   /* DUELL 0.2.15: the patch store's capacity (all of them always fit), 14 bit */
+        ed_b(0x5A); ed_b(1); ed_b(1);   /* DUELL 0.2.19: bit 0 = PATCH_RAW (cmd 84, editor_patchraw.c): a slot's stored record read and written whole */
         break;
     case ED_GET:
     case ED_SET:
         if (na < 2u || !(d = ed_desc(a[0], a[1], &vp)))
             return;
         if (cmd == ED_SET && na >= 4u) {
-            if (a[0] == 1 && a[1] == G_ENGSEL) {          /* engine change: the safe path (1 without FELUCCA_FM4:
-                                                           * DIGITAL's first preset, as FM6) */
+            if (a[0] == 1 && a[1] == G_ENGSEL) {          /* engine change: the safe path */
                 ed_load_t b;
                 ed_load_before(&b);
                 set_engine((uint32_t)clamp(ed_rv(a + 2), 0, NENGINES - 1));
                 ed_load_after(&b);
             } else if (d->max > d->min) {
-                *vp = (int16_t)enum_orig(d, clamp(ed_rv(a + 2), d->min, d->max));
+                *vp = (int16_t)clamp(ed_rv(a + 2), d->min, d->max);
                 if (a[0] == 0) {
                     (void)motion_capture(TSEL, a[1], *vp);
                     load_extend(TSEL);                      /* (ui.c undo: an audition's values after G_ENGSEL) */
@@ -505,11 +508,6 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
         if (na < 2u || a[0] >= NENGINES)
             return;
         ed_load_before(&b);
-#if !FELUCCA_FM4
-        if (a[0] == ENGI_DIGITAL)                          /* a DIGITAL preset (retired): its sound, as FM6 */
-            fm4_load_preset(TSEL, a[1]);
-        else
-#endif
         {
             if (a[0] != TSEL->eng_req)
                 set_engine(a[0]);
@@ -545,7 +543,7 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
         for (i = 0; i < 2u; i++)                           /* then the two edit-page titles */
             ed_str(ENGINES[a[0]]->page_title[i], 8);
         break;
-    /* DUELL 0.2.9: no user sample slots (the SAMPLE, GRAIN and SLICE engines are retired; flash 0xA0000..0xC7FFF stays unused).
+    /* DUELL 0.2.9: no user sample slots (the SAMPLE, GRAIN and SLICE engines are retired; flash 0xA0000..0xA5FFF holds the user wavetables from 0.2.14, 0xA6000..0xC7FFF stays unused).
      * The commands keep their numbers and reply shapes and never write flash: BEGIN / WRITE / END rc 6 (unsupported); ERASE rc 0
      * (there is nothing to erase: an archive's empty slot restores as before); INFO: no slots */
     case ED_SMP_BEGIN:                                     /* slot -> slot, rc */
@@ -568,8 +566,9 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
         ed_b(0u);
         break;
     case ED_UP_LIST: {                                     /* start, count -> start, count, total, per slot: used, engine, name;
-                                                            * (1.2) then per slot its category (category.c CAT_*, 0 unused):
-                                                            * after the entries, so an older editor stops before them */
+                                                            * (1.2) then per slot its category (category.c CAT_*)
+                                                            * after the entries, so an older editor stops before them; 0.2.17: then per
+                                                            * slot SAVED (1: a saved record, RESTORE applies; 0: the factory sound) */
         uint32_t s0, cnt;
         if (na < 2u)
             return;
@@ -582,48 +581,45 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
         ed_b(s0);
         ed_b(cnt);
         ed_b(UP_SLOTS > 127u ? 127u : UP_SLOTS);            /* (DUELL: 128 slots; a data byte holds 127 at most: slots 0..127 are all there) */
-        for (i = s0; i < s0 + cnt; i++) {
+        for (i = s0; i < s0 + cnt; i++) {                  /* every slot holds a sound: its saved record, else its factory sound */
             char nm[13] = {0};
-            uint32_t j, u = (uint32_t)up_used(i);
-            for (j = 0; u && j < 12u; j++)
-                nm[j] = up_rec(i)->name[j];
-            ed_b(u);
-            ed_b(u ? up_rec(i)->engine : 0u);
+            sl_name(i, nm);
+            ed_b(1);
+            ed_b(sl_engine(i));
             ed_str(nm, 12);
         }
         for (i = s0; i < s0 + cnt; i++)
-            ed_b(up_used(i) ? up_cat(i) : 0u);
+            ed_b(sl_cat(i));
+        for (i = s0; i < s0 + cnt; i++)
+            ed_b((uint32_t)up_used(i));
         break;
     }
     case ED_UP_GET: {                                      /* slot -> slot, used, engine, name, P_COUNT x v14, 16 x (note,
-                                                            * flags), (v5) kind [, 16 x hi], (1.2) category
-                                                            * (upreset.c up_parse) */
+                                                            * flags), (v5) kind [, 16 x hi], (1.2) category, (0.2.17) SAVED
+                                                            * (upreset.c up_parse). A factory slot: its sound's values, no pattern */
         int16_t v[P_COUNT];
         char nm[13] = {0};
         const up_rec_t *r;
         uint32_t u;
         if (na < 1u || a[0] >= UP_SLOTS)
             return;
-        r = up_rec(a[0]);
         u = (uint32_t)up_used(a[0]);
-        if (u)
-            up_values(r, v);                               /* today's P_* order, clamped */
-        for (i = 0; u && i < 12u; i++)
-            nm[i] = r->name[i];
+        r = up_rec(a[0]);
+        sl_values(a[0], v);                                /* today's P_* order, clamped */
+        sl_name(a[0], nm);
         ed_b(a[0]);
-        ed_b(u);
-        ed_b(u ? r->engine : 0u);
+        ed_b(1);
+        ed_b(sl_engine(a[0]));
         ed_str(nm, 12);
         for (i = 0; i < P_COUNT; i++)
-            ed_v(u ? v[i] : 0);
+            ed_v(v[i]);
         for (i = 0; i < 16u; i++) {
             ed_b(u ? r->note[i] & 0x7Fu : 0u);
             ed_b(u ? r->flags[i] & 0x7Fu : 0u);
         }
-        ed_b(u && up_grid(r));                  /* kind: 1 = a drum grid, then bit 7 of each step's */
-        for (i = 0; u && up_grid(r) && i < 16u; i++)   /* hits (bit 0) and accents (bit 1) */
-            ed_b((uint32_t)(r->note[i] >> 7) | (uint32_t)(r->flags[i] >> 7) << 1);
-        ed_b(u ? up_cat_of(r) : 0u);            /* 1.2: the category (an older editor stops before it) */
+        ed_b(0);                                /* kind: 1 was a drum grid (gone in 0.2.14) */
+        ed_b(sl_cat(a[0]));                     /* 1.2: the category (an older editor stops before it) */
+        ed_b(u);                                /* 0.2.17: SAVED (1) or the factory sound (0) */
         break;
     }
     case ED_UP_PUT: {                                      /* slot, engine, name, values, pattern -> slot, rc */
@@ -659,6 +655,8 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
             int r;
             r = ed_flash_stop() ? 2 : up_store(a[0], nm);
             rc = r ? 2u : 0u;
+            if (!r)
+                up_adopt(song.sel % NTRK, a[0]);           /* the selected part plays that slot now (as the device's SAVE) */
         }
         ed_b(a[0]);
         ed_b(rc);
@@ -668,13 +666,16 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
         if (na < 1u)
             return;
         ed_b(a[0]);
-        ed_b(a[0] < UP_SLOTS && !up_load(a[0]) ? 0u : 1u);
+        if (a[0] < UP_SLOTS)                               /* the slot's record, else its factory sound */
+            sl_load(a[0]);
+        ed_b(a[0] < UP_SLOTS ? 0u : 1u);
         break;
-    case ED_UP_ERASE:
+    case ED_UP_ERASE:                                      /* 0.2.17: RESTORE: the slot's saved record is removed, its factory sound is back
+                                                            * (a slot that holds the factory sound already: rc 0, nothing written) */
         if (na < 1u)
             return;
         ed_b(a[0]);
-        ed_b(a[0] >= UP_SLOTS ? 1u : ed_flash_stop() || up_put(a[0], 0) ? 2u : 0u);
+        ed_b(a[0] >= UP_SLOTS ? 1u : !up_used(a[0]) ? 0u : ed_flash_stop() || sl_restore(a[0]) ? 2u : 0u);
         break;
     case ED_WATCH: {                                       /* on -> on */
         uint32_t keep, v4was = ed_w.v4;
@@ -761,7 +762,7 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
         d = ed_tdesc(t, a[1]);
         if (na >= 4u) {
             if (d->max > d->min)                           /* as SET: clamped; a fixed value stays */
-                t->p[a[1]] = (int16_t)enum_orig(d, clamp(ed_rv(a + 2), d->min, d->max));
+                t->p[a[1]] = (int16_t)clamp(ed_rv(a + 2), d->min, d->max);
             (void)motion_capture(t, a[1], t->p[a[1]]);
             ed_known(a[0], a[1]);
             ui.force = 1;

@@ -27,12 +27,9 @@
  * mixes the exciter itself into the output (the mallet / pick). The track's ENV / LFO -> FLT move BRIT, -> SHP (DUELL)
  * STRC, the structure (SYMP: BUZZ, the structure it takes there; CHRD stays); centre = as set, bit for bit.
  *
- * MODEL 4 was DRUM before 1.0: the kit is its own engine now (eng_drum.c); projects and user presets
- * that saved it load as that engine (core.h drum_from_phys).
+ * MODEL 4 was DRUM before 1.0 (a DRUM engine took it over, and DUELL 0.2.14 removed that engine): there is no MODEL 4 now.
  *
- * DUST (resonant particles, value 2 before 1.0) was dropped: MODEL 2 is MEMB now. Projects and
- * user presets saved before say so (project.c, upreset.c) and load DUST as MODAL bowed, its nearest
- * kin (random hits into resonators): phys_legacy.
+ * DUST (resonant particles, value 2 before 1.0) was dropped: MODEL 2 is MEMB now (stores of before 1.0 are no longer read).
  *
  * Polyphony 3 per part (engine_t.poly): each part's voices 0..2 own a state slot in the part's engine
  * memory (engines.c eng_mem; phys_slot_of: SYMP's, the largest: the string's 512 + 128 sample lines, Q20, and three
@@ -83,15 +80,6 @@ static const int16_t PHYS_CHORDS[7][PX_NSYMP] = {
     {300, 700, 1200}, {200, 700, 1400}, {400, 700, 1000},
 };
 static const int8_t PHYS_DETUNE[PX_NSYMP] = {1, -1, 0};   /* 1/16 semitone (6 cents): the strings beat a little */
-
-/* a project or user preset saved before 1.0 (MODEL 2 was DUST): its E values as today's */
-static void phys_legacy(int16_t *e)
-{
-    if (e[0] == 2) {                                     /* DUST -> MODAL bowed (random hits into resonators) */
-        e[0] = PM_MODAL;
-        e[6] = 64;
-    }
-}
 
 static phys_slot_t *phys_slot_of(track_t *t, voice_t *v)
 {

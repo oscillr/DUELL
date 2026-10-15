@@ -48,6 +48,7 @@ Purpose: typical settings of classic synth patches, in generic synth terms, as a
 - "Filthy" variant: carrier at 0.5:1, a short pitch-envelope drop at the start, three modulators of differing wave shapes with slow attacks. [S: same article]
 - Modulation index values and velocity mapping are NOT stated by that article. [G] Typical: modulator output level high at the attack and decaying within ~100-300 ms so the pluck "slaps" and then settles on a near-sine; velocity to modulator level (so hard hits are brighter).
 - **FX:** none or very light chorus; mono. [G]
+- **DUELL's SLAP DOCTOR (FM6, F3):** the ROUND BASS patch, the modulators raised (MLVL +10) with a fast MEG, so the strike is bright and clicky and falls within ~0.3 s to a near-sine; ENV 2 on the modulator level (short, 70 ms, sustain 0; since 0.2.17 really routed: before, the envelope was set but led nowhere); velocity to modulator level 3; DIST 7 %; mono, dry, the house bass EQ and ducker. [G]
 
 ## 1.5 Reese bass
 - **Oscillators:** two sawtooths detuned against each other (about +/-25 cents in one Serum tutorial, +/-55 cents in a MusicRadar one, so sources differ); the beating and phase cancellation is the sound. Optionally unison 2 voices, spread ~65%, detune ~50%. [S: [NI blog on Reese bass](https://blog.native-instruments.com/reese-bass/) and the tutorials it aggregates via search]
@@ -77,7 +78,35 @@ Purpose: typical settings of classic synth patches, in generic synth terms, as a
 
 ## 1.9 Fretless bass (FRETLESS, batch R)
 - **Character:** with no frets the player slides between notes ("more fluid slides between notes"). [S: [Wikipedia, Fretless bass](https://en.wikipedia.org/wiki/Fretless_bass)] The vocal "mwah", the tone opening a moment after the pluck as the string buzzes along the fingerboard, is common player knowledge, not stated by that page. [G]
-- **DUELL's FRETLESS (FM6):** the ROUND BASS patch (F3, the 1.4 layout) with its modulators slower (MEG +21: the index opens after the pluck, the "mwah"), rounder (MLVL -11), velocity to brightness 2, FB +1; mono legato with a 90 ms glide; the house bass EQ and ducker. [S / G as marked]
+- **DUELL's FRETLESS (FM6), since 0.2.17 its own patch F11:** before, it used the ROUND BASS patch (F3, the 1.4 layout) of SLAP DOCTOR with slower modulators and the two sounded alike. Now: a warm, near-sine bass, a sine carrier at 1:1 with a sine modulator at 1:1 whose level opens slowly after the pluck (attack rate 52: the index swells over about 0.2 s, the "mwah") and settles low, a quiet carrier an octave down (ratio 0.5) for the body; velocity to brightness 2; mono legato with a 90 ms glide; CHO 11 %; the house bass EQ and ducker. A test (`tests/fm_bass_diff_test.c`) keeps it apart from SLAP DOCTOR. [S / G as marked]
+
+## 1.10 Chip pulse bass (SID BASS, 0.2.17)
+- **Character:** three pulse waves, the third an octave down, a few cents apart, the pulse width moved slowly (PWM): the bass of the SID chip's players. [S: [c64-wiki, Rob Hubbard](https://www.c64-wiki.com/wiki/Rob_Hubbard): PWM, ring modulation and LFO were his tools.] No source gives register values; every number below is [G].
+- **DUELL's SID BASS (TRIO):** PLS3, INT3 -12, DTN 7, low-pass CUT 72, RES 24, PW 40; LFO 2 (triangle, 1.1 Hz) on the pulse width, ENV 2 on the cutoff (40 %, 220 ms); AMP A 2, D 240, S 85 %, R 50; mono, glide 35 ms; the HF shelf down, no ducker (a hard bass), dry. [G]
+
+## 1.11 Hard-sync bass (SYNC BASS, 0.2.17)
+- The hard-sync of 2.2 in the low octave: oscillator 2 synced to oscillator 1 a fifth up, ENV 2 sweeping the sync interval down on every note (the "eow" of sync). [S for the principle: 2.2; the setting is G]
+- **DUELL's SYNC BASS (TRIO):** WAVE SYNC, INT2 +7, CUT 62, RES 30; ENV 2 to INT2 (+26 %) and to the cutoff (35 %, 190 ms); AMP A 2, D 300, S 80 %, R 45; mono, glide 30 ms; HF shelf, no ducker, dry. TRIO has no DC blocker of its own (the master's removes it).
+
+## 1.12 Wavefolder bass (FOLD BASS, 0.2.17)
+- Fold after a filter, an envelope on the fold amount; keep the weight in the sub first. [S: [Noise Engineering, getting started with wavefolders](https://noiseengineering.us/blogs/loquelic-literitas-the-blog/getting-started-wavefolders); [AE Modular bass tutorial on MatrixSynth](https://www.matrixsynth.com/2019/12/ae-modular-synth-bass-sound-tutorial.html).] Values [G].
+- **DUELL's FOLD BASS (ANALOG):** WAVE SUB (MIX 55 %), CUT 60, RES 20, DRV 20; the FOLD insert (A 46, B 100, C 96, full mix) with ENV 2 and aftertouch on the fold amount; AMP D 260, S 90 %; mono, glide 25 ms; HF shelf, no ducker, dry.
+
+## 1.13 Hardstyle kick-bass (KICK BASS, 0.2.17)
+- A hardstyle kick: a fast pitch drop at the start (a few semitones to an octave over 10 to 30 ms), a sine body, distortion on the tail, then EQ. No source states one recipe with numbers. [S: [EDMProd, how to make hardstyle](https://www.edmprod.com/how-to-make-hardstyle/); [ADSR Sounds, hardstyle kick with Serum](https://www.adsrsounds.com/serum-tutorials/hardstyle-kick-sound-design-with-serum/).] Played as a bass note. [G]
+- **DUELL's KICK BASS (WAVE):** TABLE HARM at POS 10 (a sine with a few harmonics), SUB 55 %; ENV 2 (D 95 ms) on PITCH through two matrix routes (63 each: about +23 semitones at the strike); AMP A 0, D 380, S 55 %, R 60; the HARD insert (A 112) and DIST 32 %; one octave down in all (EXPR, which is full unless a CC11 lowers it, on PITCH at -64: -12 semitones, 0.2.20: F3 gives the sub at 44 Hz); mono; HF shelf, no ducker, dry.
+
+## 1.14 Fuzz bass (FUZZ BASS, 0.2.17)
+- The "distorted layer" bass: a resonant phase-distortion saw (the squelch of 1.2) into a FUZZ insert. [G]
+- **DUELL's FUZZ BASS (PHASE):** RSAW, DCW 44, ENV 45, SUB 38 %; ENV 2 D 200; FUZZ insert (A 82, B 90, C 90, mix 110); AMP A 2, D 260, S 88 %, R 45; mono, glide 30 ms; HF shelf, no ducker, dry.
+
+## 1.15 FM sub bass (FM BASS 2, 0.2.17)
+- **The voice:** a 6-operator FM bass voice of the CC0 collection of aquanodemusic (Aquanode Soundscapes, CC0 1.0 Universal, <https://github.com/aquanodemusic/aquanode-soundscapes>), imported from its DX7 voice file (Aquanode Aquazone Dexed Presets, voice 12) into the FM6 engine's factory patch F9: algorithm 22, a round sub with a bright strike. Changes: the name, and the level 3 of the two carriers raised (from 0 to 95 / 96) so that a held key holds its note (the original voice falls away, a plucked bass; a factory BASS must hold).
+- **Made ours by the sound (all [G]):** a gentle multimode low-pass (12 dB, CUT 64 about 3.7 kHz, RES 10 %), a SOFT insert at 70 % mix for a little warmth, the HF shelf down and the subtle PUMP ducker, REV 5 %. Mono.
+
+## 1.16 Chip octave bass (ARP BASS, 0.2.17)
+- A rolling octave bass of the chip tunes: the LOFI engine's built-in octave arp on a pulse (the arp runs at the chip's own rate, not the tempo). [G; 2.5]
+- **DUELL's ARP BASS (LOFI):** 8BIT PLS, DUTY 40, ARP OCT, TONE 84; AMP A 0, D 150, S 70 %, R 30; mono; HF shelf and the subtle PUMP ducker (a rolling bass keeps it), dry.
 
 ---
 
@@ -128,7 +157,7 @@ Purpose: typical settings of classic synth patches, in generic synth terms, as a
 - **Operators:** carrier sine, one modulator at 1:1 or 2:1 ratio with moderate feedback; modulator envelope with slow decay and level that follows velocity, giving a singing lead; light vibrato. [G; the Plugin Boutique "80s Brass" recipe (triangle carrier and modulator, modulator envelope peaks at the attack then reduces, darker at low velocity) is the closest sourced example: [Plugin Boutique](https://www.pluginboutique.com/articles/1873-FM-Synthesis-Cookbook-Five-Classic-FM-Sounds-and-How-They-Work)]
 - **Brightness:** modulator output level is the "cutoff" of FM. [G, standard FM practice]
 - **AENV:** A 0-10 ms, S 100%, R 80-200 ms. **FX:** chorus + delay. [G]
-- **DUELL's brass solo (#22 HAN SOLO):** the BRASS SECT patch on ALG 16 (a single carrier, OP 1, with three modulator branches: the classic FM brass tree). The patch's own attack swells the note, ENV 2 on MLVL (the modulator level) rises with it over ~120 ms and settles high, VMOD makes it darker at low velocity. Three detuned carriers (the patch's own ALG 5) beat once in a few seconds at C3 and dropped the level by 15 dB, so they are not used for a solo. [G]
+- **DUELL's brass solo (#30 HAN SOLO):** the BRASS SECT patch on ALG 16 (a single carrier, OP 1, with three modulator branches: the classic FM brass tree). The patch's own attack swells the note, ENV 2 on MLVL (the modulator level) rises with it over ~120 ms and settles high, VMOD makes it darker at low velocity. Three detuned carriers (the patch's own ALG 5) beat once in a few seconds at C3 and dropped the level by 15 dB, so they are not used for a solo. [G]
 
 ## 2.7 Formant / vocal lead
 - **Source:** a buzzy saw/pulse glottal-style source into 3-5 band-pass resonances at vowel formants; morph the vowel with LFO/envelope or pitch. Reference male values (Hz): /a/ 700/1200/2500, /e/ 410/2000/2570, /i/ 215/1900/2630, /o/ 440/750/2160, /u/ 290/750/2300 (F1/F2/F3). [S: Cantor Digitalis table via search ([PMC table](https://pmc.ncbi.nlm.nih.gov/articles/PMC6090560/table/T1) listed in results; I did not verify which of the listed tables holds these numbers)] DUELL's own VOICE engine uses Hillenbrand 1995 male means instead (/a/ 768/1333/2522, /i/ 342/2322/3000 ...), so the two sets differ by up to ~20%; vowel data vary by speaker. [S: eng_formant.c comment]
@@ -157,6 +186,14 @@ Purpose: typical settings of classic synth patches, in generic synth terms, as a
 - **Pitch envelope:** the note starts slightly sharp and dives to its pitch over the first fraction of a second (the amount is not given). [S: Music Production Wiki]
 - **Filter / FX:** a resonant low-pass, high resonance, the top kept bright; a touch of drive; a rich, wide, fairly deep and fast chorus (two stacked or an ensemble). [S: same] Envelope times and glide are not given. [G]
 - **DUELL's HOOVER (WAVE):** the HOOVR table at POS 50, LFO 2 TRI 5 Hz on POS (+-16 steps) [G for the rate and depth], aftertouch on POS, ENV 2 -> PITCH about +1 semitone decaying in 150 ms [G for the amount], the universal filter at about 9 kHz with RES 55 %, DIST 10 %, the chorus send at 70 % (the chorus rate is the global one), no pitch LFO (no vibrato). [S / G as marked]
+
+## 2.12 Square lead (SQUARE LEAD, 0.2.17)
+- The mono square lead of 2.1 with portamento: two square waves a few cents apart, the filter opening with the note. No vibrato. [G; 2.1]
+- **DUELL's SQUARE LEAD (ANALOG):** WAVE SQR, DTN 7, MIX 40 %, CUT 84, RES 16, KTR 64; ENV 2 on the cutoff (25 %, A 8, D 500, S 60 %); AMP A 5, S 100 %, R 200; mono, glide 70 ms; aftertouch and velocity on the cutoff; DLY 18 %, REV 15 %.
+
+## 2.13 Screaming lead (SCREAMER, 0.2.17)
+- The hard-dance screech: the YELL table (a formant table with a harsh scan) through the multimode filter and a little drive. [G; the WAVE engine's own notes: "screaming leads (YELL)"]
+- **DUELL's SCREAMER (WAVE):** TABLE YELL at POS 42, DTN 10; the multimode low-pass CUT 72, RES 28 %; DIST 26 %; aftertouch on POS; mono, glide 80 ms; DLY 16 %, REV 14 %.
 
 ---
 
@@ -295,6 +332,10 @@ Purpose: typical settings of classic synth patches, in generic synth terms, as a
 - A honky-tonk upright's unison strings are out of tune with each other: the beating is the sound. [G] Here applied to the DX7-style electric piano of 4.1 (not a piano model: the name says keys).
 - **DUELL's SALOON KEYS (FM6):** the TINE EP patch (F1) with the carriers spread far apart (DTUN 56 %), a harder strike (MLVL +7), velocity the expression (VMOD 3, S 4.1), dry with a small room and a little chorus. [S / G as marked]
 
+## 4.14 FM tubular bell (TUBE BELLS, 0.2.17)
+- **Method:** Chowning's FM bell: carrier : modulator = 1 : 1.4 (that is 5 : 7), the modulation index and the amplitude both falling exponentially. [S: John Chowning, 1973, as taught in the [SFU Truax FM tutorial](https://www.sfu.ca/~truax/fmtut.html) and a [University of Washington handout](https://courses.cs.washington.edu/courses/cse466/10wi/pdfs/FMSynthesisExamples.pdf): a bell of 200 Hz carrier, 280 Hz modulator, index about 10.] The decay times in seconds are not stated.
+- **DUELL's TUBE BELLS (FM6, our own patch F10):** algorithm 5 (three pairs), the pairs at 1.0, 2.76 and 5.4 with a 1.4 modulator each [G], feedback 2, key and rate scaling; every operator falls to nothing (the bell rings out within about 9 s and a release of about half a second), REV 30 %, CHO 6 %.
+
 ---
 
 # 5. FX / OTHER
@@ -357,6 +398,10 @@ Purpose: typical settings of classic synth patches, in generic synth terms, as a
 - **TR-808 / CR-8000:** two of the pulse oscillators, about 587 Hz and 845 Hz (1 : 1.44), through a band-pass that removes the upper and lower partials, under one contour of two stages: a short, high-amplitude impact, then a longer tail. A recreation used a 2.64 kHz band-pass, 12 dB/oct, a little resonance. [S: [SOS, Synthesizing Cowbells & Claves](https://www.soundonsound.com/techniques/synthesizing-cowbells-claves)] The CB808 module: "two square wave oscillators ... band pass filtering". [S: [Tiptop Audio CB808](https://www.ctrl-mod.com/products/tiptop-audio-cb808)]
 - **DUELL's FIELD CLANK (TRIO):** PLS3 (squares), osc 2 six semitones up (1.414), osc 3 on osc 1, BP at 2.64 kHz with RES 27; the amp envelope's tail (D 300 ms) under ENV 2's 30 ms opening of the band (the impact) [times G]; it follows the key: around C5 it sits at the 808's pitch. [S / G as marked]
 
+## 6.4 Hardstyle kick (HARD KICK, 0.2.17)
+- As 1.13 for the drop and the clipping. [S: EDMProd, ADSR Sounds; numbers G.] The sine is DEEP KICK's (6.1).
+- **DUELL's HARD KICK (PHASE):** a sine (SAW at DCW 0) with ENV 2 (D 75 ms) on PITCH through two routes, ENV 14 for the click; AMP D 330, S 0, R 100; the HARD insert (A 127) and DIST 38 %; two octaves down in all (two routes EXPR to PITCH at -64: -24 semitones, 0.2.20: F3 gives 44 Hz, C4 65 Hz); no ducker, dry.
+
 ---
 
 # 7. FACTORY MULTIS (DUELL 0.2.11: M05..M10; 0.2.12: driven by the keys; 0.2.13: in M01, M02, M07..M10)
@@ -369,45 +414,45 @@ Sources for the playing styles (fetched 2026-10-14, data only):
 - House organ stab: an organ (the Korg M1's organ patches are the classic source) as a minor-seventh chord from one key, short attack and decay, no sustain, on the off-beats between the kicks. [S: [MusicRadar, classic rave chord stab](https://musicradar.com/how-to/rave-chord-stab), [MusicRadar, classic dance sounds](https://musicradar.com/how-to/classic-dance-sounds), [The Producer School, chord stabs](https://theproducerschool.com/blogs/featured-blogs/how-to-make-chord-stabs-like-modern-rave-the-hard-house-and-uk-garage-sound)] House bass: on the off-beats between the kicks (16-step positions 3, 7, 11, 15), the "double off-beat" pairs (3-4, 7-8, ...), the root with octave or fifth moves; swing about 8-20 %. [S: [Violet Recording, house beats](https://violetrecording.com/how-to-make-house-beats/), [The Producer School, hard house bass patterns](https://theproducerschool.com/blogs/featured-blogs/5-essential-bass-patterns-that-define-hard-house-and-trance-music), [Amped Studio, house drum patterns](https://ampedstudio.com/blog/how-tomake-a-house-beat/)]
 
 ## 7.1 M07 COLD CHAPEL (ambient, slow, LAYER, 71 BPM; M05 until 0.2.12)
-- **Part 1: #51 EVOLVING PAD** (WAVE; 3.4 / 5.6): the slow drone bed, its own two slow LFOs on the scan. Per part: HOLD ALL (the keys latch, the next chord replaces it), arp OFF, REV 81, DLY 37, LEVEL 90. Matrix slot 8 MORPH -> CUT +37 % (End B opens its low-pass) [G]; End B seed 38479. [G]
-- **Part 2: #46 SINGING BOWL** (PHYS; 3.7): the bowed metal texture, an octave up (TRN +12), its own chord keys POW / OPEN (fifths). **0.2.12: an arp on the latched chord**: MODE UP, RATE 1/2, GATE 115 (90 %: one bowl note rings into the next), OCT 1, HOLD ALL (it goes on after the keys are let go; the next chord replaces it), VOICE MONO (one bowl at a time: the PHYS voices were the CPU's 96 %). REV 87, DLY 27, LEVEL 93; slot 8 MORPH -> BRIT (E3) +27 % [G]; End B seed 19072. [G]
+- **Part 1: #61 EVOLVING PAD** (WAVE; 3.4 / 5.6): the slow drone bed, its own two slow LFOs on the scan. Per part: HOLD ALL (the keys latch, the next chord replaces it), arp OFF, REV 81, DLY 37, LEVEL 90. Matrix slot 8 MORPH -> CUT +37 % (End B opens its low-pass) [G]; End B seed 38479. [G]
+- **Part 2: #56 SINGING BOWL** (PHYS; 3.7): the bowed metal texture, an octave up (TRN +12), its own chord keys POW / OPEN (fifths). **0.2.12: an arp on the latched chord**: MODE UP, RATE 1/2, GATE 115 (90 %: one bowl note rings into the next), OCT 1, HOLD ALL (it goes on after the keys are let go; the next chord replaces it), VOICE MONO (one bowl at a time: the PHYS voices were the CPU's 96 %). REV 87, DLY 27, LEVEL 93; slot 8 MORPH -> BRIT (E3) +27 % [G]; End B seed 19072. [G]
 - **Playing:** a chord: the pad holds it, the bowl walks up its notes (and their fifths) a half note each. End B opens both.
 - **Globals:** delay 1/4 dotted, FDBK 71, MIX 97, PING-PONG on, delay modulation 17 % (a slow tape-like drift); HALL, SIZE 117, DAMP 57 (3.7 / 5.6: a large reverb and a feedback delay [G]). No steps.
 - Loudness -20.2 dB (C4 E4 G4); End B -19.7 dB and brighter (x1.5 of the RMS frequency).
 
 ## 7.2 M02 WHISPER TIDE (ambient, slow, LAYER, 77 BPM; M06 until 0.2.12)
-- **Part 1: #50 DIGITAL PAD** (WAVE; 3.8): the PPG-style sweep, the band of harmonics carried up by ENV 2 on each new chord. HOLD ALL, arp OFF, REV 77, DLY 31, LEVEL 96; slot 8 MORPH -> CUT +27 % [G]; its own End B.
-- **Part 2: #42 WHISPER PAD** (VOICE; 3.11): the breathy choir over it. **0.2.12: an arp on the latched chord**: MODE RANDOM, RATE 1/1 (a note a bar), GATE 120, OCT 2, HOLD ALL. REV 91, DLY 27, LEVEL 91; slot 8 MORPH -> SHP +27 % [G]; its own End B.
+- **Part 1: #60 DIGITAL PAD** (WAVE; 3.8): the PPG-style sweep, the band of harmonics carried up by ENV 2 on each new chord. HOLD ALL, arp OFF, REV 77, DLY 31, LEVEL 96; slot 8 MORPH -> CUT +27 % [G]; its own End B.
+- **Part 2: #52 WHISPER PAD** (VOICE; 3.11): the breathy choir over it. **0.2.12: an arp on the latched chord**: MODE RANDOM, RATE 1/1 (a note a bar), GATE 120, OCT 2, HOLD ALL. REV 91, DLY 27, LEVEL 91; slot 8 MORPH -> SHP +27 % [G]; its own End B.
 - **Playing:** a chord: the pad holds it, the choir sings one of its notes a bar, over two octaves, and goes on after the release.
 - **Globals:** delay 1/2, FDBK 67, MIX 91, PING-PONG on, delay modulation 17 %; SHIM reverb (the shimmer of 3.6), SIZE 111, DAMP 61. No steps.
 - Loudness -19.9 dB; End B -19.6 dB, brighter (x1.6).
 
 ## 7.3 M08 GARGLE ACID (bass, fast, LAYER, 127 BPM; M07 until 0.2.12)
-- **Part 1: #15 GROWL BASS** (WAVE; 1.7): **0.2.12: plays the held key**, two octaves down (TRN -24; LEGATO, its own), arp OFF, HOLD OFF. The moving vowel (LFO 2 at 1/2 on the table) plus a gargle: LFO 1 synced to 1/8 (it already warps the read) also opens the multimode low-pass through matrix slot 8 (LFO1 -> CUT +27 %), the low-pass at about 700 Hz (CUT 41), RES 31 % [S 1.7: the filters moved by the same LFO; the numbers G]. LEVEL 110.
-- **Part 2: #4 SQUELCH** (ANALOG; 1.2): the 303 line an octave above the bass (TRN -12) as a **SEQUENCER arp on the held key**: RATE 1/16, GATE 64 (50 %), HOLD OFF, LEVEL 92. Pattern (16, offsets from the key):
+- **Part 1: #21 GROWL BASS** (WAVE; 1.7): **0.2.12: plays the held key**, two octaves down (TRN -24; LEGATO, its own), arp OFF, HOLD OFF. The moving vowel (LFO 2 at 1/2 on the table) plus a gargle: LFO 1 synced to 1/8 (it already warps the read) also opens the multimode low-pass through matrix slot 8 (LFO1 -> CUT +27 %), the low-pass at about 700 Hz (CUT 41), RES 31 % [S 1.7: the filters moved by the same LFO; the numbers G]. LEVEL 110.
+- **Part 2: #5 SQUELCH** (ANALOG; 1.2): the 303 line an octave above the bass (TRN -12) as a **SEQUENCER arp on the held key**: RATE 1/16, GATE 64 (50 %), HOLD OFF, LEVEL 92. Pattern (16, offsets from the key):
   `0(acc) . +12 0 . +10 +12(acc) . 0 . +3 0 +7(acc) . +12 .` (root, octave jumps, the minor seventh and third, the fifth: the acid idiom of 1.2 [S]; the notes [G]).
 - **Globals:** delay 1/8 dotted, FDBK 37 (1.2: dotted, 30-40 % [G]), ROOM SIZE 51, PING-PONG off. A key: the bass holds it, the riff runs on it; let go and both stop.
 - Loudness -18.6 dB (C4 E4 G4), -19.2 dB (C4).
 
 ## 7.4 M01 REESE SWAMP (bass, fast, LAYER, 124 BPM; M08 until 0.2.12; the first start's multi since 0.2.13)
-- **Part 1: #17 REESE BASS** (WAVE; 1.5): **0.2.12: plays the held key**, two octaves down (TRN -24), arp OFF. The detuned saws, the low-pass lowered to about 1.6 kHz (CUT 52) and wobbled at 1/4 (LFO 1 synced, slot 8 LFO1 -> CUT +33 %; it also moves the table's phasing) [G]. LEVEL 113.
-- **Part 2: #4 SQUELCH** (ANALOG; 1.2): an 8-step **SEQUENCER arp on the held key** (LEN 8: twice a bar), two octaves above the bass (TRN 0): RATE 1/16, GATE 61, HOLD OFF, LEVEL 87. Pattern (8):
+- **Part 1: #24 REESE BASS** (WAVE; 1.5): **0.2.12: plays the held key**, two octaves down (TRN -24), arp OFF. The detuned saws, the low-pass lowered to about 1.6 kHz (CUT 52) and wobbled at 1/4 (LFO 1 synced, slot 8 LFO1 -> CUT +33 %; it also moves the table's phasing) [G]. LEVEL 113.
+- **Part 2: #5 SQUELCH** (ANALOG; 1.2): an 8-step **SEQUENCER arp on the held key** (LEN 8: twice a bar), two octaves above the bass (TRN 0): RATE 1/16, GATE 61, HOLD OFF, LEVEL 87. Pattern (8):
   `. 0 +12(acc) +10 . +3(acc) 0 +7`.
 - **Globals:** delay 1/8 dotted, FDBK 41, ROOM SIZE 57. **0.2.12: no key split** (it was applied only with MODE RECALL ON anyway).
 - Loudness -18.4 dB (C4 E4 G4), -20.0 dB (C4).
 - **0.2.13 (owner: "End B barely changes anything" at the sounds' AMOUNT 7 %): AMOUNT 17 % on both parts**, End B rolled again at 17 % (part 1 seed 11710, part 2 seed 41045; `gen_factory_multis search` / `eval`): End B is clearly brighter, its level the same. Measured (`eval 1`, both faders at B): C4 E4 G4 -18.4 dB / 411 Hz at End A, -18.6 dB / 638 Hz at End B (brightness +55 %); C4 -19.8 / 378 Hz, -19.6 / 550 Hz (+46 %); the Reese alone +91 % (part 1 at B: more DIST, its filter MODE and the table position moved, less detune), the acid line alone +18 %. Before (7 %, seeds 5220 / 17703): End B -19.3 dB and 18 % darker (334 Hz). CPU (`cpuscen` Q, 4 + 4 notes): 34.6 % at A, 39.0 % at the fader's middle, 39.1 % at B.
 
 ## 7.5 M09 NIGHT ORGAN (house, calm, LAYER, 121 BPM)
-- **Part 1: #79 DRAWBARS** (WAVE; 4.5): the organ stab. Chord keys MIN7 / CLOSE (a held key plays a minor seventh, the classic house stab; MIN7 rather than DIA7, which needs the global scale). **0.2.12 (owner: the 16th stabs were too fast): a SEQUENCER arp of 8 steps at 1/8** that re-strikes the chord of the held key on the off-beats of beats 1 and 3 (a half-time feel), GATE 100 (78 % of an eighth, about 190 ms), HOLD OFF; DLY 17, REV 21, LEVEL 106. Pattern (8):
+- **Part 1: #91 DRAWBARS** (WAVE; 4.5): the organ stab. Chord keys MIN7 / CLOSE (a held key plays a minor seventh, the classic house stab; MIN7 rather than DIA7, which needs the global scale). **0.2.12 (owner: the 16th stabs were too fast): a SEQUENCER arp of 8 steps at 1/8** that re-strikes the chord of the held key on the off-beats of beats 1 and 3 (a half-time feel), GATE 100 (78 % of an eighth, about 190 ms), HOLD OFF; DLY 17, REV 21, LEVEL 106. Pattern (8):
   `. 0 . . . 0(acc) . .`.
-- **Part 2: #2 LADDER BASS** (ANALOG; 1.1): the off-beat house bass (SEQUENCER arp, 8 steps at 1/8, TRN -12), the key on every off-beat 8th, the last an octave up (SPEC 3.7's P03 OFFBEAT idiom [S]). GATE 80, HOLD OFF, LEVEL 99. Pattern (8):
+- **Part 2: #3 LADDER BASS** (ANALOG; 1.1): the off-beat house bass (SEQUENCER arp, 8 steps at 1/8, TRN -12), the key on every off-beat 8th, the last an octave up (SPEC 3.7's P03 OFFBEAT idiom [S]). GATE 80, HOLD OFF, LEVEL 99. Pattern (8):
   `. 0 . 0 . 0 . +12`.
 - **Globals:** swing 17 % kept (it moves the step sequencer only; the arps run straight), delay 1/8 dotted FDBK 31, ROOM SIZE 71. The downbeats are left open for a kick from a drum machine. A key: the chord and the bass on its root; another key moves both.
 - Loudness -18.4 dB (C4 E4 G4: three MIN7 chords), -17.9 dB (C4).
 
 ## 7.6 M10 FINAL REEL (slow cinematic, LAYER, 71 BPM)
-- **Part 1: #48 BRASS PAD** (WAVE; 3.12): the swelling brass section, its own power chords (POW / OPEN). **0.2.12: HOLD ALL** (the chord latches). REV 71, DLY 11, LEVEL 86; slot 8 MORPH -> SHP +27 % (End B pushes the brass table further up: a bigger swell) [G]; its own End B.
-- **Part 2: #44 STRING MACH** (TRIO; 3.10): the ensemble strings an octave above (TRN +12): brass low, strings high, the film-score spread [G]. **0.2.12: HOLD ALL**; a slower attack than the brass (ATK 97, about 1.1 s, against its own 77 and the brass's 82, about 0.4 s): the strings swell in behind. REV 67, DLY 11, LEVEL 71; its own End B.
+- **Part 1: #58 BRASS PAD** (WAVE; 3.12): the swelling brass section, its own power chords (POW / OPEN). **0.2.12: HOLD ALL** (the chord latches). REV 71, DLY 11, LEVEL 86; slot 8 MORPH -> SHP +27 % (End B pushes the brass table further up: a bigger swell) [G]; its own End B.
+- **Part 2: #54 STRING MACH** (TRIO; 3.10): the ensemble strings an octave above (TRN +12): brass low, strings high, the film-score spread [G]. **0.2.12: HOLD ALL**; a slower attack than the brass (ATK 97, about 1.1 s, against its own 77 and the brass's 82, about 0.4 s): the strings swell in behind. REV 67, DLY 11, LEVEL 71; its own End B.
 - **Globals:** HALL SIZE 117, DAMP 51, delay 1/4 FDBK 41 MIX 77, PING-PONG on. Both parts keyed and latched, no arp, no steps.
 - Loudness -18.6 dB.
 
@@ -485,7 +530,7 @@ Read from `felucca-base/firmware/src/eng_*.c` (headers, `edit[]` tables, render 
 - **SHP:** DRV (the drive).
 - Suits: whatever the built-in sets contain, lofi keys (BITS), looped pads; the set names were not read (the list is generated by tools/gen_samples.py), so check SET on the device.
 
-## FM6  [OPS: ALG FB MLVL MRAT | PATCH: MEG VMOD DTUN SLOT]
+## FM6  [PATCH: SLOT ALG FB MLVL | MACRO: MRAT MEG VMOD DTUN]   (0.2.18: SLOT first; until 0.2.17 OPS: ALG FB MLVL MRAT | PATCH: MEG VMOD DTUN SLOT)
 - Six-operator FM (Dexed core). The patch is the sound; the 8 EDIT values are macros: ALG (PAT or 1..32 algorithms), FB = added feedback (-7..+7), MLVL = output level of all modulators (-36..+36 dB: the brightness / "cutoff" of FM), MRAT = added to modulators' coarse ratio, MEG = modulator envelope times (slower/faster), VMOD = modulators' velocity sensitivity, DTUN = carrier spread (about +-36 ct), SLOT = patch (F1-F8 factory, OWN, B1-B32 bank).
 - Maps to: cutoff = MLVL (the FLT input moves MLVL), resonance ~ FB, velocity brightness = VMOD, oscillator mix = none (operator levels are in the patch).
 - **SHP:** feedback (FB).

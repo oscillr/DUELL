@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 /* DUELL build step 4b: the MORPH's page, its MIDI CCs, the matrix source, its settings (SPEC 3.4, 3.4a, 3.5, 4.4).
- *   ROUND      MORPH, MORPH SET, MODE, MIXER, OVERVIEW (v2, SPEC 3.5): HOME's taps and SELECT; MORPH is the main page
+ *   ROUND      MORPH, MORPH SET, MODE, MIXER (v2, SPEC 3.5; 0.2.14: no OVERVIEW): HOME's taps and SELECT; MORPH is the main page
  *   KNOBS      MORPH (v3): KNOB 1 the fader, 2 ROLL A (left) / B (right), 3 UNDO A (left) / B (right) (no KEEP), 4 AMOUNT;
  *              MORPH SET: KNOB 1 SMART, 2 ARP, 3 PITCH, 4 empty (0.2.9: TARGET is ALGORITHM's BOTH on the MORPH page). Each drives
  *              its morph call on the parts TARGET says (SELECTED: the part ALGORITHM picked; BOTH: both)
@@ -28,7 +28,7 @@ static int expect(const char *what, int ok)
 }
 
 static void settle(void) { frames(600); }               /* the knobs at rest (a gesture is over) */
-static uint32_t where(void) { return ui.home ? 0xFFu : ui.page; }
+static uint32_t where(void) { return ui.page; }
 static uint32_t page_of(const char *title)
 {
     uint32_t i;
@@ -59,37 +59,34 @@ static void t_round(void)
     static const char *const T[4] = {"MORPH", "MORPH SET", "MODE", "MIXER"};
     uint32_t k, ok = 1;
     fresh();
+    go_title("AMP ENV");                                 /* (from another page HOME opens MORPH) */
     for (k = 0; k < 4u; k++) {
         press(B_HOME);
         frames(64);
-        ok &= !ui.home && str_eq(PAGES[ui.page].title, T[k]);
+        ok &= str_eq(PAGES[ui.page].title, T[k]);
     }
     press(B_HOME);
     frames(64);
-    expect("HOME tapped: MORPH, MORPH SET, MODE, MIXER, OVERVIEW", ok && ui.home);
+    expect("HOME tapped: MORPH, MORPH SET, MODE, MIXER, then MORPH again (0.2.14: no OVERVIEW)", ok && str_eq(PAGES[ui.page].title, "MORPH"));
     press(B_HOME);
     frames(64);
-    expect("  .. and MORPH again; from another page HOME opens MORPH", !ui.home && str_eq(PAGES[ui.page].title, "MORPH"));
+    expect("  .. and MORPH SET; from another page HOME opens MORPH", str_eq(PAGES[ui.page].title, "MORPH SET"));
     go_title("AMP ENV");
     press(B_HOME);
     frames(64);
-    ok = !ui.home && str_eq(PAGES[ui.page].title, "MORPH");
-    ui.home = 1;
-    for (k = 0; k < 5u; k++) {
+    ok = str_eq(PAGES[ui.page].title, "MORPH");
+    for (k = 1; k <= 4u; k++) {
         turn(EN_SELECT, 1);
-        ok &= where() == (k < 4u ? page_of(T[k]) : 0xFFu);
+        ok &= where() == page_of(T[k % 4u]);
     }
-    expect("SELECT right: the same round (from OVERVIEW to MORPH)", ok);
+    expect("SELECT right: the same round (MIXER, then MORPH)", ok);
     turn(EN_SELECT, -1);
-    expect("SELECT left from OVERVIEW: MIXER (the round backwards)", where() == page_of("MIXER"));
+    expect("SELECT left from MORPH: MIXER (the round backwards)", where() == page_of("MIXER"));
     morph_page();
     {
         char nm[20], ct[12];
         page_parts(nm, ct);
-        ok = str_eq(nm, "MORPH") && str_eq(ct, "1/5");
-        ui.home = 1;
-        home_parts(nm, ct);
-        expect("footer titles: MORPH 1/5, OVERVIEW 5/5", ok && str_eq(nm, "OVERVIEW") && str_eq(ct, "5/5"));
+        expect("footer title: MORPH 1/4", str_eq(nm, "MORPH") && str_eq(ct, "1/4"));
     }
 }
 
@@ -497,73 +494,73 @@ static void t_load(void)
 }
 
 /* ---------------------------------------------------------------- SAVE HELD --- */
+/* 0.2.17: ONE list of 128 slots (a slot is its saved record, else its factory sound). Hold SAVE: OVERWRITE #NN, the slot the part's sound came from,
+ * K1 picks another; OCT+ writes it, End B and AMOUNT with it. There is no 'new' sound, no shadow copy and no NAME screen. */
 static void t_save(void)
 {
     int ok_both;
     int8_t b0[P_COUNT];
     int16_t fac[P_COUNT];
-    uint32_t sd, am, k, e, pk, pos, total, t2;
+    uint32_t sd, am, pos, total, t2, sl, e;
     fresh();
     morph_page();
     press(B_SAVE);
     frames(32);
     expect("a press of SAVE on the MORPH page opens the SAVE pages (PATCHES) as everywhere; nothing saved, no dialog",
-           !ui.home && str_eq(cur_page()->title, "PATCHES") && !up_count() && !ui.confirm);
+           !at_home() && str_eq(cur_page()->title, "PATCHES") && !up_count() && !ui.confirm);
     morph_page();
     pos = preset_pos(&total);
-    preset_go(pos);                                     /* (a factory preset, as the browser loads it) */
+    preset_go(pos);                                     /* (a factory sound, as the browser loads it) */
     frames(32);
+    sl = slot_of(&trk[0]);
     e = trk[0].eng_req;
-    pk = trk[0].preset;
     memcpy(fac, trk[0].p, sizeof fac);
     trk[0].p[P_REL] = (int16_t)(trk[0].p[P_REL] > 60 ? 10 : 90);   /* (the user's edit) */
     turn(EN_K4, 20);
     turn(EN_K2, MORPH_DET); settle();                   /* ROLL B at AMOUNT 45 */
     turn(EN_K1, 70);
+    expect("a factory sound is in its slot (the browse position), the list is the 128 slots", sl == pos && total == UP_SLOTS && sl < UP_SLOTS);
     hold(B_SAVE);
-    expect("SAVE held on MORPH: the SAVE OVER dialog for part 1 (nothing saved yet); OCT- cancels",
-           ui.confirm == CF_SAVE_OVER && ui.confirm_trk == 0u && !up_count() && (press(B_OCTDN), !ui.confirm && !up_count()));
+    expect("SAVE held on MORPH: the OVERWRITE dialog for part 1, offering the slot the sound came from (nothing saved yet); OCT- cancels",
+           ui.confirm == CF_SAVE_OVER && ui.confirm_trk == 0u && ui.svs == sl && !up_count() && (press(B_OCTDN), !ui.confirm && !up_count()));
     hold(B_SAVE);
     press(B_OCTUP);
     memcpy(b0, endp(0, 1), P_COUNT);
     sd = seed_now(0, 1);
     am = mph[0].amount;
-    expect("  OCT+: SAVED, still on MORPH; a factory preset: a copy in the first free slot that shadows it (bytes 134/135)",
-           up_count() == 1u && msg_is("SAVED") && str_eq(cur_page()->title, "MORPH") && user_of(&trk[0]) == 0u &&
-           up_shadow(0, &k) == e && k == pk && up_rec(0)->packed[134] == e + 1u && up_rec(0)->packed[135] == pk + 1u);
-    expect("the browser: the copy in the preset's place (same position, same length), the preset itself hidden",
-           preset_pos(&t2) == pos && t2 == total && preset_at(pos, &k) == NENGINES && k == 0u);
+    expect("  OCT+: SAVED #NN, still on MORPH; one record, in that slot; the part plays that slot now",
+           up_count() == 1u && up_used(sl) && !strncmp(ui.msg, "SAVED", 5) && str_eq(cur_page()->title, "MORPH") && trk[0].user == sl + 1u &&
+           up_rec(sl)->engine == e && up_value(up_rec(sl), P_REL) == trk[0].p[P_REL]);
+    expect("the browser: the slot stays in its place (same position, same length 128)", preset_pos(&t2) == pos && t2 == UP_SLOTS && preset_at(pos) == sl);
     turn(EN_K4, -30);                                   /* AMOUNT 15, another B, another sound */
     turn(EN_PRESET, 1);
     frames(32);
     expect("(control) another sound: End B is another roll", memcmp(endp(0, 1), b0, P_COUNT) != 0);
     turn(EN_PRESET, -1);
     frames(32);
-    expect("PRESETS back one: the copy loads: fader at A, the saved sound, End B exactly as saved (seed, AMOUNT, values)",
-           user_of(&trk[0]) == 0u && mph[0].fader == 0u && end_is_base(0, 0) && trk[0].p[P_REL] != fac[P_REL] &&
+    expect("PRESETS back one: the saved slot loads: fader at A, the saved sound, End B exactly as saved (seed, AMOUNT, values)",
+           trk[0].user == sl + 1u && mph[0].fader == 0u && end_is_base(0, 0) && trk[0].p[P_REL] != fac[P_REL] &&
            !memcmp(endp(0, 1), b0, P_COUNT) && seed_now(0, 1) == sd && mph[0].amount == am);
     hold(B_SAVE);
     press(B_OCTUP);
-    expect("SAVE held over the copy: the same slot (no second one), still in the preset's place",
-           up_count() == 1u && msg_is("SAVED") && up_shadow(0, &k) == e && preset_pos(&t2) == pos);
-    up_ui(1u, 0u);                                      /* STORE's ERASE */
+    expect("SAVE held over it again: the same slot (no second one)", up_count() == 1u && up_used(sl) && !strncmp(ui.msg, "SAVED", 5) && preset_pos(&t2) == pos);
+    up_ui(1u, sl);                                      /* RESTORE */
     preset_go(pos);
     frames(32);
-    expect("erasing the copy: the preset back in its place; loading it gives the factory sound",
-           !up_count() && preset_at(pos, &k) == e && k == pk && user_of(&trk[0]) == UP_SLOTS && !memcmp(trk[0].p, fac, sizeof fac));
+    expect("RESTORE: the factory sound back in the slot; loading it gives the factory sound",
+           !up_count() && preset_at(pos) == sl && trk[0].user == 0u && slot_of(&trk[0]) == sl && !memcmp(trk[0].p, fac, sizeof fac));
     confirm_open(CF_INIT_SOUND, 0u);
     press(B_OCTUP);
     hold(B_SAVE);
-    press(B_OCTUP);                                     /* (a sound with no patch: the NAME screen opens, a random name: OCT+ saves it) */
-    press(B_OCTUP);
-    expect("after INIT SOUND (no patch): a new slot under the NAME screen's (random) name",
-           up_count() == 1u && up_shadow(0, &k) == NENGINES && msg_is("SAVED") && user_of(&trk[0]) == 0u);
+    press(B_OCTUP);                                     /* (INIT SOUND is the engine's first sound: SAVE offers the slot it belongs to; OCT+ writes) */
+    expect("after INIT SOUND: SAVE held offers the slot of the engine's first sound; OCT+ saves it there (no NAME screen)",
+           up_count() == 1u && !name_on() && !strncmp(ui.msg, "SAVED", 5) && trk[0].user != 0u && up_used(trk[0].user - 1u));
     morph_set_target(MT_BOTH);
     hold(B_SAVE);
     ok_both = ui.confirm == CF_SAVE_OVER && ui.confirm_trk == 2u;
     press(B_OCTUP);
-    expect("TARGET BOTH on MORPH: SAVE OVER BOTH PATCHES, OCT+: SAVED 1+2 (part 1 its slot, part 2 a copy of its preset)",
-           ok_both && msg_is("SAVED 1+2") && up_count() == 2u && user_of(&trk[0]) == 0u && user_of(&trk[1]) == 1u);
+    expect("TARGET BOTH on MORPH: OVERWRITE BOTH PATCHES, OCT+: SAVED 1+2 (each part over its own slot)",
+           ok_both && str_eq(ui.msg, "SAVED 1+2") && up_count() == 2u && trk[0].user != 0u && trk[1].user != 0u && trk[0].user != trk[1].user);
 }
 
 /* ---------------------------------------------------------------- SETTINGS --- */

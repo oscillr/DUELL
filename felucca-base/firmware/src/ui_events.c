@@ -11,11 +11,10 @@
  *   STEP     a step's CHANCE (not 100 %), RATCH (not x1) or NUDGE (not 0): the step's own fields (step_chance,
  *            step_ratchet, step_nudge), shown where they are not at their default, inside LEN; a row being edited
  *            stays while it is at its default. A NUDGE is dimmed where it does not play (QUANTIZE ON, a ratchet, no note)
- *   VEL      (1.5, #173) a step's velocity (step_t.vel), the level its notes and its hits play at (seq.c seq_step; a
+ *   VEL      (1.5, #173) a step's velocity (step_t.vel), the level its notes play at (seq.c seq_step; a
  *            step that never had one, 0, plays 96; live recording stores the played one: the panel's keys 100). Not
  *            listed until + ADD VEL's OCT+ (SHOW) lists every note step inside LEN, until HIDE or the page is left (a
- *            recorded pattern would fill the list otherwise). An ACC step plays 127 whatever its VEL (DIM), a DRUM
- *            step's accented hits too; the others one value for all of the step's hits (no velocity per lane)
+ *            recorded pattern would fill the list otherwise). An ACC step plays 127 whatever its VEL (DIM)
  *   + ADD    the last
  * in the order of the steps (a step's CHANCE, its RATCH, its NUDGE, its VEL, then its records by parameter).
  *   KNOB 1 the row
@@ -49,8 +48,7 @@ enum { EVK_TOP, EVK_REC, EVK_CHANCE, EVK_RATCH, EVK_ADD, EVK_NUDGE, EVK_QNT, EVK
 static int ev_sid(uint32_t id) { return id >= EV_VEL && id <= EV_RATCH; }   /* a step's own field */
 static int ev_skd(uint32_t k) { return k == EVK_CHANCE || k == EVK_RATCH || k == EVK_NUDGE || k == EVK_VEL; }
 
-/* id has a row's name on track t: motion records it, and the track's sound has it (DRUM's lane levels on a DRUM
- * track, the engine's own E1..E8 that it labels; not DIGITAL's operators, retired); CHANCE, RATCH, NUDGE, VEL always */
+/* id has a row's name on track t: motion records it, and the track's sound has it (the engine's own E1..E8 that it labels); CHANCE, RATCH, NUDGE, VEL always */
 static int ev_id_ok(const track_t *t, uint32_t id)
 {
     const param_desc_t *d;
@@ -101,16 +99,16 @@ static uint32_t ev_skind(uint32_t id)
 }
 /* + ADD's value: CHANCE 50 %, RATCH x2, NUDGE +4/16 (a quarter of the step late) */
 static int32_t ev_sadd(uint32_t k) { return k == EVK_CHANCE ? 50 : k == EVK_RATCH ? 2 : 4; }
-/* a VEL row (shown): a note step; it plays: notes, or a hit not accented, and not an ACC step (127) */
-static int ev_vel_row(const step_t *s) { return s->time == ST_NOTE && (s->n || s->hit); }
+/* a VEL row (shown): a note step; it plays: not an ACC step (127) */
+static int ev_vel_row(const step_t *s) { return s->time == ST_NOTE && s->n; }
 static int ev_vel_plays(const step_t *s)
 {
-    return ev_vel_row(s) && (s->n || (s->hit & ~s->acc)) && !(s->flags & SF_ACCENT);
+    return ev_vel_row(s) && !(s->flags & SF_ACCENT);
 }
 /* a NUDGE that plays: the track's QUANTIZE OFF, a note step, not ratcheted (seq.c seq_tick) */
 static int ev_nudge_plays(const track_t *t, const step_t *s)
 {
-    return !t->p[P_SQNT] && s->time == ST_NOTE && (s->n || s->hit) && step_ratchet(s) == 1u;
+    return !t->p[P_SQNT] && s->time == ST_NOTE && s->n && step_ratchet(s) == 1u;
 }
 /* "+3" "-8" "0" (b holds 4) */
 static void ev_nudge_fmt(char *b, int32_t v)
@@ -330,8 +328,10 @@ static void ev_knob(uint32_t slot, int32_t s)
         return;
     }
     if (k == EVK_TOP) {                                 /* PLAY: KNOB 4 right ON, left OFF */
-        if (slot == 3u)
-            motion_set_enabled(t, s > 0);
+        if (slot == 3u) {
+            if (!(mods_off & MODS_SEQ))                 /* (GLO > MODULES SEQ OFF: the PLAY card is not shown, its knob does nothing) */
+                motion_set_enabled(t, s > 0);
+        }
         return;
     }
     if (k == EVK_QNT) {                                 /* QUANTIZE: KNOB 4 right ON, left OFF */

@@ -5,8 +5,8 @@
  * Format (build/gen/duell_sounds.h, written by tools/gen_duell_sounds.py from tools/duell_sounds.py): a sound is a name
  * (<= 12 characters), its engine, category (category.c CAT_*), flags, and a SPARSE list of (P_ id, value) pairs, two bytes
  * each, on top of INIT: every sound parameter at its default (params.c TP; the engine's EDIT defaults for P_E0..P_E7).
- * Arp settings and the level are pairs like any other (ui.c apply_preset_to: a factory sound sets its LEVEL, its loudness
- * trim, and an arp sound lends the arp: ds_arp).
+ * Arp settings and the trim are pairs like any other (ui.c apply_preset_to: a factory sound sets its TRIM, its loudness
+ * (0.2.19: the PATCH TRIM; the player's mixer LEVEL is not a sound's), and an arp sound lends the arp: ds_arp).
  *
  * Identity: sound k of engine e (k = its factory index, append-only per engine in duell_sounds.py) is DS_SOUNDS[DS_ENG_AT[e]
  * + k]; t->preset holds k (as it held the preset number), favourites (favorites.c), saved copies (upreset.c up_shadow) and

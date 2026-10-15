@@ -300,21 +300,21 @@ static int arp_ext_clock_test(void)
     {
         uint32_t ms = 100;
         arp_ext_setup(0, 1);
-        bad += check("CLK=INT: no status", clock_state() == 0 && !clock_why());
+        bad += check("CLK=INT: no status", clock_state() == 0 && !clock_why(0));
         song.g[G_CLOCK] = 1; events_block(CTL);
-        bad += check("CLK=USB, nothing arrived: NO CLOCK", clock_state() == 2u && str_eq(clock_why(), "NO CLK"));
+        bad += check("CLK=USB, nothing arrived: NO CLOCK", clock_state() == 2u && str_eq(clock_why(0), "NO CLK"));
         pulses(1, &ms, 4);
-        bad += check("CLK=USB, pulses arrive: EXT, the source shown", clock_state() == 1u && str_eq(clock_why(), "USB"));
+        bad += check("CLK=USB, pulses arrive: EXT, the source shown", clock_state() == 1u && str_eq(clock_why(0), "USB"));
         pulses(2, &ms, 4);
         bad += check("pulses of the other source do not count", clock_state() == 1u);
         fm1_ms = ms; idle_ms(1200);
         bad += check("no pulse for 1 s: NO CLOCK", clock_state() == 2u);
         song.g[G_CLOCK] = 2; events_block(CTL);
-        bad += check("CLK=TRS: NO CLOCK until its pulses arrive", clock_state() == 2u && str_eq(clock_why(), "NO CLK"));
+        bad += check("CLK=TRS: NO CLOCK until its pulses arrive", clock_state() == 2u && str_eq(clock_why(0), "NO CLK"));
         pulses(2, &ms, 4);
-        bad += check("CLK=TRS, pulses arrive: EXT (TRS)", clock_state() == 1u && str_eq(clock_why(), "TRS"));
+        bad += check("CLK=TRS, pulses arrive: EXT (TRS)", clock_state() == 1u && str_eq(clock_why(0), "TRS"));
         song.g[G_CLOCK] = 0; events_block(CTL);
-        bad += check("back to INT: no status", clock_state() == 0 && !clock_why());
+        bad += check("back to INT: no status", clock_state() == 0 && !clock_why(0));
     }
     /* CLK switched INT <-> USB with notes held and released in between: the bookkeeping follows the keys */
     {
@@ -350,6 +350,197 @@ static int arp_ext_clock_test(void)
         bad += check("M03 EERIE SIGNAL on USB Start, no keys: the stored steps of part 2 play (16 notes in 96 pulses), the ARPs play nothing",
                      started == 16u && !arp_on && !trk[0].nheld && !trk[1].nheld);
     }
+    return bad;
+}
+/* DUELL 0.2.14, CLK AUTO (the default): the internal clock until a MIDI clock arrives on USB or TRS (3 plausible pulses, or its Start / Continue),
+ * the other port ignored while locked, back to the internal clock 1 s after the pulses stop: at the last tempo and the current step phase, the
+ * transport never stopped by a switch, the arp stepping all along, no stuck note. Real time here: blocks of CTL samples, fm1_ms from the sample
+ * count, the pulses at their own times (24 a quarter) */
+static uint64_t ac_smp;                         /* samples since the scenario began */
+static uint32_t ac_ms0, ac_blk, ac_last_step_blk, ac_last_idx, ac_min_step, ac_max_step, ac_steps, ac_arp_moves, ac_stopped_blocks;
+static uint8_t ac_last_arp;
+static uint64_t ac_next_us[3];                  /* the next pulse of USB (1) / TRS (2), in us since the start */
+static void ac_reset_stats(void) { ac_min_step = 0xFFFFFFFFu; ac_max_step = 0; ac_steps = ac_arp_moves = ac_stopped_blocks = 0; }
+static uint32_t ac_now_us(void) { return (uint32_t)(ac_smp * 1000000u / FS); }
+/* ms of real time; usb_bpm / trs_bpm: that port's clock running at that tempo (0 = silent); returns the first block with src active (or 0) */
+static uint32_t ac_run(uint32_t usb_bpm, uint32_t trs_bpm, uint32_t ms, uint32_t want_src)
+{
+    uint32_t end = ac_now_us() + ms * 1000u, first = 0, p;
+    const uint32_t bpm[3] = {0, usb_bpm, trs_bpm};
+    for (p = 1; p <= 2; p++)
+        if (bpm[p] && ac_next_us[p] < ac_now_us()) ac_next_us[p] = ac_now_us();
+    while (ac_now_us() < end) {
+        ac_smp += CTL; ac_blk++;
+        fm1_ms = ac_ms0 + (uint32_t)(ac_smp * 1000u / FS);
+        for (p = 1; p <= 2; p++)
+            while (bpm[p] && ac_next_us[p] <= ac_now_us()) {
+                if (p == 2u) um_byte(0xF8); else midi_enqueue(0xFu | 0xF8u << 8, 1);
+                ac_next_us[p] += 60000000u / (bpm[p] * 24u);
+            }
+        events_block(CTL);
+        if (want_src && !first && clock_src() == want_src) first = ac_blk;
+        if (!song.playing) ac_stopped_blocks++;
+        if (trk[1].seq_idx != ac_last_idx) {     /* the stored steps of part 2: their length in blocks */
+            uint32_t d = ac_blk - ac_last_step_blk;
+            if (ac_last_idx != 0xFFFFu) { if (d < ac_min_step) ac_min_step = d; if (d > ac_max_step) ac_max_step = d; }   /* (the step across a phase's start too) */
+            ac_steps++; ac_last_idx = trk[1].seq_idx; ac_last_step_blk = ac_blk;
+        }
+        if (trk[0].arp_note != ac_last_arp) { ac_arp_moves++; ac_last_arp = trk[0].arp_note; }
+    }
+    return first;
+}
+static uint32_t ac_blocks_for_step(uint32_t bpm) { return (uint32_t)((uint64_t)FS * 60u / bpm / 4u / CTL); }   /* a 16th */
+static void ac_setup(void)
+{
+    midi_test_reset();                          /* (power-on: CLK is its default) */
+    ac_smp = 0; ac_ms0 = fm1_ms = 1000; ac_blk = ac_last_step_blk = 0; ac_last_idx = 0xFFFFu; ac_last_arp = 0;
+    ac_next_us[1] = ac_next_us[2] = 0;
+    trk[1].p[P_SLEN] = 16; trk[1].p[P_SDIV] = 2;                  /* part 2: sixteen 16th steps */
+    for (uint32_t i = 0; i < 16; i++) trk[1].step[i] = (step_t){{(uint8_t)(48 + i)}, 1, ST_NOTE, 0, 100};
+    trk[0].p[P_AMODE] = 1; trk[0].p[P_ARATE] = 2; trk[0].p[P_AGATE] = 64; trk[0].p[P_AOCT] = 2;   /* part 1: an arp UP over 2 octaves */
+    memset(trk[0].step, 0, sizeof trk[0].step);
+    events_block(CTL);
+}
+static int auto_clock_test(void)
+{
+    int bad = 0; uint32_t first, nom, i;
+    char w[160];
+    /* the default */
+    midi_test_reset();
+    bad += check("CLK AUTO is the default (the parameter's default: a fresh unit, ERASE DATA, RESTORE LAST OFF)", GP[G_CLOCK].def == CLK_AUTO && song.g[G_CLOCK] == CLK_AUTO);
+    project_load(0); events_block(CTL);
+    bad += check("a fresh unit's first start (M01 loaded) stays on AUTO; with no clock it plays on INT", song.g[G_CLOCK] == CLK_AUTO && clock_src() == 0u);
+    /* a stored choice keeps its meaning (an autosave or a backup: project_capture / project_restore_runtime) */
+    for (i = 0; i <= 2u; i++) {
+        midi_test_reset(); song.g[G_CLOCK] = (int16_t)i; project_capture(&proj_scratch);
+        song.g[G_CLOCK] = CLK_AUTO; project_restore_runtime(&proj_scratch); events_block(CTL);
+        sprintf(w, "a saved CLK %s restores as %s (old stores: 0 INT 1 USB 2 TRS, no migration)", GP[G_CLOCK].names[i], GP[G_CLOCK].names[i]);
+        bad += check(w, song.g[G_CLOCK] == (int16_t)i);
+    }
+    midi_test_reset(); song.g[G_CLOCK] = 0; events_block(CTL);
+    clock_to(1, 10, 12);
+    bad += check("a saved INT stays INT: USB pulses do not take over", clock_src() == 0u && song.g[G_CLOCK] == 0);
+    midi_test_reset(); project_capture(&proj_scratch); song.g[G_CLOCK] = 0; project_restore_runtime(&proj_scratch);
+    bad += check("AUTO is stored and restored as itself", song.g[G_CLOCK] == CLK_AUTO);
+
+    /* the knob: AUTO INT USB TRS in that order, clamped */
+    midi_test_reset();
+    clock_knob(1); bad += check("CLK knob: AUTO -> INT", song.g[G_CLOCK] == 0);
+    clock_knob(1); clock_knob(1); clock_knob(1); bad += check("CLK knob: INT -> USB -> TRS, clamped at TRS", song.g[G_CLOCK] == 2);
+    clock_knob(-1); clock_knob(-1); clock_knob(-1); clock_knob(-1); bad += check("CLK knob: back to AUTO, clamped there", song.g[G_CLOCK] == CLK_AUTO);
+
+    /* the whole run: PLAY on INT, USB 100 BPM (TRS 140 BPM too: ignored), silence, TRS 140 BPM, silence */
+    ac_setup();
+    queued(0x90, 60, 100, 1); queued(0x90, 64, 100, 1);         /* two keys held on part 1 (USB, ch 1) */
+    transport_req = 1;
+    ac_reset_stats(); ac_run(0, 0, 1000, 0);
+    bad += check("AUTO, no clock: INT plays (PLAY starts, steps, arp)", clock_src() == 0u && song.playing && ac_steps >= 7u && ac_arp_moves > 4u &&
+                 str_eq(clock_why(1), "INT") && !clock_why(0));
+    {
+        uint32_t t0 = ac_blk, nb = 60000000u / (100u * 24u);   /* us a pulse at 100 BPM */
+        ac_reset_stats();
+        first = ac_run(100, 0, 3000, 1);
+        nom = ac_blocks_for_step(100);
+        sprintf(w, "USB clock: locked after its 3rd pulse (block %u, the 3rd pulse at ~%u), the transport never stopped",
+                first - t0, (uint32_t)((uint64_t)2u * nb * FS / 1000000u / CTL));
+        bad += check(w, first > t0 + (2u * nb * FS / 1000000u / CTL) - 2u && first <= t0 + (2u * nb * FS / 1000000u / CTL) + 3u && !ac_stopped_blocks);
+        sprintf(w, "USB clock: its tempo (BPM %d), the steps 16ths of it (%u..%u blocks, nominal %u), the arp stepping (%u moves)",
+                song.g[G_BPM], ac_min_step, ac_max_step, nom, ac_arp_moves);
+        bad += check(w, song.g[G_BPM] == 100 && clock_src() == 1u && ac_max_step <= nom * 105u / 100u + 2u &&
+                     ac_min_step + 2u >= ac_blocks_for_step(120) * 95u / 100u && ac_arp_moves > 10u);
+        bad += check("USB locked: CLK AUTO says USB under it, TEMPO is EXT with USB", str_eq(clock_why(1), "USB") && str_eq(clock_why(0), "USB"));
+    }
+    ac_reset_stats(); ac_run(100, 140, 1000, 0);
+    bad += check("USB locked: TRS pulses at another tempo are ignored", clock_src() == 1u && song.g[G_BPM] == 100 && !ac_stopped_blocks);
+    {
+        uint32_t t0 = ac_blk, nb100 = ac_blocks_for_step(100);
+        ac_reset_stats();
+        first = ac_run(0, 0, 1500, 0);
+        sprintf(w, "USB stops: still USB 0.9 s on, INT after ~1 s; never stopped; steps %u..%u blocks (nominal %u: no stall, no jump); BPM %d",
+                ac_min_step, ac_max_step, nb100, song.g[G_BPM]);
+        bad += check(w, clock_src() == 0u && !ac_stopped_blocks && song.playing && song.g[G_BPM] == 100 &&
+                     ac_max_step <= nb100 * 102u / 100u + 2u && ac_min_step + 2u >= nb100 * 98u / 100u && ac_arp_moves > 4u);
+        (void)t0;
+    }
+    {   /* the fallback's moment: still USB just before 1 s, INT just after */
+        ac_setup(); transport_req = 1; ac_run(0, 0, 200, 0); ac_run(100, 0, 500, 0);
+        ac_reset_stats(); ac_run(0, 0, 950, 0);
+        uint32_t held = clock_src();
+        ac_run(0, 0, 100, 0);
+        bad += check("the fallback comes 1 s after the last pulse (USB at 0.95 s, INT at 1.05 s), the transport playing", held == 1u && clock_src() == 0u && song.playing);
+    }
+    {   /* a master that pauses 0.5 s without a Stop and goes on: no stall while it pauses, none when it is back (no catch-up) */
+        uint32_t nb = ac_blocks_for_step(120);
+        ac_setup(); transport_req = 1; ac_run(120, 0, 1000, 0);
+        ac_reset_stats(); ac_run(0, 0, 500, 0); ac_run(120, 0, 1000, 0);
+        sprintf(w, "USB pauses 0.5 s and comes back: still locked, steps %u..%u blocks (nominal %u), never stopped", ac_min_step, ac_max_step, nb);
+        bad += check(w, clock_src() == 1u && !ac_stopped_blocks && ac_max_step <= nb * 110u / 100u + 2u && ac_min_step + 2u >= nb * 90u / 100u);
+    }
+    ac_setup(); queued(0x90, 60, 100, 1); queued(0x90, 64, 100, 1); transport_req = 1; ac_run(0, 0, 300, 0);
+    ac_reset_stats();
+    first = ac_run(0, 140, 2000, 2);
+    nom = ac_blocks_for_step(140);
+    sprintf(w, "TRS clock: locked, BPM %d, steps %u..%u blocks (nominal %u), arp %u moves, never stopped", song.g[G_BPM], ac_min_step, ac_max_step, nom, ac_arp_moves);
+    bad += check(w, first && clock_src() == 2u && song.g[G_BPM] == 140 && !ac_stopped_blocks && ac_arp_moves > 10u &&
+                 ac_max_step <= ac_blocks_for_step(120) * 105u / 100u + 2u && ac_min_step + 2u >= nom * 95u / 100u);
+    ac_reset_stats(); ac_run(100, 140, 500, 0);
+    bad += check("TRS locked: USB pulses ignored", clock_src() == 2u && song.g[G_BPM] == 140);
+    ac_reset_stats(); ac_run(0, 0, 2000, 0);
+    sprintf(w, "TRS stops: INT at 140 BPM, steps %u..%u blocks (nominal %u), arp on, never stopped", ac_min_step, ac_max_step, nom);
+    bad += check(w, clock_src() == 0u && song.g[G_BPM] == 140 && !ac_stopped_blocks && ac_arp_moves > 10u &&
+                 ac_max_step <= nom * 102u / 100u + 2u && ac_min_step + 2u >= nom * 98u / 100u);
+    queued(0x80, 60, 0, 1); queued(0x80, 64, 0, 1); transport_req = 2;
+    ac_run(0, 0, 1000, 0);
+    bad += check("after it all: keys up and STOP: no note left sounding on either part", !ext_gates(&trk[0]) && !ext_gates(&trk[1]) && !trk[0].arp_note && !trk[0].nheld);
+
+    /* a stray pulse never switches; two far apart neither */
+    ac_setup(); transport_req = 1; ac_run(0, 0, 100, 0);
+    um_byte(0xF8); events_block(CTL); ac_run(0, 0, 300, 0); um_byte(0xF8); events_block(CTL); ac_run(0, 0, 300, 0);
+    midi_enqueue(0xFu | 0xF8u << 8, 1); events_block(CTL); ac_run(0, 0, 5, 0); midi_enqueue(0xFu | 0xF8u << 8, 1); events_block(CTL);
+    bad += check("stray pulses (one, two 300 ms apart, two from different ports) never lock", clock_src() == 0u && song.playing);
+    /* a Stop from a port nobody follows does nothing */
+    um_byte(0xFC); events_block(CTL);
+    bad += check("a Stop on an unlocked port does not stop the INT transport", song.playing && clock_src() == 0u);
+    /* Start locks at once; the locked port's Stop / Continue; the other port's Start ignored; silence after Stop: INT, stopped */
+    ac_setup(); ac_run(0, 0, 100, 0);
+    queued(0xFA, 0, 0, 1);
+    bad += check("USB Start in AUTO: locked at once, plays from step 1", clock_src() == 1u && song.playing && trk[1].seq_idx == 0u);
+    ac_run(120, 0, 500, 0);
+    bad += check("USB Start then its pulses: the steps move", trk[1].seq_idx > 0u && clock_src() == 1u);
+    queued(0xFC, 0, 0, 1);
+    bad += check("the locked port's Stop stops the transport (as for CLK USB)", !song.playing);
+    um_byte(0xFA); events_block(CTL);
+    bad += check("TRS Start while USB is locked: ignored", !song.playing && clock_src() == 1u);
+    { uint16_t idx = trk[1].seq_idx; queued(0xFB, 0, 0, 1);
+      bad += check("the locked port's Continue resumes where it stopped", song.playing && trk[1].seq_idx == idx); }
+    queued(0xFC, 0, 0, 1); ac_run(0, 0, 1500, 0);
+    bad += check("stopped, the clock goes away: back to INT, still stopped (no start of its own)", clock_src() == 0u && !song.playing);
+    um_byte(0xFB); events_block(CTL);
+    bad += check("TRS Continue in AUTO: locked at once, playing", clock_src() == 2u && song.playing);
+
+    /* the header: each switch said once (CLOCK USB, CLOCK INT); a change of the CHOICE is said by the knob only */
+    ac_setup(); clock_poll(); clock_poll(); ui.msg[0] = 0;
+    ac_run(100, 0, 300, 1); clock_poll();
+    bad += check("AUTO locks on USB: the header says CLOCK USB", str_eq(ui.msg, "CLOCK USB"));
+    ui.msg[0] = 0; clock_poll();
+    bad += check(".. once", !ui.msg[0]);
+    ac_run(0, 0, 1200, 0); clock_poll();
+    bad += check("the clock went away: the header says CLOCK INT", str_eq(ui.msg, "CLOCK INT"));
+    clock_knob(1); events_block(CTL); clock_poll(); clock_knob(-1); clock_poll(); events_block(CTL); clock_poll(); clock_poll();
+    bad += check("CLK turned INT and back to AUTO: the knob's CLOCK AUTO stays in the header", str_eq(ui.msg, "CLOCK AUTO"));
+    /* the CHOICE changed: a stop only if the active source changes */
+    ac_setup(); transport_req = 1; ac_run(0, 0, 200, 0);
+    song.g[G_CLOCK] = 0; ac_run(0, 0, 50, 0);
+    bad += check("AUTO (on INT) -> INT while playing: plays on", song.playing);
+    song.g[G_CLOCK] = CLK_AUTO; ac_run(0, 0, 50, 0);
+    bad += check("INT -> AUTO while playing (no clock): plays on", song.playing && clock_src() == 0u);
+    ac_run(120, 0, 300, 1);
+    song.g[G_CLOCK] = 1; ac_run(120, 0, 50, 0);
+    bad += check("AUTO on USB -> USB: plays on, USB", song.playing && clock_src() == 1u);
+    song.g[G_CLOCK] = CLK_AUTO; ac_run(120, 0, 50, 0);
+    bad += check("USB with its clock arriving -> AUTO: plays on, locked on USB", song.playing && clock_src() == 1u);
+    song.g[G_CLOCK] = 0; ac_run(0, 0, 50, 0);
+    bad += check("AUTO on USB -> INT: the source changes, the transport stops (as ever)", !song.playing && clock_src() == 0u);
     return bad;
 }
 /* USB-MIDI back-pressure: full 64-byte bulk packets (16 events) faster than the audio ISR drains the ring are
@@ -810,6 +1001,6 @@ static int stop_all_test(void)
 int main(void)
 {
     int bad = controls_test() + sustain_test() + ownership_test() + clock_test(1) + clock_test(2) + clock_arp_and_boundaries() +
-              arp_ext_stop_test() + arp_ext_clock_test() + usb_burst_test() + drain_test() + route_test() + cc_map_test() + learn_test() + stop_all_test();
+              arp_ext_stop_test() + arp_ext_clock_test() + auto_clock_test() + usb_burst_test() + drain_test() + route_test() + cc_map_test() + learn_test() + stop_all_test();
     printf("%s\n", bad ? "MIDI CONTROL/CLOCK TEST FAILED" : "MIDI control/clock integration tests passed"); return bad != 0;
 }
