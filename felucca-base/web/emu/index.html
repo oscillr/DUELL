@@ -6,9 +6,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>@VERSION@@PREVIEW@ - MultiMorphing Bitimbral Synthesizer by OSCILL/R</title>
+<title>@VERSION@ web emulator - MultiMorphing Bitimbral Synthesizer by OSCILL/R</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Crect width=%2216%22 height=%2216%22 rx=%223%22/%3E%3Crect x=%224%22 y=%224%22 width=%228%22 height=%228%22 fill=%22%23fff%22/%3E%3C/svg%3E">
-<meta name="description" content="DUELL, MultiMorphing Bitimbral Synthesizer by OSCILL/R: a two-part synth firmware for the FM-1 (a fork of Felucca), running in your browser: the same code the instrument runs.">
+<meta name="description" content="DUELL, MultiMorphing Bitimbral Synthesizer by OSCILL/R: a two-part synth firmware for the FM-1 (a fork of Felucca), running in your browser: the firmware's own code compiled to WebAssembly.">
 <style>
 /* DotGothic16 (SIL OFL 1.1, fonts/OFL.txt), cut to printable ASCII, for the knob labels */
 @font-face { font-family: "DotGothic16"; src: url("fonts/DotGothic16-subset.woff") format("woff"); font-display: swap; }
@@ -20,6 +20,11 @@ body { margin: 0; color: var(--fg); font: 13px/1.6 -apple-system, BlinkMacSystem
 main { max-width: 1040px; margin: 0 auto; padding: 24px 16px 32px; }
 @media (orientation: portrait) and (max-width: 700px) { main { padding: 8px 8px 24px; } }
 a { color: inherit; }
+header.title { text-align: center; margin: 0 0 16px; }
+header.title h1 { font-size: 40px; font-weight: 700; margin: 0; letter-spacing: .02em; line-height: 1.2; }
+header.title p { margin: 0; }
+header.title .tag { font-weight: 700; font-size: 15px; }
+header.title .version { margin-top: 6px; font-size: 12px; color: var(--dim); }
 .device { position: relative; width: 100%; aspect-ratio: 1000 / 624; user-select: none; -webkit-user-select: none;
           -webkit-touch-callout: none; touch-action: manipulation; }
 .device svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
@@ -78,6 +83,10 @@ a { color: inherit; }
 .start button:disabled { opacity: .4; cursor: progress; }
 .start p { margin: 0; max-width: 32em; text-align: center; color: #fff; }
 .keys, footer { margin: 16px 0 0; color: var(--dim); text-align: center; }
+section.info { max-width: 720px; margin: 24px auto 0; color: var(--fg); }
+section.info h2 { font-size: 15px; margin: 0 0 4px; }
+section.info ul { margin: 0 0 16px; padding-left: 20px; }
+section.info li { margin: 2px 0; }
 .keys span { white-space: nowrap; margin: 0 8px; }
 kbd { font: 600 11px ui-monospace, Menlo, monospace; border: 1px solid var(--rule); padding: 0 4px; color: var(--fg); }
 footer { margin-top: 12px; font-size: 12px; }
@@ -88,10 +97,16 @@ footer small { font-size: 11px; opacity: .8; }
 </head>
 <body>
 <main>
+<header class="title">
+  <h1>DUELL</h1>
+  <p class="tag">MultiMorphing Bitimbral Synthesizer</p>
+  <p class="tag">by OSCILL/R</p>
+  <p class="version">@VERSION@ web emulator</p>
+</header>
 <div class="device" id="device">
   <svg id="panel" viewBox="0 0 1000 624" aria-hidden="true"></svg>
   <canvas id="screen" width="240" height="240" role="img" aria-label="The screen"></canvas>
-  <div class="start" id="start"><button id="go" type="button">Switch on</button><p id="status" hidden></p></div>
+  <div class="start" id="start"><button id="go" type="button">Click to start audio</button><p id="hint">Sound starts after you click. Turn your volume down first.</p><p id="status" hidden></p></div>
 </div>
 
 <p class="keys">
@@ -103,12 +118,29 @@ footer small { font-size: 11px; opacity: .8; }
   <span><kbd>Shift</kbd>-click holds a button</span>
 </p>
 
+<section class="info" aria-labelledby="how">
+  <h2 id="how">How to play</h2>
+  <ul>
+    <li>Play the on-screen keys with the mouse or touch, or the computer keyboard (keys above).</li>
+    <li>MIDI keyboard: Chrome or Edge only. Allow MIDI access when the browser asks. Part 1 listens on channel 1, part 2 on channel 2. Pitch bend, mod wheel (CC1, moves the MORPH fader) and aftertouch are passed on to the firmware.</li>
+    <li>Turn a knob by dragging it up or down, with the mouse wheel over it, or with the arrow keys after you tab to it. Press PRESETS and turn it to load one of the 128 patches. ALGORITHM picks part 1 or part 2. HOME opens the MORPH page. Hold HOME for the menu.</li>
+    <li>The unit's own guide opens on the screen at the first start. The full tour is the <a href="https://github.com/oscillr/DUELL/blob/main/docs/QUICKSTART.md">quick start</a>.</li>
+  </ul>
+  <h2>What is different from the real FM-1</h2>
+  <ul>
+    <li>Single core. The unit plays part 2 on the chip's second core. Here both parts run on one core.</li>
+    <li>No USB. No firmware update, no USB audio, no editor connection. MIDI comes in through your browser (Web MIDI).</li>
+    <li>No flash storage. Patches and settings you save are kept in this browser only. Clearing the site data erases them. Use "Download saved data" to keep a copy of what the emulator saved. It is not a unit backup.</li>
+    <li>The sound can differ slightly from the unit. The firmware code is the same and its renders match the project's host test renders bit for bit. The unit's DAC, analog output and speaker are not modelled, and your browser may resample to your sound card's rate.</li>
+    <li>No TRS MIDI, no battery. The CPU meter is an estimate.</li>
+  </ul>
+</section>
+
 <footer>
-  <small class="version">@VERSION@@PREVIEW@</small><br>
-  <b>DUELL</b> · MultiMorphing Bitimbral Synthesizer · by OSCILL/R<br>
-  DUELL is a fork of Felucca<br>
-  Felucca by Leo Kuroshita, Hügelton Instruments · <a href="https://www.gnu.org/licenses/gpl-3.0.html">GPL-3.0</a> · browser build after charlesvestal's <a href="https://github.com/charlesvestal/fm1-x0x">X0X</a> · DotGothic16 font, <a href="fonts/OFL.txt">SIL OFL 1.1</a><br>
-  <nav><a href="../install/">Install</a><a href="https://github.com/oscillr/DUELL">Source</a><a href="https://github.com/hugelton/Felucca">Based on Felucca</a><button type="button" id="dl">Download saved data</button><button type="button" id="ul">Load saved data</button><input type="file" id="ulfile" accept=".bin" hidden></nav>
+  <small class="version">@VERSION@ web emulator</small><br>
+  DUELL is free software under the GPL-3.0, with no warranty. It is a fork of Felucca<br>
+  Felucca by Leo Kuroshita, Hügelton Instruments · browser build after charlesvestal's <a href="https://github.com/charlesvestal/fm1-x0x">X0X</a> · DotGothic16 font, <a href="fonts/OFL.txt">SIL OFL 1.1</a><br>
+  <nav><a href="https://github.com/oscillr/DUELL">Source code (GPL-3.0)</a><a href="https://github.com/oscillr/DUELL/blob/main/LICENSE">Licence</a><a href="https://github.com/oscillr/DUELL/blob/main/CREDITS.md">Credits</a><a href="../install/">Install</a><a href="https://github.com/hugelton/Felucca">Based on Felucca</a><button type="button" id="dl">Download saved data</button><button type="button" id="ul">Load saved data</button><input type="file" id="ulfile" accept=".bin" hidden></nav>
   <small>M-VAVE and FM-1 are trademarks of their respective owners. DUELL and Felucca are not affiliated with or endorsed by them.</small>
 </footer>
 </main>
@@ -544,7 +576,7 @@ async function switchOn() {
     });
     await ac.resume();
     document.getElementById("start").hidden = true;
-    go.textContent = "On";
+    go.textContent = "Audio on";
     if (ac.sampleRate !== 44100) console.warn(`DUELL: the browser plays at ${ac.sampleRate} Hz, the pitch is off by ${(1200 * Math.log2(ac.sampleRate / 44100)).toFixed(0)} cents.`);
     syncButtons();
     syncKeys();
@@ -553,7 +585,7 @@ async function switchOn() {
   } catch (err) {
     node = null;
     go.disabled = false;
-    go.textContent = "Switch on";
+    go.textContent = "Click to start audio";
     say("Could not start: " + (err && err.message || err) + ". A current Chrome, Edge, Firefox or Safari should work.");
   }
 }
