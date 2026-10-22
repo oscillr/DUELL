@@ -8,41 +8,45 @@
  * INSERT, EQ, DUCK, its TRIM (the PATCH TRIM); the arp; the MIXER LEVEL, PAN, MUTE and the sends; LEN DIV SWING GATE QUANTIZE), the 64 steps, the FM6 patch (an
  * FM6 part only), the morph's AMOUNT and End B (the 7-byte block of a user preset, morph.c morph_blk_make: seed, AMOUNT, roll
  * bits; End B is rolled again from it on load); the parts' automation and parameter locks; the globals of the music
- * (MU_GLOBAL: TEMPO, SWING, CHORUS, DLY 1 / 2 with PING-PONG and its SPREAD, REVERB with its TYPE; and BASS MONO, in byte 5), the output MODE
+ * (MU_GLOBAL: TEMPO, SWING, CHORUS, DLY 1 / 2 with PING-PONG and its SPREAD, REVERB with its TYPE; BASS MONO is not held since 0.2.21: a master effect, the device's), the output MODE
  * (duell_mode), MORPH SET's SMART / ARP / PITCH (TARGET: written, not loaded, 0.2.9), the selected part, the name (12 characters). Not held (the
  * device's, MENU's and the settings'): the clock source (G_CLOCK), MIDI IN's routing (G_ROUTE), TUNE (G_TUNE), the colour
  * theme, MIDI channels, display, LEDs, USB. Loading replaces everything held; each part's MORPH starts at fader A with the
  * multi's End B (a patch load's rule). Loading while playing keeps the transport running: every note off, an engine change
  * fades as ever (project_restore_runtime with proj_keep_play).
  *
- * Record (version MU_VER 5, little endian, variable length, at most MU_REC_MAX = 1916 bytes):
+ * Record (version MU_VER 7, little endian, variable length, at most MU_REC_MAX = 1916 bytes):
  *   0  version, np (P_COUNT when saved), ng (G_COUNT), the selected part, MODE, byte 5: bit 0 TARGET (1 BOTH; 0.2.9: ALGORITHM's BOTH when saved, never
- *      loaded: reserved, the state is not saved), bits 1..4 BASS MONO (0.2.19: 0 OFF, 1..11 the corner; the factory multis have 0 = OFF), MORPH SET bits (morph.c
+ *      loaded: reserved, the state is not saved), bits 1..4 unused since 0.2.21 (0.2.19 / 0.2.20 stored BASS MONO there: written 0, ignored when read), MORPH SET bits (morph.c
  *      MC_SET), the parts' automation PLAY bits (motion.on)
  *   8  the name, 12 bytes (ASCII 32..126, 0-padded)
  *  20  ng globals, int16 each (all stored; only MU_GLOBAL ones are loaded)
  *      per part (2): engine, preset, AMOUNT, flags (bit 0: an FM6 patch follows); End B's block (MB_N = 7 bytes, 0s: none);
- *      np values (+64, a byte each, as FUN11); the steps sparse: a 64-bit map (8 bytes, bit i = step i stored), then 9 bytes
+ *      np values (+64, a byte each, as FUN11); [MU_VER 7: nx (= NX when written), nx extension values (+64; a reader takes min(nx, NX), gives the rest their
+ *      defaults and skips the extra bytes of a newer firmware's longer list), ne (<= XB_MAX, more refuses the record), ne x (wide id, value + 64): the hand-set B
+ *      edits (up_xb.h)]; the steps sparse: a 64-bit map (8 bytes, bit i = step i stored), then 9 bytes
  *      per stored step (patslot.c ps_pack_step, the packing of FUN11 and the pattern slots; a step not stored is an empty
  *      step, step_clear); the FM6 patch, 128 bytes (eng_fm6.c fm6_pack), when flag bit 0
  *      the automation: a count, then (place, param, value) per event of parts 1..2 (core.h motion_event_t)
  *      then BALANCE (int8, -100..100), XFADE (0..100), SPLIT (0 OFF, else note + 1): core.h mix_bal, mix_xf, mix_split
- *   Sizes (P_COUNT 127): 74 bytes of header and globals, a part 146 + 9 per used step (+ 128 FM6), the automation 1 + 3 per event. Two FM6
- *   parts with all 64 steps used take 1775 bytes: the record always holds the sound and the steps; the automation gets the
- *   rest of the 1916 (46 events at worst after the 3 mix bytes; was 49 at P_COUNT 122; all 128 of a part with 16-step patterns); a save that has more keeps the first
- *   that fit and says AUTOMATION CUT.
- *   DUELL 0.2.14: only a record of exactly this version (MU_VER 5) with np = P_COUNT and ng = G_COUNT loads. A record of firmware
+ *   Sizes (P_COUNT 127, NX 16): 74 bytes of header and globals, a part 164 + 9 per used step (+ 128 FM6) + 2 per hand-set B edit, the automation 1 + 3 per event.
+ *   Two FM6 parts with all 64 steps used take 1811 bytes (1814 with the 3 mix bytes): the record always holds the sound, the slots and the steps; the automation gets
+ *   the rest of the 1916 (34 events at worst; was 46 before the slots, 36 bytes), a save that has more keeps the first that fit and says AUTOMATION CUT.
+ *   The hand-set B edits (EDITABLE_B_DESIGN, up to 32 a part, 128 bytes for two) are kept before the automation: with 32 on both parts of that worst multi they
+ *   do not fit (1939 bytes), so the automation is all gone, 51 of the 64 edits stay (the last ones of part 2 are dropped) and the message says B EDITS CUT.
+ *   DUELL 0.2.14: only a record of exactly this version (MU_VER 7) with np = P_COUNT and ng = G_COUNT loads. A record of firmware
  *   before 0.2.14 (versions 1 and 2, an older P_COUNT) or of a newer one does not: the slot lists as empty ("--") and a LOAD says
- *   EMPTY SLOT / DAMAGED; the first SAVE there replaces it, and a factory slot (M01..M10) shows its factory multi instead.
+ *   EMPTY SLOT / DAMAGED; the first SAVE there replaces it, and a factory slot shows its factory multi instead.
  *
- * Factory multis (build/gen/duell_multis.h, tools/gen_duell_multis.py from tools/factory_multis/M01..M10.bin and M13..M16.bin), in the 0.2.13 order:
- * M01 REESE SWAMP (a new unit's first start loads it, ui_input.c first_boot_poll), M02 WHISPER TIDE, M03 EERIE SIGNAL, M04 WIRED SNAIL, M05 DEAD BUFFER,
- * M06 ACID ETHER, M07 COLD CHAPEL, M08 GARGLE ACID, M09 NIGHT ORGAN, M10 FINAL REEL (M01 M02 M07..M10: 0.2.11's six, tests/gen_factory_multis.c)
+ * Factory multis (build/gen/duell_multis.h, tools/gen_duell_multis.py from tools/factory_multis/M01..M16.bin, made by tools/factory_multis.py), DUELL 0.2.23:
+ * all sixteen slots, M01 REESE SWAMP (a new unit's first start loads it, ui_input.c first_boot_poll) .. M15 WOOD & SKIN and M16 STRESS TEST (a CPU
+ * test to play on the unit, free to overwrite; SPEC 5b.4 lists them; 0.2.24: the owner's COLD CHAPEL, ACID ETHER, GARGLE ACID of 0.2.22 in M06, M09, M14)
  * are in the firmware image (ROM), not in flash. While a slot's stored record is
  * empty (first boot, a flash erase, ERASE of a saved overwrite) it shows and loads the factory multi (mu_fact bit); SAVE
  * over it stores an ordinary record that wins from then on and survives firmware updates (the ROM copy is only the default);
  * ERASE of such a slot restores the factory multi ("ALREADY FACTORY" when it is not overwritten); a rename of an unchanged
- * factory slot stores its record under the new name (an overwrite). M11, M12 have no factory default (empty: "--"). M13..M16 (DUELL 0.1 beta) are the four CPU TEST multis (TEST 1 BASE, TEST 2 PHASE, TEST 3 HEAVY, TEST 4 MIX: tools/factory_multis/M13..M16.bin, docs/TESTING.md), the same mechanism (erase restores, overwritable).
+ * factory slot stores its record under the new name (an overwrite). (Until 0.2.22 M11, M12 were empty and M13..M16 the four CPU TEST multis of developer
+ * builds; those are test scenes since 0.2.23: tests/scenes/, tests/scenes.h.)
  * The records name their sounds by engine + factory index (checked at build time) and hold End B as the 7-byte block (seed,
  * AMOUNT), so they need nothing else from the sound list.
  *
@@ -59,15 +63,15 @@
  * live in RAM (mu_ram). */
 #define MU_NOBJ (MU_SLOTS / 2u)
 #define MU_MAGIC 0x314C554Du                      /* "MUL1" */
-#define MU_VER 5u                                 /* 5 (0.2.19): P_LEVEL is the MIXER level (a multi holds it: the performance state) and P_TRIM, the sound's loudness, is on the id of the legacy DUCK HOLD (tools/factory_multis_levelsplit.py moved the factory records: trim = the old LEVEL, mixer 112 = unity); 4 (0.2.16): G_DMODE is 0 DIGITAL / 1 PING-PONG / 2 RANDOM / 3 OCT UP (the ping-pong switch is gone); 3 (0.2.14): CRUSH's BITS is the curve of ins_bits.h, BALANCE, XFADE, SPLIT after the automation. The only version that loads (1..3: refused) */
+#define MU_VER 7u                                 /* 7 (the cloud plan's job A): per part the NX extension slots (dense) and the hand-set B edit list after the values; 6 (0.2.22): DUCK SRC 2 is MIDI (it was CH1..CH16, 2..17; the channel and the note are the device's SIDECHAIN setup, in no multi); 5 (0.2.19): P_LEVEL is the MIXER level (a multi holds it: the performance state) and P_TRIM, the sound's loudness, is on the id of the legacy DUCK HOLD (tools/factory_multis_levelsplit.py moved the factory records: trim = the old LEVEL, mixer 112 = unity); 4 (0.2.16): G_DMODE is 0 DIGITAL / 1 PING-PONG / 2 RANDOM / 3 OCT UP (the ping-pong switch is gone); 3 (0.2.14): CRUSH's BITS is the curve of ins_bits.h, BALANCE, XFADE, SPLIT after the automation. The only version that loads (1..3: refused) */
 #define MU_HDR 8u
 #define MU_OBJ_MAX 3840u
 #define MU_REC_MAX ((MU_OBJ_MAX - MU_HDR) / 2u)
 #define MU_NAME_AT 8u
 #define MU_G_AT 20u
-#define MU_PART_FIX (4u + MB_N + P_COUNT + 8u)    /* a part without its steps and patch */
+#define MU_PART_FIX (4u + MB_N + P_COUNT + 1u + NX + 1u + 8u)    /* a part without its steps, patch and hand-set B edits (MU_VER 7: the count nx and the NX slots, the count ne) */
 _Static_assert(MU_G_AT + 2u * G_COUNT + NSHOWN * (MU_PART_FIX + NSTEP * PS_STEP + FM6_PACKED) + 1u + 3u <= MU_REC_MAX,
-               "a multi's sound and steps always fit its record (only the automation can be cut)");
+               "a multi's sound and steps always fit its record (only the automation and the hand-set B edits can be cut)");
 _Static_assert(sizeof proj_wire_u.raw >= MU_OBJ_MAX && PROJ_NAME_LEN == 12u && NSHOWN == 2u, "multi object staging");
 #if FELUCCA_FLASH
 _Static_assert(MU_OBJ_MAX <= ST_PAYLOAD_MAX && OBJ_PATCH0 == OBJ_MULTI0 + MU_NOBJ, "a multi object is one storage object");
@@ -84,7 +88,7 @@ static uint8_t mu_ram[MU_NOBJ][MU_OBJ_MAX];       /* (host builds: the store) */
 static uint16_t mu_ram_len[MU_NOBJ];
 #endif
 static int project_restore_runtime(const project_t *input);
-#include "duell_multis.h"                         /* DF_N factory multis: DF_SLOT (their slots) / DM_REC / DM_AT / DM_LEN (M01..M10, M13..M16) */
+#include "duell_multis.h"                         /* DF_N factory multis: DF_SLOT (their slots) / DM_REC / DM_AT / DM_LEN (M01..M16) */
 static uint32_t df_of(uint32_t k)                 /* the factory multi of slot k (index into DM_*); DF_N none */
 {
     uint32_t i;
@@ -164,20 +168,40 @@ static void mu_rest(uint8_t *q)                   /* an empty step, packed (what
     ps_pack_step(&s, q);
 }
 
-/* p (project_capture: the music as it is) and the live MODE / MORPH -> record b; its length. *cut: automation left out */
+/* the bytes of record b that are neither the hand-set B edits nor the automation: header, globals, the parts with their steps and patch, the
+ * automation's count and the three mix bytes. MU_REC_MAX less this is what the edits and the automation share (mu_pack keeps the edits first) */
+static uint32_t mu_base_len(const project_t *p)
+{
+    uint32_t t, i, n = MU_G_AT + 2u * G_COUNT + 1u + 3u;
+    uint8_t rest[PS_STEP], q[PS_STEP];
+    mu_rest(rest);
+    for (t = 0; t < NSHOWN; t++) {
+        n += MU_PART_FIX + (p->t[t].engine == ENGI_FM6 ? FM6_PACKED : 0u);
+        for (i = 0; i < NSTEP; i++) {
+            ps_pack_step(&p->t[t].step[i], q);
+            if (memcmp(q, rest, PS_STEP))
+                n += PS_STEP;
+        }
+    }
+    return n;
+}
+/* p (project_capture: the music as it is) and the live MODE / MORPH -> record b; its length. *cut: bit 0 automation left out, bit 1 hand-set B edits
+ * left out (only when the sound, the steps and the edits together do not fit MU_REC_MAX: the automation goes first, then the last edits of part 2, then of part 1) */
 static uint32_t mu_pack(uint8_t *b, const project_t *p, const uint8_t blk[NSHOWN][MB_N], uint32_t *cut)
 {
-    uint32_t pos, t, i, n = 0, at;
+    uint32_t pos, t, i, n = 0, at, room;
     uint8_t rest[PS_STEP];
     char nm[PROJ_NAME_LEN + 1u];
     mu_rest(rest);
+    room = MU_REC_MAX - mu_base_len(p);              /* (>= 0: the _Static_assert above) what the hand-set B edits may take, two bytes each */
+    *cut = 0;
     memset(b, 0, MU_G_AT);
     b[0] = MU_VER;
     b[1] = P_COUNT;
     b[2] = G_COUNT;
     b[3] = (uint8_t)(p->sel < NSHOWN ? p->sel : 0u);
     b[4] = (uint8_t)(duell_mode_req < DM_N ? duell_mode_req : DM_SPLIT);
-    b[5] = (uint8_t)((morph.target == MT_BOTH) | (p->bm <= BM_N ? p->bm : 0u) << 1);   /* bit 0 TARGET (reserved), bits 1..4 BASS MONO (0.2.19) */
+    b[5] = (uint8_t)(morph.target == MT_BOTH);       /* bit 0 TARGET (reserved); bits 1..4 were BASS MONO (0.2.19), a device setting since 0.2.21: written 0, ignored on read */
     b[6] = (uint8_t)(morph.cfg & MC_SET);
     b[7] = (uint8_t)(p->motion.on & ((1u << NSHOWN) - 1u));
     memcpy(b + MU_NAME_AT, nm, proj_name_get(nm, (const uint8_t *)p->name));
@@ -196,6 +220,20 @@ static uint32_t mu_pack(uint8_t *b, const project_t *p, const uint8_t blk[NSHOWN
         pos += MB_N;
         for (i = 0; i < P_COUNT; i++)
             b[pos++] = (uint8_t)(clamp(s->p[i], -64, 127) + 64);
+        b[pos++] = NX;                                 /* MU_VER 7: the extension slots, dense, then the hand-set B edits */
+        for (i = 0; i < NX; i++)
+            b[pos++] = (uint8_t)(clamp(s->x[i], -64, 127) + 64);
+        {
+            uint32_t ne = p->xe_n[t] < XB_MAX ? p->xe_n[t] : XB_MAX, w;
+            if (2u * ne > room) {
+                ne = room / 2u;
+                *cut |= 2u;
+            }
+            b[pos++] = (uint8_t)ne;
+            w = xb_pack(p->xe[t], ne, b + pos);       /* (an edit with wide id 127 is left out by xb_pack: job G must not hand one over; the tests check) */
+            pos += w;
+            room -= 2u * ne;
+        }
         map = b + pos;
         memset(map, 0, 8);
         pos += 8u;
@@ -213,13 +251,12 @@ static uint32_t mu_pack(uint8_t *b, const project_t *p, const uint8_t blk[NSHOWN
         }
     }
     at = pos++;
-    *cut = 0;
     for (i = 0; i < p->motion.count && i < MOTION_MAX; i++) {
         const motion_event_t *e = &p->motion.event[i];
         if ((e->place >> 6) >= NSHOWN)
             continue;
         if (pos + 3u + 3u > MU_REC_MAX) {                 /* (room kept for the 3 bytes at the end) */
-            *cut = 1;
+            *cut |= 1u;
             continue;
         }
         b[pos++] = e->place;
@@ -266,6 +303,27 @@ static int mu_unpack(project_t *q, uint8_t blk[NSHOWN][MB_N], uint8_t amt[NSHOWN
                 return 0;
             d->p[i] = (int16_t)(b[pos++] - 64);
         }
+        {   /* MU_VER 7: min(nx, NX) extension slots, the rest at their defaults, a longer list's extra bytes skipped; then the hand-set B edits (ne <= XB_MAX) */
+            uint32_t nx, ne;
+            if (pos + 1u > len)
+                return 0;
+            nx = b[pos++];
+            if (pos + nx + 1u > len)
+                return 0;
+            for (i = 0; i < nx; i++)
+                if (b[pos + i] > 191u)
+                    return 0;
+            for (i = 0; i < NX; i++)
+                d->x[i] = (int16_t)(i < nx ? b[pos + i] : xb_def(i)) - 64;
+            pos += nx;
+            ne = b[pos++];
+            if (ne > XB_MAX || pos + 2u * ne > len || xb_unpack(b + pos, 2u * ne, q->xe[t]) == XB_ERR)
+                return 0;
+            q->xe_n[t] = (uint8_t)ne;
+            pos += 2u * ne;
+        }
+        if (pos + 8u > len)
+            return 0;
         map = b + pos;
         pos += 8u;
         for (i = 0; i < NSTEP; i++) {
@@ -319,7 +377,7 @@ static int mu_unpack(project_t *q, uint8_t blk[NSHOWN][MB_N], uint8_t amt[NSHOWN
     set[0] = b[4];
     set[1] = b[5] & 1u;
     set[2] = b[6];
-    q->bm = (b[5] >> 1) <= BM_N ? (uint8_t)(b[5] >> 1) : 0u;   /* BASS MONO (0.2.19): a code past BM_N reads OFF */
+    /* b[5] bits 1..4 (BASS MONO of a 0.2.19 / 0.2.20 multi): ignored, q->bm stays what the device has (0.2.21: master effects are not part of a multi) */
     q->sum = proj_sum(q);
     return 1;
 }
@@ -367,7 +425,7 @@ static void multi_ram_reset(void)                 /* (host tests: a power-on; wi
     memset(mu_names, 0, sizeof mu_names);
     mu_used = 0;
     mu_fact = 0;
-    for (o = 0; o < MU_NOBJ; o++) {                 /* (nothing stored: M01..M10 and M13..M16 are the factory multis) */
+    for (o = 0; o < MU_NOBJ; o++) {                 /* (nothing stored: the factory multis) */
         mu_obj_read(o);
         mu_note(o);
     }
@@ -451,7 +509,9 @@ static int project_save_as(uint32_t slot, const char *name)
     mu_note(o);
     proj_cur = (uint8_t)k;
     pat_from_set(k + 1u);
-    if (cut)
+    if (cut & 2u)
+        ui_message("B EDITS CUT");
+    else if (cut)
         ui_message("AUTOMATION CUT");
     else
         mu_say("SAVED ", k);
@@ -486,7 +546,7 @@ static int project_erase(uint32_t slot)
     mu_note(o);
     if (proj_cur == k)
         proj_cur = PROJ_NO_SLOT;
-    mu_say("ERASED ", k);                              /* (M01..M10, M13..M16: the factory multi is back, mu_note) */
+    mu_say("ERASED ", k);                              /* (a factory slot: the factory multi is back, mu_note) */
     return 0;
 }
 
@@ -556,20 +616,18 @@ static void project_load(uint32_t slot)
     }
     proj_bound(&proj_scratch);
     proj_keep_play = 1;                                /* (playing: it goes on; every note off) */
+    proj_morph_skip = 1;                               /* (End B: below, from the record's own block and AMOUNT) */
     rc = project_restore_runtime(&proj_scratch);
     proj_keep_play = 0;
+    proj_morph_skip = 0;
     if (rc) {
         ui_message("DAMAGED");
         return;
     }
     /* 0.2.11: the MODE saved in the multi is applied only when MENU > CONTROL > MODE RECALL is ON (default OFF: the unit stays in its
-     * mode, and BALANCE, XFADE and SPLIT stay as set; a PC recall too). The CPU TEST multis (M13..M16, developer builds) always set theirs: TEST 3 HEAVY is DUEL on purpose. */
-    if ((ui_prefs2 & (PREF_MODE_RECALL >> 16))
-#if DUELL_TEST_MODE
-        || (k >= 12u && k <= 15u)
-#endif
-        )
-    {
+     * mode, and BALANCE, XFADE and SPLIT stay as set; a PC recall too). (Until 0.2.22 the CPU TEST multis M13..M16 of developer builds
+     * always set theirs; since 0.2.23 they are test scenes, tests/scenes.h, and every slot follows MODE RECALL.) */
+    if (ui_prefs2 & (PREF_MODE_RECALL >> 16)) {
         mix_bal = (int8_t)set[3];                      /* (the settings bytes follow: ui_input.c mode_settings) */
         mix_xf = set[4];
         mix_split = set[5];
@@ -578,7 +636,7 @@ static void project_load(uint32_t slot)
     /* set[1] TARGET: reserved (0.2.9: ALGORITHM's BOTH is the player's, a load keeps it) */
     morph.cfg = set[2];
     for (pi = 0; pi < NSHOWN; pi++)
-        morph_load_part(pi, blk[pi], amt[pi]);
+        morph_load_part(pi, blk[pi], amt[pi], proj_scratch.xe[pi], proj_scratch.xe_n[pi]);
     proj_cur = (uint8_t)k;
     pat_from_set(k + 1u);
     perf_fade_begin(1);                                /* 0.2.14: PERF LEAVE FADE glides SPACE and KILL to neutral, KEEP leaves them (was: both set to 0 at once, 0.2.11: a new multi starts the performance macros neutral (not saved with it; SPACE glides: fx.c sv.spc; */

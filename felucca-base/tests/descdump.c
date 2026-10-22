@@ -67,13 +67,17 @@ static void js_descs(const param_desc_t *d, uint32_t n)
 int main(void)
 {
     uint32_t e, i, k;
-    int32_t v[16];
+    int32_t v[32];
     printf("{\"P_COUNT\":%d,\"G_COUNT\":%d,\"NSTEP\":%d,\"P_E0\":%d,\"G_ENGSEL\":%d,\"P_SLCR\":%d,\"NTRK\":%d,\n",
            P_COUNT, G_COUNT, NSTEP, P_E0, G_ENGSEL, P_FREEA, NTRK);   /* ("P_SLCR": the web editor's name of id 45, now P_FREEA) */
     printf("\"TP\":");
     js_descs(TP, P_E0);                                  /* P_E0.. are the engine's */
     printf(",\n\"GP\":");
     js_descs(GP, G_COUNT);
+    printf(",\n\"XTP\":");                             /* cloud job I: the extension slots (ext.h, params.c XTP), checked against editordump's by web/test_layout.mjs */
+    js_descs(XTP, NX);
+    printf(",\n\"XSYNC\":");
+    js_descs(XTP_SYNC, 2);
     printf(",\n\"ENG\":[");
     for (e = 0; e < NENGINES; e++) {
         const engine_t *en = ENGINES[e];
@@ -111,14 +115,14 @@ int main(void)
     printf("],\n\"PATTERNS\":[");
     for (k = 0; k < NPATTERNS; k++) {
         printf("%s\n [", k ? "," : "");
-        for (i = 0; i < 16u; i++)
+        for (i = 0; i < NPAT_STEPS; i++)
             v[i] = PATTERNS[k].note[i];
-        js_ints(v, 16);
+        js_ints(v, NPAT_STEPS);
         putchar(',');
-        for (i = 0; i < 16u; i++)
+        for (i = 0; i < NPAT_STEPS; i++)
             v[i] = PATTERNS[k].flags[i];
-        js_ints(v, 16);
-        putchar(']');
+        js_ints(v, NPAT_STEPS);
+        printf(",%u,%u]", (unsigned)PATTERNS[k].len, (unsigned)PATTERNS[k].div);
     }
     printf("],\n\"TRK_DEF\":[");
     for (k = 0; k < NPART; k++)

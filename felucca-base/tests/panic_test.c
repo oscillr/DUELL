@@ -35,10 +35,11 @@ static res_t scen(uint32_t dmode, uint32_t rtype, uint32_t kind)
         if (kb_map(&trk[0], k) == 60u || kb_map(&trk[0], k) == 64u || kb_map(&trk[0], k) == 67u)
             CHORD |= 1u << k;
     duell_mode_req = dmode;
+    scene_put(1, "M02_WHISPER_TIDE");                 /* (0.2.23: the test scene, tests/scenes.h) */
     project_load(1);
     for (b = 0; b < 8u; b++) { mix_block(out, CTL); while (wave_service()) ; }
     song.g[G_RTYPE] = (uint8_t)rtype;
-    song.g[G_RLOCUT] = 61;                              /* (the LOCUT on, its default: its filter state is flushed too) */
+    song.g[G_RLOCUT] = 75;                              /* (the LOCUT on, its default: its filter state is flushed too) */
     for (b = 0; b < 8u; b++) { mix_block(out, CTL); while (wave_service()) ; }
     perf_space = 100; sv.spc = 100 * 256;
     if (kind == 3) mods_off |= MODS_SENDS;

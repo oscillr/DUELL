@@ -71,4 +71,4 @@ On the WAVETABLES tab, drop a WAV file (a single-cycle wave or a wavetable like 
 
 - Files from a unit with a newer record form may be refused by an older unit; the unit's own checks decide, and the editor shows the reason.
 - A unit before 0.2.20 cannot take a patch whole; the editor hides the file buttons and says so.
-- Everything here is beta and **untested on hardware**. Keep a backup (the Backup page) before you write many slots.
+- Everything here is beta. Keep a backup (the Backup page) before you write many slots.

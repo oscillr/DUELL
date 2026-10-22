@@ -5,7 +5,7 @@
  *   2. YES erases the settings, favourites, autosave, patches (+ shadow copies), multis, pattern slots; the user sample
  *      slots and the FM6 voice bank sector are untouched; the restart is due ~0.7 s later (the main loop reboots); nothing is
  *      written meanwhile (settings_poll / autosave);
- *   3. the next start is a fresh unit: VIOLET, LAYER, factory multi M01 (0.2.13: REESE SWAMP), no patches, factory patterns and multis back;
+ *   3. the next start is a fresh unit: VIOLET, LAYER, factory multi M01 (0.2.13: REESE SWAMP), no patches, the 32 default patterns and the factory multis back;
  *   4. a power cut after any number of erases: every object whole or empty, the settings still valid until the very last
  *      object has gone, the unit boots; running it again finishes;
  *   5. the editor op: only the exact token "ERASE ALL" (wrong token, wrong length: rc 1, nothing written), not while playing (rc 3).
@@ -99,18 +99,30 @@ static void fill(void)                                /* every kind of user data
     apply_preset_to(&trk[0], 3u);
     up_store_trk(&trk[0], 7u, "TEST A", CAT_BASS);
     up_store_trk(&trk[0], 20u, "TEST B", CAT_LEAD);
-    for (i = 30; i < 128u; i++)                       /* DUELL 0.2.15: 100 patches in all, the PATCH store's chunks 0..12, the ten new ones too */
-        up_store_trk(&trk[0], i, "FILL", CAT_PAD);
+    for (i = 0; i < 128u; i++)                        /* the cloud plan's job A: all 128 slots, the PATCH store's 22 chunks (the six new ones, 0xBA000..0xC5FFF, too) */
+        if (i != 7u && i != 20u)
+            up_store_trk(&trk[0], i, "FILL", CAT_PAD);
+    {   /* the velocity calibration (OBJ_VELO, 0xC6000 / 0xC7000): 128 bytes, saved twice so both copies hold one */
+        uint8_t v[128];
+        uint32_t j;
+        for (j = 0; j < 128u; j++)
+            v[j] = (uint8_t)(j * 5u + 1u);
+        velo_cal_save(v, 128u);
+        v[0] ^= 1u;
+        velo_cal_save(v, 128u);
+    }
     ps_save_trk(&trk[0], 2u, "ACID DUB");
     ps_save_trk(&trk[0], 12u, "DEEP");
     flush();
     song.playing = 0;
     transport_req = 0;
+    song.g[G_TUNE] = 4321;                            /* (0.2.22: MASTER TUNE 432.1 Hz, kept with the projects) */
     project_save(4u);
     project_save(11u);
     for (i = 0; i < 4096u; i++) {                     /* what must stay: the old sample region beyond the wavetables, the FM6 voice bank sector */
-        nor[0xBA000u + i] = (uint8_t)(i ^ 0x5Au);      /* (0xBA000..0xC7FFF: the free range after the patch chunks, DUELL 0.2.15) */
-        nor[0xC0000u + i] = (uint8_t)(i ^ 0xA5u);
+        nor[0xEA000u + i] = (uint8_t)(i ^ 0x5Au);      /* (0xEA000.. and 0xF0000..: the stock firmware's user region, outside every storage.c object AND outside FL_STORE_OK (0x97000..0xDFFFF, 0xE5000..0xE7FFF,
+                                                        * 0xFC000..0xFEFFF): the erase cannot reach it even by a wrong address. 0xBA000 and 0xC0000 were the free range until the patch store's chunks 16..21 took 0xBA000..0xC5FFF) */
+        nor[0xF0000u + i] = (uint8_t)(i ^ 0xA5u);
         nor[0xE7000u + i] = (uint8_t)(i * 3u);
     }
 }
@@ -127,7 +139,7 @@ static int kept_ok(void)
 {
     uint32_t i;
     for (i = 0; i < 4096u; i++)
-        if (nor[0xBA000u + i] != (uint8_t)(i ^ 0x5Au) || nor[0xC0000u + i] != (uint8_t)(i ^ 0xA5u) || nor[0xE7000u + i] != (uint8_t)(i * 3u))
+        if (nor[0xEA000u + i] != (uint8_t)(i ^ 0x5Au) || nor[0xF0000u + i] != (uint8_t)(i ^ 0xA5u) || nor[0xE7000u + i] != (uint8_t)(i * 3u))
             return 0;
     return 1;
 }
@@ -148,8 +160,27 @@ int main(void)
     memset(nor, 0xFF, sizeof nor);
     fill();
     memcpy(snap, nor, sizeof nor);
-    ck("filled: settings, autosave, 100 patches (chunks 0..12), 2 pattern slots, 2 multis stored", st_load(OBJ_SETTINGS, &persist_saved, sizeof persist_saved) > 0 &&
-       up_count() == 100u && pt_n[12] > 0u && ps_used(2) && ps_used(12) && project_used(4) && project_used(11));
+    ck("filled: settings, autosave, 128 patches (all 22 chunks), 2 pattern slots, 2 multis stored", ({ persist_t tmp_rec; st_load(OBJ_SETTINGS, &tmp_rec, sizeof tmp_rec) > 0; }) &&
+       up_count() == 128u && pt_n[12] > 0u && pt_n[PT_NCH - 1u] > 0u && ({ uint8_t v[160]; velo_cal_load(v, sizeof v) == 128 && v[0] == 0u; }) && ps_changed(2) && ps_changed(12) && project_used(4) && project_used(11));
+
+    {   /* velo_cal_load / velo_cal_save (job D's store): the length is 1..128, a smaller buffer is refused, the record that was saved is the record loaded
+         * (the two sectors are put back as they were afterwards: the flash image of the checks below is the filled one) */
+        static uint8_t keep[8192];
+        uint8_t v[200], w[200];
+        uint32_t j;
+        memcpy(keep, nor + st_sector(OBJ_VELO, 0), 4096u);
+        memcpy(keep + 4096u, nor + st_sector(OBJ_VELO, 1), 4096u);
+        for (j = 0; j < sizeof v; j++)
+            v[j] = (uint8_t)(j * 3u + 7u);
+        ck("velocity store: 129 bytes and 0 bytes are refused (-1), 1 byte and 128 bytes are saved; a buffer of 64 does not take the 128; the 128 loads back as saved",
+           velo_cal_save(v, 129u) == -1 && velo_cal_save(v, 0u) == -1 && velo_cal_save(v, 1u) == 0 && velo_cal_load(w, sizeof w) == 1 && w[0] == v[0] &&
+           velo_cal_save(v, 128u) == 0 && velo_cal_load(w, 64u) == -1 && velo_cal_load(w, sizeof w) == 128 && !memcmp(v, w, 128) && velo_cal_load(w, 0u) == -1);
+        memset(nor + st_sector(OBJ_VELO, 0), 0xFF, 4096u);
+        memset(nor + st_sector(OBJ_VELO, 1), 0xFF, 4096u);
+        ck("  nothing stored (both sectors blank): -1", velo_cal_load(w, sizeof w) == -1);
+        memcpy(nor + st_sector(OBJ_VELO, 0), keep, 4096u);
+        memcpy(nor + st_sector(OBJ_VELO, 1), keep + 4096u, 4096u);
+    }
 
     /* 1: the dialog */
     ck("ERASE DATA is the last row of the SYSTEM tab, label of at most 12 characters", MI_TAB[MI_ERASE] == MTAB_SYSTEM && MI_ERASE == MI_COUNT - 1u &&
@@ -175,7 +206,7 @@ int main(void)
     open_dialog();
     press(B_HOME);
     ck("  HOME: cancels and leaves the menu; nothing erased (leaving the menu saves a changed setting as always)",
-       !ui.confirm && !ui.menu && !erase_busy() && !memcmp(nor, snap, 0xFC000u) && st_load(OBJ_SETTINGS, &persist_saved, sizeof persist_saved) > 0);
+       !ui.confirm && !ui.menu && !erase_busy() && !memcmp(nor, snap, 0xFC000u) && ({ persist_t tmp_rec; st_load(OBJ_SETTINGS, &tmp_rec, sizeof tmp_rec) > 0; }));
     /* 1b: DUELL 0.2.2: a page button pressed while the MENU is open closes it and goes straight to its page, from every tab, ABOUT, TEST and
      * ERASE DATA's dialog; nothing is written to the flash (a dialog is cancelled) */
     {
@@ -285,26 +316,33 @@ int main(void)
     if (autosave_boot(1))
         first_boot_pending = 0;
     ck("  no autosave to restore", first_boot_pending == 1u);
+    ck("  MASTER TUNE is 440.0 Hz again (0.2.22: G_TUNE 4400; the projects that held 432.1 are gone)", song.g[G_TUNE] == 4400 && menu_get(MI_TUNE) == 247u &&
+       str_eq(menu_vname(MI_TUNE, menu_get(MI_TUNE)), "440.0"));
     ck("  0.2.14's defaults: KNOB ACCEL ON, CLICK REC, USB SERIAL OFF (the user's OFF / ON / ON before the erase gone)",
        (ui_prefs & PREF_ACCEL) && (ui_prefs & PREF_SERIAL_OFF) && rp_get(RP_CLICK) == 1u && (ui_prefs2 & (PREF_DEFAULTS >> 16)));
     frames(160);
     ck("  MODE is LAYER and factory multi M01 (REESE SWAMP since 0.2.13) is loaded", duell_mode_req == DM_LAYER && project_cur_slot() == 0u && first_boot_pending == 0u &&
        str_eq(proj_name, "REESE SWAMP"));
-    ck("  no patches, no pattern slots, no user favourites", up_count() == 0u && !ps_used(2) && !ps_used(12) && favorites.user == 0u);
-    {   /* the ten new patch chunks (OBJ_PATCHX0..9, 0xA6000..0xB9FFF) are blank sectors again, the free range behind them untouched */
+    ck("  no patches, no user favourites; the pattern slots hold their 32 defaults again (none saved, none empty)", up_count() == 0u && !ps_changed(2) && !ps_changed(12) && favorites.user == 0u &&
+       ({ char b0[13], b1[13]; ps_name(2, b0); ps_name(31, b1); str_eq(b0, PATTERNS[2].name) && str_eq(b1, PATTERNS[31].name); }));
+    {   /* the sixteen new patch chunks (OBJ_PATCHX0..15, 0xA6000..0xC5FFF) are blank sectors again, the planted sectors outside every object untouched */
         uint32_t o, i, blank = 1;
-        for (o = 0; o < 16u; o++)
+        for (o = 0; o < PT_NCH; o++)
             for (i = 0; i < 2u; i++) {
                 uint32_t b = st_sector(pt_obj(o), i), j;
                 for (j = 0; j < 4096u; j++)
                     blank &= nor[b + j] == 0xFFu;
             }
-        ck("  all sixteen patch chunks (32 sectors, 0xA6000..0xB9FFF among them) are blank", blank && kept_ok());
+        for (i = 0; i < 2u; i++)
+            for (o = 0; o < 4096u; o++)
+                blank &= nor[st_sector(OBJ_VELO, i) + o] == 0xFFu;
+        ck("  all 22 patch chunks (44 sectors, 0xA6000..0xC5FFF among them) and both sectors of the velocity store are blank (the six new chunks and OBJ_VELO are in the erase order)",
+           blank && kept_ok() && ({ uint8_t v[160]; velo_cal_load(v, sizeof v) < 0; }));
     }
-    ck("  the factory multis M01..M10 and M13..M16 show again (nothing stored in the slots)",
-       project_factory(0) && project_factory(3) && project_factory(4) && project_factory(9) && !project_used(10) && !project_used(11));
+    ck("  the factory multis M01..M16 show again (nothing stored in the slots; M05 and M12 were saved over)",
+       project_factory(0) && project_factory(3) && project_factory(4) && project_factory(9) && project_factory(11) && project_factory(15));
     frames(2400);
-    ck("  the settings are written again (the next start is an ordinary one)", st_load(OBJ_SETTINGS, &persist_saved, sizeof persist_saved) > 0);
+    ck("  the settings are written again (the next start is an ordinary one)", ({ persist_t tmp_rec; st_load(OBJ_SETTINGS, &tmp_rec, sizeof tmp_rec) > 0; }));
 
     /* 4: a power cut after k erases (k = 0 .. all): each object whole as it was or empty, never an older copy; the settings
      * valid, as they were, until the last erase; the unit boots; running ERASE DATA again finishes */

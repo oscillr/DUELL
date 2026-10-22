@@ -105,6 +105,10 @@
 #include "fm1_time.h"
 #include "fm1_gpio.h"
 #include "fm1_led_anim.h"
+#if DUELL_VELO
+#include "fm1_adc.h"
+#include "../src/sense.h"
+#endif
 
 #ifndef FM1_INPUT_IDLE
 #define FM1_INPUT_IDLE() ((void)0)
@@ -169,6 +173,11 @@
 #endif
 #ifndef FM1_SR_LATCH_TRACE
 #define FM1_SR_LATCH_TRACE() ((void)0)     /* input_test.c: the 595 latch */
+#endif
+#if DUELL_VELO
+#ifndef FM1_SR_BIT_TRACE
+#define FM1_SR_BIT_TRACE(bit) ((void)0)    /* velo_tick_test.c: every bit shifted into the 595 */
+#endif
 #endif
 #define FM1_REST_FRAMES 900u      /* ~1 s still off the detent state: that is the detent (power-on) */
 #define FM1_ENC_GO 20u            /* a 2-state jump from the detent goes on the way of a click this recent (~22 ms) */
@@ -250,6 +259,9 @@ static void fm1__sr_bits(uint32_t w, uint32_t i0, uint32_t i1)
     /* read-modify-write per edge on purpose: write-only edges were too short for the
      * 595 on the board and latched the neighbouring column (LEDs and keys copied one column over) */
     for (i = i0; i < i1; i++) {
+#if DUELL_VELO
+        FM1_SR_BIT_TRACE((w & (0x8000u >> i)) != 0u);
+#endif
         if (w & (0x8000u >> i))
             FM1_PR(FM1_PA, FM1_OUT) |= 1u << 4;
         else
@@ -301,6 +313,19 @@ static void fm1_input_init(void)
     FM1_PR(FM1_PA, FM1_DIR) |= rows_a;
     FM1_PR(FM1_PA, FM1_PD) &= ~rows_a;
     FM1_PR(FM1_PA, FM1_PU) |= rows_a;
+#if DUELL_VELO
+    {   /* the drive strength of rows PA7 and PA8 (it matters only while a key is read with its row driven: the tick below) */
+        const uint32_t an = (1u << 7) | (1u << 8);
+        if (SC_DRIVE_LEVEL & 1u)
+            FM1_PR(FM1_PA, FM1_HD0) |= an;
+        else
+            FM1_PR(FM1_PA, FM1_HD0) &= ~an;
+        if (SC_DRIVE_LEVEL & 2u)
+            FM1_PR(FM1_PA, FM1_HD) |= an;
+        else
+            FM1_PR(FM1_PA, FM1_HD) &= ~an;
+    }
+#endif
     FM1_PR(FM1_PB, FM1_DIE) |= row_b;
     FM1_PR(FM1_PB, FM1_DIR) |= row_b;
     FM1_PR(FM1_PB, FM1_PD) &= ~row_b;
@@ -355,6 +380,16 @@ static void fm1__keys(uint32_t p)                  /* the keys of column p, just
         if (FM1_KEYMAP[r][p] >= 0)
             fm1__key((uint32_t)FM1_KEYMAP[r][p], (raw >> r) & 1u);
 }
+
+#if DUELL_VELO
+static void fm1__keys_skip(uint32_t p, uint32_t skip)   /* fm1__keys without the rows (bit r) whose pin was driven for the converter this tick */
+{
+    uint32_t r, raw = fm1_in.raw[p];
+    for (r = 1; r < 5u; r++)
+        if (FM1_KEYMAP[r][p] >= 0 && !((skip >> r) & 1u))
+            fm1__key((uint32_t)FM1_KEYMAP[r][p], (raw >> r) & 1u);
+}
+#endif
 
 static void fm1__frame(void);
 
@@ -621,14 +656,129 @@ static int fm1_led_anim_on(void) { return fm1__an_f != 0u; }
 static void fm1_led_idle_start(uint32_t glow) { fm1__anim_begin(glow, 1); }
 static int fm1_led_idle_on(void) { return fm1__an_f != 0u && fm1__an_idle; }
 static void fm1_led_anim_stop(void) { fm1__an_f = 0; }   /* (the LEDs as the last frame left them: the UI writes them) */
+#if DUELL_VELO
+/* ---- KEY SENSE: the converter stage of the tick (docs/design/VELO_STUDY.md, sense.c, sense_cal.h). After Velo's method (Charles Vestal,
+ * github.com/charlesvestal/fm1-velocity, GPL-3.0-only): one converter reading per tick, started right after the column is latched and taken
+ * at the next tick (the column is still latched then: the 595's outputs change only at the latch at the end of a tick). A frame is 11 ticks.
+ * Slots: on an even frame row PA7 (notes 9..19, one key a column); on an odd frame row PA8 (notes 1 0 3 2 5 4 6 7 8 on columns 2..10), where
+ * the OCT buttons' columns 0 and 1 hold the MASTER pot (column 0) and the battery (column 1). So each analog key is read once every two
+ * frames (~2.2 ms). A key sense_want_drive() names is read with its row driven (a held key: the pill's resistance); the 595 stays as it is and
+ * the digital read of that row in the next tick is skipped (the pull-up has not recovered): the debounce counts that frame neither way.
+ * ONE converter: with this stage in the build the pot and the battery are read here too (master.c, main.c take fm1_an.pot / .batt), at the
+ * blocking read's CON word (high impedance sources). With sense_enabled() off no key is read and no row is driven: the stage only does the pot and the battery.
+ * Costs and what only the unit can show: docs/design/VELO_STUDY.md section 2.3 (the converter's timing with the LED lines, the pull-up's recovery). */
+#define FM1_AN_SLOW_MAX 4u                        /* ticks the pot or battery conversion may run before it is dropped */
+enum { FM1_AN_NONE, FM1_AN_KEY, FM1_AN_POT, FM1_AN_BATT };
+static struct {
+    uint8_t busy, kind, note, pin, age, par, batt_due;   /* pin: the driven row's pin (7 or 8), 0 none */
+    uint32_t fc;                                   /* frames, counted at column 0 (the parity of the row) */
+    uint32_t us, last, rem;                        /* the clock sense_update gets: microseconds from TIMER4 */
+    volatile int16_t pot, batt;                    /* the last readings of the MASTER pot and the battery divider (-1 until the first) */
+    uint32_t keys, drives, timeouts, slow;         /* key readings taken, of them driven, conversions dropped, pot / battery readings */
+    uint32_t pot_n, batt_n;                        /* the pot / battery readings counted (the main loop smooths per new reading, not per pass) */
+} fm1_an = {.pot = -1, .batt = -1};
+
+static inline void fm1__an_drive(uint32_t pin)
+{
+    FM1_PR(FM1_PA, FM1_OUT) |= 1u << pin;
+    FM1_PR(FM1_PA, FM1_DIR) &= ~(1u << pin);
+}
+static inline void fm1__an_undrive(uint32_t pin) { FM1_PR(FM1_PA, FM1_DIR) |= 1u << pin; }
+
+/* the previous tick's conversion: take it and give it to its owner; returns the key-row bits driven for it (the digital read skips them) */
+static uint32_t fm1__an_take(uint32_t t0)
+{
+    uint32_t skip = 0, v;
+    if (!fm1_an.busy)
+        return 0;
+    if (fm1_adc_done()) {
+        v = fm1_adc_take();
+        fm1_an.busy = 0;
+        if (fm1_an.kind == FM1_AN_KEY) {
+            uint32_t d = t0 - fm1_an.last, r = fm1_an.rem + d;     /* the clock: TIMER4 ticks -> microseconds, the remainder kept */
+            fm1_an.last = t0;
+            fm1_an.us += r / FM1_TICKS_PER_US;
+            fm1_an.rem = r % FM1_TICKS_PER_US;
+            fm1_an.keys++;
+            fm1_an.drives += fm1_an.pin != 0u;
+            sense_update(fm1_an.note, v, fm1_an.pin != 0u, fm1_an.us);
+        } else if (fm1_an.kind == FM1_AN_POT) {
+            fm1_an.pot = (int16_t)v;
+            fm1_an.pot_n++;
+            fm1_an.slow++;
+        } else {
+            fm1_an.batt = (int16_t)v;
+            fm1_an.batt_n++;
+            fm1_an.slow++;
+        }
+    } else if (fm1_an.kind == FM1_AN_KEY || ++fm1_an.age >= FM1_AN_SLOW_MAX) {   /* a key reading must fit its tick; a slow one gets a few */
+        fm1_adc_abort();
+        fm1_an.busy = 0;
+        fm1_an.timeouts++;
+        if (fm1_an.kind == FM1_AN_KEY)
+            sense_missed(fm1_an.note);
+    }
+    if (fm1_an.pin) {                                 /* the row driven for it: back to the pull-up */
+        fm1__an_undrive(fm1_an.pin);
+        skip = 1u << (fm1_an.pin - 4u);
+        fm1_an.pin = 0;
+    }
+    return skip;
+}
+/* column n has just been latched: start the reading its slot holds (none while a slow one still runs) */
+static void fm1__an_start(uint32_t n)
+{
+    uint32_t par, r, id;
+    if (n == 0u) {                                    /* a new frame: the row of the analog keys alternates */
+        fm1_an.par ^= 1u;
+        fm1_an.fc++;
+        if (!((fm1_an.fc ^ 3u) & (SC_BATT_EVERY - 1u)))
+            fm1_an.batt_due = 1;
+    }
+    if (fm1_an.busy)
+        return;                                       /* a slow reading still runs: this slot is lost */
+    par = fm1_an.par;
+    if (par && n < 2u) {                              /* row PA8, the OCT buttons' columns hold no key: column 0 is for the pot and the battery */
+        if (n == 0u && (!((fm1_an.fc ^ 1u) & (SC_POT_EVERY - 1u)) || fm1_an.batt_due)) {
+            fm1_an.kind = ((fm1_an.fc ^ 1u) & (SC_POT_EVERY - 1u)) ? FM1_AN_BATT : FM1_AN_POT;   /* (the pot's frame wins; the battery waits for the next) */
+            if (fm1_an.kind == FM1_AN_BATT)
+                fm1_an.batt_due = 0;
+            fm1_an.busy = 1;
+            fm1_an.age = 0;
+            fm1_adc_start(fm1_an.kind == FM1_AN_POT ? FM1_ADC_MASTER : FM1_ADC_BATT, SC_ADC_CON_SLOW);
+        }
+        return;
+    }
+    r = par ? 4u : 3u;                                /* the key matrix row: PA7 (3) or PA8 (4) */
+    id = (uint32_t)(FM1_KEYMAP[r][n] - 14);           /* the note (anything but notes 0..19: none) */
+    if (id >= SC_NKEY || !sense_enabled())
+        return;
+    if (((fm1_in.notes >> id) & 1u) && sense_want_drive(id)) {   /* a key the digital scan holds closed, one sense names: its row driven, the pill's resistance
+                                                                  * (not before the digital press is in, so no closed frame of its debounce is ever skipped) */
+        fm1_an.pin = (uint8_t)(r + 4u);
+        fm1__an_drive(r + 4u);
+    }
+    fm1_an.kind = FM1_AN_KEY;
+    fm1_an.note = (uint8_t)id;
+    fm1_an.busy = 1;
+    fm1_adc_start(par ? SC_CH_PA8 : SC_CH_PA7, SC_ADC_CON_KEY);
+}
+#endif
+
 static void fm1_input_tick(void)
 {
     uint32_t p = fm1__tick_col, n = p + 1u == FM1_NCOL ? 0u : p + 1u;
     uint32_t t0 = fm1_ticks(), g = t0 - fm1_in_stat.last, b = 0;
     uint32_t w = 0xFFFFu ^ (1u << n) ^ (n < 2u ? 1u << (11u + n) : 0u), lit, dim = 0, k = fm1__dim_k;
     uint32_t br = 0, kb = 0;
+#if DUELL_VELO
+    uint32_t drv;
+#endif
     fm1__led_lines(0);
     fm1_in_stat.last = t0;
+#if DUELL_VELO
+    drv = fm1__an_take(t0);                        /* the converter's reading of the last tick (column p still latched), its row back on the pull-up */
+#endif
     while (b < FM1_GAP_BINS - 1u && g >= (150u * FM1_TICKS_PER_US << b))
         b++;
     fm1_in_stat.gap_hist[b]++;
@@ -637,7 +787,11 @@ static void fm1_input_tick(void)
     fm1_in_stat.on[p] += g;
     if (g > fm1_in_stat.on_max[p])
         fm1_in_stat.on_max[p] = g;
+#if DUELL_VELO
+    fm1_in.raw[p] = (uint8_t)((fm1__rows() & ~drv) | (fm1_in.raw[p] & drv));   /* (a row driven for the converter keeps its last frame's bit) */
+#else
     fm1_in.raw[p] = (uint8_t)fm1__rows();          /* column p has been latched one tick (the lines dark) */
+#endif
     if (p == 0u)
         fm1__breath_frame();
     lit = FM1__LIT(p);                             /* (a lit frame: as lit) */
@@ -676,6 +830,9 @@ static void fm1_input_tick(void)
     }
     fm1__sr_bits(w, k, 16u);
     fm1__sr_latch();                               /* column n, the lines dark */
+#if DUELL_VELO
+    fm1__an_start(n);                              /* its converter slot (the LED lines are lit after it) */
+#endif
     if (n == 0u)                                   /* (a new frame: the mid level's turn, before column 0 lights) */
     {
         fm1__mid_ph = (uint8_t)(fm1__mid_ph + 1u >= fm1__mid_n ? 0u : fm1__mid_ph + 1u);
@@ -683,7 +840,11 @@ static void fm1_input_tick(void)
     }
     fm1__led_lines(FM1__LIT(n));
     fm1__tick_col = (uint8_t)n;
+#if DUELL_VELO
+    fm1__keys_skip(p, drv);                        /* its keys now: no wait for the frame's end (not the row driven for the converter) */
+#else
     fm1__keys(p);                                  /* its keys now: no wait for the frame's end */
+#endif
     if (n == 0u) {
         fm1__frame();
         if (fm1__an_f)                             /* the power-on sweep: the next frame's picture */

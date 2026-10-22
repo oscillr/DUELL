@@ -36,7 +36,7 @@ static void fresh(uint32_t e)
     vage = 0;
     rng_state = 0x1234567u;
     memset(trk, 0, sizeof trk);
-    memset(&mod, 0, sizeof mod);
+    memset(&trk[0].mdw, 0, sizeof trk[0].mdw);
     host_tracks_init();
     for (k = 0; k < NPART; k++)
         host_preset(&trk[k], k ? 0u : e, 0);

@@ -255,7 +255,7 @@ int main(void)
             }
         bad += check("the slots: USR1 0xA0000/0xA1000, USR2 0xA2000/0xA3000, USR3 0xA4000/0xA5000; no other object has these sectors; inside [0x97000, 0xE0000), the loader's keep-out store", seen);
         bad += check("a wavetable object is 1228 bytes (12 header + 19 x 64), one A/B payload (<= 3840), object numbers below the voice bank's commit records",
-                     sizeof(wt_obj_t) == 1228u && sizeof(wt_obj_t) <= ST_PAYLOAD_MAX && OBJ_WTAB0 + 3u <= OBJ_FM6VB && OBJ_COUNT == OBJ_PATCHX0 + 10u && OBJ_PATCHX0 > OBJ_FM6VB);
+                     sizeof(wt_obj_t) == 1228u && sizeof(wt_obj_t) <= ST_PAYLOAD_MAX && OBJ_WTAB0 + 3u <= OBJ_FM6VB && OBJ_COUNT == OBJ_VELO + 1u && OBJ_VELO == OBJ_PATCHX0 + 16u && OBJ_PATCHX0 > OBJ_FM6VB);
     }
 
     /* a fresh unit: every slot EMPTY, the list says so, a GET refuses */
@@ -433,8 +433,8 @@ int main(void)
 
     /* the backup: ids 24..26 list, GET, restore, length 0 */
     w_all(1, "BACKME", D2);
-    bad += check("backup LIST: 40 objects; 24 and 26 length 0, 25 the 1228 byte object with the CRC of the RAM mirror",
-                 list(25, &len, &crc) == 0 && rep[2] == 40u && len == 1228u && crc == st_crc32(&wt_ram[1], 1228) && list(24, &len, &crc) == 0 && len == 0 &&
+    bad += check("backup LIST: 24 objects (patches are paged); 24 and 26 length 0, 25 the 1228 byte object with the CRC of the RAM mirror",
+                 list(25, &len, &crc) == 0 && rep[2] == ED_BK_N && len == 1228u && crc == st_crc32(&wt_ram[1], 1228) && list(24, &len, &crc) == 0 && len == 0 &&
                  list(26, &len, &crc) == 0 && len == 0);
     ok = 1;
     for (i = 0; i < 1228u; i += 256u) {

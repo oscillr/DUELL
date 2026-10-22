@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
-/* DUELL 0.2.19: SHIM's PITCH (UP, DOWN, BOTH) and MOD (core.h G_SHPITCH, G_SHMOD; fx_bus.c rev_shim / rev_shimx; REVERB page 2 "SHIMMER"). On mode_test.c's rig.
+/* DUELL 0.2.19: SHIM's PITCH (UP, DOWN; BOTH until 0.2.24, a stored BOTH plays UP since 0.2.25) and MOD (core.h G_SHPITCH, G_SHMOD; fx_bus.c rev_shim / rev_shimx; REVERB page 2 "SHIMMER"). On mode_test.c's rig.
  *   build/host/shimmer_test [DEMODIR]       (DUELL/host_tests.sh "shimmer"; DEMODIR: the listening set, see below)
  * Built on the base commit (-DSHIMMER_BASE=1, no G_SHPITCH there) it prints the hashes of the SHIM before this change, which are the constants below.
  *   DEFAULT   PITCH UP, MOD 0 is the SHIM of 0.2.18 bit for bit: the bus alone (A and B, SIZE / DAMP moving, 6 s of bursts) and the whole mix (a pad and a pluck
@@ -23,9 +23,9 @@
 /* the SHIM before this change, rendered by the base commit (ff8df90) */
 #define H_BUS_A 0x3c328d00u
 #define H_BUS_B 0x091f03d3u
-#define H_MIX_STEREO 0x290f333a12786bd9ull
-#define H_MIX_LAYER 0x9a25b46b919706e7ull
-#define H_MIX_DUEL 0x8862eba6c6787015ull
+#define H_MIX_STEREO 0x379c68a0d823dec8ull   /* (0.2.31: the three mix hashes re-based on purpose, the factory sounds WAVE 1 and PHYS 2 were refined; were 0xb0349e95305d0465, 0xbeaf994edade7675, 0xbc2a1061abc66350)  (job 3, on purpose: part 2 draws its own random numbers in the voice stage (voice.c part_rand), so the shared sequence the PHYS pluck's note-on seed comes from is not advanced by part 2's LFO any more; the scene plays a pad and a PHYS pluck on two parts; before: 0x3f372eed50047294, 0x330c1c778ef2d2bc, 0x1820f49e32024f34. 0.2.25: re-pinned on purpose: #62 VOWEL PAD's LFO 1 -> SUB now glides within each block (eng_wave.c SUB without a zipper); before: 0x48d788950a6e2499, 0x44ecba0fd49884b1, 0x9630cfd1f0e803c2. 0.2.22: re-pinned a third time on purpose: the scene plays #62 VOWEL PAD and #75 GHOST HARP, which now have KEY TRK +51 % (owner); before that: 0x5d413c2d194a9478, 0xda3d519d67bc89d2, 0xee5127709d5c78ac. Earlier: re-pinned again on purpose: the scene plays #75 GHOST HARP, whose PATCH TRIM went 112 -> 113 for the new low cut (owner-approved); first pin at the new LOCUT default: 0x11b435e273a6282c, 0x38a7ce86978f2a06, 0x1d5a2be01b32b1eb. Then: re-pinned on purpose: the scene runs at the new LOCUT default, 75 = 299 Hz, the reverb low cut's new range; the bus alone, above, is unchanged. Before: 0x290f333a12786bd9, 0x9a25b46b919706e7, 0x8862eba6c6787015 at value 61 = 88 Hz) */
+#define H_MIX_LAYER 0x61248d80e97da59cull   /* (DUELL 1.0: the three mix hashes re-based on purpose: the factory sounds WAVE 1 and PHYS 2 are the owner's bank now) */
+#define H_MIX_DUEL 0xea63f53d61b8b378ull
 
 static uint32_t xs0 = 0x1234567u;
 static int32_t rnd(int32_t amp)
@@ -170,7 +170,7 @@ static void mix_scene(uint32_t mode, uint32_t e, uint32_t k, int kind, int pitch
     song.g[G_RTYPE] = 3;
     song.g[G_RSIZE] = 100;
     song.g[G_RDAMP] = 60;
-    song.g[G_RLOCUT] = 61;
+    song.g[G_RLOCUT] = GP[G_RLOCUT].def;               /* (the new multi's default: 75 = 299 Hz since 0.2.22, 61 = 88 Hz before) */
     song.g[G_DMDEP] = 0;
     song.g[G_DMODE] = DMD_DIGITAL;
     fx.rtype = fx_b.rtype = 3;
@@ -242,9 +242,8 @@ static void demo(const char *dir)
         {"chord_wave", "CHORD: WAVE PWM PAD (two chords)", "WAVE", 0, 2, 100}};
     static const struct { const char *tag; int pitch, mod; } VAR[] = {
         {"up_mod0", SHP_UP, 0}, {"up_mod40", SHP_UP, 40}, {"up_mod100", SHP_UP, 100},
-        {"down_mod0", SHP_DOWN, 0}, {"down_mod40", SHP_DOWN, 40}, {"down_mod100", SHP_DOWN, 100},
-        {"both_mod0", SHP_BOTH, 0}, {"both_mod40", SHP_BOTH, 40}, {"both_mod100", SHP_BOTH, 100}};
-    static const char *const PN[3] = {"UP", "DOWN", "BOTH"};
+        {"down_mod0", SHP_DOWN, 0}, {"down_mod40", SHP_DOWN, 40}, {"down_mod100", SHP_DOWN, 100}};
+    static const char *const PN[2] = {"UP", "DOWN"};
     uint32_t s, v;
     char path[400], idx[400];
     FILE *h;
@@ -255,11 +254,11 @@ static void demo(const char *dir)
                "<style>body{font:15px/1.4 system-ui;margin:24px;max-width:1100px}table{border-collapse:collapse}td,th{padding:4px 10px;border-bottom:1px solid #ccc;text-align:left}"
                "audio{width:260px;height:30px}h2{margin-top:28px}</style>"
                "<h1>DUELL 0.2.19: SHIM reverb, PITCH and MOD</h1>"
-               "<p>Each row is one sound through the SHIM reverb (TYPE SHIM, SIZE 100, DAMP 60, LOCUT 61 = the defaults of a new multi). Columns: MOD 0 (off, the old sound), 40 (medium), 100 (high). "
-               "Rows: PITCH UP (the octave up, as ever), DOWN (an octave down), BOTH. About 9 s each: the sound, then its tail.</p>");
+               "<p>Each row is one sound through the SHIM reverb (TYPE SHIM, SIZE 100, DAMP 60, LOCUT 75 = the defaults of a new multi). Columns: MOD 0 (off, the old sound), 40 (medium), 100 (high). "
+               "Rows: PITCH UP (the octave up, as ever), DOWN (an octave down). About 9 s each: the sound, then its tail.</p>");
     for (s = 0; s < sizeof SRC / sizeof SRC[0]; s++) {
         fprintf(h, "<h2>%s</h2><table><tr><th>PITCH</th><th>MOD 0</th><th>MOD 40</th><th>MOD 100</th></tr>", SRC[s].label);
-        for (v = 0; v < 9u; v++) {
+        for (v = 0; v < 6u; v++) {
             int32_t pk, gain;
             mix_scene(DM_STEREO, scn_eng(SRC[s].eng), SRC[s].k, SRC[s].kind, VAR[v].pitch, VAR[v].mod, 9, SRC[s].send);
             pk = peak_of(rec_l, rec_n) > peak_of(rec_r, rec_n) ? peak_of(rec_l, rec_n) : peak_of(rec_r, rec_n);
@@ -318,24 +317,19 @@ int main(int argc, char **argv)
     }
     /* ---- PITCH */
     {
-        static const char *const PN[3] = {"UP", "DOWN", "BOTH"};
-        double want[3] = {2 * F_IN, F_IN / 2, 0.0};
+        static const char *const PN[3] = {"UP", "DOWN", "stored BOTH"};
+        double want[3] = {2 * F_IN, F_IN / 2, 2 * F_IN};
         for (k = 0; k < 3u; k++) {
             double m110, m220, m440, m880, f;
-            ret_run((int)k, k ? 0 : 1, FS / 2u, FS, F_IN, 0);
+            ret_run((int)k, k == 1u ? 0 : 1, FS / 2u, FS, F_IN, 0);   /* (UP and a stored BOTH with MOD 1: the pitch shifter's path) */
             m110 = dft_mag(ret_buf, FS, F_IN / 4), m220 = dft_mag(ret_buf, FS, F_IN / 2), m440 = dft_mag(ret_buf, FS, F_IN), m880 = dft_mag(ret_buf, FS, 2 * F_IN);
             f = zc_freq(ret_buf, 0, FS);
             printf("shimmer: PITCH %s: |110| %.1f |220| %.1f |440| %.1f |880| %.1f, zero crossings %.2f Hz (%+.1f cents of %.0f)\n", PN[k], m110, m220, m440, m880, f,
                    want[k] > 0 ? cents(f, want[k]) : 0.0, want[k]);
-            if (k == 2u) {                                  /* BOTH is 7.9 cents sharp: the peaks sit a few Hz up the bins */
-                double bu = 0, bd = 0, fu = 0, fd = 0, ff;
-                for (ff = 2 * F_IN * 0.99; ff < 2 * F_IN * 1.01; ff += 0.5) { double mg = dft_mag(ret_buf, FS, ff); if (mg > bu) bu = mg, fu = ff; }
-                for (ff = F_IN / 2 * 0.99; ff < F_IN / 2 * 1.01; ff += 0.25) { double mg = dft_mag(ret_buf, FS, ff); if (mg > bd) bd = mg, fd = ff; }
-                m880 = bu, m220 = bd;
-                printf("shimmer: PITCH BOTH: the peaks %.1f Hz (%+.1f cents of the octave up) and %.1f Hz (%+.1f cents of the octave down)\n", fu, cents(fu, 2 * F_IN), fd, cents(fd, F_IN / 2));
-                expect("PITCH BOTH: the octave up and the octave down each at 1/2 of a single return, both 7.9 cents sharp (+-2), nothing at the input's own pitch",
-                       fabs(cents(fu, 2 * F_IN) - 7.9) < 2.0 && fabs(cents(fd, F_IN / 2) - 7.9) < 2.0 && bu > 1500 && bd > 1500 && m440 * 8 < bu && fabs(bu / bd - 1.0) < 0.3);
-            } else if (k == 0)
+            if (k == 2u)                                    /* 0.2.25 (owner): BOTH is gone; a stored 2 plays UP */
+                expect("PITCH: a stored BOTH (2, removed in 0.2.25) plays UP: the sine comes back at 861.3 Hz (within 3 cents), no 220 Hz",
+                       fabs(cents(f, 2 * F_IN)) < 3.0 && m880 > 8 * m440 && m880 > 8 * m220);
+            else if (k == 0)
                 expect("PITCH UP: a sine of 430.66 Hz comes back at 861.3 Hz (within 3 cents), no 220 Hz and no 440 Hz to speak of", fabs(cents(f, 2 * F_IN)) < 3.0 && m880 > 8 * m440 && m880 > 8 * m220);
             else if (k == 1)
                 expect("PITCH DOWN: a sine of 430.66 Hz comes back at 215.3 Hz, an octave below (within 3 cents), nothing at 440 or 880 Hz to speak of",
@@ -345,10 +339,9 @@ int main(int argc, char **argv)
             double up, dn, bo;
             ret_run(0, 1, FS / 2u, FS, F_IN, 0); up = dft_mag(ret_buf, FS, 2 * F_IN);
             ret_run(1, 0, FS / 2u, FS, F_IN, 0); dn = dft_mag(ret_buf, FS, F_IN / 2);
-            ret_run(2, 0, FS / 2u, FS, F_IN, 0); bo = 0;
-            for (double ff = 2 * F_IN * 0.99; ff < 2 * F_IN * 1.01; ff += 0.5) { double mg = dft_mag(ret_buf, FS, ff); bo = mg > bo ? mg : bo; }
-            printf("shimmer: the return's level (sine amplitude of the bin): UP %.0f, DOWN %.0f, BOTH's 880 %.0f (%.2f of UP)\n", up, dn, bo, bo / up);
-            expect("PITCH: UP and DOWN return at the same level (within 1.5 dB), each BOTH return at 1/2 (-6 dB) of it", fabs(20 * log10(up / dn)) < 1.5 && fabs(bo / up - 0.5) < 0.06);
+            ret_run(2, 1, FS / 2u, FS, F_IN, 0); bo = dft_mag(ret_buf, FS, 2 * F_IN);
+            printf("shimmer: the return's level (sine amplitude of the bin): UP %.0f, DOWN %.0f, a stored BOTH %.0f\n", up, dn, bo);
+            expect("PITCH: UP and DOWN return at the same level (within 1.5 dB); a stored BOTH exactly as UP", fabs(20 * log10(up / dn)) < 1.5 && bo == up);
         }
     }
     /* ---- MOD */
@@ -406,9 +399,9 @@ int main(int argc, char **argv)
             hh[cfg] = h;
         }
         diff = hh[0] != hh[1] && hh[0] != hh[2] && hh[1] != hh[2] && hh[2] != hh[3];
-        printf("shimmer: loud noise, SIZE 127, DAMP 0: peaks UP/0 %d, UP/100 %d, DOWN/100 %d, BOTH/100 %d\n", (int)pk[0], (int)pk[1], (int)pk[2], (int)pk[3]);
+        printf("shimmer: loud noise, SIZE 127, DAMP 0: peaks UP/0 %d, UP/100 %d, DOWN/100 %d, stored BOTH (UP)/100 %d\n", (int)pk[0], (int)pk[1], (int)pk[2], (int)pk[3]);
         expect("MOD changes the output (and each PITCH differs from the others)", diff);
-        expect("MOD / DOWN / BOTH at the corner: bounded (under the plain SHIM's peak x 1.5)", pk[1] < pk[0] * 3 / 2 && pk[2] < pk[0] * 3 / 2 && pk[3] < pk[0] * 3 / 2);
+        expect("MOD / DOWN / a stored BOTH at the corner: bounded (under the plain SHIM's peak x 1.5)", pk[1] < pk[0] * 3 / 2 && pk[2] < pk[0] * 3 / 2 && pk[3] < pk[0] * 3 / 2);
     }
     /* ---- CLICK: a held tone through the SHIM bus alone; the changes in jumps. The same events once with PITCH and MOD as listed, once with them at 0 (what a TYPE change does by itself) */
     {
@@ -449,7 +442,7 @@ int main(int argc, char **argv)
                    (int)st[0][e], (int)st[1][e], (int)steady[0]);
             ok &= type_ev ? st[0][e] <= st[1][e] * 3 / 2 + 50 : st[0][e] <= steady[0] * 3 / 2 + 8;
         }
-        expect("CLICK: PITCH UP -> DOWN -> BOTH -> UP, MOD 0 <-> 100 -> 0 over a held tone: no step above the steady render's x 1.5; a TYPE change away and back: no more than it is without", ok);
+        expect("CLICK: PITCH UP -> DOWN -> a stored BOTH (UP) -> UP, MOD 0 <-> 100 -> 0 over a held tone: no step above the steady render's x 1.5; a TYPE change away and back: no more than it is without", ok);
     }
     /* ---- TAILS */
     {
@@ -493,7 +486,7 @@ int main(int argc, char **argv)
                     ok &= wa[i] == wb[i];
             }
         }
-        expect("BUSES: bus A and bus B fed alike give the same return (PITCH UP / DOWN / BOTH, MOD 70)", ok);
+        expect("BUSES: bus A and bus B fed alike give the same return (PITCH UP / DOWN / a stored BOTH, MOD 70)", ok);
         {
             int32_t pl, pr;
             mix_scene(DM_SPLIT, scn_eng("ANALOG"), 9, 0, 1, 100, 4, 127);
@@ -585,14 +578,14 @@ int main(int argc, char **argv)
             if (str_eq(PAGES[i].title, "REVERB")) pr = i;
             if (str_eq(PAGES[i].title, "SHIMMER")) ps = i;
         }
-        expect("UI: SHIMMER is the page after REVERB (FX family, GLOBAL), K1 PITCH, K2 MOD, K3 and K4 empty; REVERB is still TYPE SIZE DAMP LOCUT",
-               ps == pr + 1u && PAGES[ps].fam == FAM_FX && PAGES[ps].scope == SC_GLOBAL && PAGES[ps].id[0] == G_SHPITCH && PAGES[ps].id[1] == G_SHMOD && PAGES[ps].id[2] == 0xFF &&
+        expect("UI: SHIMMER is the page after REVERB (GLO family, GLOBAL; 0.2.21: the global effects are GLO's pages), K1 PITCH, K2 MOD, K3 and K4 empty; REVERB is still TYPE SIZE DAMP LOCUT",
+               ps == pr + 1u && PAGES[ps].fam == FAM_GLO && PAGES[ps].scope == SC_GLOBAL && PAGES[ps].id[0] == G_SHPITCH && PAGES[ps].id[1] == G_SHMOD && PAGES[ps].id[2] == 0xFF &&
                PAGES[ps].id[3] == 0xFF && PAGES[pr].id[0] == G_RTYPE && PAGES[pr].id[1] == G_RSIZE && PAGES[pr].id[2] == G_RDAMP && PAGES[pr].id[3] == G_RLOCUT);
         d = page_desc(&PAGES[ps], 0, &vp);
-        ok = d && !strcmp(d->label, "PITCH") && d->max == 2 && d->def == 0 && vp == &song.g[G_SHPITCH] && !strcmp(d->names[0], "UP") && !strcmp(d->names[1], "DOWN") && !strcmp(d->names[2], "BOTH");
+        ok = d && !strcmp(d->label, "PITCH") && d->max == 1 && d->def == 0 && vp == &song.g[G_SHPITCH] && !strcmp(d->names[0], "UP") && !strcmp(d->names[1], "DOWN");
         d = page_desc(&PAGES[ps], 1, &vp);
         ok = ok && d && !strcmp(d->label, "MOD") && d->min == 0 && d->max == 100 && d->def == 0 && vp == &song.g[G_SHMOD];
-        expect("UI: PITCH is UP / DOWN / BOTH (default UP), MOD 0..100 % (default 0): a new unit sounds as 0.2.18", ok);
+        expect("UI: PITCH is UP / DOWN (default UP; 0.2.25: BOTH removed), MOD 0..100 % (default 0): a new unit sounds as 0.2.18", ok);
         expect("UI: both are SENDS cards (MODULES SENDS OFF hides them) and travel with a multi; G_COUNT did not move", mods_of(1, G_SHPITCH) == MODS_SENDS && mods_of(1, G_SHMOD) == MODS_SENDS &&
                MU_GLOBAL(G_SHPITCH) && MU_GLOBAL(G_SHMOD) && G_COUNT == 27);
         for (k = 0; k < 6u; k++) {
@@ -603,11 +596,11 @@ int main(int argc, char **argv)
             prv = page_next(-1);
             ui.page = (uint8_t)(k == 3u ? ps : pr);
             if (k == 3u) {
-                expect("UI: TYPE SHIM: REVERB's next page is SHIMMER, and SHIMMER's next wraps to the FX family's first page", nxt == ps && page_next(1) == page_first(FAM_FX) && page_visible(ps));
+                expect("UI: TYPE SHIM: REVERB's next page is SHIMMER, and SHIMMER's next is the master page that follows it in GLO (0.2.25: STEREO MASTER)", nxt == ps && page_next(1) == ps + 1u && str_eq(PAGES[ps + 1u].title, MASTER_PAGE_TITLE) && page_visible(ps));
             } else {
                 ok = nxt != ps && !page_visible(ps) && prv != ps;
-                expect(k == 0u ? "UI: TYPE ROOM: the page cycle skips SHIMMER (REVERB's next is the first FX page, the previous of it is REVERB)" :
-                       "UI: the same for SPRING, HALL, RESO, PLATE: SHIMMER is not in the page cycle", ok && nxt == page_first(FAM_FX));
+                expect(k == 0u ? "UI: TYPE ROOM: the page cycle skips SHIMMER (REVERB's next is the master page, the previous of it is REVERB)" :
+                       "UI: the same for SPRING, HALL, RESO, PLATE: SHIMMER is not in the page cycle", ok && nxt == ps + 1u);
             }
         }
         /* on SHIMMER when the TYPE leaves SHIM (the editor, a multi, MIDI): the screen goes to REVERB */

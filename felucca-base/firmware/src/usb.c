@@ -57,7 +57,11 @@ static uint8_t ep3tx[64] __attribute__((aligned(4)));
 static uint8_t ep3rx[64 + 4] __attribute__((aligned(4)));
 /* serial rings: in = host -> console (ISR writes), out = console -> host (ISR reads) */
 #define CI_N 256u
-#define CO_N 2048u
+#if (defined(DUELL_BENCH) && DUELL_BENCH) || (defined(DUELL_TEST_MODE) && DUELL_TEST_MODE)
+#define CO_N 2048u                   /* developer builds: a long output ring (the bench log lines and `memr` dumps) */
+#else
+#define CO_N 512u                    /* a product build with the console switched on by hand (FELUCCA_CDC=1; the product has none): a full ring only makes the console wait (console.c con_putc); a power of 2 */
+#endif
 static uint8_t cdc_in[CI_N], cdc_out[CO_N];
 static volatile uint32_t ci_w, ci_r, co_w, co_r;
 static struct {

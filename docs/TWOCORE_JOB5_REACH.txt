@@ -1,0 +1,96 @@
+DUELL TWO-CORE stage 1, job 5: what core 1 reaches from tc_job_run (docs/TWOCORE_STAGE1.md section 8.10).
+Found from the host build of tests/twocore_sim.c (clang -O0, one section per function and per object): every function and object that tc_job_run's code refers to,
+then those the reached code refers to, including the addresses of functions in tables (the engines' descriptors). A superset: a function reached only on a path the
+sounds never take is in it. Sizes are the host's (clang x86-64 -Os, nothing inlined); the device is about 0.76 of the code sizes (MIXSPLIT_NOTES section 3).
+A star marks a function that is already in the hot RAM set (tools/hot_fns.py). The files are the sources in firmware/src (a '?' is a function made by a macro).
+Regenerate by looking again at the calls after a change in part 2's stages: this list is not checked by a test.
+
+functions 283: host x86-64 clang -Os sizes 69433 B (device estimate x 0.76: 52769 B); in the hot RAM set already: 25 (10267 B)
+read-only tables 63: 13551 B; initialised data 102: 17034 B; zero-initialised state 47: 54128 B
+
+?: 7 functions, 696 B
+  pd_line_r5 133, pd_line_r6 141, pd_line_r7 159, pd_line_rx 158, pitch_inc 37
+
+core.h: 5 functions, 260 B
+  arp_mode 37, clock_src 29, duck_rls_ms 69, eq_hz_q8 117, root_of 8
+
+dsp.c: 21 functions, 984 B
+  amp_at 27, atg_inc 42, atg_pitch 32, blep 75, cents_inc 109, clamp 13, mulq15 9, mulq16 18, noise32 26, osc_pulse 54, osc_saw 23, osc_sine* 5, osc_tri 23, part_rand 64, sine_i* 47, soft_knee 47, softclip 63, tsvf_coef 43, tsvf_coef_k 114, tsvf_lp 115, voice_amp 35
+
+eng_analog.c: 11 functions, 3863 B
+  analog_desc 49, analog_note_on 44, analog_osc 944, analog_render 75, analog_render_f 13, analog_render_m 1229, analog_render_x 1109, analog_tap 178, analog_wave 71, atg_analog 138, atg_osc_b 13
+
+eng_fm6.c: 7 functions, 2153 B
+  atg_fm6 137, fm6_block 117, fm6_done 123, fm6_note_of* 130, fm6_note_on 201, fm6_render* 639, fm6_sync 806
+
+eng_formant.c: 5 functions, 2730 B
+  fmt_ratio 103, formant_note_on 114, formant_render 2173, fres_coef 164, vowel_at 176
+
+eng_lofi.c: 8 functions, 2143 B
+  lofi_amp 252, lofi_basic 95, lofi_body 1629, lofi_desc 49, lofi_note_on 59, lofi_render 32, lofi_render_m 11, step_period 16
+
+eng_noise.c: 5 functions, 2408 B
+  isqrt32 66, noise_desc 62, noise_inc 115, noise_note_on 51, noise_render 2114
+
+eng_phase.c: 20 functions, 3888 B
+  pd_bend 41, pd_bend1 29, pd_cos 46, pd_line 123, pd_line_bent 132, pd_line_bent1 132, pd_line_gen 125, pd_mix 806, pd_pair 91, pd_rez 45, pd_seg 20, pd_setup 581, pd_slope 16, pd_wave 5, pd_wave_i 67, pd_win 63, phase_note_on 8, phase_render 38, phase_render_0 555, phase_render_m 965
+
+eng_phys.c: 6 functions, 1728 B
+  phys_desc 38, phys_note_on 109, phys_render 1195, phys_reset 70, phys_slot_of 130, phys_symp_pitches 186
+
+eng_trio.c: 12 functions, 3629 B
+  trio_blep 45, trio_frac 31, trio_inc 14, trio_naive 80, trio_note_on 51, trio_pass 792, trio_ps 16, trio_render 1858, trio_ring 268, trio_st 20, trio_sync 440, trio_tri16 14
+
+eng_wave.c: 19 functions, 3703 B
+  wave_block 209, wave_note_on 144, wave_render* 1383, wv_blep 136, wv_dmix 75, wv_exp2 36, wv_level 85, wv_line* 382, wv_lvl* 83, wv_osc 182, wv_phases 242, wv_read 200, wv_read1 46, wv_read_sine 160, wv_s7 32, wv_speed 125, wv_table_of 19, wv_warp* 69, wv_warp_set 95
+
+eng_wheel.c: 8 functions, 2819 B
+  drw_level 75, drw_level_r 68, drw_part 19, drw_ratio 56, drw_tilt 216, wheel_block 918, wheel_note_on 354, wheel_render 1113
+
+engines.c: 2 functions, 2 B
+  retired_note_on 1, retired_render 1
+
+fm6_core.c: 32 functions, 4044 B
+  fm6_carriers* 51, fm6_core_render 354, fm6_env_advance 268, fm6_env_get 164, fm6_env_init 24, fm6_env_key 21, fm6_exp2 41, fm6_freq 49, fm6_lfo_delay 41, fm6_lfo_key 20, fm6_lfo_reset 157, fm6_lfo_sample 144, fm6_mant 50, fm6_note_compute* 704, fm6_note_done 187, fm6_note_init 328, fm6_note_key 80, fm6_note_logfreq 28, fm6_note_ol 227, fm6_op_fb* 160, fm6_op_run* 264, fm6_osc_base 149, fm6_penv_advance 101, fm6_penv_get 74, fm6_penv_init 51, fm6_penv_key 21, fm6_scale_curve 63, fm6_scale_level 57, fm6_scale_rate 55, fm6_scale_vel 43, fm6_scaleout 25, fm6_sin 43
+
+fx.c: 42 functions, 12616 B
+  acc_prep 67, bal_lvl 68, beat_samples 38, dist_follow 134, div_samples 114, duck_part 430, duck_run* 601, eq_design 766, eq_q28 42, eq_rest 78, eq_run* 272, ins_bits_step 27, ins_drive 563, ins_isqrt 66, ins_lofi 1255, ins_lpk 43, ins_mixq 27, ins_rest 83, ins_shape 196, ins_swept* 942, ins_tape_comp 40, ins_tape_sat 24, mix_spread* 1264, pan_follow 68, part_end 25, part_fx 683, part_lvl 48, part_mix 1076, part_rest 347, part_voice 363, pf_mix 30, pf_tri 21, pfx_mix 327, pfx_mode 78, pfx_mute 197, pfx_restart 99, pfx_snap 127, sp_knee 44, space_tap 326, track_dist* 399, track_eq 845, track_insert* 373
+
+libc.c: 1 functions, 34 B
+  rng 34
+
+mod.c: 11 functions, 2870 B
+  mod_begin 1498, mod_depth 177, mod_end 50, mod_gain 82, mod_key 24, mod_param 28, mod_part_put 171, mod_sh 22, mod_tsrc 239, mod_voice* 483, mod_voice_add* 96
+
+morph.c: 7 functions, 2561 B
+  morph_apply 1264, morph_begin 980, morph_cur 36, morph_dip 63, morph_end* 120, morph_stale 59, morph_wb 39
+
+params.c: 2 functions, 118 B
+  atgt_bits 105, esync_idx 13
+
+perform.c: 3 functions, 311 B
+  perf_mute 133, perf_mute_rest 14, perf_mute_sd 164
+
+phys_dsp.c: 22 functions, 7680 B
+  px_atan 137, px_clamp 13, px_csvf_coef 138, px_csvf_pass 154, px_exp2 157, px_fasttan 53, px_hermite 128, px_isqrt64 81, px_m 16, px_memb_block 854, px_modal_block 768, px_modal_exciter 556, px_modal_q 178, px_modal_run 860, px_period 18, px_rand 26, px_sin 154, px_stiff 111, px_string_block 1549, px_string_excite 547, px_string_run 1058, px_svf_coef 124
+
+phys_symp.c: 2 functions, 1510 B
+  px_symp_block 719, px_symp_run 791
+
+twocore.h: 1 functions, 175 B
+  tc_job_run 175
+
+twocore_run.c: 2 functions, 101 B
+  tc_ctx_hash 44, tc_job_refuse 57
+
+voice.c: 22 functions, 6407 B
+  atg_voice 181, env2_tick 166, env_tick 176, esync2_coef 27, esync_coef 27, esync_coefs 194, esync_one 197, lfo2_rand 32, lfo_rand 12, lfo_sync_inc 73, lfo_tick 360, lfo_wave_of 79, spread_clear* 35, spread_sum 18, track_lfo_tick 28, track_render 2437, trk_vmode 5, tune_get 280, uf_coef* 5, uf_edge 315, uf_run* 1531, uf_voice* 229
+
+read-only tables / constants
+  ATG_BITS 36, DIV48 7, DIV_DEN 6, DRW_FOLD_LIM 36, DRW_LV 18, DRW_REG 160, DRW_ROT_SPD 24, ENV_EXP 256, ENV_LIN 512, EQ_A 100, EQ_GK 3, EQ_K 100, EQ_KN 3, EQ_SA 100, ESYNC_UNITS 50, FM6_ALG 192, FM6_AMSENS 16, FM6_COARSE 128, FM6_DETUNE 256, FM6_EXP2 4100, FM6_EXPSCALE 33, FM6_FINE 400, FM6_LEVELLUT 20, FM6_LFO_DELTA 400, FM6_PENV_RATE 100, FM6_PENV_TAB 100, FM6_PMS 8, FM6_STATICS 308, FM6_UIORD 8, FM6_VELDATA 64, INS_BITS_STEP 512, INS_HOLD 16, LEVEL_Q12 256, LFO_INC 512, LSYNC_DIV 18, MG_ID 7, NOISE_SEQ 192, NOISE_TAPS 32, PHYS_CHORDS 42, PHYS_DETUNE 3, PHYS_GAIN 16, PH_A 66, PITCH_OCT 768, PX_MEMB_IDEAL 40, PX_MEMB_LOADED 40, PX_MEMB_M 10, SEMI_Q16 52, SINE 2050, SVF_G 256, TANH_Q15 514, TRIO_MIX 24, TRIO_SETS 160, VOWEL_B 15, VOWEL_F 30, WRAM 256, WV_LO 10, WV_SH 5, duck_rls_ms.T10 20, eq_hz_q8.SEMI 24, fm6_sync.SPREAD 6, lofi_body.ARPS 12, lofi_body.STEP_DUTY 4, mod_param.ID 39
+
+initialised data (tables with pointers, engine descriptors)
+  ANALOG_PRESETS 384, ANALOG_SUB 32, ANALOG_SYNC 32, ATG_DESC 128, ENGINES 120, ENG_ANALOG 376, ENG_FM6 376, ENG_FORMANT 376, ENG_LOFI 376, ENG_NOISE 376, ENG_PHASE 376, ENG_PHYS 376, ENG_RETIRED 376, ENG_TRIO 376, ENG_WAVE 376, ENG_WHEEL 376, FM6_PRESETS 256, FORMANT_PRESETS 128, GP 1088, LOFI_DCY 32, LOFI_PRESETS 160, LOFI_WAVNUM 32, NOISE_CLK 32, NOISE_LONG 32, NOISE_META 32, NOISE_PRESETS 128, N_ALLOC 16, N_AMODE 128, N_ANALOG_WAVE 56, N_ATG_ANALOG 72, N_ATG_FM6 72, N_ATG_NONE 72, N_ATG_TRIO 72, N_CHIP 40, N_CHRD 80, N_CLOCK 32, N_DCY 264, N_DIV 136, N_DKCRV 16, N_DKSRC 32, N_DMODE 32, N_DRW_PERC 56, N_DRW_REG 128, N_DRW_ROTR 24, N_ENGNAME 120, N_FM6_ALG 272, N_FM6_PATCH 360, N_FTYPE 24, N_GLMODE 16, N_GO 16, N_HOLD 24, N_ITYPE 88, N_LPOL 16, N_LSYNC 144, N_LTRIG 16, N_LWAVE 40, N_MDST 368, N_MSRC 120, N_NOISE_LONG 72, N_NOISE_META 72, N_NOISE_MODE 32, N_ONOFF 16, N_ORDER 16, N_PD_LINE 16, N_PD_WAVE 64, N_PD_WAVE2 72, N_PHYS_CHORD 72, N_PHYS_MODEL 32, N_PRIO 24, N_RARP 32, N_ROUTE 16, N_RTYPE 48, N_RWAVE 40, N_SCALE 128, N_SHP 16, N_SLOPE 24, N_TRIO_MODE 32, N_TRIO_WAVE 128, N_VOIC 40, N_VOICE 32, N_WRAM 136, N_WV_TABLE 232, PHASE_PRESETS 192, PHYS_DESC 256, PHYS_D_BEND 32, PHYS_D_BUZZ 32, PHYS_D_CHRD 32, PHYS_D_HARM 32, PHYS_D_SYMP 32, PHYS_PRESETS 288, TP 4064, TRIO_PRESETS 160, WAVE_PRESETS 288, WHEEL_PRESETS 160, duell_mode 1, memcmp 0, memcpy 0, memset 0, pf 336, rng_state 4, tune_key 2, wv_uname 27
+
+state (zero-initialised, read and written)
+  dist_live 2, dist_x 8, drw_t 272, drw_v 1472, duck_st 96, eng_mem 25776, eqs 336, fm6_eff 408, fm6_lfo 48, fm6_lfo_d 8, fm6_lfo_v 8, fm6_morph 8, fm6_patch 624, fm6_pgen 4, formant_nz 8, formant_used 1, ins 1160, midi_beat_samples 4, midi_bend_q8 16, midi_bend_target 16, midi_clock 72, mod_goff 28, mods_off 1, mph 10492, mwork 1016, pacc 2048, pacc_on 2, pan_g 16, pan_gv 2, pan_x 8, pfx_x 8, pscr 1032, root_g 2, song 88, sv 0, tc_ctx 40, tc_host_is_c1 4, tc_host_ld_hook 8, tc_host_live 4, tc_host_st_hook 8, tc_mb 128, trk 8832, tune_f 2, tune_u 2, wv_bver 2, wv_gen 8, wv_uver 0

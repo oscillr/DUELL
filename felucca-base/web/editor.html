@@ -366,7 +366,7 @@ const PUSH = new Set([CMD.CHANGED, CMD.RELOAD, CMD.STEP_CHANGED, CMD.TRACK_CHANG
 /* user preset bank: name 1..12 printable ASCII, a 16-step pattern of (note, flags 1 acc 2 slide 4 tie) */
 const UP = { NAME_MAX: 12, PAT: 16, LIST_MAX: 16 };
 const F = { INT: 0, PCT: 1, BIPCT: 2, TIME: 3, LFOHZ: 4, CUTOFF: 5, DB: 6, SEMI: 7, ENUM: 8, BPM: 9, NOTE: 10, ONOFF: 11, OCT: 12, STEPS: 13,
-  FILT: 23, FMODE: 24, LOCUT: 25 };   /* DUELL 0.2.9: the multimode filter's CUT (a dial step shown as its cutoff) and MODE (LP .. BP .. HP) */
+  FILT: 23, FMODE: 24, LOCUT: 25, KTRK: 27 };   /* DUELL 0.2.9: the multimode filter's CUT (a dial step shown as its cutoff) and MODE (LP .. BP .. HP) */
 
 const v14enc = (v) => { const u = Math.max(-8192, Math.min(8191, Math.round(v))) + 8192; return [u & 0x7F, (u >> 7) & 0x7F]; };
 const v14dec = (lo, hi) => (lo | (hi << 7)) - 8192;
@@ -789,7 +789,7 @@ function fmtValue(d, v) {
   const sign = (x) => (x > 0 ? "+" + x : String(x));
   switch (d.fmt) {
     case F.PCT: return [String(d.max === 100 ? v : Math.trunc((v * 100 + 63) / 127)), "%"];   /* 0..100 (SWG): the value */
-    case F.BIPCT: return [sign(Math.trunc(v * 100 / 64)), "%"];
+    case F.BIPCT: return [sign(Math.trunc(v * 100 / (v > 0 ? 63 : 64))), "%"];   /* 1.0: -100 at -64, +100 at +63, 0 in the middle */
     case F.TIME: {
       const ms10 = Math.round(10 * Math.pow(10000, (v & 127) / 127));
       if (ms10 < 100) return [(ms10 / 10).toFixed(1), "ms"];
@@ -808,6 +808,7 @@ function fmtValue(d, v) {
     case F.FILT: { const h = 30 * Math.pow(16000 / 30, (40 + 396 * Math.min(Math.max(v, 0), 82)) / 256 / 127);   /* core.h UF_STEPS: 82 the open end */
       return h < 1000 ? [String(Math.round(h)), "Hz"] : [(Math.trunc(h / 100) / 10).toFixed(1), "kHz"]; }
     case F.LOCUT: return v <= 0 ? ["OFF", ""] : [String(Math.round(20 * Math.pow(22.5, (v - 1) / 126))), "Hz"];   /* DUELL 0.2.14: the reverb's LOW CUT (G_RLOCUT 21) */
+    case F.KTRK: return [sign(Math.trunc((v * 100 + (v > 0 ? 31 : v < 0 ? -31 : 0)) / 63)), "%"];   /* DUELL 0.2.21: the multimode filter's KEY TRK, -63..+63 shown -100..+100 % */
     case F.FMODE: return [v <= 0 ? "LP" : v < 64 ? "LP>BP" : v === 64 ? "BP" : v < 127 ? "BP>HP" : "HP", ""];
     default: return [String(v), d.unit || ""];
   }
@@ -1757,7 +1758,7 @@ function makeMockDevice(opt = {}) {
       presets: [P("BRASS", [0, 0, 30, 90, 0, 0, 0, 0], [8, 70, 90, 40], 0, 6), P("ORGAN", [3, 0, 40, 0, 0, 0, 0, 0], [0, 127, 127, 30], 0, 6),
         P("STRING", [0, 4, 50, 40, 12, 0, 0, 0], [40, 90, 100, 70], 0, 5), P("RESO", [5, 0, 60, 60, 0, 0, 0, 0], [0, 70, 30, 60], 0, 1),
         P("BELL", [6, 0, 80, 50, 0, 0, 0, 0], [0, 95, 0, 90], 0, 7), P("WIRE", [4, 7, 70, 40, 7, 0, 0, 0], [10, 80, 80, 60], 0, 4)] },
-    { name: "LOFI", titles: ["CHIP", "MOTN"], edit: [E("CHIP", ["4BIT", "4B/2", "8BIT", "1BIT", "STEP"], 0), E("WAVE", ["PLS", "TRI", "SAW", "NOIS", "WRAM"], 0), D("DUTY", F.INT, 0, 127, 64),
+    { name: "LOFI", titles: ["LOFI", "MOTN"], edit: [E("BITS", ["4BIT", "4B/2", "8BIT", "1BIT", "STEP"], 0), E("WAVE", ["PLS", "TRI", "SAW", "NOIS", "WRAM"], 0), D("DUTY", F.INT, 0, 127, 64),
         D("CRSH", F.PCT, 0, 127, 0), D("SWP", F.PCT, 0, 127, 0), D("VIB", F.PCT, 0, 127, 0), E("ARP", ["OFF", "OCT", "MAJ", "MIN"], 0), D("TONE", F.PCT, 0, 127, 127)],
       presets: [P("PULSE LD", [0, 0, 32, 0, 0, 20, 0, 127], [0, 60, 90, 30], 1, 4), P("WAVE BASS", [1, 1, 0, 0, 0, 0, 0, 90], [0, 50, 70, 20], 1, 2),
         P("ARP 8BIT", [2, 0, 96, 0, 0, 0, 2, 110], [0, 60, 80, 40], 0, 13), P("WAVE LEAD", [0, 4, 92, 0, 0, 18, 0, 110], [0, 70, 90, 30], 1, 3),

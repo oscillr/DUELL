@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // DUELL editor: the unit's colour setting (MENU > COLOR, id 0 = the index into the firmware's UI_PALETTES) as CSS variables.
 // The palette table is L.PALETTES, written by tests/editordump.c from build/gen/ui_palettes.h, so the colours cannot drift from the unit.
-// No DOM here (the tests import it). part: 0 / 1 = a part's column (its own background, panel and accent), 2 = the global column and the page.
+// No DOM here (the tests import it). part: 0 / 1 = a part's column (its own background, panel and accent), 2 = the global column and the page (0.2.24: its accent is the palette's GLOBAL colour g, as the unit's global pages).
 import { L } from "./layout.js";
 
 const rgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
@@ -18,7 +18,7 @@ export function themeVars(i, part) {
   const p = palette(i), both = (a) => mix(a[0], a[1], 50), pick = (a) => (part === 2 ? both(a) : a[part]);
   const page = p.bgl, panel = pick(p.surf), card = pick(p.raise), line = pick(p.line), text = p.text;
   const base = part === 2 ? page : card;
-  const acc = part === 2 ? text : p.r[part * 2];
+  const acc = part === 2 ? (p.g || text) : p.r[part * 2];   // 0.2.24: the global column in the unit's GLOBAL colour (a third colour, apart from both parts')
   const dark = lum(page) < 0.4;
   return {
     "--bg": base, "--fg": text, "--dim": mix(base, text, L.PALETTES.DIM_PCT), "--line": mix(base, line, 55), "--panel": part === 2 ? mix(page, panel, 100) : panel,

@@ -20,7 +20,7 @@ enum { ED_INFO = 1, ED_GET, ED_SET, ED_DUMP, ED_DESC, ED_STEP_GET, ED_STEP_SET, 
        ED_UI_STATE, ED_UI_SET, ED_UI_PALETTES, ED_FAV_GET, ED_FAV_SET,
        ED_MOTION = 64, ED_BACKUP_LIST, ED_BACKUP_GET, ED_BACKUP_PUT };
 
-static uint8_t ed_out[664] __attribute__((section(".pool")));   /* (MOTION op 8: 128 records and their kinds, 653 bytes) */
+static uint8_t ed_out[664] SCRATCH_BSS;   /* (MOTION op 8: 128 records and their kinds, 653 bytes) */
 static uint32_t ed_n;
 
 static void ed_begin(uint32_t cmd)
@@ -73,7 +73,7 @@ static uint32_t ed_unpack7(const uint8_t *a, uint32_t na, uint8_t *out, uint32_t
     }
     return na ? 0u : n;
 }
-static uint8_t ed_smp_buf[256] __attribute__((aligned(4), section(".pool")));   /* a BACKUP_PUT piece, unpacked (was the sample
+static uint8_t ed_smp_buf[256] __attribute__((aligned(4))) SCRATCH_BSS;   /* a BACKUP_PUT piece, unpacked (was the sample
                                                                                      * upload's buffer too, 512) */
 
 /* the engine byte of DUMP / RELOAD / TRACK */
@@ -86,7 +86,7 @@ static uint32_t ed_eng(const track_t *t) { return t->eng_req % NENGINES; }
  * track was selected (v3: RELOAD and STEP_CHANGED carry the selected track). Pushes
  * go out only into a half-empty SysEx ring, so they never wait. */
 #define ED_PUSH_MAX 4u                                   /* frames per pass */
-#define ED_NV (P_COUNT + G_COUNT)
+#define ED_NV (P_COUNT + G_COUNT + NX)                   /* the track's parameters, the globals, then (scope 2) the track's extension slots */
 /* v4: the parameters of the tracks that are not selected which TRACK_CHANGED follows (the mixer) */
 static const uint8_t ED_TIDS[3] = {P_LEVEL, P_PAN, P_MUTE};
 #define ED_NT (NTRK * 3u)
@@ -102,7 +102,12 @@ static struct {
     uint32_t tpos;
 } ed_w;
 
-static int16_t *ed_val(uint32_t i) { return i < P_COUNT ? &TSEL->p[i] : &song.g[i - P_COUNT]; }
+static int16_t *ed_val(uint32_t i)
+{
+    return i < P_COUNT ? &TSEL->p[i] : i < P_COUNT + G_COUNT ? &song.g[i - P_COUNT] : &XV(TSEL, i - P_COUNT - G_COUNT);
+}
+/* the shadow's index of (scope, id): scope 0 the selected track's parameter, 1 a global, 2 an extension slot of the selected track */
+static uint32_t ed_idx(uint32_t scope, uint32_t id) { return scope == 0 ? id : scope == 1 ? P_COUNT + id : P_COUNT + G_COUNT + id; }
 static uint32_t ed_step_sig(const step_t *s)
 {
     return ((uint32_t)s->note[0] | (uint32_t)s->note[1] << 7 | (uint32_t)s->note[2] << 14 | (uint32_t)s->note[3] << 21) ^
@@ -126,10 +131,11 @@ static void ed_shadow(void)                              /* the editor is in syn
 /* the editor's own sound load on the selected track (PRESET, SET of G_ENGSEL): the editor re-reads DUMP after
  * the reply, so the shadow takes the load (engine, preset, the parameters it changed) and no RELOAD echoes back
  * (INFO 53 01 bit 1). A RELOAD already due before it (a load or selection on the device) still goes out. */
-typedef struct { int16_t p[P_COUNT]; uint8_t eng, preset, due; } ed_load_t;
+typedef struct { int16_t p[P_COUNT], x[NX]; uint8_t eng, preset, due; } ed_load_t;
 static void ed_load_before(ed_load_t *b)
 {
     memcpy(b->p, TSEL->p, sizeof b->p);
+    memcpy(b->x, &XV(TSEL, 0), sizeof b->x);
     b->eng = (uint8_t)ed_eng(TSEL);
     b->preset = TSEL->preset;
     b->due = sync_reload || b->eng != ed_w.eng || b->preset != ed_w.preset || song.sel != ed_w.sel;
@@ -145,8 +151,16 @@ static void ed_load_after(const ed_load_t *b)
     for (i = 0; i < P_COUNT; i++)                        /* the load's values; a pending push of another stays */
         if (TSEL->p[i] != b->p[i])
             ed_w.v[i] = TSEL->p[i];
+    for (i = 0; i < NX; i++)                             /* (scope 2 too: the editor reads the slots again after a load) */
+        if (XV(TSEL, i) != b->x[i])
+            ed_w.v[ed_idx(2, i)] = XV(TSEL, i);
 }
 static int ed_room(void) { return so_w - so_r + 8u <= SXQ / 2u; }
+static void ed_known_x(uint32_t k, uint32_t slot)         /* the editor's own change of trk[k]'s extension slot: no push (only the selected part is followed) */
+{
+    if (k == song.sel)
+        ed_w.v[ed_idx(2, slot)] = XV(&trk[k], slot);
+}
 static void ed_known(uint32_t k, uint32_t id)            /* the editor's own change of trk[k].p[id]: no push */
 {
     uint32_t j;
@@ -203,8 +217,8 @@ static void ed_sync(void)                                /* main loop */
         ed_w.v[k] = v;
         ed_w.t[k] = (uint16_t)now;
         ed_begin(ED_CHANGED);
-        ed_b(k < P_COUNT ? 0u : 1u);
-        ed_b(k < P_COUNT ? k : k - P_COUNT);
+        ed_b(k < P_COUNT ? 0u : k < P_COUNT + G_COUNT ? 1u : 2u);
+        ed_b(k < P_COUNT ? k : k < P_COUNT + G_COUNT ? k - P_COUNT : k - P_COUNT - G_COUNT);
         ed_v(v);
         ed_send();
         n++;
@@ -232,7 +246,8 @@ static void ed_sync(void)                                /* main loop */
 /* descriptor of parameter id of track t: the engine parameters of the engine it asked for
  * (t->engine follows in the audio ISR, after a short fade) */
 static const param_desc_t *ed_tdesc(const track_t *t, uint32_t id) { return param_desc_of(t->eng_req % NENGINES, id); }
-/* descriptor and value slot of (scope, id): scope 0 = the selected track, 1 = global */
+/* descriptor and value slot of (scope, id): scope 0 = the selected track, 1 = global, 2 = an extension slot of the selected track (id 0 .. NX-1, ext.h: XV;
+ * the descriptor is the slot's, CYCLE's RISE / FALL as note values while its SYNC is on) */
 static const param_desc_t *ed_desc(uint32_t scope, uint32_t id, int16_t **vp)
 {
     if (scope == 0 && id < P_COUNT) {
@@ -243,7 +258,20 @@ static const param_desc_t *ed_desc(uint32_t scope, uint32_t id, int16_t **vp)
         *vp = &song.g[id];
         return &GP[id];
     }
+    if (scope == 2 && id < NX) {
+        *vp = &XV(TSEL, id);
+        return xdesc(TSEL, id);
+    }
     return 0;
+}
+/* a SET to extension slot k of t (the stored value v already clamped by the caller): the setter the knobs use. LINK converts CUTOFF 2 between OFFSET and CUTOFF (chain_f2.c);
+ * every other slot is a plain store */
+static void ed_xput(track_t *t, uint32_t k, int32_t v)
+{
+    if (k == X_LINK)
+        twin_link_set(t, (int)v);
+    else
+        XV(t, k) = (int16_t)v;
 }
 
 /* a step as STEP_SET / TRACK_STEP send it (na bytes): n, 4 notes, time, flags, vel, then (v5) three bytes that
@@ -302,6 +330,7 @@ static int ed_flash_stop(void)
 #include "editor_fm6.c"
 #include "editor_menu.c"
 #include "editor_learn.c"                    /* 1.5: MIDI LEARN's map (cmds 78, 79) */
+#include "editor_map.c"                      /* DUELL: the MIDI MAP (cmds 85..88; INFO 4B 01 1) */
 #include "editor_erase.c"                    /* DUELL 0.2.2: ERASE_ALL (cmd 80) */
 
 /* MOTION's reply: the records of track k as (step, id, v14), a lock's id without its MOTION_LOCK bit (a 7-bit SysEx
@@ -341,7 +370,7 @@ static int ed_args_ok(uint32_t cmd, const uint8_t *a, uint32_t n)
         return !n;
     case ED_GET: case ED_DESC: case ED_PRESET: case ED_PROJECT: case ED_UP_LIST:
     case ED_TRACK_PARAM:
-        return n == 2u || (cmd == ED_TRACK_PARAM && n == 4u);
+        return n == 2u || (cmd == ED_TRACK_PARAM && (n == 3u || n == 4u || n == 5u));   /* (3, 5: with a scope byte last, 0 or 2) */
     case ED_SET:
         return n == 4u;
     case ED_STEP_GET: case ED_NAMES: case ED_SMP_BEGIN: case ED_SMP_ERASE:
@@ -391,6 +420,7 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
     if (ed_fm6_handle(cmd, a, na)) { ed_send(); return; }
     if (ed_menu_handle(cmd, a, na)) { ed_send(); return; }
     if (ed_learn_handle(cmd, a, na)) { ed_send(); return; }
+    if (ed_map_handle(cmd, a, na)) { ed_send(); return; }
     if (ed_erase_handle(cmd, a, na)) { ed_send(); return; }
     switch (cmd) {
     case ED_MOTION: {
@@ -423,9 +453,11 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
         ed_b(0);                                           /* v6: song rows (DUELL: none, no song mode) */
         ed_b(0x55); ed_b(1); ed_b(ed_ui_caps());             /* tagged preferences v1: commands 34..38 */
         ed_b(0x4d); ed_b(1); ed_b(64); ed_b(1);   /* motion + chance v1 (64: what it said before 1.2; 41 01 has the real count) */
-        ed_b(0x42); ed_b(1); ed_b(31); /* bounded full-backup read + restore; bit 2 (DUELL 0.2.14): multis 13..20 and pattern slots 21..23 are in it;
+        ed_b(0x42); ed_b(1); ed_b(63); /* bounded full-backup read + restore; bit 2 (DUELL 0.2.14): multis 13..20 and pattern slots 21..23 are in it;
                                          * bit 3 (value 8): the user wavetables 24..26 are in it, and cmds 81..83 (editor_wtab.c);
-                                         * bit 4 (value 16, DUELL 0.2.15): the patch store's chunks 6..15 are backup ids 27..31 and 35..39 */
+                                         * bit 4 (value 16, DUELL 0.2.15): the patch store's chunks 6..15 were backup ids 27..31 and 35..39 (gone in job A: see bit 5);
+                                         * bit 5 (value 32, the cloud plan's job A): the patch store is carried as LOGICAL records, one patch at a time: object id 40 plus a slot byte,
+                                         * LIST pages of the saved patches (editor_backup.c); the ids 6, 7, 9..12, 27..31 and 35..39 are no longer listed */
         ed_b(0x46); ed_b(1); ed_b(FM6_NFACTORY); ed_b(0);   /* FM6 patches: cmds 68..71 (no bank since 1.0.3) */
         ed_b(0x53); ed_b(1); ed_b(3);   /* live sync: bit 0 WATCH while on keeps the shadow, bit 1 no RELOAD echo */
         ed_b(0x50); ed_b(1); ed_b(3);   /* FM6 patches v2: bit 0 no bank (SLOT F1..F8, 8 OWN), bit 1 user preset
@@ -439,6 +471,8 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
         ed_b(0x43); ed_b(1); ed_b(ML_N);   /* 1.5: MIDI LEARN's map (cmds 78, 79; editor_learn.c) */
         ed_b(0x58); ed_b(1); ed_b(UP_SLOTS & 127u); ed_b(UP_SLOTS >> 7);   /* DUELL 0.2.15: the patch store's capacity (all of them always fit), 14 bit */
         ed_b(0x5A); ed_b(1); ed_b(1);   /* DUELL 0.2.19: bit 0 = PATCH_RAW (cmd 84, editor_patchraw.c): a slot's stored record read and written whole */
+        ed_b(0x59); ed_b(1); ed_b(NX);  /* cloud plan job I: scope 2 (GET, SET, DESC, CHANGED, TRACK_PARAM's scope byte): the extension slots 0 .. NX-1 (ext.h) */
+        ed_b(0x4B); ed_b(1); ed_b(1);   /* DUELL: bit 0 = the MIDI MAP, MAP_GET .. MAP_RESET (cmds 85..88, editor_map.c) */
         break;
     case ED_GET:
     case ED_SET:
@@ -450,15 +484,25 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
                 ed_load_before(&b);
                 set_engine((uint32_t)clamp(ed_rv(a + 2), 0, NENGINES - 1));
                 ed_load_after(&b);
+            } else if (a[0] == 2) {                       /* an extension slot: clamped to its descriptor, then the knobs' setter (ed_xput) */
+                if (d->max > d->min)
+                    ed_xput(TSEL, a[1], clamp(ed_rv(a + 2), d->min, d->max));
             } else if (d->max > d->min) {
-                *vp = (int16_t)clamp(ed_rv(a + 2), d->min, d->max);
+                if (a[0] == 0 && a[1] == P_TWTYPE)       /* TWIN TYPE: COMB is refused on WAVE and PHYS, entering or leaving COMB gives CUTOFF 2 and RES 2 the new kind's defaults (chain_f2.c) */
+                    twin_type_set(TSEL, clamp(ed_rv(a + 2), d->min, d->max));
+                else
+                    *vp = (int16_t)clamp(ed_rv(a + 2), d->min, d->max);
+                if (a[0] == 0 && a[1] == P_DKSRC)
+                    duck_set_part(song.sel);                /* DUCK SRC PART on one part only (params.c) */
                 if (a[0] == 0) {
                     (void)motion_capture(TSEL, a[1], *vp);
                     load_extend(TSEL);                      /* (ui.c undo: an audition's values after G_ENGSEL) */
+                    if (mod_is_src(a[1]) && !*vp)
+                        mod_compact(TSEL);                  /* (0.2.24: a matrix SRC set to OFF: the slots after it move up) */
                 }
             }
             ui.force = 1;
-            ed_w.v[a[0] ? P_COUNT + a[1] : a[1]] = *vp;   /* the editor's own change: no push */
+            ed_w.v[ed_idx(a[0], a[1])] = *vp;             /* the editor's own change: no push (a value the setter moved besides it, CUTOFF 2 by LINK, is pushed) */
         }
         ed_b(a[0]);
         ed_b(a[1]);
@@ -754,22 +798,36 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
         ed_step_reply(&seq_steps(&trk[a[0]])[a[1]]);
         break;
     }
-    case ED_TRACK_PARAM: {                                 /* track, id [, v14] -> track, id, v14 */
+    case ED_TRACK_PARAM: {                                 /* track, id [, v14] [, scope] -> track, id, v14 [, scope] */
         track_t *t;
-        if (na < 2u || a[0] >= NTRK || a[1] >= P_COUNT)
+        uint32_t sc = (na & 1u) ? a[na - 1u] : 0u;         /* na 3 or 5: the scope byte last. 2 = an extension slot (id 0 .. NX-1) of that track, otherwise as 0 */
+        if (na < 2u || a[0] >= NTRK || (sc != 0u && sc != 2u) || a[1] >= (sc == 2u ? NX : P_COUNT))
             return;
         t = &trk[a[0]];
-        d = ed_tdesc(t, a[1]);
+        d = sc == 2u ? xdesc(t, a[1]) : ed_tdesc(t, a[1]);
+        vp = sc == 2u ? &XV(t, a[1]) : &t->p[a[1]];
         if (na >= 4u) {
-            if (d->max > d->min)                           /* as SET: clamped; a fixed value stays */
-                t->p[a[1]] = (int16_t)clamp(ed_rv(a + 2), d->min, d->max);
-            (void)motion_capture(t, a[1], t->p[a[1]]);
-            ed_known(a[0], a[1]);
+            if (d->max > d->min) {                         /* as SET: clamped; a fixed value stays */
+                if (sc == 2u)
+                    ed_xput(t, a[1], clamp(ed_rv(a + 2), d->min, d->max));
+                else if (a[1] == P_TWTYPE)
+                    twin_type_set(t, clamp(ed_rv(a + 2), d->min, d->max));
+                else
+                    t->p[a[1]] = (int16_t)clamp(ed_rv(a + 2), d->min, d->max);
+            }
+            if (sc == 2u)
+                ed_known_x(a[0], a[1]);                    /* (no MOTION for the slots: they have no old id) */
+            else {
+                (void)motion_capture(t, a[1], t->p[a[1]]);
+                ed_known(a[0], a[1]);
+            }
             ui.force = 1;
         }
         ed_b(a[0]);
         ed_b(a[1]);
-        ed_v(t->p[a[1]]);
+        ed_v(*vp);
+        if (na & 1u)
+            ed_b(sc);                                      /* (the scope byte is echoed when it was sent) */
         break;
     }
     default:

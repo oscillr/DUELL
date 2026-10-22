@@ -75,7 +75,7 @@ static void fresh(uint32_t e, uint32_t pi)        /* the boot state (no FX tails
     mod_seed = 0x2545F491u;
     song.playing = 0;
     memset(trk, 0, sizeof trk);
-    memset(&mod, 0, sizeof mod);
+    memset(&trk[0].mdw, 0, sizeof trk[0].mdw);
     memset(&motion, 0, sizeof motion);
     host_tracks_init();
     for (k = 0; k < NPART; k++)
@@ -382,14 +382,14 @@ static void test_stored(void)
     for (k = 0; k < NSHOWN; k++)
         ok &= b.t[k].p[P_ITYPE] == (int16_t)(k * 2u + 1u) && b.t[k].p[P_IMIX] == (int16_t)(100 + k) &&
               b.t[k].p[P_IC] == (int16_t)(30 + k);
-    ok &= 68u + PROJ_NTRK * (P_COUNT + 2u + NSTEP * 9u) + sizeof(chain_config_t) + sizeof(motion_store_t) + 1618u == PROJ_FM6_OFF;
-    ck("project: FUN11 round trip of the INSERT (127 parameters, its motion; parts A B), 1618 spare bytes", ok);
+    ok &= 68u + PROJ_NTRK * (P_COUNT + 2u + NSTEP * 9u) + sizeof(motion_store_t) + 1702u == PROJ_FM6_OFF;
+    ck("project: FUN11 round trip of the INSERT (127 parameters, its motion; parts A B), 1702 spare bytes", ok);
     /* user presets: a record keeps them (0.2.14: records of fewer parameters are no longer mapped by count) */
     memset(&r, 0, sizeof r);
     r.used = UP_USED; r.ver = UP_VER; r.engine = 0; r.np = P_COUNT;
-    for (i = 0; i < P_COUNT; i++) up_set_value(&r, i, trk[3].p[i]);
+    for (i = 0; i < P_COUNT; i++) up_set_value(&r, i, trk[1].p[i]);
     up_values(&r, v);
-    ok = v[P_ITYPE] == 7 && v[P_IA] == 13 && v[P_IMIX] == 103;
+    ok = v[P_ITYPE] == 3 && v[P_IA] == 11 && v[P_IMIX] == 101;
     ck("user presets: the INSERT's values kept", ok);
     /* the pages: INSERT and INSERT 2 after FX (DUELL: the SLICER is removed), then EQ 1, the labels and values per TYPE */
     {
@@ -1117,7 +1117,8 @@ static void test_dist(void)
 /* ------------------------------------------------------- BITS curve, old stores --- */
 /* DUELL 0.2.14: INS A of CRUSH is the detent of 1 .. 16 bits (ins_bits.h). What was stored before held A as (A >> 3) + 1 bits; those stores
  * (a project of revision 0, a multi of version 2, a patch without PTF_CB) are no longer read, nothing converts them: here they are refused.
- * The factory multis are rewritten as version 3, then 4 (tools/factory_multis): M04's CRUSH part holds the detent of the bit count it always played. */
+ * The factory multis are rewritten as version 3, then 4 (tools/factory_multis): WIRED SNAIL's CRUSH part (M04 until 0.2.22, M10 since 0.2.23, the record kept)
+ * holds the detent of the bit count it always played. */
 static int32_t old_crush(int32_t v, int32_t a)       /* the quantiser of before 0.2.14 */
 {
     uint32_t sh = 15u - (uint32_t)(clamp(a, 0, 127) >> 3);
@@ -1155,23 +1156,27 @@ static void test_bits_migrate(void)
         memcpy(st.raw + PROJ_STORE_SIZE - 4u, &sum, 4);
     }
     ck("project: byte 67 = 0 (before 0.2.14, the hash right): refused, not converted", !proj_import(&b, &st, sizeof st));
-    /* 3. a multi: version 5 as written loads as it is; a version 4 (0.2.16 .. 0.2.18: one level), 3 (0.2.14 / 0.2.15: the PING switch) or 2 record is refused; the factory multis (version 5) load */
+    /* 3. a multi: version 7 as written loads as it is; a version 6 (before the extension slots), a version 5, a version 4 (0.2.16 .. 0.2.18: one level), 3 (0.2.14 / 0.2.15: the PING switch) or 2 record is refused; the factory multis (version 7) load */
     {
         static uint8_t rec[MU_REC_MAX + 8u], blk[NSHOWN][MB_N], amt[NSHOWN], set[6];
         uint32_t len, cut = 0, crush_parts = 0;
         static project_t q;
         memset(blk, 0, sizeof blk);
         len = mu_pack(rec, &a, blk, &cut);
-        ok = rec[0] == MU_VER && MU_VER == 5u && mu_unpack(&q, blk, amt, set, rec, len) && q.t[0].p[P_IA] == 60 && !memcmp(&q.motion, &a.motion, sizeof a.motion);
+        ok = rec[0] == MU_VER && MU_VER == 7u && mu_unpack(&q, blk, amt, set, rec, len) && q.t[0].p[P_IA] == 60 && !memcmp(&q.motion, &a.motion, sizeof a.motion);
         rec[0] = 2u;
         ok &= !mu_unpack(&q, blk, amt, set, rec, len);
         rec[0] = 3u;
         ok &= !mu_unpack(&q, blk, amt, set, rec, len);
         rec[0] = 4u;
         ok &= !mu_unpack(&q, blk, amt, set, rec, len);
-        rec[0] = 5u; rec[1] = (uint8_t)(P_COUNT - 1u);
+        rec[0] = 5u;
         ok &= !mu_unpack(&q, blk, amt, set, rec, len);
-        ck("multi: version 5 as written loads as it is; a version 4, 3 or 2 record, or one of another P_COUNT, is refused", ok);
+        rec[0] = 6u;
+        ok &= !mu_unpack(&q, blk, amt, set, rec, len);
+        rec[0] = 7u; rec[1] = (uint8_t)(P_COUNT - 1u);
+        ok &= !mu_unpack(&q, blk, amt, set, rec, len);
+        ck("multi: version 6 as written loads as it is; a version 5 (0.2.19 .. 0.2.21: DUCK SRC 2..17 were channels), 4, 3 or 2 record, or one of another P_COUNT, is refused", ok);
         ok = 1;
         for (k = 0; k < DF_N; k++) {
             static project_t o;
@@ -1180,11 +1185,11 @@ static void test_bits_migrate(void)
             for (t = 0; t < NSHOWN; t++)
                 if (o.t[t].p[P_ITYPE] == IT_CRUSH) {
                     printf("insert:   factory multi #%u part %u: INSERT CRUSH, A %d = %s bits\n", k, t + 1u, o.t[t].p[P_IA], N_IBITS[o.t[t].p[P_IA]]);
-                    ok &= o.t[t].p[P_IA] == INS_BITS_KNOT[7];     /* M04's: the old A 60 (8 bits), as the loader moved it */
+                    ok &= o.t[t].p[P_IA] == INS_BITS_KNOT[7];     /* WIRED SNAIL's: the old A 60 (8 bits), as the loader moved it */
                     crush_parts++;
                 }
         }
-        ck("multi: the factory multis (version 5) load; M04's CRUSH part is the 8-bit detent it played before", ok && crush_parts == 1u);
+        ck("multi: the factory multis (version 6) load; WIRED SNAIL's CRUSH part (M10) is the 8-bit detent it played before", ok && crush_parts == 1u);
     }
     /* 4. a stored patch: written now it carries PTF_CB; one without (before 0.2.14) is no record */
     {
@@ -1204,7 +1209,7 @@ static void test_bits_migrate(void)
         ck("patch: written now (flag 128), CRUSH's A comes back as it is", ok);
         if (p) {                                          /* the chunk as a firmware before 0.2.14 left it: the record without the flag */
             uint32_t c = pt_dir[9].ch, rl = pt_dir[9].len;
-            pt_work[0] = (uint8_t)PT_MAGIC; pt_work[1] = (uint8_t)(PT_MAGIC >> 8); pt_work[2] = 1; pt_work[3] = 0;
+            pt_work[0] = (uint8_t)PT_MAGIC; pt_work[1] = (uint8_t)(PT_MAGIC >> 8); pt_work[2] = PT_VER; pt_work[3] = 0;
             memcpy(pt_work + PT_HDR, p, rl);
             pt_work[PT_HDR + 4u] &= (uint8_t)~PTF_CB;
             pt_sv(c, pt_work, PT_HDR + rl);

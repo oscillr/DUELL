@@ -34,7 +34,7 @@ static void reset(track_t *t, int arp, int hold)
     t->p[P_VOICE] = V_POLY;
     t->p[P_AMODE] = (int16_t)arp;                  /* UP when on */
     t->p[P_AOCT] = 1;
-    t->p[P_QUANT] = 0;
+    t->p[P_KTRK] = 0;
     t->p[P_TRANS] = 0;
     t->p[P_AHOLD] = (int16_t)hold;
     events_block(CTL);                             /* (the ISR sees both) */

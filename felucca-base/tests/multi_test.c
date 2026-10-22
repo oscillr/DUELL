@@ -116,14 +116,18 @@ static uint32_t pr_key(uint32_t note)                /* the key whose note (a po
             return k;
     return 27u;
 }
+static int pr_recall;                               /* (0.2.23: the load with MODE RECALL ON: the multi's split applied) */
 static void play_run(uint32_t slot, uint32_t keys, uint32_t hold_blocks, uint32_t after_blocks, int play, pr_t *r)
 {
     static int32_t out[2 * CTL];
     uint8_t prev[NSHOWN][128], cur[128];
     uint32_t b, pi, v, n;
     power_cycle();
-    duell_mode_req = DM_LAYER;                       /* (the owner's unit: LAYER; MODE RECALL OFF) */
+    duell_mode_req = DM_LAYER;                       /* (the owner's unit: LAYER; MODE RECALL OFF, unless pr_recall) */
+    if (pr_recall)
+        ui_prefs2 |= PREF_MODE_RECALL >> 16;
     project_load(slot);
+    ui_prefs2 &= (uint8_t)~(PREF_MODE_RECALL >> 16);
     memset(prev, 0, sizeof prev);
     memset(r, 0, NSHOWN * sizeof *r);
     for (pi = 0; pi < NSHOWN; pi++)
@@ -191,28 +195,33 @@ static void keys_drive(void)
     uint32_t c4 = pr_key(60), d4 = pr_key(62), e4 = pr_key(64), g4 = pr_key(67), k, ok, sec = (uint32_t)(FS / CTL);
     }
     ck("(the keys C4 D4 E4 G4 found on a power-on's keyboard)", c4 < 27u && d4 < 27u && e4 < 27u && g4 < 27u);
-    /* the bass and house multis: one key, 2 s, then 1 s let go, the transport stopped (0.2.13 slots: M08 GARGLE ACID, M01 REESE SWAMP, M09 NIGHT ORGAN) */
-    static const uint8_t BASS[3] = {7, 0, 8}, AMB[3] = {6, 1, 9};
+    /* the grooves (0.2.24 slots): M01 REESE SWAMP, M02 NIGHT ORGAN, M04 DUB CHORD, M15 WOOD & SKIN (arps on both parts, or part 1
+     * on the key and part 2 an arp: M14 GARGLE ACID (the owner's, 0.2.22: the growl bass two octaves down, TRN -24), M01; 0.2.25: M13 is the owner's COLD CHAPEL, a pad, below; BASILDON is spare): one key, 2 s, then
+     * 1 s let go, the transport stopped. P1[j]: part 1's one note at once (part 1 plays the key itself), 0: part 1 is an arp too */
+    static const uint8_t GRV[5] = {0, 1, 3, 13, 14}, P1[5] = {36, 0, 0, 36, 0}, AMB[4] = {4, 5, 6, 12};
+    static const char *const GN[5] = {"M01 REESE SWAMP", "M02 NIGHT ORGAN", "M04 DUB CHORD", "M14 GARGLE ACID", "M15 WOOD & SKIN"};
     uint32_t j;
-    for (j = 0; j < 3u; j++) {
-        k = BASS[j];
+    char line[160];
+    for (j = 0; j < 5u; j++) {
+        k = GRV[j];
         play_run(k, 1u << c4, 2u * sec, sec, 0, r);
         ok = !song.playing && r[0].n >= 1u && r[1].n >= 4u && r[0].late == 0u && r[1].late == 0u && !r[0].gated_after && !r[1].gated_after;
-        if (k != 8u)                                 /* (M08, M01: part 1 plays the key itself, at once, one note for the hold) */
-            ok &= r[0].first <= 1u && r[0].n == 1u && r[0].note[0] == 60u - 24u;
-        else                                         /* (M09: the organ's chord stabs, part 1 an arp too: off-beat 1/8) */
-            ok &= r[0].n >= 4u && r[0].first < sec / 2u;
+        if (k == 1u || k == 3u)                      /* (0.2.25: the owner's edited M02 NIGHT ORGAN and M04 DUB CHORD: an arp may finish its figure after the release; not changed) */
+            ok = !song.playing && r[0].n >= 1u && r[1].n >= 4u;
+        if (P1[j])                                   /* (part 1 plays the key itself (TRN), at once, one note for the hold) */
+            ok &= r[0].first <= 1u && r[0].n == 1u && r[0].note[0] == P1[j];
+        else                                         /* (part 1 an arp too) */
+            ok &= r[0].n >= 2u && r[0].first < sec / 2u;
         ok &= r[1].first < sec / 2u;                 /* (part 2's arp from the key-down, on the internal clock) */
         printf("multi:   M%02u C4 held 2 s, stopped: part 1 %u note-ons (first in block %u), part 2 %u (first in block %u); after the release %u / %u\n",
                k + 1u, r[0].n, r[0].first, r[1].n, r[1].first, r[0].late, r[1].late);
-        ck(k == 7u ? "0.2.12 M08 GARGLE ACID, LAYER, STOPPED: a key plays both parts (bass at once, the acid arp's steps), the release ends both"
-           : k == 0u ? "0.2.12 M01 REESE SWAMP: the same (the Reese at once, the 8-step acid arp), the release ends both"
-                     : "0.2.12 M09 NIGHT ORGAN: the organ stabs and the bass arp from the key (no PLAY), the release ends both", ok);
+        snprintf(line, sizeof line, (k == 1u || k == 3u) ? "%s, LAYER, STOPPED: a key plays both parts (no PLAY; the owner's edit)" : "%s, LAYER, STOPPED: a key plays both parts (no PLAY), the release ends both", GN[j]);
+        ck(line, ok);
         if (getenv("PR_DBG")) {
-            uint32_t i, j;
-            for (j = 0; j < 2u; j++) {
-                printf("part %u:", j + 1u);
-                for (i = 0; i < r[j].n && i < PR_MAX; i++) printf(" %u@%u", r[j].note[i], r[j].blk[i]);
+            uint32_t i, jj;
+            for (jj = 0; jj < 2u; jj++) {
+                printf("part %u:", jj + 1u);
+                for (i = 0; i < r[jj].n && i < PR_MAX; i++) printf(" %u@%u", r[jj].note[i], r[jj].blk[i]);
                 printf("\n");
             }
         }
@@ -223,20 +232,99 @@ static void keys_drive(void)
         ck("  PLAY: no key, nothing plays (no stored pattern of its own); a key with PLAY plays what it plays stopped",
            z[0].n == 0u && z[1].n == 0u && pr_shifted(&r[0], &p[0], 2) && pr_shifted(&r[1], &p[1], 2));
     }
-    /* the ambient and cinematic ones: a chord, then let go: both parts sound from the chord and stay latched (HOLD ALL) */
-    for (j = 0; j < 3u; j++) {                       /* (0.2.13 slots: M07 COLD CHAPEL, M02 WHISPER TIDE, M10 FINAL REEL) */
+    /* the pads (M05 WHISPER TIDE, M06 TINE STRINGS, M07 FINAL REEL, M13 COLD CHAPEL (the owner's original, 0.2.25: the bowl an arp on the latched chord)): a chord, then let go: both parts sound from the chord and stay latched (HOLD ALL);
+     * WHISPER TIDE's choir is a latched arp that goes on after the release (0.2.25: M06 is the owner's TINE STRINGS, keyed, nothing latched),
+     * 0.2.25: M07 is the owner's refined FINAL REEL, HOLD OFF on both parts: keyed, nothing latched, as M06 */
+    for (j = 0; j < 4u; j++) {
         k = AMB[j];
         play_run(k, chord, sec, 3u * sec, 0, r);
-        ok = r[0].n >= 3u && r[0].first <= 1u && r[1].n >= 1u && r[0].gated_after >= 3u && r[1].late == (k == 9u ? 0u : r[1].late) &&
-             (k == 9u ? r[1].gated_after >= 3u : r[1].late >= 1u);
+        ok = r[0].n >= 3u && r[0].first <= 1u && r[1].n >= 1u && r[0].gated_after >= 3u &&
+             ((k == 4u || k == 12u) ? r[1].late >= 1u : r[1].gated_after >= 3u);
+        if (k == 5u || k == 6u)                      /* (0.2.25: the owner's M06 TINE STRINGS and M07 FINAL REEL: both parts keyed, nothing latched (HOLD OFF), the release ends both) */
+            ok = r[0].n >= 3u && r[0].first <= 1u && r[1].n >= 3u && r[0].gated_after == 0u && r[1].gated_after == 0u && r[1].late == 0u;
         printf("multi:   M%02u C4 E4 G4 1 s, 3 s let go: part 1 %u note-ons, %u notes still gated; part 2 %u (%u after the release), %u gated\n",
                k + 1u, r[0].n, r[0].gated_after, r[1].n, r[1].late, r[1].gated_after);
-        ck(k == 6u ? "0.2.12 M07 COLD CHAPEL: a chord latches the pad, the bowl arpeggiates it slowly and goes on after the release"
-           : k == 1u ? "0.2.12 M02 WHISPER TIDE: a chord latches the pad, the choir picks its notes and goes on after the release"
-                     : "0.2.12 M10 FINAL REEL: a chord latches the brass and the strings (both keyed, no arp)", ok);
+        ck(k == 4u ? "M05 WHISPER TIDE: a chord latches the pad, the choir picks its notes and goes on after the release"
+           : k == 12u ? "M13 COLD CHAPEL (the owner's original): a chord latches the pad, the bowl walks up the chord and goes on after the release"
+           : k == 5u ? "M06 TINE STRINGS (the owner's, 0.2.25): a chord plays the strings and the tines, nothing latched, the release ends both"
+                     : "M07 FINAL REEL (the owner's, 0.2.25): a chord plays the brass and the strings, nothing latched (HOLD OFF), the release ends both", ok);
         play_run(k, 0u, 2u * sec, 0u, 1, z);
         ck("  PLAY without a key: nothing plays", z[0].n == 0u && z[1].n == 0u);
     }
+    /* M02 NIGHT ORGAN and M03 PAD SPLIT with MODE RECALL ON (0.2.25: the owner's saved records have no split any more, SPLIT 0: a key below F4 and one
+     * from F4 up both play both parts; until 0.2.24 the split at F4 gave part 1 alone below and part 2 alone above); each part adds its own TRN */
+    {
+        uint32_t e4 = pr_key(64), f4 = pr_key(65), sp;
+        static const uint8_t SPS[2] = {1, 2};
+        for (sp = 0; sp < 2u; sp++) {
+            pr_recall = 1;
+            play_run(SPS[sp], 1u << e4, sec, sec / 2u, 0, r);
+            play_run(SPS[sp], 1u << f4, sec, sec / 2u, 0, q);
+            pr_recall = 0;
+            printf("multi:   M%02u split: E4 part 1 %u / part 2 %u note-ons; F4 part 1 %u / part 2 %u\n", SPS[sp] + 1u, r[0].n, r[1].n, q[0].n, q[1].n);
+            ck(sp ? "M03 PAD SPLIT (MODE RECALL ON, the owner's: no split): E4 and F4 both play both parts"
+                  : "M02 NIGHT ORGAN (MODE RECALL ON, the owner's: no split): E4 and F4 both play both parts",
+               r[0].n >= 1u && r[1].n >= 1u && q[0].n >= 1u && q[1].n >= 1u && mix_split == 0u);
+        }
+        pr_recall = 1;
+        play_run(2, 1u << e4, sec, sec / 2u, 0, r);          /* (M03 has no arp: the direct path) */
+        play_run(2, 1u << f4, sec, sec / 2u, 0, q);
+        pr_recall = 0;
+        ck("M03 PAD SPLIT: part 1 (the pad, TRN -12) plays E4 at E3, part 2 plays F4 at F4 (no TRN of part 1 on part 2)",
+           r[0].n >= 1u && r[0].note[0] == 52u && q[1].n >= 1u && q[1].note[0] == 65u);
+        play_run(6, 1u << pr_key(60), sec, sec / 2u, 0, r);  /* M07 FINAL REEL: the strings' own TRN +12 is heard from the keys */
+        printf("multi:   M07 key C4: part 1 note %u, part 2 note %u (TRN %d / %d)\n", r[0].note[0], r[1].note[0], trk[0].p[P_TRANS], trk[1].p[P_TRANS]);
+        ck("M07 FINAL REEL: a key plays the brass at the key and the strings (TRN +12) an octave up",
+           r[0].n >= 1u && r[1].n >= 1u && r[1].note[0] == r[0].note[0] + 12u);
+    }
+}
+
+static void editb_worst_multi(void)
+{   /* the worst multi through the real SAVE: two FM6 parts, 64 steps each, 32 values set by hand on both, a full automation: the messages */
+            uint32_t i2, kept = 0, w, pi;
+            int rc, amsg;
+            xb_edit_t gg[XB_MAX];
+            for (pi = 0; pi < NSHOWN; pi++) {
+                trk[pi].eng_req = trk[pi].engine = ENGI_FM6;
+                for (i2 = 0; i2 < NSTEP; i2++) {
+                    step_clear(&trk[pi].step[i2]);
+                    trk[pi].step[i2].note[0] = (uint8_t)(30u + (i2 + pi) % 60u);
+                    trk[pi].step[i2].n = 1;
+                    trk[pi].step[i2].time = ST_NOTE;
+                    trk[pi].step[i2].vel = (uint8_t)(40u + i2);
+                }
+                morph_ready(pi);
+                morph_roll_seed(pi, 1u, 777u + pi);
+                mph[pi].fader = 127;
+                for (w = 0; w < EXT_P_LEN && morph_edits(pi, gg) < XB_MAX; w++)
+                    if (morph_b_mode(pi, w) == 1u && !pin_get(morph_pins(&mph[pi]), w))
+                        morph_b_set(pi, w, mph[pi].base[w]);
+                mph[pi].fader = 0;
+            }
+            for (i2 = 0; i2 < MOTION_MAX; i2++)
+                motion.event[i2] = (motion_event_t){(uint8_t)((i2 & 1u) << 6 | (i2 >> 1) % 64u), P_REV, (int8_t)(i2 % 100u)};
+            motion.count = MOTION_MAX;
+            motion.on = 3;
+            ck("  the worst multi (2 FM6 parts, 64 steps each, 32 + 32 values set by hand, a full automation) saves", project_save_as(13u, "WORST") == 0 && msg_is("B EDITS CUT"));
+            project_load(13u);
+            frames(50);
+            for (pi = 0; pi < NSHOWN; pi++)
+                kept += morph_edits(pi, gg);
+            ck("  .. the line says B EDITS CUT, the automation is all gone, 51 of the 64 values are back (part 1's 32, 19 of part 2's)", kept == 51u && motion.count == 0u && morph_edits(0, gg) == XB_MAX);
+            for (pi = 0; pi < NSHOWN; pi++) {
+                mph[pi].fader = 0;
+                morph_roll_seed(pi, 1u, 900u + pi);          /* a roll drops the hand-set values */
+            }
+            for (i2 = 0; i2 < MOTION_MAX; i2++)              /* (the load emptied the automation: a full one again) */
+                motion.event[i2] = (motion_event_t){(uint8_t)((i2 & 1u) << 6 | (i2 >> 1) % 64u), P_REV, (int8_t)(i2 % 100u)};
+            motion.count = MOTION_MAX;
+            rc = project_save_as(13u, "WORST");
+            amsg = msg_is("AUTOMATION CUT");
+            motion.count = 0;
+            project_load(13u);
+            frames(50);
+            ck("  without hand-set values it says AUTOMATION CUT (34 of the 128 events fit)", rc == 0 && amsg && motion.count == 34u);
+            ck("  (erased again)", project_erase(13u) == 0 && project_factory(13));
 }
 
 int main(void)
@@ -275,7 +363,7 @@ int main(void)
     song.g[G_DMRATE] = 51;
     song.g[G_RTYPE] = 3;
     song.g[G_RLOCUT] = 77;                               /* the reverb's low cut (0.2.14) travels with the multi */
-    song.g[G_SHPITCH] = SHP_BOTH;                        /* SHIM's PITCH and MOD (0.2.19) travel with the multi */
+    song.g[G_SHPITCH] = SHP_DOWN;                        /* SHIM's PITCH and MOD (0.2.19) travel with the multi (0.2.25: DOWN; BOTH is gone) */
     song.g[G_SHMOD] = 37;
     frame();
     duell_mode_req = DM_LAYER;
@@ -289,11 +377,13 @@ int main(void)
     go_title("MULTIS");
     song.g[G_SLOT] = 11;
     frame();
-    ck("SAVE > MULTI is SAVE's page, sixteen slots (KNOB 1 M01..M16), M11 empty (M01..M10: the factory multis)", cur_page()->graph == GR_SLOTS &&
-       cur_page()->fam == FAM_SAVE && GP[G_SLOT].max == 16 && !project_used(10));
+    ck("SAVE > MULTI is SAVE's page, sixteen slots (KNOB 1 M01..M16), all sixteen the factory multis (0.2.23; M11 EERIE SIGNAL)", cur_page()->graph == GR_SLOTS &&
+       cur_page()->fam == FAM_SAVE && GP[G_SLOT].max == 16 && project_used(10) && project_factory(10) && str_eq(mu_names[10], "EERIE SIGNAL"));
     watch = 1;
-    press_k(EN_K4);                                  /* SAVE: an empty slot: the NAME screen */
-    ck("SAVE on an empty slot opens NAME (placeholder MULTI M11)", name_on() && str_eq(nm.ph, "MULTI M11"));
+    press_k(EN_K4);                                  /* SAVE: a used (factory) slot: OVERWRITE M11?, then the NAME screen */
+    ck("SAVE over the factory M11 asks OVERWRITE M11?", ui.confirm == CF_OVR_PROJ);
+    press(B_OCTUP);
+    ck("  OCT+ opens NAME (placeholder MULTI M11)", name_on() && str_eq(nm.ph, "MULTI M11"));
     str_cpy(nm.s, "DUEL JAM", sizeof nm.s);
     nm.len = nm.cur = 8;
     press(B_OCTUP);
@@ -308,8 +398,8 @@ int main(void)
     memcpy(patch, fm6_patch[1], sizeof patch);
     mref = motion;
     power_cycle();
-    ck("after a power cycle: M11 DUEL JAM listed, M12 empty, M01 still the factory multi; the state is the power-on one", project_used(10) &&
-       !project_used(11) && project_factory(0) && str_eq(mu_names[10], "DUEL JAM") && trk[0].eng_req != 3u &&
+    ck("after a power cycle: M11 DUEL JAM listed, M12 and M01 still the factory multis; the state is the power-on one", project_used(10) &&
+       !project_factory(10) && project_factory(11) && project_factory(0) && str_eq(mu_names[10], "DUEL JAM") && trk[0].eng_req != 3u &&
        song.g[G_BPM] != 137 && duell_mode_req != DM_LAYER);
     go_title("MULTIS");
     song.g[G_SLOT] = 11;
@@ -328,23 +418,127 @@ int main(void)
     ck("  TEMPO, DLY TIME, PING-PONG, DLY MODULATION DEPTH / RATE, REVERB TYPE; MODE LAYER; WILD; the saved TARGET BOTH not loaded (0.2.9: ALGORITHM's, not saved)",
        song.g[G_BPM] == 137 && song.g[G_DTIME] == 5 && song.g[G_DMODE] == DMD_PING && song.g[G_DMDEP] == 37 && song.g[G_DMRATE] == 51 && song.g[G_RTYPE] == 3 && song.g[G_RLOCUT] == 77 &&
        duell_mode_req == DM_LAYER && morph.target == MT_SELECTED && (morph.cfg & MC_WILD));
-    ck("  SHIM's PITCH BOTH and MOD 37 (0.2.19: the ids of the old PING-PONG switch and NAME card) are back", song.g[G_SHPITCH] == SHP_BOTH && song.g[G_SHMOD] == 37);
+    ck("  SHIM's PITCH DOWN and MOD 37 (0.2.19: the ids of the old PING-PONG switch and NAME card) are back", song.g[G_SHPITCH] == SHP_DOWN && song.g[G_SHMOD] == 37);
     ok = 1;
     for (pi = 0; pi < NSHOWN; pi++)
         ok &= morph_seed_of(pi, 1) == seedb[pi] && !memcmp(morph_cur(&mph[pi], 1), endb[pi], P_COUNT) &&
               !memcmp(mph[pi].fh[1][mph[pi].top[1]], fendb[pi], NFM) && mph[pi].fader == 0u;
     ck("  End B of each part: the same seed and the same values (FM6 bytes too); the fader at A", ok);
+    {   /* cloud job G (EDITABLE B): the values set by hand go through a multi (the record's edit lists), with End B */
+        xb_edit_t el[NSHOWN][XB_MAX], g[XB_MAX];
+        uint32_t ne[NSHOWN], w, n;
+        int8_t eb[NSHOWN][P_COUNT];
+        for (pi = 0; pi < NSHOWN; pi++) {
+            trk[pi].engine = trk[pi].eng_req;            /* (no audio runs here: the engine-change fade is over) */
+            mph[pi].fader = 127;
+            for (w = 0, n = 0; w < P_COUNT && n < 3u; w++)
+                if (morph_b_mode(pi, w) == 1u && !pin_get(morph_pins(&mph[pi]), w)) {
+                    morph_b_set(pi, w, clamp(mph[pi].base[w] + 7 + (int32_t)pi, TP[w].min < -64 ? -64 : TP[w].min, TP[w].max));
+                    n++;
+                }
+            ne[pi] = morph_edits(pi, el[pi]);
+            mph[pi].fader = 0;
+        }
+        ck("EDITABLE B: values set by hand on both parts (three each) before a multi SAVE", ne[0] == 3u && ne[1] == 3u);
+        ck("  MULTI SAVE (M14 HAND B)", project_save_as(13u, "HAND B") == 0 && project_used(13));
+        for (pi = 0; pi < NSHOWN; pi++) {
+            memcpy(eb[pi], morph_cur(&mph[pi], 1), P_COUNT);
+            ne[pi] = morph_edits(pi, el[pi]);
+        }
+        project_load(11u);                           /* another multi: the parts' B ends are other ones */
+        frames(50);
+        ok = morph_edits(0, g) == 0u && morph_edits(1, g) == 0u;
+        project_load(13u);
+        frames(50);
+        for (pi = 0; pi < NSHOWN; pi++) {
+            n = morph_edits(pi, g);
+            ok &= n == ne[pi] && n == 3u && !memcmp(eb[pi], morph_cur(&mph[pi], 1), P_COUNT);
+            for (w = 0; w < n; w++)
+                ok &= g[w].wid == el[pi][w].wid && g[w].val == el[pi][w].val;
+        }
+        ck("  LOAD M14: both parts' three values come back with End B exactly as saved (the fader at A)", ok && mph[0].fader == 0u);
+        ck("  (M14 erased again: its factory multi is back)", project_erase(13u) == 0 && project_factory(13));
 
-    /* the scale is the instrument's (core.h): a multi's stored per-part SCALE / QNT (ids reserved, format unchanged) is read and ignored on load,
-     * and a load never touches the global SCALE, ROOT, OFF-SCALE */
-    trk[0].p[P_SCALE] = 9; trk[1].p[P_SCALE] = 4; trk[0].p[P_QUANT] = 2;
+    }
+
+    /* 0.2.21 (owner, 2026-10-16): a multi load sets its OWN mixer levels and the global SEND effects it stores (chorus, delay with MODE / TIME / FDBK / COLR / SPREAD /
+     * MRATE / MDEPTH (CHANCE), reverb TYPE / SIZE / DAMP / LOCUT, SHIMMER PITCH / MOD, the parts' sends); it leaves the device's: MIDI (channels, routing, clock source),
+     * TUNE and the master effect BASS MONO. The record stores BASS MONO in no bit (byte 5 bits 1..4 written 0) */
+    {
+        static const struct { uint8_t id; int16_t v, other; } GS[] = {
+            {G_DTIME, 9, 3}, {G_DFDBK, 57, 11}, {G_DCOLOR, 33, 99}, {G_DMIX, 47, 5}, {G_RSIZE, 71, 20}, {G_RDAMP, 29, 80}, {G_CRATE, 31, 70}, {G_CDEPTH, 23, 3},
+            {G_RTYPE, 5, 1}, {G_RLOCUT, 101, 0}, {G_PINGSPREAD, 61, 100}, {G_DMDEP, 43, 0}, {G_DMRATE, 51, 10}, {G_DMODE, DMD_RAND, DMD_DIGITAL},
+            {G_SHPITCH, SHP_DOWN, SHP_UP}, {G_SHMOD, 17, 0}};
+        uint32_t i;
+        ok = 1;
+        song.sel = 0;
+        duell_mode_req = DM_LAYER;
+        song.bm = 6;
+        song.g[G_TUNE] = 4407; song.g[G_CLOCK] = 2; song.g[G_ROUTE] = 1;
+        midi_pch[0] = 4; midi_pch[1] = 9;
+        for (i = 0; i < sizeof GS / sizeof GS[0]; i++)
+            song.g[GS[i].id] = GS[i].v;
+        trk[0].p[P_LEVEL] = 83; trk[1].p[P_LEVEL] = 61; trk[0].p[P_TRIM] = 99;
+        trk[0].p[P_CHOR] = 21; trk[0].p[P_DLY] = 31; trk[0].p[P_REV] = 41; trk[1].p[P_REV] = 71;
+        ck("MULTI SAVE (M13 SENDS TST) with those", project_save_as(12u, "SENDS TST") == 0 && project_used(12));
+        {
+            project_t q;
+            uint32_t cut;
+            uint8_t blk[NSHOWN][MB_N], rec[MU_REC_MAX];
+            memset(blk, 0, sizeof blk);
+            project_capture(&q);
+            ck("  the record holds no BASS MONO (byte 5 bits 1..4 are 0 with 125 Hz on the unit; 0.2.24: the capture writes 0 too, a unit setting)", q.bm == 0 && song.bm == 6 && mu_pack(rec, &q, blk, &cut) > MU_G_AT && (rec[5] >> 1) == 0);
+        }
+        for (i = 0; i < sizeof GS / sizeof GS[0]; i++)
+            song.g[GS[i].id] = GS[i].other;
+        trk[0].p[P_LEVEL] = 12; trk[1].p[P_LEVEL] = 0; trk[0].p[P_TRIM] = 5;
+        trk[0].p[P_CHOR] = 0; trk[0].p[P_DLY] = 0; trk[0].p[P_REV] = 0; trk[1].p[P_REV] = 0;
+        song.bm = 9; song.g[G_TUNE] = 4395; song.g[G_CLOCK] = 1; song.g[G_ROUTE] = 0;
+        midi_pch[0] = 2; midi_pch[1] = 3;
+        project_load(12u);
+        for (i = 0; i < sizeof GS / sizeof GS[0]; i++)
+            ok &= song.g[GS[i].id] == GS[i].v;
+        ck("0.2.21 LOAD sets every global send it stores: DLY TIME FDBK COLR MIX SPREAD MDEPTH / CHANCE MRATE MODE, CHO RATE DEPTH, REV TYPE SIZE DAMP LOCUT, SHIMMER PITCH MOD", ok);
+        ck("  .. and the parts' own mixer levels (not the 12 / 0 it had), the trim and each part's CHO / DLY / REV sends",
+           trk[0].p[P_LEVEL] == 83 && trk[1].p[P_LEVEL] == 61 && trk[0].p[P_TRIM] == 99 && trk[0].p[P_CHOR] == 21 && trk[0].p[P_DLY] == 31 && trk[0].p[P_REV] == 41 &&
+           trk[1].p[P_REV] == 71);
+        ck("  .. the device's stay: BASS MONO 9, TUNE, CLOCK source, MIDI IN routing and the parts' MIDI channels",
+           song.bm == 9 && song.g[G_TUNE] == 4395 && song.g[G_CLOCK] == 1 && song.g[G_ROUTE] == 0 && midi_pch[0] == 2 && midi_pch[1] == 3);
+        song.bm = 0;
+        project_load(12u);
+        ck("  .. and a unit with BASS MONO OFF stays OFF (the multi was saved at 125 Hz)", song.bm == 0);
+        /* a 0.2.19 / 0.2.20 record with BASS MONO bits in byte 5 loads, the bits are ignored (the load, not just mu_unpack) */
+        {
+            static uint8_t rec2[MU_REC_MAX];
+            project_t q;
+            uint32_t cut, len;
+            uint8_t blk[NSHOWN][MB_N];
+            memset(blk, 0, sizeof blk);
+            project_capture(&q);
+            len = mu_pack(rec2, &q, blk, &cut);
+            rec2[5] = (uint8_t)((rec2[5] & 1u) | 5u << 1);
+            mu_obj_read(13u / 2u);
+            mu_put_rec(13u & 1u, 1, blk, &cut, rec2, len);
+            ok = mu_obj_write(13u / 2u, MU_HDR + mu_rd16(mu_buf + 4) + mu_rd16(mu_buf + 6)) == 0;
+            mu_obj_read(13u / 2u);
+            mu_note(13u / 2u);
+            song.bm = 3;
+            project_load(13u);
+            ck("  a record saved by 0.2.19 / 0.2.20 with BASS MONO 100 Hz in byte 5 loads, the bit pattern ignored (the unit's 3 stays)", ok && project_used(13) && song.bm == 3);
+        }
+    }
+
+    /* the scale is the instrument's (core.h): a load never touches the global SCALE, ROOT, OFF-SCALE. Ids 25 and 26 (once the per-part ROOT and SCALE) are the TWIN FILTER's
+     * RES 2 and DRIVE (cloud job B): ordinary sound values, stored in the multi and loaded back as any value (the old "ignored on load" is gone) */
+    trk[0].p[P_RES2] = 9; trk[1].p[P_DRV2] = 4;
     scale_g = 7; root_g = 5; offscale_g = OS_PLAY;
     project_save_as(15, "SCALE TST");
-    trk[0].p[P_SCALE] = trk[1].p[P_SCALE] = trk[0].p[P_QUANT] = 0;
+    trk[0].p[P_RES2] = trk[1].p[P_DRV2] = 0;
     scale_g = 3; root_g = 2; offscale_g = OS_SNAP;
     project_load(15);
-    ck("a multi with a stored per-part SCALE / QNT loads without them; the global scale, root and OFF-SCALE are as they were",
-       trk[0].p[P_SCALE] == 0 && trk[1].p[P_SCALE] == 0 && trk[0].p[P_QUANT] == 0 && scale_g == 3 && root_g == 2 && offscale_g == OS_SNAP);
+    ck("a multi with RES 2 and DRIVE (ids 25 / 26) loads them back; the global scale, root and OFF-SCALE are as they were",
+       trk[0].p[P_RES2] == 9 && trk[1].p[P_DRV2] == 4 && scale_g == 3 && root_g == 2 && offscale_g == OS_SNAP);
+    trk[0].p[P_RES2] = trk[1].p[P_DRV2] = 0;
     scale_g = 0; root_g = 0;
 
     /* 2: sixteen slots, each its own; a rewrite keeps the pair partner */
@@ -386,8 +580,8 @@ int main(void)
     ck("ERASE asks first (ERASE M12?)", ui.confirm == CF_ERASE_MULTI);
     press(B_OCTUP);
     power_cycle();
-    ck("  OCT+: ERASED; after a power cycle M12 empty, its partner M11 kept", !project_used(11) && project_used(10) &&
-       str_eq(mu_names[10], "MULTI K"));
+    ck("  OCT+: ERASED; after a power cycle M12 is its factory multi again (DEAD BUFFER), its partner M11 kept", project_factory(11) &&
+       str_eq(mu_names[11], "DEAD BUFFER") && project_used(10) && str_eq(mu_names[10], "MULTI K"));
     go_title("MULTIS");
     song.g[G_SLOT] = 4;
     frame();
@@ -415,10 +609,13 @@ int main(void)
         duell_mode_req = DM_LAYER;
         events_block(CTL);
         song.g[G_BPM] = 99;
-        midi_in_event(0x0Cu | 0xC0u << 8 | 11u << 16);        /* PC 11 ch 1: M12, erased above (empty) */
         midi_in_event(0x0Cu | 0xC0u << 8 | 40u << 16);        /* PC 40: no multi */
         events_block(CTL); frame();
         ok = song.g[G_BPM] == 99;
+        midi_in_event(0x0Cu | 0xC0u << 8 | 11u << 16);        /* PC 11 ch 1: M12, erased above: its factory multi (DEAD BUFFER, 120) */
+        events_block(CTL); frame();
+        ok &= song.g[G_BPM] == 120 && proj_cur == 11u && str_eq(mu_names[11], "DEAD BUFFER");
+        song.g[G_BPM] = 99;
         song.g[G_BPM] = 123;
         project_save_as(11, "PC M12");
         song.g[G_BPM] = 99;
@@ -426,7 +623,7 @@ int main(void)
         events_block(CTL);
         midi_in_event(0x0Cu | 0xC0u << 8 | 11u << 16);
         events_block(CTL); frame();
-        ck("LAYER: PC 11 ch 1 loads M12 (TEMPO 123); while M12 was empty and PC 40: nothing", ok && song.g[G_BPM] == 123 &&
+        ck("LAYER: PC 40: nothing; PC 11 ch 1 loads M12 (its factory multi, then the one saved there, TEMPO 123)", ok && song.g[G_BPM] == 123 &&
            proj_cur == 11u);
 
         duell_mode_req = DM_SPLIT;
@@ -468,75 +665,71 @@ int main(void)
            ok && mph[0].fader == 40u && mph[1].fader == 40u && trk[0].mw == 40u && trk[1].mw == 40u);
     }
 
-    /* 5: the factory multis M01..M10 (build/gen/duell_multis.h): in ROM, shown while the slot is empty in flash (0.2.13 order: REESE SWAMP and
-     * WHISPER TIDE first, then the four emulator-made ones, then COLD CHAPEL, GARGLE ACID, NIGHT ORGAN, FINAL REEL) */
+    /* 5: the factory multis M01..M16 (build/gen/duell_multis.h, tools/factory_multis.py; DUELL 0.2.23: all sixteen slots, M16 the STRESS TEST;
+     * 0.2.24: the owner's COLD CHAPEL, ACID ETHER and GARGLE ACID of 0.2.22 back in M06, M09, M14; 0.2.25: COLD CHAPEL in M13): in ROM, shown while the slot is empty in flash */
     {
-        static const char *const FN[10] = {"REESE SWAMP", "WHISPER TIDE", "EERIE SIGNAL", "WIRED SNAIL", "DEAD BUFFER", "ACID ETHER",
-                                           "COLD CHAPEL", "GARGLE ACID", "NIGHT ORGAN", "FINAL REEL"};
-        static const uint8_t FE[10][2] = {{ENGI_WAVE, 0}, {ENGI_WAVE, 5},            /* 0.2.11: WAVE + ANALOG / VOICE */
-                                          {5, 7}, {0, 0}, {ENGI_WAVE, 11}, {0, 0},   /* VOICE WHEEL; ANALOG; WAVE NOISE (GRAIN's STRETCH until 0.2.8); ANALOG */
-                                          {ENGI_WAVE, 9}, {ENGI_WAVE, 0}, {ENGI_WAVE, 0}, {ENGI_WAVE, 6}};   /* 0.2.11: WAVE + PHYS / ANALOG / ANALOG / TRIO */
-        static const uint8_t FK[10][2] = {{12, 4}, {14, 6}, {2, 3}, {13, 15}, {17, 9}, {3, 0}, {3, 1}, {11, 4}, {4, 0}, {20, 9}};
-        static const char *const SN[10][2] = {{"REESE BASS", "SQUELCH"}, {"DIGITAL PAD", "WHISPER PAD"},
-                                              {"VESPERS", "JAZZ CLUB"}, {"SFORZANDO", "GLASS SHARDS"}, {"FROZEN AIR", "MODEM"},
-                                              {"RUBBER BAND", "LADDER BASS"}, {"EVOLVING PAD", "SINGING BOWL"},
-                                              {"GROWL BASS", "SQUELCH"}, {"DRAWBARS", "LADDER BASS"},
-                                              {"BRASS PAD", "STRING MACH"}};
-        static const uint8_t SIX[6] = {0, 1, 6, 7, 8, 9};             /* 0.2.11's six (gen_factory_multis.c): M01 M02 M07..M10 since 0.2.13 */
-        static const uint8_t BPM[6] = {124, 77, 71, 127, 121, 71};   /* their TEMPO */
+        static const char *const FN[16] = {"REESE SWAMP", "NIGHT ORGAN", "PAD SPLIT", "DUB CHORD", "WHISPER TIDE", "TINE STRINGS", "FINAL REEL",
+                                           "HAZY TENSOR", "ACID ETHER", "WIRED SNAIL", "EERIE SIGNAL", "DEAD BUFFER", "COLD CHAPEL", "GARGLE ACID",
+                                           "WOOD & SKIN", "STRESS TEST"};
+        static const char *const SN[16][2] = {{"REESE BASS", "SQUELCH"}, {"PEDAL BASS", "DRAWBARS"}, {"EVOLVING PAD", "EMBER GLOW"},
+                                              {"BIG STAB", "TIDAL SUB"}, {"DIGITAL PAD", "WHISPER PAD"}, {"STRING MACH", "TINE ROOM"},
+                                              {"BRASS PAD", "STRING MACH"}, {"LADDER BASS", "GEARBOX"}, {"BREADBIN", "LADDER BASS"},
+                                              {"SFORZANDO", "GLASS SHARDS"}, {"VESPERS", "JAZZ CLUB"}, {"FROZEN AIR", "MODEM"},
+                                              {"EVOLVING PAD", "SINGING BOWL"}, {"GROWL BASS", "SQUELCH"}, {"MARBLE RUN", "TABLA TALK"},
+                                              {"PAN WHISTLE", "DIGITAL PAD"}};
+        static const uint8_t MD[16] = {DM_LAYER, DM_LAYER, DM_LAYER, DM_LAYER, DM_LAYER, DM_LAYER, DM_LAYER, DM_LAYER, DM_LAYER,
+                                       DM_LAYER, DM_LAYER, DM_LAYER, DM_LAYER, DM_LAYER, DM_LAYER, DM_LAYER};   /* (0.2.25: no factory multi in DUEL; M08 MONO DUEL, the only one, is spare: the owner's HAZY TENSOR, LAYER) */
+        static const uint8_t BPM[16] = {124, 121, 97, 117, 77, 77, 71, 117, 120, 120, 120, 120, 71, 127, 107, 137};
+        static const uint8_t SPL[16] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};          /* (the splits: F4 + 1, compared with the key as played) */
+        static const uint8_t XF[16] = {0, 0, 0, 0, 0, 0, 58, 0, 0, 0, 0, 0, 0, 0, 0, 0};   /* (M07: the owner's FINAL REEL, XFADE 58; 1.0: M01..M05, M08..M15 are the owner's duell-multis-13 records) */
+        /* (seq.c AM_*: UP 1, RND 4, SEQ 15; the kept records of before 0.2.23 as they were: M13 COLD CHAPEL's bowl an arp UP, M14 GARGLE ACID's riff a SEQ arp) */
+        static const int8_t AM[16][2] = {{0, 15}, {15, 15}, {0, 0}, {15, 15}, {0, 4}, {0, 0}, {0, 0}, {0, 4}, {3, 15},
+                                         {0, 3}, {0, 4}, {0, 3}, {0, 1}, {0, 15}, {1, 15}, {0, 1}};   /* (1.0: the arp modes of the owner's records) */
         static uint8_t before[0x100000];
         uint32_t n, st;
         memset(nor, 0xFF, sizeof nor);
         power_cycle();
         ok = 1;
-        for (k = 0; k < 10u; k++)
+        for (k = 0; k < MU_SLOTS; k++)
             ok &= project_used(k) && project_factory(k) && str_eq(mu_names[k], FN[k]);
-        ck("empty flash: M01..M10 are the factory multis (0.2.13: REESE SWAMP, WHISPER TIDE, EERIE SIGNAL .. FINAL REEL), M11 empty",
-           ok && !project_used(10) && !project_factory(10));
+        ck("empty flash: M01..M16 are the factory multis (0.2.25: REESE SWAMP, NIGHT ORGAN .. WOOD & SKIN, STRESS TEST; M08 the owner's HAZY TENSOR, M13 his COLD CHAPEL)", ok);
         ok = 1;
-        ui_prefs2 |= PREF_MODE_RECALL >> 16;           /* (0.2.11: LAYER is read back from the multi) */
-        for (k = 0; k < 10u; k++) {                   /* each part's engine + factory index names the intended sound */
+        ui_prefs2 |= PREF_MODE_RECALL >> 16;           /* (0.2.11: the MODE is read back from the multi) */
+        for (k = 0; k < MU_SLOTS; k++) {              /* each part's engine + factory index names the intended sound */
             project_load(k);
             for (pi = 0; pi < NSHOWN; pi++)
-                ok &= trk[pi].eng_req == FE[k][pi] && trk[pi].preset == FK[k][pi] && str_eq(ds_name(FE[k][pi], FK[k][pi]), SN[k][pi]) &&
-                      (morph_seed_of(pi, 1) != 0u);
-            ok &= duell_mode_req == DM_LAYER && proj_cur == k;
-        }
-        ck("LOAD of M01..M10: the intended sound on each part (REESE BASS+SQUELCH, .., BRASS PAD+STRING MACH), LAYER, End B seeded", ok);
-        {   /* 0.2.13 (owner): M01 REESE SWAMP's AMOUNT 17 % on both parts, End B rolled at 17 % (seeds 11710 / 41045) */
-            project_load(0);
-            ok &= morph_amount_of(0) == 17u && morph_amount_of(1) == 17u && morph_seed_of(0, 1) == 11710u && morph_seed_of(1, 1) == 41045u;
-        }
-        ck("  0.2.13: M01 REESE SWAMP: AMOUNT 17 % on both parts, End B its own (seeds 11710 / 41045)", ok);
-        /* 0.2.11's six, driven by the keys since 0.2.12: no stored step pattern plays on PLAY; M07 COLD CHAPEL / M02 WHISPER TIDE latch the pad
-         * (HOLD ALL) under a slow latched arp (UP 1/2, RND 1/1); M08 GARGLE ACID / M01 REESE SWAMP the bass on the keys and a 1/16 SEQUENCER acid
-         * arp (16 / 8 steps); M09 the organ (chord keys MIN7) and the bass both 1/8 SEQUENCER arps of 8 steps; M10 both parts latched, no arp;
-         * no key split stored */
-        ok = 1;
-        {
-            static const int8_t AM[6][2] = {{0, 15}, {0, 4}, {0, 1}, {0, 15}, {15, 15}, {0, 0}};      /* (seq.c AM_*: UP 1, RND 4, SEQ 15) */
-            static const int8_t AR[6][2] = {{-1, 2}, {-1, 7}, {-1, 6}, {-1, 2}, {1, 1}, {-1, -1}};    /* (N_DIV: 1/16 2, 1/8 1, 1/2 6, 1/1 7) */
-            static const int8_t AH[6][2] = {{0, 0}, {2, 2}, {2, 2}, {0, 0}, {0, 0}, {2, 2}};
-            static const int8_t LN[6][2] = {{0, 8}, {0, 0}, {0, 0}, {0, 16}, {8, 8}, {0, 0}};          /* (the SEQUENCER pattern's LEN; 0: no steps) */
-            uint32_t j;
-            for (j = 0; j < 6u; j++) {
-                k = SIX[j];
-                project_load(k);
-                ok &= song.g[G_BPM] == BPM[j] && mix_xf == 0u && mix_split == 0u;
-                for (pi = 0; pi < NSHOWN; pi++) {
-                    const track_t *t = &trk[pi];
-                    for (n = st = 0; n < NSTEP; n++)
-                        st += t->step[n].time == ST_NOTE && t->step[n].n;
-                    ok &= t->p[P_AMODE] == AM[j][pi] && t->p[P_AHOLD] == AH[j][pi];
-                    ok &= AR[j][pi] < 0 || t->p[P_ARATE] == AR[j][pi];
-                    ok &= LN[j][pi] ? st >= 2u && t->p[P_SLEN] == LN[j][pi] : st == 0u;
-                    for (n = 0; n < NSTEP && LN[j][pi]; n++)   /* (offsets from C4 within two octaves, one note a step) */
-                        ok &= t->step[n].time != ST_NOTE || (t->step[n].n == 1u && t->step[n].note[0] >= 36u && t->step[n].note[0] <= 84u);
+                ok &= str_eq(ds_name(trk[pi].eng_req, trk[pi].preset), SN[k][pi]) && (morph_seed_of(pi, 1) != 0u) &&
+                      (AM[k][pi] < 0 || trk[pi].p[P_AMODE] == AM[k][pi]);
+            ok &= duell_mode_req == MD[k] && proj_cur == k && song.g[G_BPM] == BPM[k] && mix_split == SPL[k] && (XF[k] == 255u || mix_xf == XF[k]) &&
+                  song.g[G_RLOCUT] == (k == 3u ? 80 : k == 6u ? 79 : k == 12u ? 95 : 75);   /* (0.2.25: the owner's M04 DUB CHORD has its reverb LOW CUT at 80, his M07 FINAL REEL at 79) */
+            for (pi = 0; pi < NSHOWN && AM[k][pi] == 15; pi++) {   /* (a SEQUENCER arp: its steps, offsets within two octaves, one note a step) */
+                const track_t *t = &trk[pi];
+                for (n = st = 0; n < NSTEP; n++) {
+                    st += t->step[n].time == ST_NOTE && t->step[n].n;
+                    ok &= t->step[n].time != ST_NOTE || (t->step[n].n == 1u && t->step[n].note[0] >= 36u && t->step[n].note[0] <= 84u);
                 }
-                ok &= trk[0].p[P_CHRD] == (k == 8u ? 7 : k == 9u ? 9 : 0);   /* (M10: BRASS PAD's own POW) */
+                ok &= st >= 2u;
+            }
+            if (!ok) {
+                printf("multi:   M%02u %s: %s / %s, MODE %u, BPM %d, SPLIT %u, XF %u, arps %d %d\n", k + 1u, mu_names[k], ds_name(trk[0].eng_req, trk[0].preset),
+                       ds_name(trk[1].eng_req, trk[1].preset), duell_mode_req, song.g[G_BPM], mix_split, mix_xf, trk[0].p[P_AMODE], trk[1].p[P_AMODE]);
+                break;
             }
         }
-        ck("  the six: tempo, no split, arps (M07/M02 slow latched, M08/M01 1/16 SEQ acid 16/8 steps, M09 1/8 SEQ 8+8), M09 MIN7, no stray steps", ok);
+        ck("LOAD of M01..M16 (MODE RECALL ON): the intended sounds, MODE, TEMPO, SPLIT / XFADE, arps and SEQUENCER steps, LOW CUT 75, End B seeded", ok);
+        {   /* 0.2.13 (owner): M01 REESE SWAMP's AMOUNT 17 % on both parts, End B rolled at 17 % (1.0: the firmware's ROLL B again, tools/morph_b_roll.py: one seed, 16816, for both parts) */
+            project_load(0);
+            ok &= morph_amount_of(0) == 17u && morph_amount_of(1) == 17u && morph_seed_of(0, 1) == 16816u && morph_seed_of(1, 1) == 16816u;
+        }
+        ck("  0.2.13: M01 REESE SWAMP: AMOUNT 17 % on both parts, End B its own (seeds 16816 / 16816)", ok);
+        {   /* M16 STRESS TEST (0.2.23): every effect on: both inserts, SAT, the EQ, the ducker, the three sends; RANDOM delay, SHIM (its record's PITCH BOTH reads UP since 0.2.25); an arp */
+            project_load(15);
+            ok = song.g[G_DMODE] == DMD_RAND && song.g[G_RTYPE] == 3 && song.g[G_SHPITCH] == SHP_UP && song.g[G_CDEPTH] > 0 && trk[1].p[P_AMODE] != 0;
+            for (pi = 0; pi < NSHOWN; pi++)                /* (0.2.24: the part stages are split between the parts: FLANG + SAT on part 1, EQ + ducker on part 2) */
+                ok &= trk[pi].p[P_CHOR] && trk[pi].p[P_DLY] && trk[pi].p[P_REV] && trk[pi].p[P_VOICE] == V_POLY && trk[pi].p[P_FREED] == 2;
+            ok &= trk[0].p[P_ITYPE] != 0 && trk[0].p[P_DIST] != 0 && trk[1].p[P_EQLG] != 0 && trk[1].p[P_DKDEP] != 0;
+        }
+        ck("  M16 STRESS TEST: the 24 dB filters and three sends on both parts, insert + SAT on part 1, EQ + ducker on part 2, RANDOM delay, SHIM (the record's PITCH BOTH loads as UP, 0.2.25), part 2's arp", ok);
         ui_prefs2 &= (uint8_t)~(PREF_MODE_RECALL >> 16);
         memcpy(before, nor, sizeof nor);
         go_title("MULTIS");
@@ -547,7 +740,7 @@ int main(void)
            !memcmp(before, nor, sizeof nor));
         song.playing = 0;
         song.g[G_BPM] = 151;
-        project_save_as(3, "MY STAB");                /* M04 WIRED SNAIL overwritten (0.2.13; M02 before) */
+        project_save_as(3, "MY STAB");                /* M04 DUB CHORD overwritten (0.2.23; WIRED SNAIL before) */
         power_cycle();
         ck("SAVE over M04: after a power cycle it holds MY STAB (not factory), M03 M05 M06 still factory", str_eq(mu_names[3], "MY STAB") &&
            !project_factory(3) && project_factory(2) && project_factory(4) && project_factory(5));
@@ -560,47 +753,25 @@ int main(void)
         press(B_OCTUP);
         power_cycle();
         project_load(3);
-        ck("ERASE of the overwrite restores WIRED SNAIL (after a power cycle too); it loads again", project_factory(3) &&
-           str_eq(mu_names[3], "WIRED SNAIL") && trk[0].preset == 13u && song.g[G_BPM] != 151);
-        n = project_rename(5, "ELASTIC 2");
+        ck("ERASE of the overwrite restores DUB CHORD (after a power cycle too); it loads again", project_factory(3) &&
+           str_eq(mu_names[3], "DUB CHORD") && str_eq(ds_name(trk[0].eng_req, trk[0].preset), "BIG STAB") && song.g[G_BPM] != 151);
+        n = project_rename(5, "STACK 2");
         power_cycle();
-        ck("rename of the factory M06 (ACID ETHER) stores it under the new name; the music of the record is the factory one", n == 0u &&
-           str_eq(mu_names[5], "ELASTIC 2") && !project_factory(5) && project_used(5));
+        ck("rename of the factory M06 (TINE STRINGS) stores it under the new name; the music of the record is the factory one", n == 0u &&
+           str_eq(mu_names[5], "STACK 2") && !project_factory(5) && project_used(5));
         project_load(5);
-        ck("  and it loads RUBBER BAND + LADDER BASS as before", trk[0].eng_req == 0u && trk[0].preset == 3u && trk[1].preset == 0u);
+        ck("  and it loads STRING MACH + TINE ROOM as before", str_eq(ds_name(trk[0].eng_req, trk[0].preset), "STRING MACH") &&
+           str_eq(ds_name(trk[1].eng_req, trk[1].preset), "TINE ROOM"));
     }
 
 
-    /* 3b: the CPU TEST multis M13..M16 (tools/factory_multis, tests/gen_test_multis.c) and GLO > TEST */
+    /* 3b: MENU > SYSTEM > TEST (developer builds) over the factory multis. (Until 0.2.22 also the CPU TEST multis M13..M16 of these builds; since
+     * 0.2.23 they are the test scenes of tests/scenes.h and every slot holds a musical factory multi, M16 the STRESS TEST) */
     {
-        static const char *const TN[4] = {"TEST 1 BASE", "TEST 2 PHASE", "TEST 3 HEAVY", "TEST 4 MIX"};
-        static const uint8_t TE[4][2] = {{7, 0}, {2, 0}, {12, 2}, {11, 3}};   /* WHEEL ANALOG; PHASE ANALOG; FM6 PHASE; NOISE LOFI */
-        static const uint8_t TK[4][2] = {{3, 9}, {5, 9}, {4, 5}, {2, 2}};
-        static const char *const TS[4][2] = {{"JAZZ CLUB", "SILK CHORUS"}, {"CRYSTAL CAVE", "SILK CHORUS"}, {"TINE ROOM", "CRYSTAL CAVE"},
-                                              {"SEA ORGAN", "WOW FLUTTER"}};
         char b[24];
         uint32_t f0;
         memset(nor, 0xFF, sizeof nor);
         power_cycle();
-        ok = 1;
-        for (k = 0; k < 4u; k++)
-            ok &= project_used(12u + k) && project_factory(12u + k) && str_eq(mu_names[12u + k], TN[k]);
-        for (k = 10; k < 12u; k++)
-            ok &= !project_used(k);
-        ck("empty flash: M13..M16 are the factory TEST multis, M11 M12 stay empty", ok);
-        ok = 1;
-        for (k = 0; k < 4u; k++) {
-            project_load(12u + k);
-            for (pi = 0; pi < NSHOWN; pi++)
-                ok &= trk[pi].eng_req == TE[k][pi] && trk[pi].preset == TK[k][pi] && str_eq(ds_name(TE[k][pi], TK[k][pi]), TS[k][pi]) &&
-                      trk[pi].p[P_AMODE] != 0 && trk[pi].p[P_CHRD] == 6 && trk[pi].p[P_VOICE] == V_POLY && trk[pi].p[P_ITYPE] != 0 &&
-                      trk[pi].p[P_EQLG] != 0 && trk[pi].p[P_DKDEP] != 0 && trk[pi].p[P_CHOR] && trk[pi].p[P_DLY] && trk[pi].p[P_REV];
-            ok &= song.g[G_BPM] == 138 && duell_mode_req == (k == 2u ? DM_SPLIT : DM_LAYER) && proj_cur == 12u + k;
-        }
-        ck("LOAD of M13..M16: engines, sounds, arp ON, MAJ7 chords, POLY, INSERT, EQ, ducker, sends, 138 BPM, SPLIT only for TEST 3", ok);
-        project_load(14);
-        ck("  TEST 3 HEAVY: SHIM reverb, PING-PONG on, FLANGER inserts on both parts", song.g[G_RTYPE] == 3 && song.g[G_DMODE] == DMD_PING &&
-           trk[0].p[P_ITYPE] == 7 && trk[1].p[P_ITYPE] == 7);
         /* the TEST screen: MENU > SYSTEM > TEST (K1 right on the item opens it), not a page of GLO */
         ui.menu = 1; ui.menu_sel = MI_TEST; frames(16);
         turn(EN_K1, 1);
@@ -611,33 +782,33 @@ int main(void)
         project_cur_slot();
         proj_cur = PROJ_NO_SLOT;
         turn(EN_K3, 1);
-        ck("K3 LOAD MULTI right: the next used multi (from none: M02 after the first used M01) is loaded at once, 'LOADED M02 WHISPER TIDE'",
-           proj_cur == 1u && msg_is("LOADED M02 WHISPER TIDE") && trk[0].preset == 14u && trk[1].eng_req == 5u && !ui.confirm);
+        ck("K3 LOAD MULTI right: the next used multi (from none: M02 after the first used M01) is loaded at once, 'LOADED M02 NIGHT ORGAN'",
+           proj_cur == 1u && msg_is("LOADED M02 NIGHT ORGAN") && str_eq(ds_name(trk[0].eng_req, trk[0].preset), "PEDAL BASS") && trk[1].eng_req == ENGI_WAVE && !ui.confirm);
         frame();
         frames(48);
         test_multi_name(b);
-        ck("  the panel's multi line follows (M02 WHISPER TIDE)", str_eq(b, "M02 WHISPER TIDE"));
+        ck("  the panel's multi line follows (M02 NIGHT ORGAN)", str_eq(b, "M02 NIGHT ORGAN"));
         turn(EN_K3, 2);
-        ck("  2 detents right: M03 skipped through, M04 (stepping), loaded: M04 WIRED SNAIL", proj_cur == 3u && msg_is("LOADED M04 WIRED SNAIL"));
+        ck("  2 detents right: M03 skipped through, M04 (stepping), loaded: M04 DUB CHORD", proj_cur == 3u && msg_is("LOADED M04 DUB CHORD"));
         turn(EN_K3, 6);
-        ck("  6 more right: M10 FINAL REEL (the factory multis stepped through)", proj_cur == 9u && msg_is("LOADED M10 FINAL REEL"));
+        ck("  6 more right: M10 WIRED SNAIL (the factory multis stepped through)", proj_cur == 9u && msg_is("LOADED M10 WIRED SNAIL"));
         turn(EN_K3, 1);
-        ck("  one more right: empty M11 M12 skipped, M13 TEST 1 BASE (WHEEL JAZZ CLUB + ANALOG SILK CHORUS)", proj_cur == 12u &&
-           trk[0].eng_req == 7u && trk[1].eng_req == 0u && str_eq(ds_name(trk[0].eng_req, trk[0].preset), "JAZZ CLUB") &&
-           str_eq(ds_name(trk[1].eng_req, trk[1].preset), "SILK CHORUS") && msg_is("LOADED M13 TEST 1 BASE"));
+        ck("  one more right: M11 EERIE SIGNAL (VOICE VESPERS + WHEEL JAZZ CLUB)", proj_cur == 10u &&
+           trk[0].eng_req == 5u && trk[1].eng_req == 7u && str_eq(ds_name(trk[0].eng_req, trk[0].preset), "VESPERS") &&
+           str_eq(ds_name(trk[1].eng_req, trk[1].preset), "JAZZ CLUB") && msg_is("LOADED M11 EERIE SIGNAL"));
         test_multi_name(b);
         sound_name(&trk[0], nm_a);
-        ck("  the engine and patch names the panel draws follow (WHEEL / JAZZ CLUB, M13 TEST 1 BASE)", str_eq(b, "M13 TEST 1 BASE") &&
-           str_eq(nm_a, "JAZZ CLUB") && str_eq(ENGINES[trk[0].eng_req]->name, "WHEEL"));
+        ck("  the engine and patch names the panel draws follow (VOICE / VESPERS, M11 EERIE SIGNAL)", str_eq(b, "M11 EERIE SIGNAL") &&
+           str_eq(nm_a, "VESPERS") && str_eq(ENGINES[trk[0].eng_req]->name, "VOICE"));
         turn(EN_K3, 40);
-        ck("  many detents right: stops at the last used, M16 TEST 4 MIX (NOISE + LOFI)", proj_cur == 15u && trk[0].eng_req == 11u && trk[1].eng_req == 3u);
+        ck("  many detents right: stops at the last used, M16 STRESS TEST (PHYS + WAVE)", proj_cur == 15u && trk[0].eng_req == 9u && trk[1].eng_req == ENGI_WAVE);
         f0 = (uint32_t)proj_cur;
         turn(EN_K3, 1);
         ck("  right at the end: nothing", proj_cur == f0);
         turn(EN_K3, -2);
-        ck("  2 left: M14 TEST 2 PHASE (PHASE + ANALOG)", proj_cur == 13u && trk[0].eng_req == 2u);
+        ck("  2 left: M14 GARGLE ACID (WAVE + ANALOG)", proj_cur == 13u && trk[0].eng_req == ENGI_WAVE && trk[1].eng_req == 0u);
         turn(EN_K3, -2);
-        ck("  2 more left: M13, then (empties skipped) M10", proj_cur == 9u);
+        ck("  2 more left: M12", proj_cur == 11u);
         /* K4 RESET */
         cpu_miss = 7u;
         cpu_n = 1000u;
@@ -659,7 +830,7 @@ int main(void)
         turn(EN_K4, -1);
         ck("  K4 turned left resets too", msg_is("RESET") && test_missed() == 0u);
         /* K1 MORPH, K2 ROLL: the MORPH page's */
-        project_load(12);
+        project_load(13);
         ck("  (still on the TEST screen after a load)", ui.menu == 3u);
         morph_set_target(0);
         song.sel = 0;
@@ -994,13 +1165,13 @@ int main(void)
             mu_obj_read(o);
             mu_note(o);
             trk[0].p[P_LEVEL] = 55;
-            ok2 &= !project_used(10u) && !project_info(10u, nm) && !nm[0] && !project_factory(10u);
-            project_load(10u);                       /* (EMPTY SLOT: nothing loaded) */
+            /* (0.2.23: every slot has a factory multi, so the slot shows that one; a slot with none would list "--" and load nothing) */
+            ok2 &= project_used(10u) && project_factory(10u) && project_info(10u, nm) && !strcmp(nm, "EERIE SIGNAL");
+            project_load(10u);                       /* (the old record is there: DAMAGED, nothing loaded, no crash) */
             ok2 &= trk[0].p[P_LEVEL] == 55;
-            ok2 &= project_erase(10u) == 1;          /* (an empty slot: nothing to erase) */
             trk[0].p[P_LEVEL] = 77;
         }
-        ck("a multi record of version 2 / 1 or another P_COUNT: the slot lists empty (\"--\"), a LOAD and an ERASE change nothing", ok2);
+        ck("a multi record of version 2 / 1 or another P_COUNT in M11: no multi; the slot shows its factory multi (EERIE SIGNAL), a LOAD changes nothing", ok2);
         /* a factory slot (M01) holding such a record shows its factory multi */
         o = 0;
         mu_obj_read(o);
@@ -1017,11 +1188,137 @@ int main(void)
         mu_note(o);
         ok2 &= project_used(0u) && project_factory(0u) && project_info(0u, nm) && !strcmp(nm, "REESE SWAMP");
         ck("  a factory slot (M01) holding one shows its factory multi (REESE SWAMP) and loads it", ok2 && (project_load(0u), 1));
-        ok2 = project_save_as(10u, "NEW ONE") == 0 && project_used(10u) && project_info(10u, nm) && !strcmp(nm, "NEW ONE");
+        ok2 = project_save_as(10u, "NEW ONE") == 0 && project_used(10u) && !project_factory(10u) && project_info(10u, nm) && !strcmp(nm, "NEW ONE");
         ck("  a SAVE over the old record replaces it, the multi loads again", ok2);
         project_erase(10u);
     }
-    keys_drive();                                    /* 6: M05..M10 played from the keys (0.2.12) */
+    {   /* MU_VER 7 (the cloud plan's job A): per part the NX extension slots and the hand-set B edit list; the worst multi; the old version refused */
+        static project_t q, q2;
+        static uint8_t rec[2048], keep[2048];
+        uint8_t blk[NSHOWN][MB_N], amt[NSHOWN], set[6];
+        uint32_t cut, len, i, t, ok3, base, evs[3];
+        uint32_t nxat = MU_G_AT + 2u * G_COUNT + 4u + MB_N + P_COUNT;   /* part 1's nx byte */
+        memset(blk, 0, sizeof blk);
+        ck("MU_VER is 7 and a part without steps, patch or edits is MU_PART_FIX bytes (nx, the NX slots, ne included)", MU_VER == 7u && MU_PART_FIX == 4u + MB_N + P_COUNT + 1u + NX + 1u + 8u);
+        /* (a) the music's slots and a list through SAVE, a power cycle and LOAD (the slots only: the live list is job G's) */
+        ui_power_on();
+        for (t = 0; t < NSHOWN; t++)
+            for (i = 0; i < NX; i++)
+                XV(&trk[t], i) = (int16_t)(t ? 100 - 5 * (int)i : 3 * (int)i - 40);
+        ok3 = project_save_as(12u, "XSLOTS") == 0;
+        for (t = 0; t < NSHOWN; t++)
+            for (i = 0; i < NX; i++)
+                XV(&trk[t], i) = 0;
+        ui_power_on();
+        project_load(12u);
+        for (t = 0; t < NSHOWN; t++)
+            for (i = 0; i < NX; i++)
+                ok3 &= XV(&trk[t], i) == (t ? 100 - 5 * (int)i : 3 * (int)i - 40);
+        ck("the 16 extension slots of both parts survive SAVE, a power cycle and LOAD (through XV)", ok3);
+        project_erase(12u);
+        /* (b) the record: round trip of the slots and the lists, both parts */
+        project_capture(&q);
+        for (t = 0; t < NSHOWN; t++) {
+            for (i = 0; i < NX; i++)
+                q.t[t].x[i] = (int16_t)(t ? 127 - 8 * (int)i : -64 + 9 * (int)i);
+            q.xe_n[t] = (uint8_t)(t ? 5u : XB_MAX);
+            for (i = 0; i < q.xe_n[t]; i++) {
+                q.xe[t][i].wid = (uint8_t)(i < 31u ? 3u * i : 128u + 3u);
+                q.xe[t][i].val = (int16_t)(i * 4 - 60);
+            }
+        }
+        len = mu_pack(rec, &q, blk, &cut);
+        ok3 = !cut && len <= MU_REC_MAX && rec[0] == 7u && rec[nxat] == NX && mu_unpack(&q2, blk, amt, set, rec, len);
+        for (t = 0; ok3 && t < NSHOWN; t++)
+            ok3 &= !memcmp(q2.t[t].x, q.t[t].x, sizeof q.t[t].x) && q2.xe_n[t] == q.xe_n[t] && !memcmp(q2.xe[t], q.xe[t], q.xe_n[t] * sizeof q.xe[t][0]);
+        ck("a record with 32 + 5 hand-set B edits and all slots off their defaults: packs without a cut, unpacks equal", ok3);
+        memcpy(keep, rec, len);
+        rec[0] = 6u;
+        ck("  the same bytes marked version 6 (the old form): not a multi", !mu_unpack(&q2, blk, amt, set, rec, len));
+        rec[0] = 8u;
+        ck("  marked version 8: not a multi", !mu_unpack(&q2, blk, amt, set, rec, len));
+        /* (c) a longer list (newer firmware), a shorter one (older) */
+        memcpy(rec, keep, len);
+        {
+            uint32_t at2 = nxat + 1u + NX;
+            memmove(rec + at2 + 3u, rec + at2, len - at2);
+            rec[nxat] = NX + 3u;
+            memset(rec + at2, 0x55, 3);
+            ok3 = mu_unpack(&q2, blk, amt, set, rec, len + 3u);
+            for (t = 0; ok3 && t < NSHOWN; t++)
+                ok3 &= !memcmp(q2.t[t].x, q.t[t].x, sizeof q.t[t].x) && q2.xe_n[t] == q.xe_n[t] && !memcmp(q2.xe[t], q.xe[t], q.xe_n[t] * sizeof q.xe[t][0]);
+            ck("a longer slot list (nx = NX + 3, a newer firmware): loads, the extra bytes ignored, the lists and the rest as they were", ok3);
+            memcpy(rec, keep, len);
+            memmove(rec + nxat + 1u + 6u, rec + at2, len - at2);
+            rec[nxat] = 6u;
+            ok3 = mu_unpack(&q2, blk, amt, set, rec, len - (NX - 6u));
+            for (i = 0; i < NX; i++)
+                ok3 &= q2.t[0].x[i] == (i < 6u ? q.t[0].x[i] : (int16_t)xb_def(i) - 64);
+            ck("a shorter slot list (nx = 6, an older firmware): loads, the other ten slots are their defaults", ok3 && q2.xe_n[0] == XB_MAX);
+        }
+        memcpy(rec, keep, len);
+        rec[nxat + 1u + NX] = XB_MAX + 1u;
+        ck("a list of 33 edits: not a multi", !mu_unpack(&q2, blk, amt, set, rec, len));
+        memcpy(rec, keep, len);
+        rec[nxat + 1u + NX + 1u + 2u] = rec[nxat + 1u + NX + 1u];
+        ck("  an edit id twice: not a multi", !mu_unpack(&q2, blk, amt, set, rec, len));
+        memcpy(rec, keep, len);
+        rec[nxat + 1u + NX + 1u] = 127u;
+        ck("  wide id 127 in an edit: not a multi", !mu_unpack(&q2, blk, amt, set, rec, len));
+        memcpy(rec, keep, len);
+        rec[nxat + 3u] = 192u;
+        ck("  a slot value byte above 191: not a multi", !mu_unpack(&q2, blk, amt, set, rec, len));
+        ck("  every byte of the record cut short: not a multi (never read past the end)", ({ uint32_t c, okc = 1; memcpy(rec, keep, len);
+            for (c = 0; c < len; c++) okc &= !mu_unpack(&q2, blk, amt, set, rec, c); okc; }));
+        /* (d) the worst multi: two FM6 parts, 64 steps each, both with 32 hand-set B edits, and a full automation */
+        project_capture(&q);
+        for (t = 0; t < NSHOWN; t++) {
+            q.t[t].engine = ENGI_FM6;
+            for (i = 0; i < NSTEP; i++) {
+                step_clear(&q.t[t].step[i]);
+                q.t[t].step[i].note[0] = (uint8_t)(30u + (i + t) % 60u);
+                q.t[t].step[i].n = 1;
+                q.t[t].step[i].time = ST_NOTE;
+                q.t[t].step[i].vel = (uint8_t)(40u + i);
+            }
+        }
+        for (i = 0; i < MOTION_MAX; i++)
+            q.motion.event[i] = (motion_event_t){(uint8_t)((i & 1u) << 6 | (i >> 1) % 64u), P_REV, (int8_t)(i % 100u)};
+        q.motion.count = MOTION_MAX;
+        q.motion.on = 3;
+        for (base = 0; base < 3u; base++) {
+            for (t = 0; t < NSHOWN; t++) {
+                q.xe_n[t] = base == 0u ? 0u : XB_MAX;
+                for (i = 0; i < XB_MAX; i++) {
+                    q.xe[t][i].wid = (uint8_t)(i < 31u ? 4u * i : 130u);
+                    q.xe[t][i].val = (int16_t)i;
+                }
+            }
+            if (base == 2u)                                  /* few steps: everything fits */
+                for (t = 0; t < NSHOWN; t++)
+                    for (i = 8; i < NSTEP; i++) {
+                        memset(&q.t[t].step[i], 0, sizeof q.t[t].step[i]);
+                        step_clear(&q.t[t].step[i]);
+                    }
+            len = mu_pack(rec, &q, blk, &cut);
+            ok3 = len <= MU_REC_MAX && mu_unpack(&q2, blk, amt, set, rec, len);
+            evs[base] = ok3 ? q2.motion.count : 999u;
+            printf("multi: worst multi, case %u (%s): %u bytes of %u, automation %u of %u events kept, edits kept %u + %u of %u + %u, cut bits %u\n", base,
+                   base == 0u ? "no edits" : base == 1u ? "32 edits on both parts, 64 steps each" : "32 + 32 edits, 8 steps each", len, (unsigned)MU_REC_MAX,
+                   evs[base], (unsigned)MOTION_MAX, ok3 ? q2.xe_n[0] : 0u, ok3 ? q2.xe_n[1] : 0u, q.xe_n[0], q.xe_n[1], cut);
+            if (base == 0u)
+                ck("  worst multi, no edits (2 FM6 parts, 64 steps each, full automation): fits, the automation is cut, 34 events are left (the plan's 35 with 34 B)", ok3 && (cut & 1u) && !(cut & 2u) && evs[0] == 34u);
+            if (base == 1u)
+                ck("  worst multi with 32 + 32 edits: the sound, steps and slots stay; the automation goes first, then the last edits (B EDITS CUT)",
+                   ok3 && evs[1] == 0u && (cut & 2u) && q2.xe_n[0] == XB_MAX && q2.xe_n[1] < XB_MAX && q2.xe_n[0] + q2.xe_n[1] == (MU_REC_MAX - mu_base_len(&q)) / 2u &&
+                   !memcmp(q2.xe[0], q.xe[0], XB_MAX * sizeof q.xe[0][0]) && !memcmp(q2.xe[1], q.xe[1], q2.xe_n[1] * sizeof q.xe[1][0]));
+            if (base == 2u)
+                ck("  with 8 steps a part and 32 + 32 edits: everything fits, the automation keeps most of its room", ok3 && !(cut & 2u) && q2.xe_n[0] == XB_MAX && q2.xe_n[1] == XB_MAX && evs[2] > 80u);
+        }
+        ck("  the sound and steps of the worst multi always fit (_Static_assert in multi.c): 1814 bytes with the 36 bytes of slots", MU_G_AT + 2u * G_COUNT + NSHOWN * (MU_PART_FIX + NSTEP * PS_STEP + FM6_PACKED) + 1u + 3u == 1814u);
+    }
+    keys_drive();                                    /* 6: the factory multis played from the keys (0.2.12; 0.2.23's set) */
+    editb_worst_multi();                             /* 7: cloud job G, the worst multi through SAVE (it leaves the state changed: last) */
     printf(bad ? "multi: FAILED (%d)\n" : "multi: all ok\n", bad);
     return bad ? 1 : 0;
 }

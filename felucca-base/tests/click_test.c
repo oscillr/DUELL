@@ -63,7 +63,6 @@ static void fresh(void)
     lim_env = LIM_T; dc_l = dc_r = dce_l = dce_r = 0;
     memset(&clk, 0, sizeof clk);
     click_req = 0; click_mode = CLICK_OFF; click_lvl = 1; cin_bars = 0;
-    fx_usb_fixed = 0;
     mi_r = mi_w = 0; midi_in_overflow = 0; midi_beat_samples = 0;
     fm1_in.notes = kb_prev = 0;
     fm1_ms = 0;

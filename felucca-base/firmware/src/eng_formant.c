@@ -65,7 +65,13 @@ static void vowel_at(int32_t pos, int32_t *f, int32_t *b)
 }
 
 typedef struct { int32_t a, b, c; } fres_t;
-static int32_t formant_nz = 0x2545F491;                 /* breath noise, one xorshift for all voices */
+/* breath noise: one xorshift per PART (job 3; before, one for all voices of both parts, so two FORMANT parts drew from each other's sequence and the parts' order mattered).
+ * A part's generator starts at its first note-on (the event stage, in a fixed order): the FIRST part to play FORMANT starts at the seed the one shared generator always
+ * had, so a scene with FORMANT on one part is bit for bit what it was; a second part starts at another seed (its draws are its own from then on). 0 = not started */
+#define FORMANT_SEED_A 0x2545F491
+#define FORMANT_SEED_B 0x6C8E9CF5
+static int32_t formant_nz[NLIVE];
+static uint8_t formant_used;                            /* a part has started its generator (event stage only) */
 
 /* Klatt resonator coefficients (Q30) for F, BW in Hz * 16 */
 static void fres_coef(fres_t *r, uint32_t f16, uint32_t bw16)
@@ -84,8 +90,12 @@ static void fres_coef(fres_t *r, uint32_t f16, uint32_t bw16)
 
 static void formant_note_on(track_t *t, voice_t *v)
 {
-    (void)t;
-    v->s[7] = (int32_t)((noise32(&formant_nz) >> 25) << 25);   /* TALK starts over; a random vowel (RAND) */
+    int32_t *nz = &formant_nz[PART_OF(t)];
+    if (!*nz) {
+        *nz = formant_used ? FORMANT_SEED_B : FORMANT_SEED_A;
+        formant_used = 1;
+    }
+    v->s[7] = (int32_t)((noise32(nz) >> 25) << 25);   /* TALK starts over; a random vowel (RAND) */
     if (!v->env && !v->env_out) {                       /* a fresh voice (not a retrigger): from rest */
         uint32_t i;
         v->ph[0] = 0;                                   /* the opening starts at zero: no click */
@@ -103,7 +113,7 @@ static void formant_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, con
     uint32_t inc = m->inc, i, te, tp, rp, rn, ratio, bws, f0;
     uint32_t ph = v->ph[0];
     int32_t y1 = v->s[0], y2 = v->s[1], y3 = v->s[2], y4 = v->s[3], y5 = v->s[4], y6 = v->s[5];
-    int32_t y7 = (int32_t)v->ph[1], y8 = (int32_t)v->ph[2], lp = v->s[6], nst = formant_nz;
+    int32_t y7 = (int32_t)v->ph[1], y8 = (int32_t)v->ph[2], lp = v->s[6], nst = formant_nz[PART_OF(t)] ? formant_nz[PART_OF(t)] : FORMANT_SEED_A;   /* (the part's own generator) */
 
     /* vowel: VOWEL -> VOWL2 over TALK after note-on; ENV / LFO -> FLT move both */
     k = 0;
@@ -192,7 +202,7 @@ static void formant_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, con
     v->ph[0] = ph;
     v->ph[1] = (uint32_t)y7;
     v->ph[2] = (uint32_t)y8;
-    formant_nz = nst;
+    formant_nz[PART_OF(t)] = nst;                       /* (.. and written back: the part's own) */
     v->s[0] = y1;
     v->s[1] = y2;
     v->s[2] = y3;
@@ -214,8 +224,8 @@ static const engine_t ENG_FORMANT = {
     .name = "VOICE",
     .page_title = {"VOWL", "TONE"},
     .edit = {
-        {"VOWL", F_INT, 0, 127, 0, 0, 0},
-        {"VOWL2", F_INT, 0, 127, 64, 0, 0},
+        {"VOWL 1", F_INT, 0, 127, 0, 0, 0},
+        {"VOWL 2", F_INT, 0, 127, 64, 0, 0},
         {"TALK", F_TIME, 0, 127, 0, 0, 0},
         {"SHIFT", F_SEMI, -12, 12, 0, 0, 0},
         {"BUZZ", F_PCT, 0, 127, 64, 0, 0},

@@ -48,11 +48,11 @@ export function createRollView(app, p, opts) {
   selRoot.value = root; selScale.value = scale;
   const bZoomOut = btn("-", "Zoom out: narrower steps", () => setZoom(zoom / 1.25), "zb"), bZoomIn = btn("+", "Zoom in: wider steps", () => setZoom(zoom * 1.25), "zb");
   const bExpand = opts.onExpand ? btn("ROLL", "Open the piano roll across the whole window (both parts)", () => opts.onExpand(p), "ghost small") : null;
-  const bClose = opts.onClose ? btn("Close", "Back to the editor (Esc)", () => opts.onClose(), "ghost small") : null;
+  const bClose = opts.onClose ? btn("Close", "Back to the editor (Esc). Edits go to the unit at once unless Send live is off.", () => opts.onClose(), "ghost small") : null;
   const tools = h("div", { class: "rolltools" }, bExpand, bClose,
     h("span", { class: "tg", role: "group", "aria-label": "Send" }, liveLab, bSend, bRevert, pend),
     h("span", { class: "tg", role: "group", "aria-label": "Edit" }, bUndo, bRedo, bCopy, bPaste, bClear),
-    h("span", { class: "tg", role: "group", "aria-label": "Highlight a scale" }, h("span", { class: "small", text: "Scale" }), selRoot, selScale),
+    h("span", { class: "tg", role: "group", "aria-label": "Highlight a scale" }, h("span", { class: "small", text: "SCALE" }), selRoot, selScale),
     );
   const note = h("p", { class: "note rollnote" });
   const status = h("div", { class: "rollstatus", role: "status", "aria-live": "polite" });
@@ -183,14 +183,14 @@ export function createRollView(app, p, opts) {
     const msgs = [];
     if (s.seqOff) msgs.push("SEQ is OFF in GLO > MODULES: the unit plays none of these steps. Editing still works.");
     if (sq) msgs.push(s.arpOff ? "ARP MODE is SEQ but ARP is OFF in GLO > MODULES: this pattern plays nothing now." : "ARP MODE is SEQ: the steps are offsets for the keys you hold (C4 = no offset), timed by the arp's RATE and GATE. One note per step; length, slide, velocity, chance and ratchet are not used.");
-    note.textContent = msgs.join(" "); note.hidden = !msgs.length;
+    note.textContent = ""; note.hidden = true; rootEl.title = msgs.join("\n");   // (T0229: no notes on the page: the roll's and the PIANO ROLL tab's tooltip say it)
     loadEl.hidden = st.loaded;
     const g = `${len()}|${sq}|${st.loaded}|${hi}|${lo}`; if (g !== sig) { sig = g; layout(); } else { renderLane(); }
     describe();
   }
   function describe() {
     const b = sel && R.barAt(steps(), len(), sel.start, sel.pitch);
-    if (!b) { status.textContent = st.error ? `Not sent: ${st.error.message}` : "Click: add a note. Drag: move it. Drag its right edge: length. Right-click or double-click: delete."; return; }
+    if (!b) { status.textContent = st.error ? `Not sent: ${st.error.message}` : ""; grid.title = "Click: add a note. Drag: move it. Drag its right edge: length. Right-click or double-click: delete."; return; }
     const s = steps()[b.start], sq = state().arpSeq, parts = [`Step ${b.start + 1}`, `${noteName(b.pitch)} (${b.pitch})`];
     parts.push(sq ? `offset ${b.pitch - 60 >= 0 ? "+" : ""}${b.pitch - 60}` : `length ${b.len}`);
     if (!sq) parts.push(`velocity ${s.vel || 96}`);

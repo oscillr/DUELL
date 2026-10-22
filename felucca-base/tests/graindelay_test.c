@@ -389,6 +389,7 @@ static void gs_capture(int src, FILE *rp)
 {
     uint32_t t, i;
     int32_t pk = 0;
+    blockstate_t bs;
     gs_setup(src);
     model_reset(M_ROOM, 90, 60);
     transport_req = 1;
@@ -396,7 +397,9 @@ static void gs_capture(int src, FILE *rp)
         if (t <= (uint32_t)(GS_STOP[src] * FS) && t + CTL > (uint32_t)(GS_STOP[src] * FS)) transport_req = 2;
         for (i = 0; i < CTL; i++) send_c[i] = send_d[i] = send_r[i] = mix_l[i] = mix_r[i] = 0;
         events_block(CTL);
-        for (i = 0; i < NPART; i++) mix_part(&trk[i], CTL);
+        blk_snap(&bs, sp_tap);
+        for (i = 0; i < NLIVE; i++) mix_part(&trk[i], CTL, &bs);
+        mix_gather(CTL, &bs);
         for (i = 0; i < CTL; i++) {
             int32_t a = send_d[i] < 0 ? -send_d[i] : send_d[i];
             if (a > pk) pk = a;

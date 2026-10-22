@@ -3,7 +3,7 @@
  * The scenes keep 0.2.14's names for the test's own arguments (dm 0 = the plain delay, 1 RAND, 2 OCT+, 7 a stored value past the modes; pp: the old PING switch),
  * mapped by mapm() onto the 0.2.16 mode (dm 0 + pp = PING-PONG; dm 1 / 2 = RANDOM / OCT UP) and onto dly_plain_pp (the plain delay the events cross-fade from).
  *   build/host/dlyev_test   (DUELL/host_tests.sh "dlyev")
- *   DIGITAL / PING-PONG  (and a stored value past OCT UP, and RANDOM / OCT UP in DUEL = SPLIT): the render is bit for bit the delay as before (hashes of the base commit
+ *   DIGITAL / PING-PONG  (and a stored value past OCT UP, and RANDOM / OCT UP in LAYER): the render is bit for bit the delay as before (hashes of the base commit
  *              02f849e, built with -DDLYEV_BASE=1; the same hashes in 0.2.16, where PING off / on became DIGITAL / PING-PONG): plain, PING-PONG, PING-PONG + modulation, LAYER, DUEL
  *   DETERMINISM  the same settings render the same twice (RAND, OCT+), RAND and OCT+ differ from DELAY and from each other; CHANCE 0 fires no event
  *   CLOCK      the first edge comes one delay time after PLAY (samples), twice that at half the tempo; TIME 1/4 doubles it
@@ -11,9 +11,10 @@
  *   TAILS      silence after the tails (FDBK 40) in both modes: the output is 0 at the end
  *   LOUD       FDBK 120, COLR 127, MIX 127, CHANCE 100, loud chords: bounded under full scale, no wrap
  *   SENDS/PANIC  SENDS OFF and STOP ALL's flush clear the voices, the generator, the line and the crossfade; the output is silent until a new note
- *   UI         the cards: DEPTH is CHANCE in the event modes, PING and RATE fade with the mode's name, MODE fades in DUEL, the page, SENDS OFF
+ *   UI         the cards: DEPTH is CHANCE in the event modes, PING and RATE fade with the mode's name, SPREAD is hidden in DUEL, the page, SENDS OFF
  *   COST       instructions per sample of the whole mix, a plucked part: DELAY, PING-PONG, RAND, OCT+ (CHANCE 0 / 50 / 100) */
 #define MODE_TEST_NO_MAIN 1
+#define CHO_NOSKIP 1   /* 0.2.21: the plain bus leaves the chorus out of silent blocks (fx_bus.c cho_zrun); this test compares the delay paths' costs, so all of them run the chorus as they did (chorusskip_test.c proves the skip invisible) */
 #include "mode_test.c"
 
 #ifdef DLYEV_BASE
@@ -27,11 +28,11 @@ static int mapm(int m) { return m == 0 ? (t_pp ? DMD_PING : DMD_DIGITAL) : m == 
 #endif
 
 /* the hashes of the delay before the modes (build this file on the base commit with -DDLYEV_BASE=1 to print them) */
-#define H_PLAIN 0xf0dbf91d23f4f72dull
-#define H_PP 0xaea52df65b15556full
-#define H_PPMOD 0xe4f21e4fcf70a0dbull
-#define H_LAYER 0xf0dbf91d23f4f72dull
-#define H_DUEL 0xa03f89dc033b06b0ull
+#define H_PLAIN 0xa6ed282e79e1eb73ull
+#define H_PP 0x66f304e16ff4684dull
+#define H_PPMOD 0x2d1f57efffb7d6eaull
+#define H_LAYER 0xa6ed282e79e1eb73ull
+#define H_DUEL 0x88f81196f4b235b6ull
 
 static uint64_t hash_of(const int32_t *l, const int32_t *r, uint32_t n)
 {
@@ -138,6 +139,99 @@ static double cost(uint32_t mode, int dm, int pp, int dep)
 }
 static int32_t keep_l[MAXB * CTL], keep_r[MAXB * CTL];
 
+/* 0.2.22: DUEL (dual mono: part 1 hard left on bus A, part 2 hard right on bus B), the delay's modes per bus, mono. A plucked part 1 and part 2 (every note a delay send
+ * at 127; part 2 a quarter second behind), `sec` seconds, parts 1 = part 1 only, 2 = part 2 only, 3 = both. gm: the stored G_DMODE, dep: DEPTH / CHANCE, chg[k]: the mode
+ * from second k+1 on (-1: none). Counts what the buses did (the blocks with an event pending on each bus) and whether the voices were ever off-centre (a pan, a gain). */
+static uint32_t du_ev[2], du_centred;
+static void duel_setup(int gm, int dep, int fdbk)
+{
+    uint32_t k;
+    dsp_clean(DM_SPLIT);
+    CLR_EV();
+    song.g[G_BPM] = 120;
+    song.g[G_CLOCK] = 0;
+    song.g[G_DTIME] = 1;
+    song.g[G_DFDBK] = (int16_t)fdbk;
+    song.g[G_DMIX] = 127;
+    song.g[G_DCOLOR] = 90;
+    song.g[G_PINGSPREAD] = 100;
+    song.g[G_RTYPE] = 0;
+    song.g[G_DMRATE] = 44;
+    song.g[G_DMDEP] = (int16_t)dep;
+    for (k = 0; k < 2u; k++) {
+        host_preset(&trk[k], eng_of("ANALOG"), 8);
+        trk[k].p[P_TRIM] = 100;
+        trk[k].p[P_PAN] = 0;
+        trk[k].p[P_AMODE] = 0;
+        trk[k].p[P_CHOR] = trk[k].p[P_REV] = 0;
+        trk[k].p[P_DLY] = 127;
+    }
+    song.g[G_DMODE] = (int16_t)gm;
+}
+static void duel_run(int gm, int dep, int fdbk, uint32_t sec, uint32_t parts, const int *chg)
+{
+    uint32_t k, ms = FS / 1000u, b, nb = sec * 1000u * ms / CTL;
+    duel_setup(gm, dep, fdbk);
+    du_ev[0] = du_ev[1] = 0;
+    du_centred = 1;
+    rec_n = 0;
+    for (b = 0; b < nb; b++) {
+        uint32_t t = b * CTL, sidx = t / (FS / 2u), within = t % (FS / 2u), w2 = (t + FS / 4u) % (FS / 2u), s2 = (t + FS / 4u) / (FS / 2u);
+        if ((parts & 1u) && within < CTL)
+            trk_note_on(&trk[0], sidx % 2u ? 55u : 52u, 100);
+        if ((parts & 1u) && within >= 120u * ms && within < 120u * ms + CTL)
+            trk_note_off(&trk[0], sidx % 2u ? 55u : 52u);
+        if ((parts & 2u) && w2 < CTL)
+            trk_note_on(&trk[1], s2 % 2u ? 67u : 64u, 100);
+        if ((parts & 2u) && w2 >= 120u * ms && w2 < 120u * ms + CTL)
+            trk_note_off(&trk[1], s2 % 2u ? 67u : 64u);
+        if (chg && b % (1000u * ms / CTL) == 0 && b / (1000u * ms / CTL) >= 1u && b / (1000u * ms / CTL) <= 8u) {
+            int v = chg[b / (1000u * ms / CTL) - 1u];
+            if (v >= 0)
+                song.g[G_DMODE] = (int16_t)v;
+        }
+        mblk(1);
+        du_ev[0] += dlyev.on && (dlyev.ev0 != DE_NONE || dlyev.ev1 != DE_NONE);
+        du_ev[1] += dlyev_b.on && (dlyev_b.ev0 != DE_NONE || dlyev_b.ev1 != DE_NONE);
+        for (k = 0; k < 2u; k++) {
+            du_centred &= !dlyev.on || (dlyev.v[k].gl == 32768 && dlyev.v[k].gr == 32768 && dlyev.v[k].npan == 0);
+            du_centred &= !dlyev_b.on || (dlyev_b.v[k].gl == 32768 && dlyev_b.v[k].gr == 32768 && dlyev_b.v[k].npan == 0);
+        }
+    }
+}
+#define DN (4u * 1000u * (FS / 1000u) / CTL * CTL)       /* the samples of a 4 s duel_run (rec_n) */
+static int32_t d1l[DN], d1r[DN], d2l[DN], d2r[DN];
+static uint32_t all_zero(const int32_t *x, uint32_t n)
+{
+    for (uint32_t i = 0; i < n; i++)
+        if (x[i])
+            return 0;
+    return 1;
+}
+static int32_t peak2(void) { return peak_of(rec_l, rec_n) > peak_of(rec_r, rec_n) ? peak_of(rec_l, rec_n) : peak_of(rec_r, rec_n); }
+static int32_t step2(void) { return step_of(rec_l, rec_n) > step_of(rec_r, rec_n) ? step_of(rec_l, rec_n) : step_of(rec_r, rec_n); }
+static double cost_duel(int gm, int dep)
+{
+    uint64_t i0;
+    uint32_t nb = 2u * FS / CTL, b;
+    duel_setup(gm, dep, 60);
+    rec_n = 0;
+    mblk(1);
+    i0 = instr_now();
+    for (b = 0; b < nb; b++) {
+        if (b % (FS / 2u / CTL) == 0) {
+            trk_note_on(&trk[0], 52, 100);
+            trk_note_on(&trk[1], 59, 100);
+        }
+        if (b % (FS / 2u / CTL) == (FS / 8u / CTL)) {
+            trk_note_off(&trk[0], 52);
+            trk_note_off(&trk[1], 59);
+        }
+        mix_block(ob, CTL);
+    }
+    return i0 ? (double)(instr_now() - i0) / (nb * CTL) : 0;
+}
+
 int main(void)
 {
     uint32_t n;
@@ -171,15 +265,17 @@ int main(void)
     scene(DM_STEREO, 0, 0, 100, 60, 0, 0, 3);
     scene(DM_STEREO, 7, 0, 0, 60, 0, 0, 3);
     expect("DELAY: a stored mode past OCT+ (7) plays as DELAY, bit for bit", hash_of(rec_l, rec_r, rec_n) == hp);
-    scene(DM_SPLIT, 1, 0, 0, 60, 0, 0, 3);
-    expect("DUEL: RAND stored: the plain delay of DUEL, bit for bit (the events are STEREO / LAYER only)", hash_of(rec_l, rec_r, rec_n) == hd);
-    scene(DM_SPLIT, 2, 0, 100, 60, 0, 0, 3);
+    scene(DM_SPLIT, 0, 1, 0, 60, 0, 0, 3);
+    expect("DUEL: PING stored: the plain delay of DUEL, bit for bit (0.2.22: a ping-pong needs two sides, in mono it is the plain delay)", hash_of(rec_l, rec_r, rec_n) == hd);
+    scene(DM_SPLIT, 0, 1, 60, 60, 0, 0, 3);
     {
         uint64_t a = hash_of(rec_l, rec_r, rec_n);
-        scene(DM_SPLIT, 0, 0, 100, 60, 0, 0, 3);
-        expect("DUEL: OCT+ stored, CHANCE 100: DUEL's delay with DEPTH 100 (the modulation), bit for bit; the right channel is silence",
+        scene(DM_SPLIT, 0, 0, 60, 60, 0, 0, 3);
+        expect("DUEL: PING stored, DEPTH 60: DIGI with DEPTH 60 (the modulation), bit for bit; the right channel is silence",
                a == hash_of(rec_l, rec_r, rec_n) && peak_of(rec_r, rec_n) == 0);
     }
+    scene(DM_SPLIT, 7, 0, 0, 60, 0, 0, 3);
+    expect("DUEL: a stored mode past OCT+ (7) plays as the plain delay, bit for bit", hash_of(rec_l, rec_r, rec_n) == hd);
 
     /* determinism and difference */
     {
@@ -304,7 +400,7 @@ int main(void)
         for (k = 0; k < 4000u; k++) {                           /* the draws: RAND, CHANCE 50 % (thr 16384): about half, the four events evenly */
             dlyev.md = 0;
             dlyev.ev1 = 4;
-            dlyev_edge(1, 16384);
+            dlyev_edge(1, 16384, 0, 0, 0, DLY_LEN);
             if (dlyev.ev1 != 4) {
                 nev++;
                 ev[dlyev.ev1 & 3u]++;
@@ -313,7 +409,7 @@ int main(void)
         expect("EVENTS RAND: CHANCE 50 fires on about half the edges, the four events evenly (RETRIG, REVERSE, UP, DOWN)",
                nev > 1800u && nev < 2200u && ev[0] > 400u && ev[1] > 400u && ev[2] > 400u && ev[3] > 400u && ev[0] + ev[1] + ev[2] + ev[3] == nev);
         for (k = 0; k < 4000u; k++) {                           /* OCT+: always UP, the pan inside +-0.6 */
-            dlyev_edge(2, 32767);
+            dlyev_edge(2, 32767, 0, 0, 0, DLY_LEN);
             ups += dlyev.ev1 == 2;
             pmax = dlyev.v[dlyev.cur].npan > pmax ? dlyev.v[dlyev.cur].npan : -dlyev.v[dlyev.cur].npan > pmax ? -dlyev.v[dlyev.cur].npan : pmax;
             panok &= dlyev.v[dlyev.cur].npan >= -19661 && dlyev.v[dlyev.cur].npan <= 19661;
@@ -322,7 +418,7 @@ int main(void)
         expect("EVENTS OCT+: CHANCE 100 is an octave up on every edge, the pan inside +-0.6 and spread over it", ups == 4000u && panok && pmax > 18000);
         CLR_EV();
         for (k = 0; k < 4000u; k++)
-            dlyev_edge(1, 0);
+            dlyev_edge(1, 0, 0, 0, 0, DLY_LEN);
         expect("EVENTS: CHANCE 0 never fires", dlyev.ev1 == 4 && dlyev.ev0 == 4);
     }
 
@@ -337,10 +433,10 @@ int main(void)
             for (k = 0; k < 65536u; k++) dly_buf[k] = (int16_t)((int32_t)k - 32768);
             memset(&v, 0, sizeof v);
             v.nev = (uint8_t)ev;
-            dlyev_in(&v, W << 16, DL << 16, PER);
+            dlyev_in(&v, W << 16, DL << 16, PER, DLY_LEN);
             for (k = 0; k < 1100u; k++) {                     /* (the fade-in, then 76 samples at full level) */
                 c = l = r = 0;
-                dlyev_read(&v, W << 16, DL << 16, &c, &l, &r);
+                dlyev_read(&v, W << 16, DL << 16, &c, &l, &r, DLY_LEN - 1u, 0);
                 if (k >= 1030u) {
                     if (k > 1030u) sum += c - prev;
                     else first[ev] = c;
@@ -510,7 +606,7 @@ int main(void)
         expect("UI: DELAY 1/2 is MODE, TIME, FDBK, COLR; DELAY 2/2 is SPREAD, MRATE, MDEPTH, MIX (MODE first, MIX last)",
                PAGES[p1].id[0] == G_DMODE && PAGES[p1].id[1] == G_DTIME && PAGES[p1].id[2] == G_DFDBK && PAGES[p1].id[3] == G_DCOLOR &&
                PAGES[p2].id[0] == G_PINGSPREAD && PAGES[p2].id[1] == G_DMRATE && PAGES[p2].id[2] == G_DMDEP && PAGES[p2].id[3] == G_DMIX &&
-               p2 == p1 + 1u && PAGES[p1].scope == SC_GLOBAL && PAGES[p1].fam == FAM_FX && PAGES[p2].scope == SC_GLOBAL && PAGES[p2].fam == FAM_FX);
+               p2 == p1 + 1u && PAGES[p1].scope == SC_GLOBAL && PAGES[p1].fam == FAM_GLO && PAGES[p2].scope == SC_GLOBAL && PAGES[p2].fam == FAM_GLO);
         d = page_desc(&PAGES[p1], 0, &vp);
         ok = d && !strcmp(d->label, "MODE") && d->max == 3 && d->def == DMD_DIGITAL && vp == &song.g[G_DMODE];
         for (m = 0; m < 4u && d; m++)
@@ -523,7 +619,7 @@ int main(void)
         expect("UI: the modes in full (header): DIGITAL, PING-PONG, RANDOM, OCT UP", ok);
         expect("UI: MODE is a SENDS card (MODULES SENDS OFF fades it), carried by a multi; the engine switch (G_ENGSEL) is not", mods_of(1, G_DMODE) == MODS_SENDS && MU_GLOBAL(G_DMODE) &&
                !MU_GLOBAL(G_ENGSEL) && mods_of(1, G_PINGSPREAD) == MODS_SENDS);
-        /* every mode: which cards are faded, with which reason (STEREO, LAYER, and the stored mode in DUEL) */
+        /* every mode: which cards are faded, with which reason (STEREO, LAYER, DUEL: 0.2.22 the same but SPREAD, which DUEL hides in every mode) */
         {
             static const uint32_t CARDS[8] = {G_DMODE, G_DTIME, G_DFDBK, G_DCOLOR, G_PINGSPREAD, G_DMRATE, G_DMDEP, G_DMIX};
             static const char *const WHY[4][8] = {          /* [mode][card]: 0 = live */
@@ -538,21 +634,21 @@ int main(void)
                     song.g[G_DMODE] = (int16_t)m;
                     ok = 1;
                     for (c = 0; c < 8u; c++) {
-                        const char *w = dly_mode_why(CARDS[c]), *e = k == 2u ? (CARDS[c] == G_DMODE || CARDS[c] == G_PINGSPREAD ? "DUEL" : 0) : WHY[m][c];
+                        const char *w = dly_mode_why(CARDS[c]), *e = k == 2u && CARDS[c] == G_PINGSPREAD ? "DUEL" : WHY[m][c];
                         ok &= (!w && !e) || (w && e && !strcmp(w, e));
                     }
                     d = page_desc(&PAGES[p2], 2, &vp);
-                    ok &= d && !strcmp(d->label, k != 2u && m >= DMD_RAND ? "CHANCE" : "MDEPTH") && (k != 2u && m >= DMD_RAND ? d->max == 100 : 1);
+                    ok &= d && !strcmp(d->label, m >= DMD_RAND ? "CHANCE" : "MDEPTH") && (m >= DMD_RAND ? d->max == 100 : 1);
                     expect(k == 0 ? "UI STEREO: each mode's faded cards and reasons (DIGI: SPREAD; RAND / OCT+: RATE), DEPTH is CHANCE in RAND / OCT+" :
-                           k == 1 ? "UI LAYER: the same" : "UI DUEL: whatever the stored mode, MODE and SPREAD fade with DUEL, RATE and DEPTH live (the plain delay with its modulation)", ok);
+                           k == 1 ? "UI LAYER: the same" : "UI DUEL: the same, but SPREAD is hidden in every mode (\"DUEL\": nothing to spread); MODE is there, DEPTH is CHANCE in RAND / OCT+", ok);
                 }
             }
-            /* the cards on screen (the hide rule, ui_draw.c draw_column_hide): DELAY 2/2 is SPREAD, MRATE, DEPTH / CHANCE, MIX in K1..K4; a hidden card leaves its column empty */
+            /* the cards on screen (the hide rule, ui_draw.c draw_column_hide): DELAY 2/2 is SPREAD, MRATE, DEPTH / CHANCE, MIX in K1..K4; a hidden card is not drawn, the others move left (T0227) */
             {
                 static const uint8_t HID[3][4][4] = {   /* [output mode][delay mode][K1..K4] 1 = not drawn */
                     {{1, 0, 0, 0}, {0, 0, 0, 0}, {0, 1, 0, 0}, {0, 1, 0, 0}},   /* STEREO: DIGI hides SPREAD; PING hides nothing; RAND and OCT+ hide MRATE */
                     {{1, 0, 0, 0}, {0, 0, 0, 0}, {0, 1, 0, 0}, {0, 1, 0, 0}},   /* LAYER: the same */
-                    {{1, 0, 0, 0}, {1, 0, 0, 0}, {1, 0, 0, 0}, {1, 0, 0, 0}}};  /* DUEL: SPREAD hidden whatever the stored mode (MRATE and DEPTH stay: the plain delay with its modulation) */
+                    {{1, 0, 0, 0}, {1, 0, 0, 0}, {1, 1, 0, 0}, {1, 1, 0, 0}}};  /* DUEL: SPREAD hidden in every mode, MRATE as in STEREO (PING is the plain delay there: MRATE and DEPTH live) */
                 for (k = 0; k < 3u; k++) {
                     duell_mode_req = k == 0 ? DM_STEREO : k == 1 ? DM_LAYER : DM_SPLIT;
                     for (m = 0; m < 4u; m++) {
@@ -560,16 +656,19 @@ int main(void)
                         song.g[G_DMODE] = (int16_t)m;
                         ui.page = (uint8_t)p2; page_entered();
                         ui.force = 1; ui_draw();
+                        uint32_t nh = 0;
                         ok = 1;
                         for (c = 0; c < 4u; c++)
-                            ok &= (ui.col[c][0] == 0x7f) == HID[k][m][c];
-                        expect("DELAY 2/2 on screen: the hidden cards are not drawn, the others keep their columns", ok);
+                            nh += HID[k][m][c];
+                        for (c = 0; c < 4u; c++)                /* T0227 (owner): the cards that show move left, the hidden ones leave the last columns empty */
+                            ok &= (ui.col[c][0] == 0x7f) == (c >= 4u - nh);
+                        expect("DELAY 2/2 on screen: the hidden cards are not drawn, the others move left (T0227)", ok);
                     }
                 }
                 ui.page = (uint8_t)p1; page_entered();
                 song.g[G_DMODE] = DMD_DIGITAL; duell_mode_req = DM_SPLIT;
                 ui.force = 1; ui_draw();
-                expect("DELAY 1/2 in DUEL: the MODE card (K1) is not drawn, TIME FDBK COLR are", ui.col[0][0] == 0x7f && ui.col[1][0] != 0x7f && ui.col[3][0] != 0x7f);
+                expect("DELAY 1/2 in DUEL: the MODE card (K1) is drawn like TIME FDBK COLR (0.2.22: every mode works in DUEL, mono)", ui.col[0][0] != 0x7f && ui.col[1][0] != 0x7f && ui.col[3][0] != 0x7f);
             }
             duell_mode_req = DM_STEREO;
             song.g[G_DMODE] = 9;
@@ -599,9 +698,176 @@ int main(void)
         song.g[G_DMDEP] = 0; song.g[G_DMODE] = DMD_DIGITAL;
         duell_mode_req = DM_SPLIT;
         edit_param(0, 1);
-        expect("DEFAULT: in DUEL the MODE card is faded: no change, no CHANCE", song.g[G_DMODE] == DMD_DIGITAL && song.g[G_DMDEP] == 0);
+        expect("DEFAULT: in DUEL the MODE card turns (0.2.22): DIGI -> PING, no CHANCE", song.g[G_DMODE] == DMD_PING && song.g[G_DMDEP] == 0);
+        edit_param(0, 1);
+        expect("DEFAULT: in DUEL PING -> RANDOM: CHANCE starts at 40 as in STEREO", song.g[G_DMODE] == DMD_RAND && song.g[G_DMDEP] == 40);
         duell_mode_req = DM_STEREO;
         song.g[G_DMODE] = DMD_DIGITAL; song.g[G_DMDEP] = 0; dmd_auto = 0;
+    }
+
+    /* 0.2.22: DUEL, every delay mode per bus, mono */
+    {
+        static const char *const MN[4] = {"DIGI", "PING", "RAND", "OCT+"};
+        uint32_t m, ok_run = 1, ok_iso = 1, ok_ctr = 1, ok_ev = 1;
+        uint64_t h[4], hb;
+        for (m = 0; m < 4u; m++) {
+            uint64_t a;
+            duel_run((int)m, m >= 2u ? 100 : 0, 60, 4, 3, 0);
+            h[m] = hash_of(rec_l, rec_r, rec_n);
+            a = h[m];
+            duel_run((int)m, m >= 2u ? 100 : 0, 60, 4, 3, 0);
+            expect(m == 0 ? "DUEL DIGI: the same settings render the same twice" : m == 1 ? "DUEL PING: the same twice" : m == 2 ? "DUEL RAND: the same twice (a generator per bus, a fixed seed)" : "DUEL OCT+: the same twice",
+                   a == hash_of(rec_l, rec_r, rec_n));
+        }
+        expect("DUEL: PING is the plain delay (DIGI, bit for bit, both parts); RAND and OCT+ differ from it and from each other", h[1] == h[0] && h[2] != h[0] && h[3] != h[0] && h[2] != h[3]);
+        /* every mode runs: each bus fires events, the voices stay centred, each part stays in its own channel, the two buses do not touch each other */
+        for (m = 0; m < 4u; m++) {
+            uint32_t ev_a, ev_b;
+            int dep = m >= 2u ? 100 : 0;
+            duel_run((int)m, dep, 60, 4, 1, 0);
+            memcpy(d1l, rec_l, sizeof d1l);
+            memcpy(d1r, rec_r, sizeof d1r);
+            ev_a = du_ev[0];
+            ok_ctr &= du_centred;
+            duel_run((int)m, dep, 60, 4, 2, 0);
+            memcpy(d2l, rec_l, sizeof d2l);
+            memcpy(d2r, rec_r, sizeof d2r);
+            ev_b = du_ev[1];
+            ok_ctr &= du_centred;
+            duel_run((int)m, dep, 60, 4, 3, 0);
+            ok_ctr &= du_centred;
+            ok_run &= peak_of(d1l, DN) > 1000 && peak_of(d2r, DN) > 1000;
+            ok_iso &= all_zero(d1r, DN) && all_zero(d2l, DN);
+            ok_iso &= !memcmp(rec_l, d1l, sizeof d1l) && !memcmp(rec_r, d2r, sizeof d2r);
+            ok_ev &= m < 2u ? (ev_a == 0 && ev_b == 0) : (ev_a > 20u && ev_b > 20u);
+            printf("dlyev: DUEL %s: peak left %d (part 1 alone), right %d (part 2 alone); blocks with an event pending: bus A %u, bus B %u\n", MN[m], (int)peak_of(d1l, DN),
+                   (int)peak_of(d2r, DN), ev_a, ev_b);
+        }
+        expect("DUEL, every mode: each part sounds in its own channel", ok_run);
+        expect("DUEL, every mode: a part alone leaves the other channel exactly 0 in every sample; both parts: left = part 1 alone, right = part 2 alone, sample for sample", ok_iso);
+        expect("DUEL: RAND and OCT+ fire events on both buses (CHANCE 100); DIGI and PING none", ok_ev);
+        expect("DUEL: the events are centred (no pan, no side: every voice's gains at unity, every block, both buses)", ok_ctr);
+        hb = h[0];
+        (void)hb;
+        /* the level: CHANCE 0 RAND (the plain voice) is the DIGI delay within 1 dB */
+        {
+            double r0, rd;
+            duel_run(DMD_DIGITAL, 0, 60, 4, 1, 0);
+            rd = rms_of(rec_l, 0, rec_n);
+            duel_run(DMD_RAND, 0, 60, 4, 1, 0);
+            r0 = rms_of(rec_l, 0, rec_n);
+            printf("dlyev: DUEL RAND CHANCE 0 rms %.0f against DIGI %.0f\n", r0, rd);
+            expect("DUEL RAND CHANCE 0 (no event): the level is the plain delay's within 1 dB", rd > 0.0 && r0 > 0.0 && fabs(20.0 * log10(r0 / rd)) < 1.0);
+            duel_run(DMD_RAND, 100, 60, 4, 1, 0);
+            expect("DUEL RAND CHANCE 100: bounded, the level within 4 dB of the plain delay's", peak_of(rec_l, rec_n) < 32767 && fabs(20.0 * log10(rms_of(rec_l, 0, rec_n) / rd)) < 4.0);
+        }
+        /* the events fit the half line: a long time (0.6 s) leaves no room for a reverse, an octave up or down, a late repeat; a short one does; STEREO's whole line: always */
+        {
+            uint32_t half = DLY_LEN / 2u;
+            expect("DUEL: an event that would read past the half line is not played (at 0.6 s: not a reverse, a down or a late repeat; an octave up only from a period of 0.65 s; at 0.1 s: all); STEREO's whole line: always",
+                   !dlyev_fits(DE_REVERSE, 26460u << 16, 26460u, half) && !dlyev_fits(DE_DOWN, 26460u << 16, 26460u, half) && !dlyev_fits(DE_RETRIG, 31000u << 16, 31000u, half) &&
+                       !dlyev_fits(DE_UP, 30000u << 16, 30000u, half) && dlyev_fits(DE_REVERSE, 4410u << 16, 4410u, half) && dlyev_fits(DE_DOWN, 4410u << 16, 4410u, half) &&
+                       dlyev_fits(DE_RETRIG, 4410u << 16, 4410u, half) && dlyev_fits(DE_UP, 4410u << 16, 4410u, half) && dlyev_fits(DE_REVERSE, 40000u << 16, 40000u, DLY_LEN) &&
+                       dlyev_fits(DE_UP, 31000u << 16, 31000u, DLY_LEN));
+        }
+        {                                                    /* the longest time DUEL has (TIME 1/4 at 40 BPM, halved to fit): events on, bounded, the tails end in exact silence */
+            uint32_t bad_ = 0, m2;
+            for (m2 = 2; m2 <= 3u; m2++) {
+                uint32_t b2, nb2 = 12u * FS / CTL;
+                duel_setup((int)m2, 100, 40);
+                song.g[G_BPM] = 40;
+                song.g[G_DTIME] = 0;
+                rec_n = 0;
+                for (b2 = 0; b2 < nb2; b2++) {
+                    if (b2 == 0) { trk_note_on(&trk[0], 52, 100); trk_note_on(&trk[1], 59, 100); }
+                    if (b2 == (FS / 8u) / CTL) { trk_note_off(&trk[0], 52); trk_note_off(&trk[1], 59); }
+                    mblk(1);
+                }
+                bad_ |= peak_of(rec_l + rec_n - FS, FS) != 0 || peak_of(rec_r + rec_n - FS, FS) != 0 || peak_of(rec_l, rec_n) < 1000 || peak2() >= 32767 || peak_of(rec_r, rec_n) < 1000;
+            }
+            expect("DUEL TAILS: the longest delay (1/4 at 40 BPM, halved to fit the half line), RAND and OCT+, CHANCE 100, FDBK 40: sounds, bounded, the last second is silent", !bad_);
+        }
+        {                                                    /* LOUD */
+            uint32_t mm, bad_ = 0;
+            for (mm = 2; mm <= 3u; mm++) {
+                uint32_t b2, nb2 = 6u * FS / CTL;
+                duel_setup((int)mm, 100, 120);
+                song.g[G_DTIME] = mm == 3u ? 2 : 1;
+                song.g[G_DCOLOR] = 127;
+                trk[0].p[P_TRIM] = trk[1].p[P_TRIM] = 127;
+                rec_n = 0;
+                for (b2 = 0; b2 < nb2; b2++) {
+                    if (b2 % (FS / 4u / CTL) == 0) { trk_note_on(&trk[0], 40, 127); trk_note_on(&trk[0], 47, 127); trk_note_on(&trk[1], 52, 127); trk_note_on(&trk[1], 55, 127); }
+                    if (b2 % (FS / 4u / CTL) == (FS / 16u) / CTL) { trk_note_off(&trk[0], 40); trk_note_off(&trk[0], 47); trk_note_off(&trk[1], 52); trk_note_off(&trk[1], 55); }
+                    mblk(1);
+                }
+                bad_ |= peak2() >= 32767 || peak_of(rec_l, rec_n) < 1000;
+            }
+            expect("DUEL LOUD: RAND and OCT+, FDBK 120, COLR 127, MIX 127, CHANCE 100, loud chords on both parts: bounded under full scale", !bad_);
+        }
+        /* no click switching the mode in DUEL (12 ms crossfade): all four modes in every order, against the steady modes' own steps */
+        {
+            static const int chgd[8] = {3, 2, 0, 1, 0, 2, 3, -1};
+            static const int chge[8] = {1, 0, 1, 0, 1, 0, 1, -1};
+            int32_t base_ = 0, sw, swe;
+            for (m = 0; m < 4u; m++) {
+                duel_run((int)m, 40, 60, 9, 3, 0);
+                base_ = step2() > base_ ? step2() : base_;
+            }
+            duel_run(DMD_DIGITAL, 40, 60, 9, 3, chgd);
+            sw = step2();
+            duel_run(DMD_DIGITAL, 0, 60, 9, 3, chge);
+            swe = step2();
+            printf("dlyev: DUEL switching the modes in jumps: largest step %d (DIGI <-> PING only %d); steady modes' largest %d\n", sw, swe, base_);
+            expect("DUEL CLICK: DIGI, PING, RAND, OCT+ switched in jumps (any order), no click (under 1.3 x the steady steps + 50)", sw < 13 * base_ / 10 + 50 && swe < 13 * base_ / 10 + 50);
+        }
+        /* SENDS OFF and STOP ALL: both buses cleared */
+        {
+            uint32_t kind;
+            for (kind = 0; kind < 2u; kind++) {
+                uint32_t b2, seen = 0, running;
+                duel_setup(kind ? DMD_OCTUP : DMD_RAND, 100, 80);
+                rec_n = 0;
+                trk_note_on(&trk[0], 52, 100);
+                trk_note_on(&trk[1], 59, 100);
+                for (b2 = 0; b2 < 2u * FS / CTL; b2++) {
+                    if (b2 == FS / 8u / CTL) { trk_note_off(&trk[0], 52); trk_note_off(&trk[1], 59); }
+                    mix_block(ob, CTL);
+                }
+                running = dlyev.on == 1 && dlyev_b.on == 1 && dlyev.x == 32768 && dlyev_b.x == 32768 && dlyev.rng != 0x2545F491u && dlyev_b.rng != 0x2545F491u;
+                if (kind) { snd_panic = 1; } else { mods_off |= MODS_SENDS; }
+                for (b2 = 0; b2 < FS / CTL; b2++) {
+                    uint32_t nz = 0, i;
+                    mix_block(ob, CTL);
+                    if (snd_st == SND_OFF && snd_clr > DLY_LEN / DM_CHUNK && !seen) {
+                        for (i = 0; i < 65536u; i++)
+                            nz += dly_buf[i] != 0;
+                        seen = 1 + (nz == 0 && !dlyev.on && !dlyev_b.on && !dlyev.x && !dlyev_b.x && !dlyev.rng && !dlyev_b.rng && !dlyev.v[0].act && !dlyev_b.v[0].act &&
+                                    !dlyev.v[1].act && !dlyev_b.v[1].act && !dlyev.v[0].fin && !dlyev_b.v[1].fout);
+                    }
+                }
+                expect(kind ? "DUEL PANIC: STOP ALL's flush clears the line (both halves), both buses' voices, generators, clocks and crossfades" : "DUEL SENDS OFF: the same (both buses)", running && seen == 2);
+                mods_off &= ~MODS_SENDS;
+            }
+        }
+        /* DUEL -> STEREO with both buses in RAND: the output mode's change clears the event states (bus B has none in STEREO: it stays at rest) */
+        {
+            uint32_t b2;
+            duel_setup(DMD_RAND, 100, 80);
+            trk_note_on(&trk[0], 52, 100);
+            trk_note_on(&trk[1], 59, 100);
+            for (b2 = 0; b2 < FS / CTL; b2++)
+                mix_block(ob, CTL);
+            expect("DUEL -> STEREO: both buses were running RAND", dlyev.on == 1 && dlyev_b.on == 1);
+            duell_mode_req = DM_STEREO;
+            for (b2 = 0; b2 < FS / CTL; b2++)
+                mix_block(ob, CTL);
+            expect("DUEL -> STEREO (RAND stored): bus B's event state is clear, bus A runs RAND with the whole line", duell_mode == DM_STEREO && dlyev_b.on == 0 && dlyev_b.rng == 0 && dlyev.on == 1);
+            duell_mode_req = DM_SPLIT;
+            for (b2 = 0; b2 < FS / CTL; b2++)
+                mix_block(ob, CTL);
+            expect("STEREO -> DUEL (RAND stored): both buses run RAND again from the start", duell_mode == DM_SPLIT && dlyev_b.on == 1 && dlyev.on == 1);
+        }
     }
 
     /* cost */
@@ -613,6 +879,16 @@ int main(void)
         printf("dlyev: COST against DELAY: RAND +%.1f / +%.1f / +%.1f, OCT+ +%.1f / +%.1f; against PING-PONG: RAND 50 %+.1f\n", r0 - c0, r50 - c0, r100 - c0, o50 - c0, o100 - c0, r50 - cp);
         expect("COST: between events (CHANCE 0) an event mode adds under 60 instructions per sample over the plain delay, the worst case (CHANCE 100) under 200",
                c0 == 0.0 || (r0 - c0 < 60.0 && r100 - c0 < 200.0 && o100 - c0 < 200.0));
+    }
+
+    {
+        double d0 = cost_duel(DMD_DIGITAL, 0), dp = cost_duel(DMD_PING, 0), dm60 = cost_duel(DMD_DIGITAL, 60), dr0 = cost_duel(DMD_RAND, 0), dr50 = cost_duel(DMD_RAND, 50);
+        double dr100 = cost_duel(DMD_RAND, 100), do50 = cost_duel(DMD_OCTUP, 50), do100 = cost_duel(DMD_OCTUP, 100);
+        printf("dlyev: COST DUEL instructions / sample (whole mix, a plucked note on each part every 0.5 s, the delay on both buses): DIGI %.1f, DIGI + DEPTH 60 %.1f, PING %.1f; RAND CHANCE 0 %.1f, 50 %.1f, 100 %.1f; "
+               "OCT+ 50 %.1f, 100 %.1f\n", d0, dm60, dp, dr0, dr50, dr100, do50, do100);
+        printf("dlyev: COST DUEL against DIGI: PING %+.1f, RAND %+.1f / %+.1f / %+.1f, OCT+ %+.1f / %+.1f\n", dp - d0, dr0 - d0, dr50 - d0, dr100 - d0, do50 - d0, do100 - d0);
+        expect("COST DUEL: PING costs what DIGI costs; between events (CHANCE 0) an event mode adds under 120 instructions per sample over DIGI (two buses), the worst case under 300",
+               d0 == 0.0 || (dp - d0 < 2.0 && dr0 - d0 < 120.0 && dr100 - d0 < 300.0 && do100 - d0 < 300.0));
     }
 #endif
     printf("dlyev: %d checks, %d failed\n", ncheck, bad);

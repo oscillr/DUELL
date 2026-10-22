@@ -120,7 +120,7 @@ static int theory(void)
         uint8_t out[CHORD_MAX], ob[CHORD_MAX];
         uint32_t m = 0;
         ok = 1;
-        for (s = 1; s <= (uint32_t)TP[P_SCALE].max; s++)
+        for (s = 1; s <= (uint32_t)SCALE_D.max; s++)
             for (r = 0; r < 12u; r++)
                 for (note = 36; note < 96u; note++) {
                     scale_g = (int16_t)s; root_g = (int16_t)r;
@@ -179,7 +179,7 @@ static int shapes_voicings(void)
         uint16_t mask;
         char b[12];
         ok = 1;
-        for (s = 0; s <= (uint32_t)TP[P_SCALE].max; s++)
+        for (s = 0; s <= (uint32_t)SCALE_D.max; s++)
             for (c = 1; c <= (uint32_t)TP[P_CHRD].max; c++)
                 for (v = 0; v <= (uint32_t)TP[P_VOIC].max; v++)
                     for (note = 0; note < 128u; note++) {
@@ -426,7 +426,7 @@ static int global_scale(void)
         scale_sync();
         ok &= scale_g == 7 && root_g == 5 && offscale_g == OS_PLAY; }
     bad += check("settings: SCALE, ROOT and OFF-SCALE round trip", ok);
-    bad += check("MENU > CONTROL has no SCALE LINK row", menu_n(MI_HOMEPG) == (uint32_t)HP_COUNT && MI_TAB[MI_USB] == MTAB_AUDIO);
+    bad += check("MENU > CONTROL has no SCALE LINK row", menu_n(MI_HOMEPG) == (uint32_t)HP_COUNT && MI_TAB[MI_CLICK] == MTAB_AUDIO);
     reset();
     scale_g = 0; root_g = 0; offscale_g = OS_SNAP;
     /* SNAP: the nearest scale note, a tie goes down; PLAY passes; CHROMATIC has nothing to snap */
@@ -493,7 +493,7 @@ static int global_scale(void)
         uint8_t o[CHORD_MAX];
         uint32_t n, j;
         trk[0].p[P_CHRD] = (int16_t)(i & 1u ? CH_DIA3 : CH_DIA7);
-        for (k = 1; k <= (uint32_t)TP[P_SCALE].max; k++) {
+        for (k = 1; k <= (uint32_t)SCALE_D.max; k++) {
             scale_g = (int16_t)k; root_g = (int16_t)(i % 12u);
             n = chord_build(&trk[0], i, o);
             for (j = 0; j < n; j++) ok &= in_mask(o[j], (int32_t)k, root_g);
@@ -539,13 +539,12 @@ static int global_scale(void)
             for (e = 0; e < NENGINES; e++) {
                 uint32_t n = ds_count(e);
                 if (!n) continue;
-                set_engine_of(&trk[k], e);
+                init_engine_of(&trk[k], e);
                 for (i = 0; i < n && i < 30u; i++) {
                     uint32_t j;
                     const ds_sound_t *ds = ds_get(e, i);
                     nk += (ds->flags & DSF_KEYS) != 0;
                     nl++;
-                    for (j = 0; j < ds->np; j++) ok &= DS_PAIR[ds->at + j].id != P_SCALE;
                     apply_preset_to(&trk[k], i);
                     ok &= scale_g == 7 && root_g == 5 && offscale_g == OS_PLAY;
                 }
@@ -559,7 +558,7 @@ static int global_scale(void)
 static int snap_follow(void)
 {
     int bad = 0;
-    track_t *t = &trk[0], *d = &trk[3];
+    track_t *t = &trk[0], *d = &trk[1];
     uint32_t i, list[16], cnt, n;
     reset();
     for (i = 0; i < NSTEP; i++) { t->step[i] = d->step[i] = (step_t){{0}, 0, ST_REST, 0, 0}; }

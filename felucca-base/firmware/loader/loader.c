@@ -22,6 +22,14 @@
 #include "fm1_flash.h"
 #include "../src/libc.c"
 #include "../src/usb.c"
+#ifndef LDR_SCREEN
+#define LDR_SCREEN 1                                /* tools/build.py: DUELL_LOADER_SCREEN=0 builds the loader-free fallback */
+#endif
+#if LDR_SCREEN
+#include "fm1_lcd_hw.h"
+#include "../src/lcd.c"
+#endif
+#include "ldr_screen.c"
 
 static uint32_t ldr_ms(void)   /* monotonic ms; survives the TIMER4 wrap (178.9 s) */
 {
@@ -72,7 +80,7 @@ static void ldr_record_clear(void)
 {
     fm1_updata_parm_clear();                        /* CRC 0: the SPL ignores it on a warm reset */
 }
-static void ldr_progress(uint32_t done, uint32_t total) { (void)done; (void)total; ldr_poll(); }
+static void ldr_progress(uint32_t done, uint32_t total) { ldr_screen_progress(done, total); ldr_poll(); }
 #include "ldr_core.c"
 
 extern uint32_t _bss_start[], _bss_end[];
@@ -81,6 +89,7 @@ void ldr_main(void)
 {
     fm1_wdt_arm(0x0D);                              /* ~8 s, fed by ldr_poll */
     fm1_time_init();
+    ldr_screen_init();                              /* the screen first (it needs ~0.5 s), then USB; any failure of it leaves a loader without a screen */
     usb_start();
     for (;;) {
         ldr_poll();

@@ -29,6 +29,7 @@
  *             the cost of SPACE +100 per reverb model, STEREO and DUEL
  *   COST      the song's instructions a sample, idle and with each effect (proc_pid_rusage) */
 #define UI_TEST_NO_MAIN 1
+#define CHO_NOSKIP 1   /* 0.2.21: the plain bus leaves the chorus out of silent blocks (fx_bus.c cho_zrun); the cost checks here measure PERFORM's own stages against an idle mix, and SPACE's send floors would switch the chorus on in it (the always-running chorus of before is what they were set against; chorusskip_test.c proves the skip invisible) */
 #include "ui_test.c"
 #include <sys/wait.h>
 #include <math.h>
@@ -327,20 +328,15 @@ static void t_knobs(void)
     turn(EN_ALGO, -1);
     press(B_FX);
     frame();
-    {   /* 0.2.9: the MIXER's third card is the same SPACE */
-        int16_t rev = TSEL->p[P_REV];
+    {   /* 0.2.25 layout round (owner): HOME's MIXER page (whose K3 was a copy of SPACE) is gone: the MIXER is GLO's first page, SPACE is PERFORM's K2 only */
+        int seen = 0;
         perf_space = 3;
-        for (int hp = 0; hp < 8 && (at_home() || cur_page()->graph != GR_TRK); hp++)
+        for (int hp = 0; hp < 8; hp++) {
             press(B_HOME);
-        frame();
-        expect("MIXER: K3 is the SPACE card with PERFORM's value (+3)", card_is(2, "SPACE", "+3"));
-        turn(EN_K3, 2);
-        frame();
-        expect("  K3 moves the same value (+5), the card says it, the part's REV send stays", perf_space == 5 && card_is(2, "SPACE", "+5") && TSEL->p[P_REV] == rev);
-        turn(EN_K3, -5);
-        frame();
-        expect("  back to 0: the card says 0 (not greyed, VAL colour)", perf_space == 0 && card_is(2, "SPACE", "0"));
-        perf_space = 3;
+            frame();
+            seen |= str_eq(cur_page()->title, "MIXER") || cur_page()->graph == GR_TRK;
+        }
+        expect("HOME's round has no MIXER page any more (the SPACE copy went with it; PERFORM's K2 keeps SPACE)", !seen && perf_space == 3);
     }
     turn(EN_PRESET, 1);
     expect("  balance kept after PERFORM (not saved into patches)", mix_bal == 2);
@@ -643,7 +639,7 @@ static void perf_reset(void)
     memset(&pf, 0, sizeof pf);
     pf.src = pf.next = PF_N;
     pf.pbeat = perf_beat;
-    pf.mg[0] = pf.mg[1] = pf.mg[2] = pf.mg[3] = 32768;
+    pf.mg[0] = pf.mg[1] = 32768;
     perf_held = perf_act = 0;
     perf_kill = 0;
     perf_space = perf_filt = 0;
@@ -2238,7 +2234,9 @@ static void t_space(void)
             }
             for (t = 0; t < FS; t++)
                 a_l[t] -= sp_l[t];                      /* (the delay's return alone) */
-            th = peak(a_l, 0, FS) / 10;
+            th = peak(a_l, 0, FS) / 4;                 /* (0.2.29: a quarter of the echo's peak, was a tenth: at +100 SPACE's send floors reach the HALL
+                                                         * in one render and not the other, and the HALL's quiet lines now round to the nearest instead of to 0
+                                                         * (fx.c hall_end): that difference, ~1800 before the echo, is no longer swallowed; the echo is ~14000) */
             for (on[k] = 0; on[k] < FS && abs(a_l[on[k]]) < th; on[k]++)
                 ;
         }

@@ -37,7 +37,7 @@ static uint32_t rl_group(const engine_t *e, uint32_t id)
             return G_FILTER;
         return G_SOURCE;
     }
-    if (id == P_FTYPE || id == P_ED_FLT || id == P_E2FLT || id == P_LD_FLT || id == P_L2FLT)
+    if (id == P_ED_FLT || id == P_E2FLT || id == P_LD_FLT || id == P_L2FLT)
         return G_FILTER;
     if ((id >= P_ATK && id <= P_REL) || (id >= P_E2ATK && id <= P_E2REL) || id == P_ED_SHP || id == P_E2SHP || id == P_ED_PIT)
         return G_ENV;

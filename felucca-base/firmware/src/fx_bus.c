@@ -183,7 +183,7 @@ static __attribute__((noinline)) void BUS_FN(rev_hall)(const int32_t *rev_in, in
     }
     BUS_HL.ph += HL_LFO;
     for (k = 0; k < HL_NL; k++) {                       /* the lines' ends */
-        int32_t g = BUS_HL.g[k], f = 0, lo;
+        int32_t g = BUS_HL.g[k], f = 0;
         if ((HL_LPM >> k) & 1u)
             d = BUS_HL.i[k];                                /* (low-passed: the line's end) */
         else {                                          /* (drifting: HL_MOD + 2 +- HL_MOD samples short of it) */
@@ -193,13 +193,10 @@ static __attribute__((noinline)) void BUS_FN(rev_hall)(const int32_t *rev_in, in
             d = BUS_HL.i[k] + (r >> 8);
             d = d >= HL_LEN[k] ? d - HL_LEN[k] : d;
         }
-        s = d + HL_LEN[k] / 2u;                         /* quiet? (two samples half a line apart) */
-        s = s >= HL_LEN[k] ? s - HL_LEN[k] : s;
-        lo = (b[d] < 0 ? -b[d] : b[d]) + (b[s] < 0 ? -b[s] : b[s]) < HL_LOUD;
         if ((HL_LPM >> k) & 1u) {
-            HL_RUNS(d, HL_LEN[k], m, s, hall_end_lp(b + d, BUS_HL.y[k] + s, m, g, lo, &BUS_HL.lp[k], &BUS_HL.le[k], kd));
+            HL_RUNS(d, HL_LEN[k], m, s, hall_end_lp(b + d, BUS_HL.y[k] + s, m, g, &BUS_HL.lp[k], &BUS_HL.le[k], kd));
         } else {
-            HL_RUNS(d, HL_LEN[k], m, s, hall_end(b + d, f, BUS_HL.y[k] + s, m, g, lo));
+            HL_RUNS(d, HL_LEN[k], m, s, hall_end(b + d, f, BUS_HL.y[k] + s, m, g));
         }
         b += HL_LEN[k] + 1u;
     }
@@ -248,19 +245,36 @@ static __attribute__((noinline)) void BUS_FN(rev_hall)(const int32_t *rev_in, in
  * MOD 0, bit for bit the SHIM of 0.2.18, and calls this for the rest). The block's second half of rev_shim (the output's low cut and gate, the line, the
  * return), for t = ROOM's output, with the grains' read point in Q16 and linearly interpolated (the plain loop reads whole samples):
  *   UP    the delay falls 1 sample a sample (read at 2x), DOWN: it rises 0.5 a sample (read at 0.5x): the same 2048-sample line, the same two triangles half a
- *         line apart (their sum flat), BOTH: the two returns at 1/2 each and both SH_BDEV (7.9 cents) sharp (an exact octave pair recirculates, f -> 2f -> f, on ROOM's narrow comb peaks and the tail never
- *         ends at SIZE 150, MOD 0: measured; the same sign on both, so that the round trip is off by twice that; with it the tails are as long as UP's)
+ *         line apart (their sum flat). (BOTH, the two returns at once, was removed in 0.2.25 (owner): it cost ~12 % of the half in DUEL, 5-6 % otherwise; a stored BOTH plays UP)
  *   MOD   the read speed drifts by two slow sines (SH_L1, SH_L2), +-25 cents at 100 %: the pitched return does not stand still and the partials it feeds back
  *         spread a little with each pass, a chorus-like shimmer. The sines advance a block at a time (the pitch glides, nothing jumps)
  *   a change of PITCH: the return fades out (10 ms), the grains restart, it fades in. The plain loop's phase is taken over (and handed back, rounded, when PITCH
  *   is UP and MOD 0 and the return is whole again). Returns 0: not run (the plain loop does the block) */
+#ifndef SH_GRAIN_ONCE                                   /* (this file is included twice, bus A and bus B: the helper once) */
+#define SH_GRAIN_ONCE
+/* one grain of rev_shimx's pitch shifter: the line b read at the Q16 phase ph (up: the read point falls behind the write point w, down: it
+ * rises), linearly interpolated, under its triangle window. 0.2.24: out of the loop of four (always inlined, up is a constant at each call) */
+static inline __attribute__((always_inline)) int32_t sh_grain(const int16_t *b, uint32_t w, uint32_t ph, uint32_t up)
+{
+    uint32_t d, di, f, p4;
+    int32_t a, c, tri;
+    ph &= (SH_LEN << 16) - 1u;
+    d = up ? (SH_LEN << 16) - ph : ph;                  /* the read point's distance behind the write point, Q16 */
+    di = d >> 16, f = (d >> 8) & 255u;
+    a = b[(w - di) & (SH_LEN - 1u)];
+    c = b[(w - di - 1u) & (SH_LEN - 1u)];
+    p4 = ph >> 12;                                      /* 0..32767: the triangle's Q4 */
+    tri = (int32_t)(p4 < 16384u ? p4 : 32767u - p4);
+    return (a + (((c - a) * (int32_t)f) >> 8)) * tri >> 13;
+}
+#endif
 static __attribute__((noinline)) uint32_t BUS_FN(rev_shimx)(const int32_t *t, int32_t *out, uint32_t n)
 {
     const int16_t *b = BUS_SHIM.buf;
     const uint32_t wrap = (SH_LEN << 16) - 1u, half = (SH_LEN / 2u) << 16;
     uint32_t i, pu, pd, cfg, w = BUS_FX.sh_w;
     int32_t g, su, sd, dev, o;
-    uint32_t want = (uint32_t)clamp(song.g[G_SHPITCH], 0, SHP_N - 1), mod = (uint32_t)clamp(song.g[G_SHMOD], 0, 100);   /* (PITCH, MOD: core.h) */
+    uint32_t want = song.g[G_SHPITCH] == SHP_DOWN ? SHP_DOWN : SHP_UP, mod = (uint32_t)clamp(song.g[G_SHMOD], 0, 100);   /* (PITCH, MOD: core.h; 0.2.25: anything but DOWN, a stored BOTH too, is UP) */
     if (!BUS_FX.sh_x) {                                 /* from the plain loop: its phase, the return whole */
         BUS_FX.sh_x = 1, BUS_FX.sh_cfg = SHP_UP, BUS_FX.sh_g = 32767;
         BUS_FX.sh_pu = (BUS_FX.sh_ph & (SH_LEN - 1u)) << 16, BUS_FX.sh_pd = 0;
@@ -272,13 +286,10 @@ static __attribute__((noinline)) uint32_t BUS_FN(rev_shimx)(const int32_t *t, in
     }
     BUS_FX.sh_l1 += SH_L1 * n, BUS_FX.sh_l2 += SH_L2 * n;
     dev = ((osc_sine(BUS_FX.sh_l1) + osc_sine(BUS_FX.sh_l2)) >> 1) * (int32_t)mod * 19 >> 16;   /* the speed's drift, Q16 of a sample a sample */
-    if (want == SHP_BOTH)
-        dev += SH_BDEV;                                 /* BOTH: both returns a few cents sharp, so f -> 2f -> f cannot lock onto ROOM's comb peaks and ring on */
     su = 65536 + 2 * dev, sd = 32768 - (dev >> 1);      /* the delay's rate: UP 1 + 2 dev (read at 2 (1 + e)), DOWN 0.5 - 0.5 dev (read at 0.5 (1 + e)) */
     pu = BUS_FX.sh_pu, pd = BUS_FX.sh_pd, cfg = BUS_FX.sh_cfg, g = BUS_FX.sh_g;
     for (i = 0; i < n; i++) {
         int32_t x = 0, ti = t[i];
-        uint32_t j;
         o = ti - BUS_FX.sh_hp + BUS_FX.sh_he;           /* the low cut, its step's remainder kept (exact silence) */
         BUS_FX.sh_he = o & 511;
         BUS_FX.sh_hp += o >> 9;
@@ -295,22 +306,13 @@ static __attribute__((noinline)) uint32_t BUS_FN(rev_shimx)(const int32_t *t, in
             if (g > 32767)
                 g = 32767;
         }
-        for (j = 0; j < 4u; j++) {                      /* grains 0, 1 of the up return, then of the down return */
-            uint32_t up = j < 2u, ph = (up ? pu : pd) + (j & 1u) * half, d, di, f, p4;
-            int32_t a, c, tri;
-            if (up ? cfg == SHP_DOWN : cfg == SHP_UP)
-                continue;
-            ph &= wrap;
-            d = up ? (SH_LEN << 16) - ph : ph;          /* the read point's distance behind the write point, Q16 */
-            di = d >> 16, f = (d >> 8) & 255u;
-            a = b[(w - di) & (SH_LEN - 1u)];
-            c = b[(w - di - 1u) & (SH_LEN - 1u)];
-            p4 = ph >> 12;                              /* 0..32767: the triangle's Q4 */
-            tri = (int32_t)(p4 < 16384u ? p4 : 32767u - p4);
-            x += (a + (((c - a) * (int32_t)f) >> 8)) * tri >> 13;
+        if (cfg == SHP_UP) {                            /* grains 0, 1 of the up return, or 0, 1 of the down return (0.2.24: straight-line grains, sh_grain; */
+            x += sh_grain(b, w, pu, 1u);                /* 0.2.25: BOTH, the two returns at once, is gone) */
+            x += sh_grain(b, w, pu + half, 1u);
+        } else {
+            x += sh_grain(b, w, pd, 0u);
+            x += sh_grain(b, w, pd + half, 0u);
         }
-        if (cfg == SHP_BOTH)
-            x >>= 1;
         x = mulq16(x, (uint32_t)g << 1);                /* (no 64 bit: the return, x up to 82 k, times its gain) */
         pu += (uint32_t)su, pd += (uint32_t)sd;
         pu &= wrap, pd &= wrap;
@@ -333,7 +335,7 @@ static __attribute__((noinline)) void BUS_FN(rev_shim)(const int32_t *rev_in, in
         t[i] = 0;
     }
     BUS_FN(rev_room)(in, t, n);
-    if ((song.g[G_SHPITCH] | song.g[G_SHMOD] | BUS_FX.sh_x) && BUS_FN(rev_shimx)(t, out, n))   /* 0.2.19: PITCH DOWN / BOTH, MOD (above); UP with MOD 0 is the loop below, as ever */
+    if ((song.g[G_SHPITCH] | song.g[G_SHMOD] | BUS_FX.sh_x) && BUS_FN(rev_shimx)(t, out, n))   /* 0.2.19: PITCH DOWN, MOD (above; 0.2.25: a stored BOTH plays UP); UP with MOD 0 is the loop below, as ever */
         return;
     for (i = 0; i < n; i++) {
         int32_t x = 0, o = t[i] - BUS_FX.sh_hp + BUS_FX.sh_he;      /* the low cut, its step's remainder kept (exact silence) */
@@ -506,7 +508,7 @@ static void BUS_FN(rev_clear)(void)
  * cleared, the new one starts from silence */
 static __attribute__((noinline)) void BUS_FN(rev_switch)(const int32_t *rev_in, int32_t *wet, uint32_t n, int32_t rt)
 {
-    int32_t *t = part_buf, g = 65536, d = 65536 / (int32_t)n;
+    int32_t *t = pscr[0].buf, g = 65536, d = 65536 / (int32_t)n;   /* (the parts are done: part 1's block scratch) */
     uint32_t i;
     for (i = 0; i < n; i++)
         t[i] = 0;
@@ -578,6 +580,46 @@ static inline void BUS_FN(cho_glide)(int32_t cdepth, int32_t *cdq, int32_t *cst)
     BUS_FX.cho_on = 1;
 }
 
+/* The chorus's read (a modulated tap of the line BUS_CHO, linear interpolation, Q8 delay: 400 + (sine + 1) x depth samples) at the LFO phase ph.
+ * DUELL 0.2.21: STEREO and LAYER (the bus has a side: dsd given) read the one line twice, the left tap at the LFO's phase, the right CHO_OFF
+ * of a turn on, so the two channels never move together; the return is their mid (the wet bus) and half their difference, the side, goes to
+ * the left and from the right of the dry mix (mix_l, mix_r: as PING-PONG's, not through SPREAD, the width is fixed). DUEL / SPLIT (no side:
+ * each part's own side) keep the one tap, bit for bit. DEPTH 0: both taps equal, the side exactly 0, the mid the old tap (bit for bit) */
+#ifndef CHO_OFF
+#define CHO_OFF 0x40000000u                             /* a quarter turn (see SPEC: the chorus) */
+#endif
+static inline int32_t BUS_FN(cho_tap)(uint32_t ph, int32_t cdq, uint32_t cw)
+{
+    int32_t r = (400 << 8) + (((osc_sine(ph) + 32768) * (cdq >> 4)) >> 12);
+    uint32_t ri = (uint32_t)r >> 8;
+    int32_t f = r & 255, c0 = BUS_CHO[(cw - ri) & (CHO_LEN - 1u)];
+    int32_t c1 = BUS_CHO[(cw - ri - 1u) & (CHO_LEN - 1u)];
+    return (c0 + (((c1 - c0) * f) >> 8)) << 1;
+}
+
+/* DUELL 0.2.21: the chorus loop is left out of a block that cannot give anything. The loops (fx_buses_m, dly_mod, dly_ev) all write cho_in >> 1 (clamped to
+ * 16 bits) into the line BUS_CHO; cho_zrun, called by the caller of every path before it runs (fx.c fx_buses, split_buses), counts the zero samples written
+ * in a row (cho_z, saturating at CHO_LEN: the whole line is 0). If this block's input is all 0 as well and the whole line was 0 before it, every tap reads 0
+ * whatever the depth, so the chorus adds exactly 0 to the bus and to the dry mix: fx_buses_m (the plain bus) then leaves the chorus out (cho_zs), only its
+ * state moving on (write index, LFO phase; the depth glide's state in cho_glide), the same values as the loop leaves; nothing else changes (bit for bit:
+ * tests/chorusskip_test.c, built with -DCHO_NOSKIP for the loop as it was). dly_mod and dly_ev (hot RAM / rare paths) run the chorus always. */
+#ifdef CHO_SKIP_STATS
+static uint32_t BUS_FN(cho_skipped);                    /* (tests/chorusskip_test.c: the blocks fx_buses_m left the chorus out of) */
+#endif
+static __attribute__((noinline)) void BUS_FN(cho_zrun)(const int32_t *cho_in, uint32_t n)
+{
+    uint32_t i, nz = 0, z = BUS_FX.cho_z;
+    for (i = 0; i < n && !nz; i++)                      /* (a sounding bus ends the scan at its first samples) */
+        nz = (uint32_t)(cho_in[i] >> 1);                /* (what the loops write: 0 for an input of 0 or 1) */
+#ifdef CHO_NOSKIP
+    BUS_FX.cho_zs = 0;
+#else
+    BUS_FX.cho_zs = (uint8_t)(!nz && z >= CHO_LEN);
+#endif
+    z = nz ? 0u : (z + n < CHO_LEN ? z + n : CHO_LEN);
+    BUS_FX.cho_z = (uint16_t)z;
+}
+
 /* The delay's MODULATION (DUELL 0.2.5, SPEC 5c.2): the delay time wobbles, a tape / chorus-like movement, with its own small LFO (not
  * LFO 1 / 2, not the matrix): G_DMDEP DEPTH (0 off .. 100: the time swings +- 10 ms, never more than a quarter of the delay time, so a short
  * delay keeps its feel) and G_DMRATE RATE (the chorus's rates, 0.05 .. 3.4 Hz). DEPTH 0 and at rest: fx_buses_m runs the loop below it
@@ -601,7 +643,7 @@ static __attribute__((noinline)) void BUS_FN(dly_mod)(uint32_t dmask, uint32_t d
     int32_t fb = SV_DFB, col = 2000 + song.g[G_DCOLOR] * 240, dmix = song.g[G_DMIX] * 258;
     int32_t cdepth = SV_CDEP, dev = clamp(song.g[G_DMDEP], 0, 100) * 1129, cap = (int32_t)(dl << 6);
     int32_t xl = BUS_FX.dm_xl, xr = BUS_FX.dm_xr, el, er, sl, sr, cdq, cst;
-    uint32_t cinc = LFO_INC[song.g[G_CRATE] & 127] / CTL;
+    uint32_t cinc = LFO_INC[song.g[G_CRATE] & 127] / CTL, cw = BUS_FX.cho_w, cph = BUS_FX.cho_ph;
     int32_t room = (int32_t)(dmask - 2u - (pp ? dl << 1 : dl)) << 8;   /* the line's end: a tap never reads past the oldest sample */
     cap = cap > room ? (room > 0 ? room : 0) : cap;
     dev = dev > cap ? cap : dev;                        /* (the target, Q8 samples: 100 % = 441 samples = 10 ms, 1129 a percent) */
@@ -623,17 +665,18 @@ static __attribute__((noinline)) void BUS_FN(dly_mod)(uint32_t dmask, uint32_t d
     for (i = 0; i < n; i++) {
         int32_t y = 0, a, b, r, x;
         /* chorus: as fx_buses_m's */
-        BUS_CHO[BUS_FX.cho_w & (CHO_LEN - 1u)] = (int16_t)clamp(cho_in[i] >> 1, -32768, 32767);
-        BUS_FX.cho_ph += cinc;
+        BUS_CHO[cw & (CHO_LEN - 1u)] = (int16_t)clamp(cho_in[i] >> 1, -32768, 32767);
+        cph += cinc;
         cdq += cst;
-        r = (400 << 8) + (((osc_sine(BUS_FX.cho_ph) + 32768) * (cdq >> 4)) >> 12);
-        {
-            uint32_t ri = (uint32_t)r >> 8;
-            int32_t f = r & 255, c0 = BUS_CHO[(BUS_FX.cho_w - ri) & (CHO_LEN - 1u)];
-            int32_t c1 = BUS_CHO[(BUS_FX.cho_w - ri - 1u) & (CHO_LEN - 1u)];
-            y += (c0 + (((c1 - c0) * f) >> 8)) << 1;
+        if (st) {
+            int32_t cl = BUS_FN(cho_tap)(cph, cdq, cw), cr = BUS_FN(cho_tap)(cph + CHO_OFF, cdq, cw), cs = (cl - cr) >> 1;
+            y += (cl + cr) >> 1;
+            mix_l[i] += cs;
+            mix_r[i] -= cs;
+        } else {
+            y += BUS_FN(cho_tap)(cph, cdq, cw);
         }
-        BUS_FX.cho_w++;
+        cw++;
         if (pp) {                                       /* PING-PONG (STEREO / LAYER): the left return and the loop's end, each its own tap */
             int32_t yl, yr;
             a = dly_tap(BUS_DLY, dmask, ppos);
@@ -666,6 +709,8 @@ static __attribute__((noinline)) void BUS_FN(dly_mod)(uint32_t dmask, uint32_t d
         qpos += qstep;
         wet[i] = y;
     }
+    BUS_FX.cho_w = cw;
+    BUS_FX.cho_ph = cph;
     BUS_FX.dly_w = w;
     BUS_FX.dm_xl = xl + sl * (int32_t)n;
     BUS_FX.dm_xr = xr + sr * (int32_t)n;
@@ -686,22 +731,26 @@ static inline void BUS_FN(fx_buses_m)(uint32_t dmask, uint32_t dl, const int32_t
     int32_t fb = SV_DFB, col = 2000 + song.g[G_DCOLOR] * 240;   /* (SV_*: song.g's, or PERFORM's SPACE: fx.c sv) */
     int32_t dmix = song.g[G_DMIX] * 258;
     int32_t cdepth = SV_CDEP, rt, cdq, cst;
-    uint32_t cinc = LFO_INC[song.g[G_CRATE] & 127] / CTL;
+    uint32_t cinc = LFO_INC[song.g[G_CRATE] & 127] / CTL, st = dsd != 0;   /* (st: STEREO / LAYER, the chorus has a side) */
+    uint32_t cw = BUS_FX.cho_w, cph = BUS_FX.cho_ph, cz = BUS_FX.cho_zs;
     BUS_FN(cho_glide)(cdepth, &cdq, &cst);
     for (i = 0; i < n; i++) {
         int32_t y = 0, x, r;
-        /* chorus: modulated short delay, 5..15 ms */
-        BUS_CHO[BUS_FX.cho_w & (CHO_LEN - 1u)] = (int16_t)clamp(cho_in[i] >> 1, -32768, 32767);
-        BUS_FX.cho_ph += cinc;
-        cdq += cst;
-        r = (400 << 8) + (((osc_sine(BUS_FX.cho_ph) + 32768) * (cdq >> 4)) >> 12);   /* Q8 delay: read between samples */
-        {
-            uint32_t ri = (uint32_t)r >> 8;
-            int32_t f = r & 255, c0 = BUS_CHO[(BUS_FX.cho_w - ri) & (CHO_LEN - 1u)];
-            int32_t c1 = BUS_CHO[(BUS_FX.cho_w - ri - 1u) & (CHO_LEN - 1u)];
-            y += (c0 + (((c1 - c0) * f) >> 8)) << 1;
+        /* chorus: modulated short delay, 5..15 ms (cz: the line and this block's input are 0, the chorus gives 0: see cho_zrun) */
+        if (!cz) {
+            BUS_CHO[cw & (CHO_LEN - 1u)] = (int16_t)clamp(cho_in[i] >> 1, -32768, 32767);
+            cph += cinc;
+            cdq += cst;
+            if (st) {
+                int32_t cl = BUS_FN(cho_tap)(cph, cdq, cw), cr = BUS_FN(cho_tap)(cph + CHO_OFF, cdq, cw), cs = (cl - cr) >> 1;
+                y += (cl + cr) >> 1;
+                mix_l[i] += cs;
+                mix_r[i] -= cs;
+            } else {
+                y += BUS_FN(cho_tap)(cph, cdq, cw);
+            }
+            cw++;
         }
-        BUS_FX.cho_w++;
         /* delay with a low-passed feedback */
         if (pp) {
             int32_t x2 = BUS_DLY[(BUS_FX.dly_w - 2u * dl) & dmask], yl, yr;
@@ -725,6 +774,16 @@ static inline void BUS_FN(fx_buses_m)(uint32_t dmask, uint32_t dl, const int32_t
         }
         wet[i] = y;
     }
+    if (cz) {                                           /* (the loop left the chorus out: its write index and LFO run on as they would have, a sample each) */
+        cw += n;
+        cph += cinc * n;
+#ifdef CHO_SKIP_STATS
+        BUS_FN(cho_skipped)++;
+#endif
+    }
+    BUS_FX.cho_zs = 0;                                  /* (the flag is for one block: a call that did not come through cho_zrun never skips) */
+    BUS_FX.cho_w = cw;
+    BUS_FX.cho_ph = cph;
     rt = song.g[G_RTYPE];
     rt = rt >= 1 && rt <= 5 ? rt : 0;                   /* (an unknown value: ROOM) */
     BUS_HL.side = 0;
@@ -752,7 +811,6 @@ static __attribute__((noinline)) void BUS_FN(fx_buses_mod)(uint32_t dmask, uint3
         BUS_FN(rev_run)((uint32_t)rt, rev_in, wet, n);
 }
 
-#if BUS_SPLITB == 0u
 /* The delay's EVENT modes (DUELL 0.2.14, owner 2026-10-15; core.h G_DMODE 2 RANDOM, 3 OCT UP since 0.2.16; this code's own mode argument is 1 RANDOM, 2 OCT UP, 0 back to the plain delay). A tempo-synced delay that bends its own repeats on a random
  * share of the clock edges. Based on the idea of the granular delay in the TEMPO firmware of CHOMPI (CHOMPI Club, MIT, <https://github.com/CHOMPI-Club/CHOMPI>,
  * firmware/chompi-tempo): two voices read one delay line; on a random share of the clock edges one retriggers, plays reversed, an octave up or an octave
@@ -772,19 +830,21 @@ static __attribute__((noinline)) void BUS_FN(fx_buses_mod)(uint32_t dmask, uint3
  * events: nothing jumps, either way. The generator is a xorshift32 from a fixed seed at each start: the same input and settings, the same render.
  * No lock (a loop of one delay time on a gesture): left out of this first step. Cost: the voices read two taps each; the plain path runs only
  * while the crossfade does. */
+#ifndef DE_FADE                                         /* (this part is included twice, bus A and bus B: the definitions once) */
 #define DE_FADE 1024u                                   /* a voice's fade, samples */
 #define DE_OFFR ((uint32_t)(FS / 100u))                 /* the right channel's offset: 10 ms */
 enum { DE_RETRIG, DE_REVERSE, DE_UP, DE_DOWN, DE_NONE };
-static inline uint32_t dlyev_rnd(void)
+#endif
+static inline uint32_t BUS_FN(dlyev_rnd)(void)
 {
-    uint32_t r = dlyev.rng;
+    uint32_t r = BUS_EV.rng;
     r ^= r << 13;
     r ^= r >> 17;
     r ^= r << 5;
-    dlyev.rng = r;
+    BUS_EV.rng = r;
     return r >> 8;                                      /* 24 bits */
 }
-static uint32_t dlyev_isqrt(uint32_t x)
+static uint32_t BUS_FN(dlyev_isqrt)(uint32_t x)
 {
     uint32_t r = 0, b = 1u << 30;
     while (b > x)
@@ -800,7 +860,7 @@ static uint32_t dlyev_isqrt(uint32_t x)
     return r;
 }
 /* a voice starts (a free one only): its event, pan, fade-in and read head; w16: the write head, dl16: the delay time (Q16 samples), per: the clock period */
-static void dlyev_in(dlyev_v_t *v, uint32_t w16, uint32_t dl16, uint32_t per)
+static void BUS_FN(dlyev_in)(dlyev_v_t *v, uint32_t w16, uint32_t dl16, uint32_t per, uint32_t dlen)
 {
     int32_t p;
     if (v->fin || v->fout || v->act)
@@ -811,10 +871,10 @@ static void dlyev_in(dlyev_v_t *v, uint32_t w16, uint32_t dl16, uint32_t per)
     v->nev = DE_NONE;
     p = v->npan;
     v->npan = 0;
-    v->gl = (int32_t)dlyev_isqrt((uint32_t)(32768 - p) << 15);   /* equal power, 32768 at the centre */
-    v->gr = (int32_t)dlyev_isqrt((uint32_t)(32768 + p) << 15);
+    v->gl = (int32_t)BUS_FN(dlyev_isqrt)((uint32_t)(32768 - p) << 15);   /* equal power, 32768 at the centre */
+    v->gr = (int32_t)BUS_FN(dlyev_isqrt)((uint32_t)(32768 + p) << 15);
     if (v->ev == DE_UP) {                               /* two delay times back, and far enough to last a period and its fade before the write head */
-        uint32_t back = dl16 << 1, lo = (per + 2u * DE_FADE) << 16, hi = (DLY_LEN - 2048u) << 16;
+        uint32_t back = dl16 << 1, lo = (per + 2u * DE_FADE) << 16, hi = (dlen - 2048u) << 16;
         back = back < lo ? lo : back;
         v->rh = w16 - (back > hi ? hi : back);
     } else {
@@ -824,19 +884,24 @@ static void dlyev_in(dlyev_v_t *v, uint32_t w16, uint32_t dl16, uint32_t per)
 /* the line read at the Q16 position p and at p - 10 ms (the right channel), linear between two samples with the one fraction, the difference rounded towards
  * zero (dly_tap floors: a -1 next to a 0 would read as -1 at every fraction and a loop of them never dies; here the tails reach exact silence, as the
  * products below do). On a sample, to 1/256 (most of the plain voice's reads): the two samples as they are */
-static inline void dlyev_tap2(uint32_t p, int32_t *a, int32_t *b)
+static inline void BUS_FN(dlyev_tap2)(uint32_t p, int32_t *a, int32_t *b, uint32_t m, uint32_t mono)
 {
-    uint32_t i = p >> 16, j = i - DE_OFFR, m = DLY_LEN - 1u, f = (p >> 8) & 255u;
-    int32_t c0 = BUS_DLY[i & m], d0 = BUS_DLY[j & m];
-    if (f) {
+    uint32_t i = p >> 16, j = i - DE_OFFR, f = (p >> 8) & 255u;
+    int32_t c0 = BUS_DLY[i & m], d0 = 0;
+    if (f)
         c0 += sh_tz((BUS_DLY[(i + 1u) & m] - c0) * (int32_t)f, 8);
-        d0 += sh_tz((BUS_DLY[(j + 1u) & m] - d0) * (int32_t)f, 8);
+    if (mono) {                                         /* (DUEL: one read, the right channel is the left) */
+        *a = *b = c0;
+        return;
     }
+    d0 = BUS_DLY[j & m];
+    if (f)
+        d0 += sh_tz((BUS_DLY[(j + 1u) & m] - d0) * (int32_t)f, 8);
     *a = c0;
     *b = d0;
 }
 /* a voice's contribution: c the centre read (the feedback's), l and r the channels (pan, Haas); the read head moves as its event says */
-static inline void dlyev_read(dlyev_v_t *v, uint32_t w16, uint32_t dl16, int32_t *c, int32_t *l, int32_t *r)
+static inline void BUS_FN(dlyev_read)(dlyev_v_t *v, uint32_t w16, uint32_t dl16, int32_t *c, int32_t *l, int32_t *r, uint32_t m, uint32_t mono)
 {
     int32_t env = 32768, s, t;
     uint32_t a;
@@ -865,7 +930,7 @@ static inline void dlyev_read(dlyev_v_t *v, uint32_t w16, uint32_t dl16, int32_t
     case DE_UP:      v->rh += 131072u; break;
     default:         v->rh += 32768u; break;
     }
-    dlyev_tap2(v->rh, &s, &t);
+    BUS_FN(dlyev_tap2)(v->rh, &s, &t, m, mono);
     if (env != 32768) {                                 /* (a voice fading) */
         s = sh_tz(s * env, 15);
         t = sh_tz(t * env, 15);
@@ -880,20 +945,42 @@ static inline void dlyev_read(dlyev_v_t *v, uint32_t w16, uint32_t dl16, int32_t
     }
 }
 /* a clock edge: the draw (CHANCE thr, 0 .. 32767 of the 15-bit draw) and the voices' next events */
-static void dlyev_edge(uint32_t mode, int32_t thr)
+/* 0.2.22, DUEL (the bus has half the line, dlen < DLY_LEN): does the event fit in it? The read head of an event must stay inside the written line and
+ * a REVERSE, DOWN or RETRIG one go back from the delay time (an UP one: see dlyev_in). One that does not fit is not played: that edge is an edge without an
+ * event (the plain voice goes on). STEREO and LAYER (the whole line): always, as ever. D: the delay time, per: the clock period, in samples */
+static uint32_t BUS_FN(dlyev_fits)(uint32_t ev, uint32_t dl16, uint32_t per, uint32_t dlen)
 {
-    dlyev_t *e = &dlyev;
+    uint32_t d = (dl16 >> 16) + 1u, cap = dlen - 1024u;
+    if (dlen >= DLY_LEN)
+        return 1;
+    switch (ev) {
+    case DE_RETRIG:  return d + (d >> 3) + 2u < cap;
+    case DE_REVERSE: return d + per + DE_FADE < cap;
+    case DE_UP:      return per + 2u * DE_FADE <= dlen - 2048u;
+    default:         return d + ((per + DE_FADE) >> 1) < cap;
+    }
+}
+static void BUS_FN(dlyev_edge)(uint32_t mode, int32_t thr, uint32_t mono, uint32_t dl16, uint32_t per, uint32_t dlen)
+{
+    dlyev_t *e = &BUS_EV;
+    uint32_t ne = DE_NONE;
+    int32_t pan = 0;
     e->ev0 = e->ev1;
-    if ((int32_t)(dlyev_rnd() & 32767u) < thr) {
-        int32_t pan = 0;
+    if ((int32_t)(BUS_FN(dlyev_rnd)() & 32767u) < thr) {
+        if (mode == 1u) {
+            ne = BUS_FN(dlyev_rnd)() & 3u;
+        } else {
+            ne = DE_UP;
+            if (!mono)                                  /* (DUEL: centred, no draw) */
+                pan = (int32_t)((((int32_t)(BUS_FN(dlyev_rnd)() & 65535u) - 32768) * 19661) >> 15);   /* +-0.6 */
+        }
+        if (!BUS_FN(dlyev_fits)(ne, dl16, per, dlen))
+            ne = DE_NONE;
+    }
+    if (ne != DE_NONE) {
         e->cur = e->nxt;
         e->nxt = (uint8_t)(e->cur ^ 1u);
-        if (mode == 1u) {
-            e->ev1 = (uint8_t)(dlyev_rnd() & 3u);
-        } else {
-            e->ev1 = DE_UP;
-            pan = (int32_t)((((int32_t)(dlyev_rnd() & 65535u) - 32768) * 19661) >> 15);   /* +-0.6 */
-        }
+        e->ev1 = (uint8_t)ne;
         e->v[e->cur].nev = e->ev1;
         e->v[e->cur].npan = (int16_t)pan;
     } else {
@@ -910,15 +997,15 @@ static void dlyev_edge(uint32_t mode, int32_t thr)
  * line, so a reverse or an octave up fits it), mode 0: back to the plain delay (the crossfade runs down to it), 1 RAND, 2 OCT+. Chorus as the other paths'.
  * The chorus runs first over the block (wet), the delay adds to it. A stretch with no clock edge in it, one voice playing the plain delay (steady, centred) and
  * no event pending is the "solo" loop: the two reads, the loop, nothing else (the common case between events) */
-static __attribute__((noinline)) void dly_ev(uint32_t dlo, uint32_t dl, const int32_t *cho_in, const int32_t *dly_in, int32_t *wet, uint32_t n,
-                                             uint32_t mode, uint32_t pp, int32_t *dsd)
+static __attribute__((noinline)) void BUS_FN(dly_ev)(uint32_t dlo, uint32_t dl, const int32_t *cho_in, const int32_t *dly_in, int32_t *wet, uint32_t n,
+                                             uint32_t mode, uint32_t pp, int32_t *dsd, uint32_t dlen)
 {
-    dlyev_t *e = &dlyev;
-    const uint32_t dmask = DLY_LEN - 1u;
+    dlyev_t *e = &BUS_EV;
+    const uint32_t dmask = dlen - 1u, mono = dsd == 0;   /* (0.2.22 DUEL: dsd 0, mono: the events centred, one read, no side; dlen: this bus's line) */
     uint32_t i, w = BUS_FX.dly_w, per = dl, tgt16 = dl << 16, xt = mode ? 32768u : 0u;
     int32_t fb = SV_DFB, col = 2000 + song.g[G_DCOLOR] * 240, dmix = song.g[G_DMIX] * 258;
     int32_t cdepth = SV_CDEP, cdq, cst, thr = clamp(song.g[G_DMDEP], 0, 100) * 328;
-    uint32_t cinc = LFO_INC[song.g[G_CRATE] & 127] / CTL;
+    uint32_t cinc = LFO_INC[song.g[G_CRATE] & 127] / CTL, cw = BUS_FX.cho_w, cph = BUS_FX.cho_ph;
     if (!e->on) {                                       /* a start from the plain delay: voice 0 plays NONE, the generator on its seed, x at 0 */
         memset(e, 0, sizeof *e);
         e->on = 1;
@@ -941,15 +1028,21 @@ static __attribute__((noinline)) void dly_ev(uint32_t dlo, uint32_t dl, const in
         per <<= 1;
     BUS_FN(cho_glide)(cdepth, &cdq, &cst);
     for (i = 0; i < n; i++) {                           /* the chorus */
-        int32_t r = (400 << 8) + (((osc_sine(BUS_FX.cho_ph += cinc) + 32768) * ((cdq += cst) >> 4)) >> 12);
-        uint32_t ri = (uint32_t)r >> 8;
-        int32_t f = r & 255, c0, c1;
-        BUS_CHO[BUS_FX.cho_w & (CHO_LEN - 1u)] = (int16_t)clamp(cho_in[i] >> 1, -32768, 32767);
-        c0 = BUS_CHO[(BUS_FX.cho_w - ri) & (CHO_LEN - 1u)];
-        c1 = BUS_CHO[(BUS_FX.cho_w - ri - 1u) & (CHO_LEN - 1u)];
-        wet[i] = (c0 + (((c1 - c0) * f) >> 8)) << 1;
-        BUS_FX.cho_w++;
+        BUS_CHO[cw & (CHO_LEN - 1u)] = (int16_t)clamp(cho_in[i] >> 1, -32768, 32767);
+        cph += cinc;
+        cdq += cst;
+        if (dsd) {                                      /* (STEREO / LAYER: two taps, the mid on wet, the side on the dry mix: see cho_tap) */
+            int32_t cl = BUS_FN(cho_tap)(cph, cdq, cw), cr = BUS_FN(cho_tap)(cph + CHO_OFF, cdq, cw), cs = (cl - cr) >> 1;
+            wet[i] = (cl + cr) >> 1;
+            mix_l[i] += cs;
+            mix_r[i] -= cs;
+        } else {
+            wet[i] = BUS_FN(cho_tap)(cph, cdq, cw);
+        }
+        cw++;
     }
+    BUS_FX.cho_w = cw;
+    BUS_FX.cho_ph = cph;
     for (i = 0; i < n;) {
         uint32_t k = i, solo = 0;
         if (e->x == xt && xt == 32768u && !e->pend && e->ev0 == DE_NONE && e->ev1 == DE_NONE && e->ecnt + 1u < per) {
@@ -965,13 +1058,14 @@ static __attribute__((noinline)) void dly_ev(uint32_t dlo, uint32_t dl, const in
                 if (e->dl16 != tgt16)
                     e->dl16 += (int32_t)(tgt16 - e->dl16) >> 10;
                 p = (w << 16) - e->dl16;
-                dlyev_tap2(p, &c, &r);
+                BUS_FN(dlyev_tap2)(p, &c, &r, dmask, mono);
                 e->lp += sh_tz((c - e->lp) * col, 15);
                 fe = clamp((dly_in[k] >> 1) + sh_tz(e->lp * fb, 15), -32768, 32767);
                 yl = mulq15(c << 1, dmix);
                 yr = mulq15(r << 1, dmix);
                 wet[k] += (yl + yr) >> 1;
-                dsd[k] = (yl - yr) >> 1;
+                if (!mono)
+                    dsd[k] = (yl - yr) >> 1;
                 BUS_DLY[w & dmask] = (int16_t)fe;
                 w++;
             }
@@ -988,19 +1082,19 @@ static __attribute__((noinline)) void dly_ev(uint32_t dlo, uint32_t dl, const in
                 e->dl16 += (int32_t)(tgt16 - e->dl16) >> 10;    /* a TIME or tempo change slides */
             if (++e->ecnt >= per) {
                 e->ecnt = 0;
-                dlyev_edge(e->md, thr);
+                BUS_FN(dlyev_edge)(e->md, thr, mono, e->dl16, per, dlen);
                 e->pend = (uint8_t)(e->ev0 != DE_NONE || e->ev1 != DE_NONE);
             }
             if (e->pend) {                              /* an edge asked for a voice: it starts when a voice is free, the other fades out */
-                dlyev_in(&e->v[e->cur], w16, e->dl16, per);
+                BUS_FN(dlyev_in)(&e->v[e->cur], w16, e->dl16, per, dlen);
                 if (!e->v[e->nxt].fin && !e->v[e->nxt].fout && e->v[e->nxt].act) {
                     e->v[e->nxt].fout = 1;
                     e->v[e->nxt].cnt = DE_FADE;
                 }
                 e->pend = (uint8_t)(!e->v[e->cur].act || !(e->v[e->nxt].fout || !e->v[e->nxt].act));
             }
-            dlyev_read(&e->v[0], w16, e->dl16, &c, &l, &r);
-            dlyev_read(&e->v[1], w16, e->dl16, &c, &l, &r);
+            BUS_FN(dlyev_read)(&e->v[0], w16, e->dl16, &c, &l, &r, dmask, mono);
+            BUS_FN(dlyev_read)(&e->v[1], w16, e->dl16, &c, &l, &r, dmask, mono);
             c = clamp(c, -32768, 32767);
             e->lp += sh_tz((c - e->lp) * col, 15);     /* (towards zero: the loop reaches exact silence) */
             fe = clamp((dly_in[i] >> 1) + sh_tz(e->lp * fb, 15), -32768, 32767);
@@ -1034,7 +1128,8 @@ static __attribute__((noinline)) void dly_ev(uint32_t dlo, uint32_t dl, const in
             }
             BUS_DLY[w & dmask] = (int16_t)lpe;
             w++;
-            dsd[i] = sd;
+            if (!mono)
+                dsd[i] = sd;
             wet[i] += ye;
             i++;
         }
@@ -1043,11 +1138,11 @@ static __attribute__((noinline)) void dly_ev(uint32_t dlo, uint32_t dl, const in
     if (!mode && e->x == 0)
         e->on = 0;                                      /* the crossfade is down: the plain path takes over from the next block */
 }
-static __attribute__((noinline)) void fx_buses_ev(uint32_t dlo, uint32_t dl, const int32_t *cho_in, const int32_t *dly_in, const int32_t *rev_in,
-                                                  int32_t *wet, uint32_t n, uint32_t mode, uint32_t pp, int32_t *dsd)
+static __attribute__((noinline)) void BUS_FN(fx_buses_ev)(uint32_t dlo, uint32_t dl, const int32_t *cho_in, const int32_t *dly_in, const int32_t *rev_in,
+                                                  int32_t *wet, uint32_t n, uint32_t mode, uint32_t pp, int32_t *dsd, uint32_t dlen)
 {
     int32_t rt;
-    dly_ev(dlo, dl, cho_in, dly_in, wet, n, mode, pp, dsd);
+    BUS_FN(dly_ev)(dlo, dl, cho_in, dly_in, wet, n, mode, pp, dsd, dlen);
     rt = song.g[G_RTYPE];
     rt = rt >= 1 && rt <= 5 ? rt : 0;
     BUS_HL.side = 0;
@@ -1057,4 +1152,3 @@ static __attribute__((noinline)) void fx_buses_ev(uint32_t dlo, uint32_t dl, con
     else
         BUS_FN(rev_run)((uint32_t)rt, rev_in, wet, n);
 }
-#endif

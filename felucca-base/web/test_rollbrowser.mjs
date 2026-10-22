@@ -43,7 +43,7 @@ const clipped = (root) => E(`(() => {
     if (el.tagName === 'OPTION') continue;
     if (el.scrollWidth > el.clientWidth + 1 || (cs.overflow !== 'visible' && el.scrollHeight > el.clientHeight + 1)) out.push(el.className + ':' + el.textContent.trim().slice(0, 20) + ' ' + el.scrollWidth + '>' + el.clientWidth);
     // (a scrolled grid keeps its text under its own scroll box; only text that is cut by the window itself counts)
-    if (!el.closest('.rscroll, .rkeys, .rruler, .lscroll, .ovbody') && (r.right > vw + 1 || r.bottom > vh + 1)) out.push('outside: ' + el.textContent.trim().slice(0, 20));
+    if (!el.closest('.rscroll, .rkeys, .rruler, .lscroll, .ovbody') && !(el.closest('.colbody') && el.closest('.colbody').scrollHeight > el.closest('.colbody').clientHeight) && (r.right > vw + 1 || r.bottom > vh + 1)) out.push('outside: ' + el.textContent.trim().slice(0, 20));   // (0.2.25: a column that scrolls keeps its text reachable)
   }
   return JSON.stringify(out);
 })()`).then(JSON.parse);
@@ -56,10 +56,10 @@ for (const [W, H] of [[1920, 1080], [1280, 720]]) {
   await c.until(`${store(0)}?.loaded && ${store(1)}?.loaded`);
   await c.sleep(300);
   const nodes = await E("document.querySelectorAll('.roll').length");
-  ok(nodes === 2 && (await E("[...document.querySelectorAll('.col.part .tab[aria-selected=true]')].map((b) => b.textContent).join()")) === "PIANO ROLL,PIANO ROLL", "tab: both parts show a PIANO ROLL tab");
-  ok((await E("[...document.querySelectorAll('.roll .rollctl .lab')].slice(0, 4).map((x) => x.textContent).join()")) === "LEN,DIV,SWG,GATE", "tab: the roll has LEN, DIV, SWG and GATE (the PATTERN page's knobs)");
+  ok(nodes === 2 && (await E("[...document.querySelectorAll('.col.part .tab[aria-selected=true]')].map((b) => b.textContent).join()")) === "SEQ,SEQ", "tab: both parts show a SEQ tab");
+  ok((await E("[...document.querySelectorAll('.roll .rollctl .lab')].slice(0, 4).map((x) => x.textContent).join()")) === "LENGTH,DIVISION,SWING,GATE", "tab: the roll has LENGTH, DIVISION, SWING and GATE (the editor's names, R6)");
   await shot(`roll_tab_${W}.png`);
-  ok((await clipped(".colbody")).length === 0, `text: nothing is clipped in the PIANO ROLL tab ${JSON.stringify(await clipped(".colbody"))}`);
+  ok((await clipped(".colbody")).length === 0, `text: nothing is clipped in the SEQ tab ${JSON.stringify(await clipped(".colbody"))}`);
 
   // ---- mouse editing on part 1 (the mock's pattern: step 0 C3 (48), 4 D3, 8 chord G3 B3 held 3 steps, 12 E3, 13 A3, 14 C4)
   const before = (await mockStep(0, 2)).n;
@@ -156,7 +156,7 @@ for (const [W, H] of [[1920, 1080], [1280, 720]]) {
   // ---- the hide rule: the arp's SEQ mode (P_AMODE 17 = 15) makes the steps offsets for held keys; MODULES > SEQ OFF plays no step
   const roll0 = `document.querySelectorAll('.roll')[0]`;
   await E(`window.__app.edit(0, 17, 15); true`); await c.sleep(250);
-  ok((await E(`${roll0}.classList.contains('arpseq')`)) === true && (await E(`${roll0}.querySelector('.rollnote').hidden`)) === false && /offsets for the keys/.test(await E(`${roll0}.querySelector('.rollnote').textContent`)), "hide rule: arp MODE SEQ: the roll says what the steps are now (offsets for held keys)");
+  ok((await E(`${roll0}.classList.contains('arpseq')`)) === true && (await E(`${roll0}.querySelector('.rollnote').hidden`)) === true && /offsets for the keys/.test(await E(`${roll0}.title + document.querySelector('.col.part [data-key="roll"]').title`)), "hide rule: arp MODE SEQ: no note on the page; the roll's and the PIANO ROLL tab's tooltip say what the steps are now (offsets for held keys)");
   const gone = await E(`[...${roll0}.querySelectorAll('.rollctl .cell')].map((x) => x.classList.contains('gone') ? 1 : 0).join('')`);
   ok(gone === "0111", `hide rule: arp MODE SEQ: DIV, SWG and GATE are hidden (the arp's own RATE and GATE time the steps), LEN stays (${gone})`);
   ok((await E(`${roll0}.querySelector('.lswitch').hidden && ${roll0}.querySelector('.lanegrid').hidden`)) === true, "hide rule: arp MODE SEQ: the velocity / chance / ratchet lane is hidden (velocity is fixed there)");
@@ -169,9 +169,9 @@ for (const [W, H] of [[1920, 1080], [1280, 720]]) {
   await shot(`roll_arpseq_${W}.png`);
   ok((await clipped(".colbody")).length === 0, `text: nothing is clipped with arp MODE SEQ ${JSON.stringify(await clipped(".colbody"))}`);
   await E(`window.__app.edit(0, 17, 0); true`); await c.sleep(250);
-  ok((await E(`${roll0}.classList.contains('arpseq')`)) === false && (await E(`${roll0}.querySelector('.rollnote').hidden`)) === true, "hide rule: arp MODE OFF again: the full roll and no note");
+  ok((await E(`${roll0}.classList.contains('arpseq')`)) === false && (await E(`${roll0}.title`)) === "", "hide rule: arp MODE OFF again: the full roll and no tooltip");
   await E(`window.__app.mock.menu.find((m) => m[0] === 29)[6] = 0; ${view(0)}.pollModules().then(() => true)`); await c.sleep(300);
-  ok((await E(`${roll0}.querySelector('.rollnote').hidden`)) === false && /SEQ is OFF/.test(await E(`${roll0}.querySelector('.rollnote').textContent`)), "hide rule: MODULES SEQ OFF: the roll says no step plays now; editing still works");
+  ok((await E(`${roll0}.querySelector('.rollnote').hidden`)) === true && /SEQ is OFF/.test(await E(`${roll0}.title`)), "hide rule: MODULES SEQ OFF: the roll's tooltip says no step plays now (no note on the page); editing still works");
   p = await center(11, 66); await c.click(p.x, p.y); await idle();
   ok((await mockStep(0, 11)).notes[0] === 66, "hide rule: MODULES SEQ OFF: editing still writes to the unit");
   await E(`window.__app.mock.menu.find((m) => m[0] === 29)[6] = 1; ${view(0)}.pollModules().then(() => true)`); await c.sleep(300);
@@ -197,9 +197,29 @@ for (const [W, H] of [[1920, 1080], [1280, 720]]) {
   await c.key("Escape"); await c.sleep(200);
   ok((await E("window.__app.overlay")) === null && (await E("document.querySelector('#main').inert")) === false, "overlay: Esc closes it and the columns work again");
   ok((await E("window.__app.rollViews[0] && document.querySelectorAll('.roll').length")) === 2, "overlay: the tabs' rolls are still there");
-  // the ARP / SEQ tab's old step list reads the pattern again after the roll changed it
-  await E("window.__app.setPartTab(0, 'arpseq'); true"); await c.sleep(600);
-  ok((await E("document.querySelector('.steps .sgrid .st:nth-child(3)')?.getAttribute('aria-label')")) === "Step 3: D4" || (await E("document.querySelector('.steps .sgrid .st:nth-child(3)')?.getAttribute('aria-label')")).startsWith("Step 3: "), "ARP / SEQ tab: its step list still works and shows the roll's edits");
+  // T0229 (the list 2.3-6, option A): the ARP tab has no STEPS card any more (the SEQ tab is the step editor); its PATTERN card holds QUANTIZE
+  await E("window.__app.setPartTab(0, 'arpseq'); true"); await c.sleep(400);
+  ok((await E("!document.querySelector('.col.part .steps') && [...document.querySelectorAll('.col.part')[0].querySelectorAll('.colbody .ttl')].map((x) => x.textContent).join()")) === "ARPEGGIATOR,CHORD,PATTERN", "ARP tab: ARPEGGIATOR, CHORD, PATTERN; no STEPS card");
+  // T0229 (owner): the filter section (cloud job I: on the FILTER tab, after ENGINE): CUTOFF MOD (FILTER ENV, KEY TRACK, LFO 1, LFO 2), VOICE, MULTI FILTER (CUTOFF RESONANCE MODE SLOPE); on ANALOG, TRIO, NOISE the cutoff depths move the
+  // engine's own filter: CUTOFF MOD follows the engine's card (FILTER ENV, LFO 1, LFO 2), MULTI FILTER keeps KEY TRACK. The MOD tab has no FILTER DEPTH any more (one place for each value)
+  for (const p of [0, 1]) {
+    const tabs = async (tab) => JSON.parse(await E(`(async () => { window.__app.setPartTab(${p}, '${tab}'); await new Promise((r) => setTimeout(r, 250)); const col = document.querySelectorAll('.col.part')[${p}];
+      return JSON.stringify([...col.querySelectorAll('.colbody section.card')].map((x) => ({ t: x.querySelector('h3 .ttl')?.textContent ?? '', labs: [...x.querySelectorAll('.cell:not(.gone) .lab')].map((l) => l.textContent) }))); })()`));
+    const eng = await tabs("filter"), eng0 = await tabs("engine"), env = await tabs("envelope"), lfo = await tabs("lfo"), mod = [...env, ...lfo], own2 = false;   /* (cloud job J: no engine keeps a filter of its own) */
+    const mf = eng.find((x) => x.t === "MULTI FILTER"), cm = eng.find((x) => x.t === "CUTOFF MOD");
+    ok(!!mf && mf.labs.slice(0, 4).join() === "CUTOFF,RESONANCE,MODE,SLOPE" && mf.labs.includes("KEY TRACK") === !!own2 && !!cm && cm.labs.join() === (own2 ? "FILTER ENV,LFO 1,LFO 2" : "FILTER ENV,KEY TRACK,LFO 1,LFO 2"),
+       `FILTER tab (cloud job I: the ENGINE tab's filter section moved here), part ${p + 1}: ${eng.map((x) => x.t).join(" > ")}; CUTOFF MOD ${cm?.labs.join(" ")}`);
+    ok(eng0.length === 3 && eng0[1].t === "SUB OSC" && eng0[2].t === "VOICE" && env.map((x) => x.t).filter((t) => t !== "CUTOFF MOD" && t !== "TWIN MOD").join() === "AMP ENVELOPE,FILTER ENVELOPE,CYCLE ENV" && !eng0.some((x) => x.t === "MULTI FILTER" || x.t === "CUTOFF MOD"),
+       `ENGINE tab, part ${p + 1}: the engine's one card, SUB OSC, VOICE (CYCLE ENV is on the ENVELOPE tab); no filter cards any more (${eng0.map((x) => x.t).join(" > ")})`);
+    ok(!mod.some((x) => x.labs.includes("FILTER DEPTH")) && mod.map((x) => x.t).filter((t) => t !== "CUTOFF MOD" && t !== "TWIN MOD").join() === "AMP ENVELOPE,FILTER ENVELOPE,CYCLE ENV,LFO 1,LFO 2", `ENVELOPE and LFO tabs, part ${p + 1}: AMP ENVELOPE, FILTER ENVELOPE, CYCLE ENV, LFO 1, LFO 2, no FILTER DEPTH (the cutoff depths are CUTOFF MOD's)`);
+  }
+  {   // 0.2.22: the SIDECHAIN card (the ducker's MIDI setup, MENU settings 38..41) is on the MIDI tab of the GLOBAL column: P1 CH, P1 NOTE, P2 CH, P2 NOTE with the unit's values
+    await E("window.__app.setGlobalTab('midi'); true"); await c.sleep(600);
+    const sc = JSON.parse(await E(`JSON.stringify([...document.querySelectorAll('.col.glob section.card')].filter((x) => x.querySelector('h3').firstChild.textContent.trim() === 'SIDECHAIN').map((x) => [...x.querySelectorAll('.scgrid > b, .lab')].map((l) => l.textContent)))`));
+    ok(sc.length === 1 && sc[0].join() === "PART 1,CHANNEL,NOTE,PART 2,CHANNEL,NOTE", `MIDI tab: one SIDECHAIN card, rows PART 1 / PART 2, columns CHANNEL / NOTE (${sc[0]?.join(" ")})`);
+    const clip = JSON.parse(await E(`JSON.stringify([...document.querySelectorAll('.col.glob section.card')].filter((x) => x.querySelector('h3').firstChild.textContent.trim() === 'SIDECHAIN').map((x) => [...x.querySelectorAll('.val, input, select')].map((e) => e.scrollWidth > e.clientWidth + 1).some(Boolean)))`));
+    ok(clip.length === 1 && !clip[0], "MIDI tab: the SIDECHAIN card's values are not clipped");
+  }
   const errs = c.errors().filter((e) => !/favicon/.test(e));
   ok(errs.length === 0, `page: no script errors (${errs.length}) ${errs[0] || ""}`);
 }

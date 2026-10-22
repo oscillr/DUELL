@@ -56,7 +56,9 @@ static void ds_put(const ds_sound_t *s, int16_t *p, int kind)
     uint32_t i;
     for (i = 0; i < s->np; i++) {
         const ds_pair_t *q = &DS_PAIR[s->at + i];
-        if (q->id < P_COUNT && q->id != P_SCALE && (ds_arp_id(q->id) ? 1 : ds_key_id(q->id) ? 2 : 0) == kind)
+        if (q->id < P_COUNT && (ds_arp_id(q->id) ? 1 : ds_key_id(q->id) ? 2 : 0) == kind)
+            p[q->id] = q->v;
+        else if (q->id >= XW_BASE && q->id < XW_BASE + NX && !kind)   /* an extension slot (ext.h XV): a pair of wide id 128 + k (cloud job B) */
             p[q->id] = q->v;
     }
 }

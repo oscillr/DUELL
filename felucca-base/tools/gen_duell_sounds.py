@@ -45,12 +45,12 @@ ALIAS = {
     "SAT": "DIST", "DST": "DIST", "CHO": "CHOR", "INSERT": "ITYPE", "INS A": "IA", "INS B": "IB", "INS C": "IC", "INS MIX": "IMIX",
     "UF CUT": "FREEA", "UF RES": "FREEB", "UF MODE": "FREEC", "UF SLOPE": "FREED",   # DUELL 0.2.9: the multimode filter's CUT (0..82, 82 open: the default), RES, MODE
                                                 # (0 LP .. 64 BP .. 127 HP), SLOPE (1 12 dB, 2 24 dB), on PHASE LOFI VOICE WHEEL PHYS FM6 WAVE
-    "FILTER": "FTYPE", "STEREO SPRD": "SPRD", "REVERB": "REV",   # (GRAIN, retired in 0.2.9, had an EDIT label SPRD)
+    "STEREO SPRD": "SPRD", "REVERB": "REV",   # (GRAIN, retired in 0.2.9, had an EDIT label SPRD)
 }
 # a sound load leaves these to the track (ui.c param_kept), so a sound may not set them (0.2.19: nor the MIXER LEVEL, P_LEVEL: it is the player's);
 # TRIM (the PATCH TRIM, its loudness), the arp (AMODE.. AORDER) and the chord keys (CHRD VOIC) are the exceptions: a factory sound sets its trim
 # and may lend the arp and the keys (ui.c ds_arp, ds_keys)
-TRACK_ONLY = {"LEVEL", "PAN", "MUTE", "ROOT", "QUANT", "TRANS", "SLEN", "SDIV", "SSWING", "SGATE", "SQNT"}
+TRACK_ONLY = {"LEVEL", "PAN", "MUTE", "QUANT", "TRANS", "SLEN", "SDIV", "SSWING", "SGATE", "SQNT"}   # (ROOT and SCALE are the instrument's, no ids: 25 and 26 are the TWIN FILTER's RES 2 and DRIVE)
 KEY_IDS = ["CHRD", "VOIC"]               # lent like the arp (ui.c ds_keys): a pad may set chord keys. No SCALE: the scale is the instrument's (core.h)
 ARP_IDS = ["AMODE", "ARATE", "AOCT", "AGATE", "ASWING", "APROB", "AHOLD", "AORDER"]
 CATS = ["BASS", "LEAD", "PAD", "PLUCK", "KEYS", "PERC", "FX", "OTHER"]
@@ -88,6 +88,47 @@ def parse_ids():
         die("core.h: the P_ enum not found")
     ids = ["P_LEVEL"] + re.findall(r"\b(P_\w+)\b", m.group(1))
     return {n: i for i, n in enumerate(ids)}
+
+
+XW_BASE = 128           # ext.h: the extension slots' wide ids (a pair of a factory sound names one as 128 + slot)
+XGROUP = {"ROUTE": "TWIN", "LINK": "TWIN", "KTRK2": "TWIN", "ENV2": "TWIN", "LFO1": "TWIN", "LFO2": "TWIN",
+          "SUBLVL": "SUB", "SUBOCT": "SUB", "SUBWAVE": "SUB", "SUBHARM": "SUB",
+          "CYMODE": "CYCLE", "CYRISE": "CYCLE", "CYFALL": "CYCLE", "CYCURVE": "CYCLE", "CYSYNC": "CYCLE"}
+
+
+def parse_xtp(names):
+    """ext.h X_* enum and params.c XTP[]: {name: (wide id, label, lo, hi, default, names)} for each extension slot. A factory sound writes a slot as
+    its enum name (X_SUBLVL), as "<group> <label>" (TWIN LINK, SUB LEVEL, SUB WAVE, CYCLE MODE, CYCLE SYNC ..) or, when no other name takes it, as the label (LINK, KTRK2, RISE)"""
+    ext = strip_comments((SRC / "ext.h").read_text())
+    m = re.search(r"enum\s*\{\s*(X_ROUTE.*?)\}", ext, re.S)
+    if not m:
+        die("ext.h: the X_ enum not found")
+    slots = re.findall(r"\b(X_\w+)\b", m.group(1))
+    text = (SRC / "params.c").read_text()
+    body = text[text.index("static const param_desc_t XTP[NX]"):]
+    body = body[:body.index("\n};")]
+    out = {}
+    for m in re.finditer(r"\[(X_\w+)\]\s*=\s*PD\(\"([^\"]*)\",\s*\w+,\s*(-?\d+),\s*(-?\d+),\s*(-?\d+)\)", body):
+        k = slots.index(m.group(1))
+        out[m.group(1)] = (XW_BASE + k, m.group(2), int(m.group(3)), int(m.group(4)), int(m.group(5)), None)
+    for m in re.finditer(r"\[(X_\w+)\]\s*=\s*PE\(\"([^\"]*)\",\s*(\w+),\s*(-?\d+)\)", body):
+        k = slots.index(m.group(1))
+        n = names[m.group(3)]
+        out[m.group(1)] = (XW_BASE + k, m.group(2), 0, len(n) - 1, int(m.group(4)), n)
+    if len(out) != len(XGROUP):
+        die(f"params.c XTP[]: {len(out)} slots read, {len(XGROUP)} expected")
+    return out
+
+
+def xtp_names(xtp):
+    """every spelling of a slot -> its enum name"""
+    out = {}
+    for xn, (wid, label, lo, hi, df, nl) in xtp.items():
+        grp = XGROUP[xn[2:]]
+        out[xn] = xn
+        out[f"{grp} {label}"] = xn
+        out.setdefault(label, xn)
+    return out
 
 
 def parse_tp(ids):
@@ -175,6 +216,25 @@ def load_data(path):
     return mod
 
 
+def with_owner(sounds, path=None):
+    """DUELL 0.2.24: the owner's own edits of factory sounds (docs/OWNER_REFINE.md). tools/owner_sounds.py, written by
+    tools/import_owner_edits.py from what his unit saved, holds OWNER_SOUNDS: sound dicts in duell_sounds.py's form; each replaces the
+    sound of the same (engine, idx) here, whole (its name, category, every value, End B). duell_sounds.py keeps the recipes; the
+    overlay is what the build sounds like. Absent: the list as it is. The result is what every consumer of the factory list sees."""
+    path = path or Path(__file__).resolve().parent / "owner_sounds.py"
+    if not path.exists():
+        return list(sounds)
+    own = load_data(path).OWNER_SOUNDS
+    by = {(s["engine"], s["idx"]): s for s in sounds}
+    out = list(sounds)
+    for o in own:
+        key = (o.get("engine"), o.get("idx"))
+        if key not in by:
+            die(f"owner_sounds.py: {o.get('name', '?')}: no factory sound {key} to replace")
+        out[out.index(by[key])] = o
+    return out
+
+
 def resolve_value(where, label, v, lo, hi, names):
     if isinstance(v, bool):
         v = int(v)
@@ -196,13 +256,15 @@ def resolve_value(where, label, v, lo, hi, names):
 def build(data):
     ids = parse_ids()
     tp, names = parse_tp(ids)
+    xtp = parse_xtp(names)
+    xnames = xtp_names(xtp)
     engines, order = parse_engines()
     cats = parse_cats()
     eng_by_name = {e["name"]: i for i, e in engines.items()}
     hidden = set()   # (DUELL 0.2.14: DRUM and DIGITAL are retired engines with no name here, so no sound can name them)
     sounds = []
     seen = {}
-    for n, s in enumerate(data.SOUNDS):
+    for n, s in enumerate(data.SOUNDS if getattr(data, "NO_OWNER", False) else with_owner(data.SOUNDS)):
         where = f"sound {n} ({s.get('name', '?')})"
         for key in ("engine", "idx", "name", "cat", "p"):
             if key not in s:
@@ -222,6 +284,11 @@ def build(data):
         if len(edit) != 8:
             die(f"{where}: {s['engine']}'s EDIT table could not be read (8 rows)")
         elabels = {r[0]: k for k, r in enumerate(edit)}
+        for k, r in enumerate(edit):              # "WAVE 1" / "WAVE 2" on the unit: the sound data keeps writing WAVE / WAVE2 (VOWL / VOWL2)
+            if " " in r[0] and r[0][-2:] in (" 1", " 2"):
+                elabels.setdefault(r[0].replace(" ", ""), k)
+                if r[0].endswith(" 1"):
+                    elabels.setdefault(r[0][:-2], k)
         pairs = {}
 
         def put(pid, v, label):
@@ -254,6 +321,10 @@ def build(data):
                 lab, lo, hi, df, nl = edit[k]
                 put(ids["P_E0"] + k, resolve_value(where, label, v, lo, hi, nl), label)
                 continue
+            if label in xnames and not (f"P_{ALIAS.get(label, label)}" in ids or label in elabels):   # an extension slot (ext.h): wide id 128 + slot
+                wid, xl, lo, hi, df, nl = xtp[xnames[label]]
+                put(wid, resolve_value(where, label, v, lo, hi, nl), label)
+                continue
             pname = "P_" + ALIAS.get(label, label)
             if pname not in ids or pname.startswith("P_E") and re.fullmatch(r"P_E\d", pname):
                 die(f"{where}: unknown parameter {label!r}")
@@ -267,6 +338,24 @@ def build(data):
             vid = ids["P_VOICE"]
             if vid not in pairs:
                 pairs[vid] = names["N_VOICE"].index("LEG")      # as the old presets' mono flag: LEGATO
+        if (s["cat"] in ("BASS", "PERC") or "KICK" in name) and ids["P_KTRK"] not in pairs:
+            pairs[ids["P_KTRK"]] = 0       # 0.2.22: KEY TRK defaults to +51 %; a bass, kick or percussion hit must not close its low notes: explicit 0
+        # 0.2.24 (owner): the matrix stays PACKED: a sound's used slots (SRC not OFF) move up in their order, the rest is left out
+        # (sound-identical: the firmware sums the slots in slot order; it packs a sound with gaps as it loads anyway, mod.c mod_compact)
+        slots = []
+        for k in range(1, 9):
+            ks, kd, ka = ids[f"P_M{k}SRC"], ids[f"P_M{k}DST"], ids[f"P_M{k}AMT"]
+            if pairs.get(ks, 0):
+                slots.append((pairs[ks], pairs.get(kd), pairs.get(ka)))
+            for i in (ks, kd, ka):
+                pairs.pop(i, None)
+        for i, (src, dst, amt) in enumerate(slots):
+            k = i + 1
+            pairs[ids[f"P_M{k}SRC"]] = src
+            if dst is not None:
+                pairs[ids[f"P_M{k}DST"]] = dst
+            if amt is not None:
+                pairs[ids[f"P_M{k}AMT"]] = amt
         if len(pairs) > MAX_PAIRS:
             die(f"{where}: {len(pairs)} pairs, at most {MAX_PAIRS}")
         idx = s["idx"]
@@ -294,7 +383,10 @@ def build(data):
     rank = {e: i for i, e in enumerate(order)}
     lst = sorted(range(len(sounds)), key=lambda g: (CATS.index(sounds[g]["cat"]), rank.get(sounds[g]["e"], 99),
                                                     sounds[g]["name"]))
-    return sounds, lst, engines, cats, {v: k for k, v in ids.items()}
+    idname = {v: k for k, v in ids.items()}
+    for xn, (wid, *_rest) in xtp.items():
+        idname[wid] = f"XW_BASE + {xn}"
+    return sounds, lst, engines, cats, idname
 
 
 def emit(path, sounds, lst, engines, cats, idname):

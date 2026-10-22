@@ -59,18 +59,19 @@ static int ev_id_ok(const track_t *t, uint32_t id)
     d = track_desc(t, id);
     return d && d->label && d->label[0] && d->label[0] != '-' && d->max > d->min;
 }
-/* its name in the list and on the card (b holds 12): the page's word before the card's label where the label alone
- * would say two things (ENV ATK, ENV FLT: ENV DEST's, LFO FLT: LFO DEST's) */
+/* its name in the list and on the card (b holds 20): the module's name before the card's shown name where the name alone would say two things
+ * (AMP ENV ATTACK, FILT ENV CUTOFF, LFO 1 RATE, LFO 2 PITCH; T0227: the cards' full names, params.c desc_said; FILT ENV is the second envelope) */
 static void ev_name(const track_t *t, uint32_t id, char *b)
 {
-    const char *pre = id >= P_ATK && id <= P_ED_SHP ? "ENV " : id >= P_LRATE && id <= P_LD_AMP ? "LFO " :
-                      id == P_E2FLT || id == P_E2SHP ? "ENV2 " : id >= P_L2PIT && id <= P_L2SHP ? "LFO2 " : "";   /* (DUELL: ENV 2 / LFO 2 DEST) */
+    const char *pre = id >= P_ATK && id <= P_ED_SHP ? "AMP ENV " : (id >= P_LRATE && id <= P_LD_AMP) || (id >= P_LSYNC && id <= P_LPOL) ? "LFO 1 " :
+                      (id >= P_E2ATK && id <= P_E2REL) || id == P_E2FLT || id == P_E2SHP ? "FILT ENV " :
+                      (id >= P_L2PIT && id <= P_L2SHP) || (id >= P_L2RATE && id <= P_L2FADE) || (id >= P_L2SYNC && id <= P_L2POL) ? "LFO 2 " : "";
     if (ev_sid(id)) {
-        str_cpy(b, id == EV_CHANCE ? "CHANCE" : id == EV_RATCH ? "RATCH" : id == EV_VEL ? "VEL" : "NUDGE", 12);
+        str_cpy(b, id == EV_CHANCE ? "CHANCE" : id == EV_RATCH ? "RATCH" : id == EV_VEL ? "VEL" : "NUDGE", 20);
         return;
     }
-    str_cpy(b, pre, 12);
-    str_cpy(b + str_len(b), id == P_LEVEL ? "LEVEL" : id == P_GLIDE ? "GLIDE" : track_desc(t, id)->label, 12 - str_len(b));
+    str_cpy(b, pre, 20);
+    desc_said(track_desc(t, id), b + str_len(b), 20 - str_len(b));
 }
 
 /* a step's CHANCE (kind EVK_CHANCE), RATCH (EVK_RATCH), NUDGE (EVK_NUDGE) or VEL (EVK_VEL): its value, its default

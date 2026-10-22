@@ -25,13 +25,16 @@
 #define UI_TEST_NO_MAIN 1
 #include "ui_test.c"
 #include "mode_scn.h"
+#ifndef MIDI_MODE_CC
+#define MIDI_MODE_CC 112u                                /* (the MODE's CC of the legacy map, tests/midimap_legacy.csv: the power-on map of this test) */
+#endif
 #ifdef __APPLE__
 #include <libproc.h>
 #include <sys/resource.h>
 #endif
 #include <sys/wait.h>
 
-#define MODE_STEREO_HASH 0xA77A7B40656EB88Dull   /* mode_stereo_scenario(); re-based 2026-10-16 when OUTPUT EQ (BASS+, which the scenario had on) was removed: the 0.2.19 sources with BASS+ off give this same hash (checked), so FLAT is bit for bit as it was; before it was 0xBB6416D3547A055C; re-based in 0.2.2: the FX layer's THROW / FLANGER / PHASER left the scenario with the layer (the output idle is regress's goldens, unchanged); was 0x174A9561B9854C15, before that 0xA233C4BC0DC6D894 (the sources before step 5, commit bb60ab7) up to 8f45fc5; re-based at 0d28bf8: a bipolar LFO now swings the whole range of a per-block destination and the scenario routes LFO to PAN */
+#define MODE_STEREO_HASH 0x9C13C6ADFCF3BC87ull   /* 0.2.32: re-based on purpose (the direct depth cards reach 100 % at +63, the merged line); was 0xC04494F53D46F0F0 */ /* older: */   /* 0.2.30: merged line (cloud wave 6 + click fixes), re-based on purpose, was 0x1CC6C8241C84C0DA; before:  0.2.29: re-based on purpose, the scenario runs the HALL and its quiet lines now round to the nearest (fx.c hall_end; 0.2.21..0.2.28: 0xC970174114DFD9BA) */   /* mode_stereo_scenario(); re-based 2026-10-16 (0.2.21) on purpose: the STEREO CHORUS (two taps, a side) changes the scenario, which sends every part to the chorus; with the second tap set to the first (-DCHO_OFF=0u) the render is the old hash 0xA77A7B40656EB88D again, bit for bit; before that: re-based 2026-10-16 when OUTPUT EQ (BASS+, which the scenario had on) was removed: the 0.2.19 sources with BASS+ off give this same hash (checked), so FLAT is bit for bit as it was; before it was 0xBB6416D3547A055C; re-based in 0.2.2: the FX layer's THROW / FLANGER / PHASER left the scenario with the layer (the output idle is regress's goldens, unchanged); was 0x174A9561B9854C15, before that 0xA233C4BC0DC6D894 (the sources before step 5, commit bb60ab7) up to 8f45fc5; re-based at 0d28bf8: a bipolar LFO now swings the whole range of a per-block destination and the scenario routes LFO to PAN */
 
 static int bad, ncheck;
 static int expect(const char *what, int ok)
@@ -61,10 +64,10 @@ static uint32_t rec_n;
 static void dsp_clean(uint32_t mode)                    /* the DSP as at power-on (silence everywhere), in mode */
 {
     memset(trk, 0, sizeof trk);
-    memset(&mod, 0, sizeof mod);
+    memset(&trk[0].mdw, 0, sizeof trk[0].mdw);
     memset(mph, 0, sizeof mph);
     memset(&morph, 0, sizeof morph);
-    memset(&mxf, 0, sizeof mxf);
+    memset(&trk[0].mxw, 0, sizeof trk[0].mxw);
     memset(ins, 0, sizeof ins);
     memset(midi_sel_on, 0, sizeof midi_sel_on);
     memset(midi_ch, 0, sizeof midi_ch);
@@ -348,8 +351,8 @@ static void t_switch_iso(void)
 
 /* both parts at once = each alone, per channel, sample for sample. Two things are global by design and are not sound: the
  * voice clock (voice.c vage: ANALOG's and TRIO's noise seed from a voice's age) and the note RAND (mod.c mod_seed). So that
- * a part alone gets the same seeds as with the other playing, the other part's notes go to a stand-in at LEVEL 0 (track
- * 3: rendered, its output exactly 0) in the same order. which: bit 0 part 1 plays, bit 1 part 2 */
+ * a part alone gets the same seeds as with the other playing, the other part plays its notes too, at LEVEL 0 (rendered, its
+ * output exactly 0) in the same order. which: bit 0 part 1 plays, bit 1 part 2 */
 static void two_part(uint32_t e1, uint32_t e2, uint32_t rt, uint32_t which, int32_t *l, int32_t *r)
 {
     static const uint8_t A[3] = {40, 52, 59}, B[3] = {64, 71, 76};
@@ -361,22 +364,19 @@ static void two_part(uint32_t e1, uint32_t e2, uint32_t rt, uint32_t which, int3
     trk[0].p[P_VOICE] = trk[1].p[P_VOICE] = V_POLY;        /* (3 + 3 voices: no steal across the parts) */
     trk[0].p[P_M1SRC] = trk[1].p[P_M1SRC] = MS_LFO;
     trk[0].p[P_LWAVE] = trk[1].p[P_LWAVE] = 0;              /* (an LFO wave without random numbers) */
-    part_busy(&trk[2], which & 1u ? e2 : e1, which & 1u ? 1u : 0u, 0);   /* (the stand-in) */
-    trk[2].p[P_LEVEL] = 0;
-    trk[2].p[P_VOICE] = V_POLY;
+    if (!(which & 1u)) trk[0].p[P_LEVEL] = 0;               /* (the part that is not heard still plays its notes, at LEVEL 0: the same seeds, its output exactly 0) */
+    if (!(which & 2u)) trk[1].p[P_LEVEL] = 0;
     rec_n = 0;
     mblk(4);
     for (i = 0; i < 3u; i++) {
-        trk_note_on(&trk[which & 1u ? 0 : 2], A[i], 127);
-        trk_note_on(&trk[which & 2u ? 1 : 2], B[i], 127);
+        trk_note_on(&trk[0], A[i], 127);
+        trk_note_on(&trk[1], B[i], 127);
     }
     mblk(FS / 2u / CTL);
     mblk(FS / 2u / CTL);
     for (i = 0; i < 3u; i++) {
         trk_note_off(&trk[0], A[i]);
         trk_note_off(&trk[1], B[i]);
-        trk_note_off(&trk[2], A[i]);
-        trk_note_off(&trk[2], B[i]);
     }
     mblk(FS / CTL);
     for (k = 0; k < rec_n; k++) {
@@ -504,7 +504,7 @@ static void t_lfo_trig_default(void)
         if (!eng_ok(i))
             continue;
         t->p[P_LTRIG] = t->p[P_L2TRIG] = 0;
-        set_engine_of(t, i);                              /* INIT SOUND (set_engine): the engine's first sound over the defaults */
+        init_engine_of(t, i);                              /* INIT SOUND (set_engine): the engine's first sound over the defaults */
         if (t->p[P_LTRIG] != 1 || t->p[P_L2TRIG] != 1)
             break;
     }
@@ -980,22 +980,18 @@ static void t_cc(void)
     expect("CC 112: 0-42 SPLIT, 43-85 STEREO, 86-127 LAYER, global, on channels 1, 2, 10, 16 (ROUT CH1-4)", ok);
     {
         uint32_t lvl = (uint32_t)trk[0].p[P_LEVEL];
-        uint16_t e = (uint16_t)(MIDI_MODE_CC | 0u << 7 | (P_LEVEL + 1u) << 9);
         duell_mode_force(DM_SPLIT);
-        ml_tab[0] = (uint8_t)e;                          /* MIDI LEARN: CC 112 -> part 1's LEVEL */
-        ml_tab[1] = (uint8_t)(e >> 8);
+        ml_learn_f(MIDI_MODE_CC, 0, P_LEVEL, 1, 0);      /* MIDI LEARN: CC 112 -> part 1's LEVEL (forced: the MODE has the number) */
         midi(0xB0, 0, MIDI_MODE_CC, 127);
         mblk(1);
         expect("CC 112 learned by MIDI LEARN: the user's (part 1's LEVEL moves), the MODE stays",
                duell_mode == DM_SPLIT && (uint32_t)trk[0].p[P_LEVEL] != lvl);
-        ml_tab[0] = ml_tab[1] = 0;
+        ml_clear_all();                                  /* (the number is the MODE's again) */
     }
     {
-        uint32_t m = 0, i2;
-        for (i2 = 0; i2 < NELEM(MIDI_CC_MAP); i2++)
-            m |= MIDI_CC_MAP[i2][0] == MIDI_MODE_CC;
+        uint32_t m = MAP_TARGET(MIDI_MAP_DEFAULTS[MIDI_MODE_CC]) != MAP_T_MODE;
         expect("CC 112: not in the standard map, not a MORPH CC, free for MIDI LEARN (ml_free_cc)",
-               !m && !MIDI_MORPH_CC(MIDI_MODE_CC) && ml_free_cc(MIDI_MODE_CC));
+               !m && MAP_RULE(MIDI_MAP_DEFAULTS[MIDI_MODE_CC]) == MAP_R_GLOBAL && ml_free_cc(MIDI_MODE_CC));
     }
 }
 
@@ -1019,8 +1015,8 @@ static void t_ui(void)
     press(B_HOME);
     frames(64);
     page_title(ti);
-    expect("HOME tapped twice from the start (on MORPH): the MODE page (HOME's third sub-page), its footer MODE 3/4",
-           ui.page == page_of("MODE") && str_eq(ti, "MODE 3/4"));
+    expect("HOME tapped twice from the start (on MORPH): the MODE page (HOME's third sub-page), its footer MODE 3/3 (0.2.25: the MIXER is GLO's)",
+           ui.page == page_of("MODE") && str_eq(ti, "MODE 3/3"));
     turn(EN_K1, -1);
     expect("MODE: KNOB 1 left at SPLIT stays SPLIT", duell_mode_req == DM_SPLIT);
     turn(EN_K1, 1);
@@ -1038,9 +1034,9 @@ static void t_ui(void)
     turn(EN_K1, -2);
     frame();
     expect("  .. back to SPLIT", duell_mode_req == DM_SPLIT);
-    press(B_HOME);
+    press(B_GLO);
     frames(64);
-    expect("HOME again: the MIXER", ui.page == page_of("MIXER"));
+    expect("GLO: the MIXER (0.2.25 layout round: GLO's first page)", ui.page == page_of("MIXER"));
     pan = TSEL->p[P_PAN];
     turn(EN_K2, 5);
     ui.force = 1; frame();
@@ -1237,6 +1233,9 @@ static void lk_all(uint32_t v)
     lk_cho(0); lk_dly(1); lk_dmod(0); song.g[G_DMODE] = DMD_PING; lk_rev(v % 5u); lk_ins(v % 8u); lk_spread(0); lk_pan(0); lk_lfopan(0); lk_eq(0); lk_duck(0);
     lk_dist(0);
 }
+/* 0.2.22: the delay's event modes in DUEL (mono per bus, centred): v 0 RAND, 1 OCT UP, CHANCE 100 (DEPTH) */
+static void lk_dev(uint32_t v) { lk_dly(0); song.g[G_DMODE] = (int16_t)(v ? DMD_OCTUP : DMD_RAND); song.g[G_DMDEP] = 100; }
+static void lk_allev(uint32_t v) { lk_all(v); song.g[G_DMODE] = DMD_RAND; song.g[G_DMDEP] = 100; }
 static const leak_t LEAKS[] = {
     {"nothing (the dry part)", lk_none, 1}, {"CHORUS send", lk_cho, 1}, {"DELAY send", lk_dly, 1}, {"DELAY send PING-PONG", lk_dly, 1},
     {"REVERB ROOM", lk_rev, 1}, {"REVERB SPRING", lk_rev, 1}, {"REVERB HALL", lk_rev, 1}, {"REVERB SHIM", lk_rev, 1},
@@ -1244,12 +1243,13 @@ static const leak_t LEAKS[] = {
     {"INSERT FUZZ", lk_ins, 1}, {"INSERT CRUSH", lk_ins, 1}, {"INSERT PHASR", lk_ins, 1}, {"INSERT FLANG", lk_ins, 1},
     {"INSERT CHOR", lk_ins, 1}, {"SPREAD 127 (+ chorus send)", lk_spread, 1}, {"PAN hard (part 1 right, part 2 left)", lk_pan, 1},
     {"PAN hard the other way", lk_pan, 1}, {"LFO -> PAN", lk_lfopan, 1}, {"EQ +-20", lk_eq, 1}, {"DUCKER (PUMP)", lk_duck, 1},
-    {"DIST 90", lk_dist, 1}, {"ALL together", lk_all, 1}, {"DELAY MODULATION 100 %", lk_dmod, 1}};
+    {"DIST 90", lk_dist, 1}, {"ALL together", lk_all, 1}, {"DELAY MODULATION 100 %", lk_dmod, 1},
+    {"DELAY RAND, CHANCE 100 (0.2.22)", lk_dev, 1}, {"DELAY OCT+, CHANCE 100 (0.2.22)", lk_dev, 1}, {"ALL together with the RAND delay", lk_allev, 1}};
 #define NLEAKS (sizeof LEAKS / sizeof LEAKS[0])
 /* the variant of entry i for its set function */
 static uint32_t lk_var(uint32_t i)
 {
-    return i == 3u ? 1u : i == 2u ? 0u : i >= 4u && i <= 8u ? i - 4u : i >= 9u && i <= 16u ? i - 9u : i == 19u ? 1u : i == 25u ? 4u : 0u;
+    return i == 3u ? 1u : i == 2u ? 0u : i >= 4u && i <= 8u ? i - 4u : i >= 9u && i <= 16u ? i - 9u : i == 19u || i == 27u ? 1u : i == 25u ? 4u : 0u;
 }
 static int32_t lk_render(uint32_t i, uint32_t p, uint32_t mode, int32_t *other_pk)
 {
@@ -1437,6 +1437,7 @@ static void out_render(uint32_t mode, uint32_t mute1, uint32_t p1, uint32_t p2)
     host_preset(&trk[1], e, 1);
     trk[0].p[P_TRIM] = trk[1].p[P_TRIM] = 80;     /* (under the limiter: it would hide the sum) */
     trk[0].p[P_PAN] = trk[1].p[P_PAN] = 0;
+    trk[0].p[P_CHOR] = trk[1].p[P_CHOR] = 0;      /* (0.2.21: the chorus is stereo in STEREO and LAYER, its left and right differ by design: stereochorus_test.c. This test is of the pan law and the level) */
     trk[0].p[P_MUTE] = (int16_t)mute1;
     rec_n = 0;
     mblk(8);

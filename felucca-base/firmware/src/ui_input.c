@@ -42,7 +42,7 @@ static uint32_t cur_fam(void) { return cur_page()->fam; }
 
 static int layer_set_open(void);                       /* (ui_layer.c) */
 static int ly_keys(uint32_t l);                        /* (ui_layer.c: layer l takes the keys; 0: they stay notes, the QUICK EDIT layers) */
-static void glo_knob(uint32_t k, int32_t s);            /* (ui_layer.c: GLO's page: KNOB 1 MUTE 1, 2 MUTE 2, 3, 4 LEVEL 1, 2) */
+static void glo_knob(uint32_t k, int32_t s);            /* (ui_layer.c: GLO's MIXER page and QUICK GLO: KNOB 1 LEVEL 1, 2 PAN 1, 3 LEVEL 2, 4 PAN 2) */
 /* the OCT LEDs, bit 0 OCT- lit, bit 1 OCT+ lit, OCT_BREATH OCT+ breathing (can be pressed: dark .. ~60 %,
  * hal/fm1_input.h fm1_led_breath, #119). In the dialogs and on action pages OCT- (back) is lit and OCT+ breathes
  * while it would do something; the menu: on a value row OCT- and OCT+ both breathe while that way has a value to go to,
@@ -377,38 +377,6 @@ static int32_t accel(uint32_t role, int32_t s, int32_t range)
     return s * (int32_t)m;
 }
 
-/* MIXER page: KNOB 1 MUTE, 2 PAN, 3 SPACE (global; the REV send is on the FX page), 4 LEVEL of the selected track (right = ON, left = OFF: the
- * track itself is ALGORITHM's, on every page). Pattern length stays on SEQ. */
-static void tracks_edit(uint32_t slot, int32_t steps)
-{
-    track_t *t = TSEL;
-    int16_t *vp;
-    const param_desc_t *d;
-    switch (slot) {
-    case 0:                                             /* 0.2.18, top-down (page-order audit): K1 MUTE, K2 PAN, K3 SPACE, K4 LEVEL */
-        t->p[P_MUTE] = (int16_t)(steps > 0);
-        ml_knob(t, P_MUTE);                             /* (MIDI LEARN: picked) */
-        return;
-    case 3:
-        vp = &t->p[P_LEVEL];
-        d = &TP[P_LEVEL];
-        break;
-    case 2:                                             /* SPACE: the global value (PERFORM's K2), not a part's */
-        space_turn(EN_K1 + slot, steps);
-        if (ui.ml.on)
-            ui_message("SPACE: NO LEARN");        /* (a global macro: no CC can be learned for it) */
-        return;
-    default:
-        if (duell_mode_req == DM_SPLIT)                 /* DUEL: part 1 left, part 2 right: the PAN card is not shown, its knob does nothing */
-            return;
-        vp = &t->p[P_PAN];
-        d = &TP[P_PAN];
-        break;
-    }
-    *vp = (int16_t)clamp(*vp + accel(EN_K1 + slot, steps, d->max - d->min), d->min, d->max);
-    motion_capture(t, (uint32_t)(vp - t->p), *vp);
-    ml_knob(t, (uint32_t)(vp - t->p));
-}
 
 /* SEQ > STEP's piano roll: where step recording writes */
 static int roll_on(void)
@@ -715,6 +683,8 @@ static void algo_input(int32_t s)
 {
     if (ui.perf || (cur_page()->graph == GR_MORPH))   /* (PERFORM: its page, shown while ui.perf) */
         algo_step(s);
+    else if (page_global(cur_page()))                 /* 0.2.24 (owner): a GLOBAL page edits no part: ALGORITHM does nothing there (it switched the highlight colour and nothing else) */
+        return;
     else
         track_select((uint32_t)clamp((int32_t)song.sel + (s > 0 ? 1 : -1), 0, NSHOWN - 1));
 }
@@ -800,12 +770,9 @@ static void morph_settings(void)
  * the last load SAVE held was (ui.c undo_swap: still the EDIT layer's OCT-) */
 static void patch_save_ask(void)
 {
-    if (cur_page()->graph == GR_PATS) {     /* PATTERNS (DUELL 0.2.2): the pattern slot picked, the part's pattern over it under its name (a */
-        uint32_t ps = pat_pick();                       /* factory default counts; an empty slot goes through the NAME screen) */
-        if (pat_has(ps))
-            confirm_open(CF_HOLD_PSLOT, ps);
-        else
-            name_open(NK_PATTERN, ps);
+    if (cur_page()->graph == GR_PATS) {     /* PATTERNS (DUELL 0.2.2): the pattern slot picked, the part's pattern over it (the slot's */
+        uint32_t ps = pat_pick();                       /* under its name; every slot holds a pattern) */
+        confirm_open(CF_HOLD_PSLOT, ps);
         return;
     }
     if (cur_page()->graph == GR_SLOTS) {    /* MULTIS: the multi picked, the music over it under its name (an empty slot: NAME) */
@@ -835,6 +802,7 @@ static void patch_save_ask(void)
         } else {
             ui.svs = (uint8_t)slot_home(&trk[trk2 % NTRK]);   /* K1 in the dialog picks another */
         }
+        save_nm[0] = 0;
         confirm_open(CF_SAVE_OVER, trk2);
     }
 }
@@ -990,6 +958,9 @@ static void midi_ch_sync(void)
     for (k = 0; k < 2u; k++)
         if (midi_pch[k] != midi_ch_get(k))
             midi_pch[k] = (uint8_t)midi_ch_get(k);
+    for (k = 0; k < 4u; k++)
+        if (sc_midi[k] != sc_get(k))
+            sc_midi[k] = (uint8_t)sc_get(k);
 }
 static void midi_ch_put(uint32_t k, uint32_t ch)
 {
@@ -1011,7 +982,7 @@ static void tempo_tap(void)
 {
     uint32_t n = ui.tap_n, i, span;
     if (clock_src()) {
-        ui_message("TAP: CLK IS EXT");
+        ui_message("TAP: CLOCK IS EXT");
         return;
     }
     if (n && fm1_ms - ui.tap_t[n - 1u] > TAP_RESET_MS)
@@ -1081,8 +1052,33 @@ static void midi_knob(uint32_t slot, int32_t steps)
             ui_message(ml_clear_all() ? "LEARN CLEARED" : "NOTHING LEARNED");
         return;
     }
+    if (cur_page()->graph == GR_SCHAIN) {              /* 0.2.22 SIDECHAIN: K1 P1 CH, K2 P1 NOTE, K3 P2 CH, K4 P2 NOTE (any SRC: a device setting). PART FX OFF: the ducker is skipped, no cards */
+        char b[12];
+        const char *u;
+        uint32_t n;
+        if ((mods_off & MODS_PFX) || !steps)
+            return;
+        if (slot & 1u) {
+            n = (uint32_t)clamp((int32_t)sc_get(slot) + accel(EN_K1 + slot, steps, 127), 0, 127);
+            sc_put(slot, n);
+            param_format(&SC_NOTE_D, (int16_t)n, b, &u);
+        } else {
+            n = (uint32_t)clamp((int32_t)sc_get(slot) + steps, 0, 15);
+            sc_put(slot, n);
+            fmt_int(b, (int32_t)n + 1);
+        }
+        ui_say(slot == 0u ? "P1 SC CH " : slot == 1u ? "P1 SC NOTE " : slot == 2u ? "P2 SC CH " : "P2 SC NOTE ", b);   /* (the header: the full name, the card says P1 CH / P1 NOTE) */
+        return;
+    }
     if (cur_page()->graph != GR_MIDI)
         return;
+    {
+        uint8_t vis[4];                                  /* T0227: the cards moved left (ui_draw.c midi_cards): knob k is the k-th that shows */
+        uint32_t n = midi_cards(vis);
+        if (slot >= n)
+            return;
+        slot = vis[slot];
+    }
     if (slot == 2u) {
         uint32_t r = steps > 0 ? 1u : steps < 0 ? 0u : (uint32_t)song.g[G_ROUTE] == 1u;
         if (r != (uint32_t)(song.g[G_ROUTE] == 1)) {
@@ -1109,14 +1105,34 @@ static void midi_knob(uint32_t slot, int32_t steps)
 static void scale_knob(uint32_t slot, int32_t steps)
 {
     if (slot == 0u) {
-        int32_t v = clamp((int32_t)param_turn(&TP[P_SCALE], scale_g, accel(EN_K1, steps, 0)), 0, TP[P_SCALE].max);
+        int32_t v = clamp((int32_t)param_turn(&SCALE_D, scale_g, accel(EN_K1, steps, 0)), 0, SCALE_D.max);
         scale_g = (int16_t)v;
     } else if (slot == 1u) {
-        root_g = (int16_t)clamp((int32_t)param_turn(&TP[P_ROOT], root_g, accel(EN_K1 + 1u, steps, TP[P_ROOT].max - TP[P_ROOT].min)), 0, 11);
+        root_g = (int16_t)clamp((int32_t)param_turn(&ROOT_D, root_g, accel(EN_K1 + 1u, steps, ROOT_D.max - ROOT_D.min)), 0, 11);
     } else if (slot == 2u && steps && scale_g) {      /* (CHROMATIC: the OFF-SCALE card is not shown, its knob does nothing) */
         offscale_g = (uint8_t)(steps > 0 ? OS_PLAY : OS_SNAP);
         ui_say("OFF-SCALE ", N_OFFSCALE[offscale_g]);
     }
+}
+
+static void fxsum_knob(uint32_t slot, int32_t steps);     /* (below, after the knobs' quiet-time state) */
+static void schain_jump(uint32_t knob, int32_t steps);
+/* the matrix's DEST knob (0.2.25, owner: the hide rule for modulation; release_drafts/MATRIX_DESTINATIONS.md): from `was`, the turn param_turn made to v
+ * goes on in its direction past every destination the selected part does not offer now (mod.c mod_dst_offered: the removed EQ gains and list engine slots,
+ * the slots and the SHAPE the current wave does not use, ..); with none left that way it stays where it was. A stored route to one stays and plays: the knob
+ * only does not stop on it (turning away from it leaves it) */
+static int32_t dst_turn(const param_desc_t *d, int32_t was, int32_t v)
+{
+    int32_t dir = enum_rank(d, v) > enum_rank(d, was) ? 1 : -1, n;
+    if (v == was)
+        return v;
+    for (n = 0; n < MD_N && !mod_dst_offered(TSEL, v); n++) {
+        int32_t w = param_turn(d, v, dir);
+        if (w == v)
+            return was;                                 /* (the end of the list: nothing offered beyond) */
+        v = w;
+    }
+    return mod_dst_offered(TSEL, v) ? v : was;
 }
 
 static void edit_param(uint32_t slot, int32_t steps)
@@ -1147,9 +1163,15 @@ static void edit_param(uint32_t slot, int32_t steps)
         scale_knob(slot, steps);
         return;
     }
-    if (pg->graph == GR_GLO) {                            /* GLO's main page: MUTE 1, MUTE 2, LEVEL 1, LEVEL 2 (ui_layer.c) */
+    if (pg->graph == GR_GLO) {                            /* GLO's MIXER page: LEVEL 1, PAN 1, LEVEL 2, PAN 2 (ui_layer.c glo_knob) */
         glo_knob(slot, steps);
         return;
+    }
+    uint32_t knob = slot;                                 /* (the knob turned; slot: the page's card it addresses) */
+    if (page_compacts(pg)) {                              /* T0227 (owner): the cards that show moved left: knob k is the k-th of them (ui_draw.c page_cards) */
+        slot = knob_slot(pg, slot);
+        if (slot > 3u)
+            return;
     }
     if (pg->graph == GR_TEMPO && slot == TEMPO_TAP_SLOT) {   /* TEMPO's KNOB 2 TAP: a detent either way is one tap (external clock: no card, no tap) */
         if (!clock_src())
@@ -1169,6 +1191,14 @@ static void edit_param(uint32_t slot, int32_t steps)
         mods_knob(slot, steps);
         return;
     }
+    if (pg->scope == SC_FXSUM) {                          /* FX's SEND FX (0.2.22): K1 / K2 / K3 jump to GLO's CHORUS / DELAY 1/2 / REVERB */
+        fxsum_knob(slot, steps);
+        return;
+    }
+    if (slot == 3u && duck_midi_page(pg)) {               /* 0.2.22 DUCK 1/2 with SRC MIDI: K4 jumps to GLO > SIDECHAIN (the MIDI setup lives there) */
+        schain_jump(knob, steps);
+        return;
+    }
     if (pg->graph == GR_EVENTS) {                         /* AUTOMATION (ui_events.c) */
         ev_knob(slot, steps);
         return;
@@ -1177,22 +1207,9 @@ static void edit_param(uint32_t slot, int32_t steps)
         step_edit(slot, steps);
         return;
     }
-    if (pg->scope == SC_TRK) {
-        tracks_edit(slot, steps);
-        return;
-    }
-    if (pg->graph == GR_ENGINE) {                         /* EDIT's first page (SPEC 1.2): KNOB 1 the next / previous engine (the */
-        if (slot == 0u) {                                 /* PRESETS order, as the PRESETS page's KNOB 2: select_engine), 2 the engine's */
-            select_engine(eng_step(TSEL->eng_req, steps)); /* next / previous sound, 3 FAV, 4 INIT: a turn right asks (the dialog: */
-            preset_hinted();                              /* OCT- back, OCT+ do it) */
-        } else if (slot == 1u) {
-            eng_list_step(steps);
-        } else if (slot == 2u) {
-            if (slot_of(TSEL) < UP_SLOTS)                 /* (a sound from no slot: no FAV card) */
-                preset_mark(steps > 0);
-        } else if (steps > 0) {
-            confirm_open(CF_INIT_SOUND, song.sel);
-        }
+    if (pg->graph == GR_ENGINE && slot == 0u) {           /* EDIT's first page (SPEC 1.2; T0227): KNOB 1 the next / previous engine (the PRESETS order, as the PRESETS */
+        select_engine(eng_step(TSEL->eng_req, steps));    /* page's KNOB 2: select_engine); KNOB 2..4 the engine's first three controls (below, as any parameter card) */
+        preset_hinted();
         return;
     }
     if (pg->graph == GR_BROWSE) {                         /* PATCHES: KNOB 1 the patch (the slot), KNOB 2 TYPE, */
@@ -1238,8 +1255,37 @@ static void edit_param(uint32_t slot, int32_t steps)
     if (card_hidden_vp(vp))                              /* a card the selection makes inapplicable (ui_draw.c): not shown, its knob does nothing */
         return;
     int32_t was = *vp;
-    v = param_turn(d, *vp, accel(EN_K1 + slot, steps, d->fmt == F_ENUM ? 0 : d->max - d->min));
-    *vp = (int16_t)v;
+    uint32_t bm = 0, bwid = 0;                           /* EDITABLE B (cloud job G): at the fader's B end a knob on a value the morph can move sets End B's (1); a value both ends share moves both (2) */
+    if (pg->scope != SC_GLOBAL && vp >= TSEL->p && vp < TSEL->p + EXT_P_LEN) {
+        bwid = (uint32_t)(vp - TSEL->p);
+        bm = morph_b_mode(song.sel, bwid);
+    }
+    if (bm == 1u) {                                      /* the turn starts from what is heard and shown, End B's value; A stays as it is, nothing is recorded or learned from it but the pick */
+        int32_t cur = morph_view(song.sel, bwid);
+        v = param_turn(d, cur, accel(EN_K1 + knob, steps, d->fmt == F_ENUM ? 0 : d->max - d->min));
+        if (v != cur) {
+            if (morph_b_set(song.sel, bwid, v))
+                ui_message("B FULL: 32 VALUES");
+            else if (rec_on(TSEL) && morph_b_say(3u, bwid))
+                ui_message("B: NOT RECORDED");
+        }
+        if (bwid < P_COUNT)
+            ml_knob(TSEL, bwid);                         /* (MIDI LEARN: picked) */
+        return;
+    }
+    v = param_turn(d, *vp, accel(EN_K1 + knob, steps, d->fmt == F_ENUM ? 0 : d->max - d->min));   /* (the encoder turned: its acceleration) */
+    if (d->names == N_MDST && pg->scope != SC_GLOBAL)
+        v = dst_turn(d, was, v);                         /* 0.2.25: the matrix DEST passes what is not offered (mod.c mod_dst_offered) */
+    if (vp == &TSEL->p[P_TWTYPE])
+        twin_type_set(TSEL, v == TT_COMB && (TSEL->eng_req == ENGI_WAVE || TSEL->eng_req == ENGI_PHYS) ? TT_LADDER : v);   /* cloud job H: filter 2's TYPE (COMB is not in the list on WAVE and PHYS: the knob ends at LADDER, and twin_type_set refuses it anyway; entering or leaving COMB gives RES and CUTOFF 2 the new kind's defaults) */
+    else if (vp == &XV(TSEL, X_LINK))
+        twin_link_set(TSEL, v);                          /* .. and LINK keeps the sound (CUTOFF 2 converted between OFFSET and CUTOFF) */
+    else
+        *vp = (int16_t)v;
+    if (bm == 2u && v != was && morph_b_say(2u, bwid))
+        ui_message("SAME ON A AND B");
+    if (vp == &TSEL->p[P_DKSRC])
+        duck_set_part(song.sel);                         /* DUCK SRC PART on one part only: the other part's ducker goes OFF (params.c) */
     if (vp == &song.g[G_DMODE]) {                        /* the MODE in full in the header; into RANDOM / OCT UP with CHANCE at 0: it starts at DMD_CHANCE_DEF, said too (params.c dly_mode_changed) */
         if (dly_mode_changed(was))
             ui_say(dly_mode_full(), ": CHANCE 40 %");
@@ -1256,6 +1302,12 @@ static void edit_param(uint32_t slot, int32_t steps)
             str_cpy(b, "OFF", 4);
         }
         ui_say("BASS MONO ", b);
+    } else if (vp == &song.cp[1]) {                      /* COMP's RATIO (0.2.21): 1:1 is the stage off, said in the header (0.2.25: shown OFF) */
+        ui_say("COMPRESSOR ", N_CRAT[clamp(v, 0, 8)]);   /* (0.2.25: the lowest RATIO is OFF) */
+    }
+    if (pg->scope != SC_GLOBAL && vp >= TSEL->p && vp < TSEL->p + P_COUNT && mod_is_src((uint32_t)(vp - TSEL->p)) && !*vp) {   /* 0.2.24: a matrix SRC set to OFF: the slots after it move up (mod.c mod_compact); the cursor stays: it shows the slot that moved in */
+        mod_compact(TSEL);
+        ui.force = 1;
     }
     if (pg->scope != SC_GLOBAL && vp >= TSEL->p && vp < TSEL->p + P_COUNT) {   /* (a global's: no automation or learn) */
         motion_capture(TSEL, (uint32_t)(vp - TSEL->p), *vp);
@@ -1279,6 +1331,45 @@ static uint8_t oct_mod;                                 /* OCT- was used as a mo
 static uint8_t kr_on[4];                                /* knob k: a reset happened, its detents are ignored while it goes on */
 static uint32_t kr_t[4];
 
+/* FX's last page, SEND FX (0.2.22; the sends are shown, not edited): a twist of K1 (CHORUS), K2 (DELAY) or K3 (REVERB) either way jumps to GLO's CHORUS, DELAY 1/2 or REVERB: the page change
+ * only, no value changes (the sends are the FX page's), and the knob does not stick or snap to anything. The rest of that twist is swallowed (kr_on: the same quiet time as after a reset), so it
+ * does not move the new page's first card. K4 has no card. SENDS OFF: the cards are not drawn and the knobs do nothing (card_hidden_vp). The GLO family remembers the page (the next tap of GLO comes back to it) */
+static void fxsum_knob(uint32_t slot, int32_t steps)
+{
+    uint32_t i, want;
+    if (!steps || slot > 2u)
+        return;
+    want = FXSUM_TO[slot];
+    for (i = 0; i < NPAGES; i++)
+        if (PAGES[i].fam == FAM_GLO && PAGES[i].scope == SC_GLOBAL && PAGES[i].id[0] == want)
+            break;
+    if (i >= NPAGES)
+        return;
+    ui.page = (uint8_t)i;
+    ui.fam_last[FAM_GLO] = ui.page;
+    kr_on[slot] = 1;
+    kr_t[slot] = fm1_ms;
+    page_entered();
+}
+
+/* DUCK 1/2 (FX) while the part's SRC is MIDI: K4 is a link card to GLO > SIDECHAIN (params.c duck_midi_page) */
+static void schain_jump(uint32_t knob, int32_t steps)
+{
+    uint32_t i;
+    if (!steps)
+        return;
+    for (i = 0; i < NPAGES; i++)
+        if (PAGES[i].fam == FAM_GLO && PAGES[i].graph == GR_SCHAIN)
+            break;
+    if (i >= NPAGES)
+        return;
+    ui.page = (uint8_t)i;
+    ui.fam_last[FAM_GLO] = ui.page;
+    kr_on[knob & 3u] = 1;                               /* (the knob that jumped: its further detents are swallowed) */
+    kr_t[knob & 3u] = fm1_ms;
+    page_entered();
+}
+
 /* 0: no reset on this card (the turn goes on as ever); 1: reset (said); 2: the card is not shown (a selection makes it inapplicable): nothing */
 static int reset_desc(const param_desc_t *d, int16_t *vp, track_t *t, const char *name)
 {
@@ -1287,7 +1378,23 @@ static int reset_desc(const param_desc_t *d, int16_t *vp, track_t *t, const char
     if (card_hidden_vp(vp))                             /* a card that is not shown (ui_draw.c card_hidden_vp): its knob does nothing */
         return 2;
     int32_t was = *vp;
-    *vp = d->def;
+    if (t && vp == &t->p[P_TWTYPE])
+        twin_type_set(t, d->def);                       /* (cloud job H: TYPE and LINK reset through their setters) */
+    else if (t && vp == &XV(t, X_LINK))
+        twin_link_set(t, d->def);
+    else
+        *vp = d->def;
+    if (t && vp >= t->p && vp < t->p + P_COUNT && morph_view_on((uint32_t)(t - trk))) {   /* 0.2.24 (owner: on AMP ENV the reset "did not work"): under a live morph the card shows
+                                                         * live + (blend - Original) (morph.c morph_view), so the stored default is not what is heard or shown. The reset means the SOUNDING value:
+                                                         * the stored one is moved by the difference (a continuous value: once; a stepped one: up to three tries), clamped to the range */
+        uint32_t id = (uint32_t)(vp - t->p), tries;
+        for (tries = 0; tries < 3u; tries++) {
+            int32_t shown = morph_view((uint32_t)(t - trk), id);
+            if (shown == d->def)
+                break;
+            *vp = (int16_t)clamp(*vp + (d->def - shown), d->min, d->max);
+        }
+    }
     if (vp == &song.g[G_DMODE])
         dly_mode_changed(was);                          /* MODE reset to DIGITAL: an unchanged CHANCE of the unit's own goes back to 0 */
     else if (vp == &song.g[G_DMDEP])
@@ -1296,7 +1403,11 @@ static int reset_desc(const param_desc_t *d, int16_t *vp, track_t *t, const char
         motion_capture(t, (uint32_t)(vp - t->p), *vp);
         ml_knob(t, (uint32_t)(vp - t->p));
     }
-    ui_say("RESET ", name ? name : d->label ? d->label : "");
+    {
+        char nb[20];
+        desc_said(d, nb, sizeof nb);                     /* (T0227: the card's shown name in one line) */
+        ui_say("RESET ", name ? name : nb);
+    }
     return 1;
 }
 static int reset_say(const char *name)
@@ -1347,27 +1458,22 @@ static int knob_reset(uint32_t k)
         return reset_say("DEPTH");
     case SC_SCALE:
         if (k == 0u) {
-            scale_g = TP[P_SCALE].def;
+            scale_g = SCALE_D.def;
             return reset_say("SCALE");
         }
         if (k == 1u) {
-            root_g = TP[P_ROOT].def;
+            root_g = ROOT_D.def;
             return reset_say("ROOT");
         }
         return 0;
-    case SC_TRK:
-        t = TSEL;
-        if (k == 3u)
-            return reset_desc(&TP[P_LEVEL], &t->p[P_LEVEL], t, "LEVEL");
-        if (k == 1u)
-            return reset_desc(&TP[P_PAN], &t->p[P_PAN], t, "PAN");
-        if (k == 2u) {                                  /* 0.2.10: the third card is SPACE (PERFORM's K2, one global value): to the middle */
-            perf_space = 0;
-            return reset_say("SPACE");
-        }
-        return 0;                                       /* MUTE (K1) is a switch */
+    case SC_MIDI:                                       /* 0.2.22 SIDECHAIN: that channel or note to its default (channel 10, note C2) */
+        if (pg->graph != GR_SCHAIN || (mods_off & MODS_PFX))
+            return 0;
+        sc_put(k, (k & 1u) ? SC_NOTE_DEF : SC_CH_DEF);
+        return reset_say(k == 0u ? "P1 SC CH" : k == 1u ? "P1 SC NOTE" : k == 2u ? "P2 SC CH" : "P2 SC NOTE");
     case SC_STEP:
     case SC_TEST:
+    case SC_FXSUM:                                      /* (0.2.21: nothing to reset; the knob only jumps) */
         return 0;
     case SC_MODS:                                       /* 0.2.14 GLO > MODULES: the switch to its default, ON */
         mods_put(1u << (k & 3u), 0u);
@@ -1375,17 +1481,32 @@ static int knob_reset(uint32_t k)
     default:
         break;
     }
-    if (pg->graph == GR_GLO) {                          /* KNOB 3, 4: LEVEL 1, 2 (the mutes are switches) */
-        if (k < 2u)
-            return 0;
-        t = &trk[k - 2u];
-        return reset_desc(&TP[P_LEVEL], &t->p[P_LEVEL], t, k == 2u ? "LEVEL 1" : "LEVEL 2");
+    if (pg->graph == GR_GLO) {                          /* GLO's MIXER (0.2.25; the knobs as QUICK GLO's, 0.2.24): K1 LEVEL 1, K2 PAN 1, K3 LEVEL 2, K4 PAN 2 (PAN in DUEL: no card, no reset) */
+        static const char *const GN[4] = {"LEVEL 1", "PAN 1", "LEVEL 2", "PAN 2"};
+        uint32_t id = (k & 1u) ? P_PAN : P_LEVEL;
+        if (id == P_PAN && duell_mode_req == DM_SPLIT)
+            return 2;                                   /* (no card: the knob does nothing, OCT- was a modifier) */
+        t = &trk[(k >> 1) & 1u];
+        return reset_desc(&TP[id], &t->p[id], t, GN[k & 3u]);
     }
-    if (pg->graph == GR_EVENTS || pg->graph == GR_ENGINE || pg->graph == GR_BROWSE || pg->graph == GR_PATS ||
+    if (page_compacts(pg)) {                            /* T0227: knob k is the k-th card that shows (ui_draw.c page_cards); none: nothing to reset */
+        k = knob_slot(pg, k);
+        if (k > 3u)
+            return 2;
+    }
+    if (pg->graph == GR_EVENTS || (pg->graph == GR_ENGINE && k == 0u) || pg->graph == GR_BROWSE || pg->graph == GR_PATS ||
         (pg->graph == GR_MOD && k == 0u) || fop_page(pg->graph) ||
         (pg->graph == GR_TEMPO && k == TEMPO_TAP_SLOT) || (pg->scope == SC_MIDI && pg->id[k & 3u] == 0xFFu))
         return 0;
     d = page_desc(pg, k, &vp);
+    if (d && vp && pg->scope != SC_GLOBAL && vp >= TSEL->p && vp < TSEL->p + EXT_P_LEN && d->max != d->min && !(d->label && d->label[0] == '-') && !card_hidden_vp(vp) &&
+        morph_b_mode(song.sel, (uint32_t)(vp - TSEL->p)) == 1u) {   /* EDITABLE B: at the B end the reset is End B's value to the default, A stays */
+        char nb[20];
+        morph_b_set(song.sel, (uint32_t)(vp - TSEL->p), d->def);
+        desc_said(d, nb, sizeof nb);
+        ui_say("RESET ", nb);
+        return 1;
+    }
     return reset_desc(d, vp, pg->scope == SC_GLOBAL ? 0 : TSEL, 0);
 }
 
@@ -1438,17 +1559,12 @@ static void act_do(void)
     if (cur_page()->graph == GR_PATS) {                   /* LOAD (1), ERASE (2), SAVE (3): the slot picked */
         uint32_t ps = pat_pick();
         if (c == 3u) {
-            if (pat_has(ps))
-                confirm_open(CF_OVR_PSLOT, ps);           /* (replaces a saved pattern or the factory default: the dialog, then the NAME screen) */
-            else
-                name_open(NK_PATTERN, ps);                /* (the NAME screen writes it) */
+            confirm_open(CF_OVR_PSLOT, ps);               /* (replaces what the slot holds: the dialog, then the NAME screen) */
         } else if (c == 2u) {
-            if (!ps_used(ps))
-                ui_message(ps < NPATTERNS ? "ALREADY FACTORY" : "EMPTY");
+            if (!ps_changed(ps))
+                ui_message("ALREADY DEFAULT");
             else
                 confirm_open(CF_ERASE_PSLOT, ps);
-        } else if (!pat_has(ps)) {
-            ui_message("EMPTY SLOT");
         } else if (pat_needs_confirm(TSEL)) {             /* the user's steps: the dialog */
             confirm_open(CF_LOAD_PAT, song.sel);
         } else {                                          /* empty, or a pattern loaded and untouched */
@@ -1487,7 +1603,7 @@ static void act_do(void)
         confirm_open(CF_CLEAR_SEQ, song.sel);
         break;
     default:                                              /* G_INITSND */
-        set_engine(TSEL->eng_req);                        /* engine defaults + its first preset (the steps stay) */
+        init_sound();                                     /* engine defaults + its first preset (the steps stay), KEY TRK at its new-sound default */
         ui_message("SOUND INIT");
         ui.force = 1;
         break;
@@ -1718,6 +1834,8 @@ static void fx_default(void);
 static int layer_play(void);
 static int layer_set_open(void);
 static uint32_t layer_oct(uint32_t pressed, uint32_t oct);
+static int layer_glo_oct(uint32_t b);                   /* (0.2.24: OCT- / OCT+ with GLO held: MUTE 1 / MUTE 2) */
+static int layer_glo_held(void);                        /* (0.2.24: GLO down: OCT- / OCT+ are the mutes, nobody's taps) */
 static void layer_oct_open(uint32_t pressed);
 static int layer_allowed(void);
 static uint32_t ly_bit(uint32_t l);
@@ -1843,6 +1961,10 @@ static void ui_input(void)
     uint32_t oct;
     uint32_t lay, combo = 0, lytap, lkeys, kq = 0;
     int32_t s, ks[4] = {0, 0, 0, 0};
+#if DUELL_BENCH
+    if (bench_input(pressed, notes))                    /* (bench builds: the BENCH screen takes the frame, its keys and knobs; src/bench.c) */
+        return;
+#endif
     fm6_poll();                                         /* FM6: PTCH turned -> its patch */
     morph_poll();                                       /* DUELL 4b: MIDI's MORPH actions, AMOUNT / TARGET's settings */
     pc_poll();                                          /* DUELL: MIDI's PROGRAM CHANGEs (ui.c) */
@@ -1852,10 +1974,15 @@ static void ui_input(void)
     midi_ch_sync();                                     /* DUELL step 6: GLO > MIDI' parts' channels and their settings bytes */
     first_boot_poll();                                  /* DUELL 0.1: a new unit starts in LAYER with M01 */
     clock_poll();                                       /* DUELL 0.2.14: CLK AUTO's switch said in the header */
-    fx_usb_fixed = (ui_prefs & PREF_USB_FIXED) != 0u;   /* (MENU > USB LEVEL: fx.c, audio.c) */
+#if DUELL_VELO
+    sense_enable(keyvel_on());
+    sense_at_enable(aftert_on());                       /* (MENU > CONTROL > AFTERTOUCH: the same way, its own line) */                          /* (MENU > CONTROL > KEY VELOCITY: from the saved setting at power-on, and a record imported later; a no-op while it holds) */
+#endif
     scope_mix = 0;                                      /* (0.2.14: MENU > SCOPE is gone, the scope always draws OUT; a stored MIX bit is ignored) */
     rp_apply();                                         /* (MENU > CLICK, CLICK LEVEL, COUNT-IN: click.c, seq.c) */
-    bm_sel = (uint8_t)(song.bm > 0 && song.bm <= (int16_t)BM_N ? song.bm : 0);   /* (0.2.19 MASTER > BASS MONO: fx.c; a multi load, an import or the editor take effect here too) */
+    cmp_sync();                                         /* (0.2.21 GLO > COMP: song.cp[] <-> the settings word, fx.c cmp_cfg for the audio side) */
+    ms_sync();                                          /* (0.2.23 GLO > WIDTH: song.ms[] <-> the settings bytes, fx.c wd_sel for the audio side) */
+    bm_sel = (uint8_t)(song.bm > 0 && song.bm <= (int16_t)BM_N ? song.bm : 0);   /* (0.2.19 MASTER > BASS MONO: fx.c; the editor take effect here too) */
     mods_apply();                                       /* (0.2.14 GLO > MODULES: the four switches to the audio side, core.h mods_off) */
     if (!ui.menu)
         usb_serial_apply();                             /* (MENU > USB SERIAL: when the menu has closed) */
@@ -1888,7 +2015,7 @@ static void ui_input(void)
     if (((pressed >> panel.btn[B_REC]) & 1u) && ui.ly == LAYER_REC)
         ui.rec_t0 |= 2u;                                /* (REC is its layer's button now: its tap is layer_tap's) */
     layer_oct_open(pressed);                            /* (OCT± with a SET layer's button down: it opens now) */
-    oct = oct_taps(pressed, ui.menu || ui.confirm || act_cols() || name_on() || layer_set_open() || ui.ml.on);
+    oct = oct_taps(pressed, (ui.menu || ui.confirm || act_cols() || name_on() || layer_set_open() || ui.ml.on) && !layer_glo_held());   /* (0.2.24: with GLO held OCT- / OCT+ are the mutes: no tap for anyone) */
     oct = layer_oct(pressed, oct);                      /* (a SET layer's OCT-: put back) */
     oct_rel(ui.menu || ui.confirm || act_cols() || name_on() || layer_set_open() || ui.ml.on);   /* (OCT± on a normal page: on release) */
     layer_masks();                                      /* seq.c: keys pressed with a layer's button are its own */
@@ -2027,7 +2154,7 @@ static void ui_input(void)
             } else if (kind == CF_SAVE_OVER) {
                 patch_save_do(ui.confirm_trk >= 2u);
             } else if (kind == CF_INIT_SOUND) {
-                set_engine(TSEL->eng_req); ui_message("SOUND INIT");
+                init_sound(); ui_message("SOUND INIT");
             } else {
                 track_t *t = &trk[ui.confirm_trk % NTRK];
                 load_begin(t, UNDO_PAT);
@@ -2053,6 +2180,10 @@ static void ui_input(void)
                 int32_t d = (ui_prefs & PREF_ACCEL) ? accel(EN_K1, st, (int32_t)UP_SLOTS) : st > 0 ? 1 : -1;
                 ui.svs = (uint8_t)((((int32_t)ui.svs + d) % (int32_t)UP_SLOTS + (int32_t)UP_SLOTS) % (int32_t)UP_SLOTS);
                 ui.force = 1;
+            }
+            if (panel_enc(EN_K2)) {                     /* 0.2.21: K2 RENAME - the NAME screen for the sound's name, back here after it */
+                name_open(NK_SAVE_NAME, ui.confirm_trk);
+                ui.confirm = 0;
             }
         }
         ui.pg_down = 0;
@@ -2087,6 +2218,8 @@ static void ui_input(void)
         case B_OCTDN:
         case B_OCTUP: {
             uint32_t both = (1u << panel.btn[B_OCTDN]) | (1u << panel.btn[B_OCTUP]);
+            if (layer_glo_oct(b))                       /* (0.2.24: GLO held: OCT- mutes part 1, OCT+ part 2; no octave, no pending tap) */
+                break;
             if (act_cols() || layer_set_open() || ui.ml.on)   /* action pages: enter / back (below); SET layers: OCT-; */
                 break;                                  /* MIDI LEARN: clear / done (below) */
             if ((fm1_in.buttons & both) == both) {      /* both together: the octave to 0 now, no tap after it */
@@ -2178,9 +2311,9 @@ static void ui_input(void)
             ui.hot_t = 40;
             continue;
         }
-        if (pg->scope == SC_STEP || pg->scope == SC_TRK || page_desc(pg, k, &hv) ||
+        if (pg->scope == SC_STEP || page_desc(pg, k, &hv) ||
             (pg->scope == SC_MORPH && !(pg->graph == GR_MORPHSET && k == 3u)) || pg->scope == SC_MODE || pg->scope == SC_MIDI || pg->scope == SC_TEST || pg->scope == SC_PERF || pg->scope == SC_MODS || pg->graph == GR_GLO ||
-            (pg->scope == SC_SCALE && k < 3u) ||            /* (SCALE: K1 SCALE, K2 ROOT, K3 OFF-SCALE; K4 is an empty column) */
+            (k == 3u && duck_midi_page(pg)) || (pg->scope == SC_SCALE && k < 3u) || (pg->scope == SC_FXSUM && k < 3u) ||            /* (SCALE: K1 SCALE, K2 ROOT, K3 OFF-SCALE; K4 is an empty column) */
             (pg->graph == GR_TEMPO && k == TEMPO_TAP_SLOT) ||
             ((pg->graph == GR_MOD || pg->graph == GR_PATS) && k == 0u)
             || fop_page(pg->graph)) {   /* (not an empty

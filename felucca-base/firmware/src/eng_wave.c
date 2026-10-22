@@ -29,7 +29,7 @@
  * the whole scan) ramped over the block; BEND a warp of the read phase (the cycle's first half squeezed, read up to 10 x as
  * fast, the second half stretched: a pulse width for any wave); SYNC hard sync, the read restarting at each cycle of the
  * note at 1 .. 8 x its speed (three octaves), each restart's step smoothed (a two-sample polyBLEP); both choose the level for
- * the fastest part (the band-limit holds there) and a DC tracker takes the mean they make off; SUB a sine an octave below;
+ * the fastest part (the band-limit holds there) and a DC tracker takes the mean they make off;
  * DTN a second read DTN cents up (with its own SYNC), mixed half and half. No filter of its own: the multimode filter
  * (voice.c uf_run; ufilt). Our own code: the approach (band-limited levels of a wavetable, a polyBLEP at sync resets) is the
  * textbook one.
@@ -47,7 +47,7 @@ static char wv_uname[3][9] = {"USR1", "USR2", "USR3"};   /* the user slots' show
 static const char *const N_WV_TABLE[] = {"SAWSQ", "PWM", "HARM", "ODD", "ORGAN", "VOWEL", "BRASS", "BOWED", "RESO", "COMB", "DIGI",
                                          "GLASS", "CHIME", "ROUGH",
                                          /* 0.2.7: classic digital tables (in the spirit of the 1980s wavetable synths), then modern ones */
-                                         "BAND", "DUAL", "THIN", "PIPE", "REESE", "HOOVR", "GROWL", "WOBBL", "YELL", "METAL", "STEPS", "AIR",
+                                         "BAND", "DUAL", "THIN", "PIPE", "REESE", "HOOVR", "GROWL", "WOBBL", "YELL", "METAL", "STAIR", "AIR",
                                          /* 0.2.14: the user slots: the shown name is the user's (wt_names: up to 8 characters, EMPTY when unused) */
                                          wv_uname[0], wv_uname[1], wv_uname[2]};
 #define WV_NT NELEM(N_WV_TABLE)
@@ -186,8 +186,8 @@ static uint64_t wv_isqrt(uint64_t v)
 }
 /* the levels of the drawbars 0..8 (Q16): -3 dB a step, 8 = 1 */
 static const uint16_t WV_DB[9] = {0, 5843, 8250, 11654, 16462, 23253, 32846, 46395, 65535};
-/* ORGAN: the drawbars 8' 4' 2 2/3' 2' 1 3/5' 1 1/3' 1' (the harmonics 1 2 3 4 5 6 8; the 16' is SUB, a sine an octave
- * below), five registrations along the scan */
+/* ORGAN: the drawbars 8' 4' 2 2/3' 2' 1 3/5' 1 1/3' 1' (the harmonics 1 2 3 4 5 6 8; the 16' is the SUB LAYER's, SINE OCTAVE -1, chain_sub.c),
+ * five registrations along the scan */
 static const uint8_t WV_ORG_K[7] = {1, 2, 3, 4, 5, 6, 8};
 static const uint8_t WV_ORG[5][7] = {{8, 0, 0, 0, 0, 0, 0}, {8, 8, 0, 0, 0, 0, 0}, {8, 8, 8, 0, 0, 0, 0}, {8, 8, 8, 8, 0, 0, 0},
                                      {8, 8, 8, 8, 8, 8, 8}};
@@ -592,7 +592,15 @@ static __attribute__((unused)) void wave_build_now(track_t *t)
 /* v->s[]: 0 the scan place at the end of the last block (Q16 frames, -1: none yet), 1 the voice's table gain (Q15, the fades),
  * 2 3 a SYNC reset's correction still owed to the next block's first sample (the oscillator's, DTN's), 4 5 the synced read
  * phases (the oscillator's, DTN's; without SYNC they follow the free phases, so SYNC comes in without a jump), 6 the DC
- * tracker's level (BEND and SYNC move the cycle's mean; << 8). ph[0] the oscillator, ph[1] DTN's, ph[2] SUB's */
+ * tracker's level (BEND and SYNC move the cycle's mean; << 8), 7 DTN's share in blocks (bits 16..19, 0 .. WV_DF; bits 0..15 were the engine's own SUB level, retired in cloud job J: the global SUB LAYER,
+ * chain_sub.c, replaces it; hunt3: bits 20..22 counted the note's first blocks, no longer used). ph[0] the oscillator, ph[1] DTN's.
+ * DTN without a zipper (0.2.25, owner: turning DTN on a held note crackled, clearest on a sine, an EMPTY user slot): DTN's second
+ * read fades in and out over WV_DF blocks when DTN leaves or reaches 0 (DTN's other changes are pitch only: no step). (hunt3: in a note's first 4 blocks it used to follow at once; ENV 2 opening DTN at
+ * the attack (DIGI PLUCK) switched the second read in with a step of its mix, so now it glides from the first block like at any other time). A value that does not move plays bit for bit as before */
+#define WV_DF 8u                 /* blocks of DTN's fade in / out: 5.8 ms (wv_dmix's weights: WV_DF x 4096 = 32768) */
+
+static int32_t wv_s7(const int16_t *p) { return p[P_E5] ? (int32_t)(WV_DF << 16) : 0; }
+static uint8_t wv_stk[NLIVE][NVOICE], wv_stn[NLIVE][NVOICE];   /* STEPS: the place a voice holds and the count it was held for (wave_steps, below the engine) */
 static void wave_note_on(track_t *t, voice_t *v)
 {
     const wv_mem_t *w = (const wv_mem_t *)ENG_MEM(t - trk);
@@ -601,10 +609,13 @@ static void wave_note_on(track_t *t, voice_t *v)
         v->s[k] = 0;
     v->s[0] = -1;
     v->s[1] = w && w->h.have && w->h.have == w->h.want ? 32767 : 0;
+    v->s[7] = wv_s7(t->p);
     v->ph[1] = v->ph[0] + 0x55555555u;                  /* (DTN's read: a third of a cycle on, no beating from in phase) */
     v->ph[2] = 0;
     v->s[4] = (int32_t)v->ph[0];
     v->s[5] = (int32_t)v->ph[1];
+    if ((uint32_t)(t - trk) < NLIVE && (uint32_t)(v - t->v) < NVOICE)
+        wv_stn[t - trk][v - t->v] = 0;                  /* STEPS: no place held yet (wave_steps takes the nearest) */
 }
 
 /* one level's read into dst[n]: the read phases rp (32 bit), the scan place fp (Q16 frames) stepping dfp a sample */
@@ -786,13 +797,39 @@ static void wv_line(const wv_mem_t *w, voice_t *v, uint32_t k, uint32_t inc, uin
     }
 }
 
+/* SYNC's ratio (*r16), BEND's warp (*wp) and the level they read at (*lw its cross-fade): once a block and voice, out of line (DUELL 0.2.25: in
+ * the flash; their divides and 64-bit compares were 0.3 KB of the hot block, which DTN's smoothing now uses) */
+static __attribute__((noinline)) uint32_t wv_speed(uint32_t inc, int32_t sync, int32_t bend, uint32_t *r16, wv_warp_t *wp, int32_t *lw)
+{
+    uint64_t ie = inc;
+    if (sync > 0) {
+        *r16 = (uint32_t)wv_exp2(sync * 3 * 65536 / 127);
+        ie = (ie * *r16) >> 16;
+    }
+    if (bend > 0) {
+        wv_warp_set(wp, bend);
+        ie = (ie * wp->slope) >> 16;
+    }
+    return wv_level(ie, lw);
+}
+/* DTN's share moving from d0 to d1 (of WV_DF) over the block: s1 = the oscillator + share x (DTN - it) / 2 (at WV_DF: (s1 + s2) / 2, as
+ * the steady mix; out of line: it runs only for WV_DF blocks after DTN leaves or reaches 0) */
+static __attribute__((noinline)) void wv_dmix(int32_t *s1, const int32_t *s2, int32_t d0, int32_t d1, uint32_t n)
+{
+    uint32_t i;
+    for (i = 0; i < n; i++) {
+        int32_t wq = (d0 << 12) + (((d1 - d0) * (int32_t)i << 12) / (int32_t)CTL);   /* Q15 (WV_DF x 4096 = 32768) */
+        s1[i] += (((s2[i] - s1[i]) >> 1) * wq) >> 15;
+    }
+}
+
 static void wave_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const vmod_t *m)
 {
     const int16_t *p = t->p;
     const wv_mem_t *w = (const wv_mem_t *)ENG_MEM(t - trk);
-    int32_t g0 = v->s[1], g1, pq, fp1, fp0, dfp, lw, sub = p[P_E4] * 200, dtn = p[P_E5], bend = p[P_E2], sync = p[P_E3];
-    uint32_t i, l, ph2, inc = m->inc, r16 = 65536u;
-    uint64_t ie = inc;
+    int32_t g0 = v->s[1], g1, pq, fp1, fp0, dfp, lw, dtn = p[P_E5], bend = p[P_E2], sync = p[P_E3];
+    int32_t d0 = (int32_t)((uint32_t)v->s[7] >> 16 & 15u), d1;
+    uint32_t i, l, inc = m->inc, r16 = 65536u;
     int32_t s1[CTL], s2[CTL];
     wv_warp_t wp;
     vmod_t mg;
@@ -816,20 +853,17 @@ static void wave_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const 
     v->s[0] = fp0 + dfp * (int32_t)n;
     /* SYNC: the read's ratio to the note, 1 .. 8 (three octaves, even steps of pitch); BEND: the warp. Both read faster than the
      * note: the level is chosen for the fastest part (the band-limit holds there) */
-    if (sync > 0) {
-        r16 = (uint32_t)wv_exp2(sync * 3 * 65536 / 127);
-        ie = (ie * r16) >> 16;
-    }
-    if (bend > 0) {
-        wv_warp_set(&wp, bend);
-        ie = (ie * wp.slope) >> 16;
-    }
-    l = wv_level(ie, &lw);
+    l = wv_speed(inc, sync, bend, &r16, &wp, &lw);
     wv_line(w, v, 0, inc, r16, bend > 0 ? &wp : 0, l, lw, fp0, dfp, s1, n);
-    if (dtn) {                                           /* DTN: a second read DTN cents up, half and half */
+    d1 = dtn ? (d0 < (int32_t)WV_DF ? d0 + 1 : (int32_t)WV_DF) : (d0 ? d0 - 1 : 0);   /* (DTN's share: on, off, or on its way) */
+    v->s[7] = d1 << 16;
+    if (dtn || d0) {                                     /* DTN: a second read DTN cents up, half and half */
         wv_line(w, v, 1, cents_inc(m->pitch16, dtn, m->fine), r16, bend > 0 ? &wp : 0, l, lw, fp0, dfp, s2, n);
-        for (i = 0; i < n; i++)
-            s1[i] = (s1[i] + s2[i]) >> 1;
+        if (d0 + d1 == 2 * (int32_t)WV_DF)            /* (steady: as ever) */
+            for (i = 0; i < n; i++)
+                s1[i] = (s1[i] + s2[i]) >> 1;
+        else
+            wv_dmix(s1, s2, d0, d1, n);
     } else {
         v->ph[1] += inc * n;                             /* (DTN's phase runs on: turned up, it starts without a jump in pitch) */
         v->s[5] = (int32_t)v->ph[1];
@@ -845,32 +879,51 @@ static void wave_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const 
     mg = *m;                                             /* the table gain on the amplitude ramp (the fades) */
     mg.amp0 = mulq15(m->amp0, g0);
     mg.amp1 = mulq15(m->amp1, g1);
-    if (sub) {                                           /* SUB: a sine an octave below */
-        ph2 = v->ph[2];
-        for (i = 0; i < n; i++) {
-            ph2 += inc >> 1;
-            out[i] += voice_amp(s1[i] + mulq15(osc_sine(ph2), sub), &mg, i);
-        }
-        v->ph[2] = ph2;
-    } else {
-        for (i = 0; i < n; i++)
-            out[i] += voice_amp(s1[i], &mg, i);
+    for (i = 0; i < n; i++)
+        out[i] += voice_amp(s1[i], &mg, i);
+}
+
+/* STEPS (E7, P_E6): OFF, 2 .. 19 places the scan's position is rounded to (stored 0 = OFF, n = n + 1 places: no stored value is meaningless). 19 places = every frame of a table. POS, and every
+ * route that moves it (the SHP routes: AMP DEST / ENV 2 / LFO 1 / LFO 2 SHP, the matrix's SHP, ENV 2 and LFO SHP depths, CYCLE, RAND per note), then lands on a place: a movement becomes a
+ * staircase. wave_render's block ramp (fp0 to fp1, 32 samples = 0.7 ms) is the fixed short cross-fade between two places (a step of one block: no click, as a POS jump); the frames are all in sine
+ * phase, so the cross-fade is a mix of two spectra. It is made HERE, on m->shape before the engine renders (track_render calls wave_steps for WAVE with STEPS above 0; wave_render is not touched):
+ * m->shape is set so that POS plus the shape routes (the same sum wave_render makes: pq = clamp((E1 << 8) + (shape - (64 << 8)), 0, 127 << 8)) is the chosen place.
+ * HYSTERESIS: the place held stays until the target passes the edge between two places by a quarter of a place (3/4 of a place from the held one): a route that hovers on an edge does not flicker.
+ * The place held is a voice's (wv_stk, with the count it was held for, wv_stn; 0: none yet, set by a note-on: a new note takes the nearest place; a count that changed does the same) */
+static const char *const N_WV_STEPS[19] = {"OFF", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19"};
+static __attribute__((noinline)) void wave_steps(track_t *t, voice_t *v, vmod_t *m)
+{
+    uint32_t ti = (uint32_t)(t - trk), vi = (uint32_t)(v - t->v);
+    int32_t n1 = clamp(t->p[P_E6], 1, 18), base = t->p[P_E1] << 8, tgt, u, k, d;
+    if (ti >= NLIVE || vi >= NVOICE)
+        return;
+    tgt = clamp(base + (m->shape - (64 << 8)), 0, 127 << 8);
+    u = tgt * n1;                                        /* in places of (127 << 8) / n1: the held place k is at k (127 << 8) */
+    k = wv_stk[ti][vi];
+    d = u - k * (127 << 8);
+    if (wv_stn[ti][vi] != n1 || 4 * (d < 0 ? -d : d) > 3 * (127 << 8)) {   /* none held, another count, or past the edge by a quarter: the nearest place */
+        k = (u + (127 << 7)) / (127 << 8);
+        wv_stk[ti][vi] = (uint8_t)k;
+        wv_stn[ti][vi] = (uint8_t)n1;
     }
+    m->shape = (64 << 8) + k * (127 << 8) / n1 - base;
 }
 
 static const preset_t WAVE_PRESETS[] = {
-    /* name, {TABLE, POS, BEND, SYNC, SUB, DTN, -, -}, {A D S R}, fenv, mono: the host tests' renders and costs (tests/regress.c);
-     * DUELL's factory sounds are tools/duell_sounds.py's. The last one is the costliest voice: SYNC, BEND, DTN and SUB at once */
+    /* name, {TABLE, POS, BEND, SYNC, -, DTN, STEPS, -}, {A D S R}, fenv, mono: the host tests' renders and costs (tests/regress.c);
+     * DUELL's factory sounds are tools/duell_sounds.py's. The last one is the costliest voice: SYNC, BEND and DTN at once (E5 was the engine's own SUB until cloud job J) */
     {"SAW PAD", {0, 10, 0, 0, 0, 9, 0, 0}, {40, 90, 100, 70}, 0, 0, FX(0, 40, 20, 50), PAT(5)},
     {"PWM STRING", {1, 40, 0, 0, 0, 0, 0, 0}, {30, 90, 100, 60}, 0, 0, FX(0, 50, 20, 60), PAT(5)},
     {"HARM KEYS", {2, 70, 0, 0, 0, 0, 0, 0}, {0, 80, 40, 50}, 0, 0, FX(0, 20, 20, 40), PAT(7)},
-    {"ODD BASS", {3, 50, 0, 0, 80, 0, 0, 0}, {0, 70, 90, 30}, 0, 1, FX(0, 0, 10, 10), PAT(2)},
-    {"ORGAN", {4, 64, 0, 0, 60, 0, 0, 0}, {0, 127, 127, 20}, 0, 0, FX(0, 30, 0, 30), PAT(6)},
+    {"ODD BASS", {3, 50, 0, 0, 0, 0, 0, 0}, {0, 70, 90, 30}, 0, 1, FX(0, 0, 10, 10), PAT(2)},
+    {"ORGAN", {4, 64, 0, 0, 0, 0, 0, 0}, {0, 127, 127, 20}, 0, 0, FX(0, 30, 0, 30), PAT(6)},
     {"VOWEL PAD", {5, 50, 0, 0, 0, 8, 0, 0}, {50, 90, 100, 70}, 0, 0, FX(0, 40, 20, 60), PAT(5)},
-    {"SYNC LEAD", {0, 20, 0, 70, 40, 0, 0, 0}, {0, 80, 100, 40}, 0, 1, FX(0, 20, 30, 30), PAT(4)},
+    {"SYNC LEAD", {0, 20, 0, 70, 0, 0, 0, 0}, {0, 80, 100, 40}, 0, 1, FX(0, 20, 30, 30), PAT(4)},
     {"BENT DIGI", {10, 60, 60, 0, 0, 0, 0, 0}, {0, 90, 60, 50}, 0, 0, FX(0, 20, 30, 40), PAT(7)},
-    {"ALL ON", {11, 80, 50, 60, 60, 12, 0, 0}, {10, 90, 100, 60}, 0, 0, FX(0, 30, 20, 40), PAT(5)},
+    {"ALL ON", {11, 80, 50, 60, 0, 12, 0, 0}, {10, 90, 100, 60}, 0, 0, FX(0, 30, 20, 40), PAT(5)},
 };
+
+static const uint8_t WAVE_UIORD[8] = {0, 1, 2, 3, 5, 6, 4, 7};   /* card position -> E index: ENGINE TABLE POS BEND; EDIT 1 SYNC DTN STEPS and the unused SUB slot (hidden); the stored ids never move */
 
 static const engine_t ENG_WAVE = {
     .name = "WAVE",
@@ -880,9 +933,9 @@ static const engine_t ENG_WAVE = {
         {"POS", F_PCT, 0, 127, 0, 0, 0},
         {"BEND", F_PCT, 0, 127, 0, 0, 0},
         {"SYNC", F_PCT, 0, 127, 0, 0, 0},
-        {"SUB", F_PCT, 0, 127, 0, 0, 0},
+        {"-", F_INT, 0, 0, 0, 0, 0},                 /* was SUB: the global SUB LAYER (chain_sub.c) replaces it */
         {"DTN", F_INT, 0, 127, 0, 0, "ct"},
-        {"-", F_INT, 0, 0, 0, 0, 0},
+        {"STEPS", F_ENUM, 0, 18, 0, N_WV_STEPS, 0},
         {"-", F_INT, 0, 0, 0, 0, 0},
     },
     .presets = WAVE_PRESETS,
@@ -891,6 +944,7 @@ static const engine_t ENG_WAVE = {
     .render = wave_render,
     .block = wave_block,
     .knob = {P_E1, P_E2, P_E3, P_REL},
+    .uiord = WAVE_UIORD,
     .keep = 0xF3,                /* the scan place, the table gain, SYNC's phases, the DC blocker */
     .mem = sizeof(wv_hdr_t),     /* (only the header is cleared on a claim: the frames are read only after a build) */
     .ufilt = 1,                  /* no filter of its own: the multimode filter (DUELL 0.2.9; voice.c uf_run: CUT RES MODE SLOPE, P_FREEA..D) */

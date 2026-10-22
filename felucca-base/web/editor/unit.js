@@ -2,14 +2,19 @@
 // DUELL editor: the unit as the editor sees it. Reads both parts and the globals, writes parameters (coalesced, one request at a time through
 // the link), follows the unit by WATCH pushes, loads and stores patches, loads and saves multis, reads and sets MENU settings.
 // No DOM: editor/test_editor.mjs runs it against the simulated unit.
-import { CMD, v14, rv14, cstr, parseInfo, parseTrackQuery, parseTrackDump, parseDump, parseNames, parseUpList, parseMenu, parseLearn, parseStep, stepBytes } from "./proto.js";
-import { L, ID, P_E0, descOf, clampTo, inertReason } from "./layout.js";
+import { CMD, v14, rv14, cstr, parseInfo, parseTrackQuery, parseTrackDump, parseDump, parseNames, parseUpList, parseMenu, parseLearn, parseStep, stepBytes, xReadArgs, xWriteArgs, parseXReply } from "./proto.js";
+import { L, ID, P_E0, NX, X, descOf, xdescOf, xDefaults, clampTo } from "./layout.js";
 import { BACKUP_CMD, bkU32, bkR32, bkPack, bkUnpack, bkCrc } from "../fm1backup.js";
 
 export const UP_SLOTS = 128;   // the patch slots, ids 0..127 (DUELL 0.2.17: one list; a slot is its saved record or else the factory sound at that place of the list)
 export class UnitError extends Error { constructor(msg, rc) { super(msg); this.rc = rc; } }
+// the filter cutoffs (fmt 23 FILT: the multimode filter's CUT, 0..82; fmt 5 CUTOFF: an engine's own) move in steps of at most this many per write (see queueWrite)
+const slewOf = (d) => (d && !d.names && (d.fmt === 23 || d.fmt === 5) ? Math.max(2, Math.round((d.max - d.min) / 24)) : 0);
 
 export class Unit {
+  static POLL_REST = 4;                                // the poll reads this many of the other MENU rows a turn (pollSettings)
+  static POLL_G = 4;                                   // .. and the global dump every this many polls
+  static MIN_GAP = 20;                                 // ms between two writes of one parameter (0.2.25)
   constructor(link) {
     this.link = link; this.info = null; this.compat = null; this.parts = []; this.g = []; this.selected = 0; this.ntrk = 2;
     this.listeners = new Map(); this.sending = new Map(); this.latest = new Map(); this.menu = null; this.slots = null; this.names = new Map();
@@ -34,6 +39,7 @@ export class Unit {
     await this.req(CMD.WATCH, [3]);
     this.link.keepAlive?.(1000);
     await this.readAll();
+    this.startPoll();
     this.emit("connected", this);
   }
   async readAll() {
@@ -42,24 +48,33 @@ export class Unit {
     this.parts = [];
     for (let k = 0; k < 2; k++) {
       const d = parseTrackDump(await this.req(CMD.TRACK_DUMP, [k]), L.P_COUNT);
-      this.parts.push({ eng: d.eng, preset: d.preset, p: d.p, name: null });
+      this.parts.push({ eng: d.eng, preset: d.preset, p: d.p, x: await this.readX(k), name: null });
     }
     this.g = parseDump(await this.req(CMD.DUMP), L.P_COUNT, L.G_COUNT).g;
     this.emit("reload", { part: -1 });
   }
   async readPart(k) {
     const d = parseTrackDump(await this.req(CMD.TRACK_DUMP, [k]), L.P_COUNT);
-    this.parts[k] = { eng: d.eng, preset: d.preset, p: d.p, name: this.parts[k]?.name ?? null };
+    this.parts[k] = { eng: d.eng, preset: d.preset, p: d.p, x: await this.readX(k), name: this.parts[k]?.name ?? null, slot: this.parts[k]?.slot ?? null };   // (slot: the patch slot the editor loaded or stored, 0.2.25 layout round; null: not known)
     this.emit("reload", { part: k });
   }
+  // the part's extension slots (protocol scope 2, INFO tag 59): NX values through TRACK_PARAM's scope byte; a unit without the tag has none, the slots are their defaults (the FILTER tab's cards say so)
+  async readX(part) {
+    const x = xDefaults();
+    if (this.info?.nx == null) return x;
+    for (let k = 0; k < Math.min(NX, this.info.nx); k++) x[k] = parseXReply(await this.req(CMD.TRACK_PARAM, xReadArgs(part, k))).v;
+    return x;
+  }
+  get hasX() { return this.info?.nx != null; }
   async readGlobals() { this.g = parseDump(await this.req(CMD.DUMP), L.P_COUNT, L.G_COUNT).g; this.emit("globals", {}); }
-  disconnect() { this.link.close(); }
+  disconnect() { clearInterval(this.pollTimer); this.link.close(); }
 
   // ---- following the unit
   push(cmd, a) {
-    if (cmd === CMD.CHANGED) {                       // scope, id, v14 (the selected track or a global)
+    if (cmd === CMD.CHANGED) {                       // scope, id, v14 (the selected track, a global, or scope 2: an extension slot of the selected track)
       const v = rv14(a, 2);
       if (a[0] === 1) { this.g[a[1]] = v; this.emit("global", { id: a[1], v }); }
+      else if (a[0] === 2) { if (this.parts[this.selected]) this.setX(this.selected, a[1], v, false); }
       else if (this.parts[this.selected]) this.set(this.selected, a[1], v, false);
     } else if (cmd === CMD.TRACK_CHANGED) {          // track, id, v14
       if (a[0] < 2) this.set(a[0], a[1], rv14(a, 2), false);
@@ -67,34 +82,108 @@ export class Unit {
       this.emit("step", { index: a[0], part: a[1] ?? this.selected });
     } else if (cmd === CMD.RELOAD) {                 // engine, preset, track
       const t = a[2] ?? this.selected;
-      if (t < 2) { this.selected = t; this.readPart(t).catch((e) => this.emit("error", e)); this.readGlobals().catch(() => {}); }
+      // 0.2.25 (owner: after a multi load on the unit only the selected part followed): the unit pushes RELOAD for its selected part only (editor.c
+      // ed_poll), but a multi load, a selection change or a sound load may have changed both: both parts and the globals are read again
+      if (t < 2) { const was = this.selected; this.selected = t; this.emit("selected", { part: t, was }); this.readBoth(true).catch((e) => this.emit("error", e)); }
+    }
+  }
+  // both parts and the globals again (a load on the unit). byUnit: a part whose sound changed loses the name the editor gave it (the unit does not say which slot it plays)
+  async readBoth(byUnit = false) {
+    if (this.reading) { this.readAgain = true; return this.reading; }
+    this.reading = (async () => {
+      do {
+        this.readAgain = false;
+        for (let k = 0; k < 2; k++) {
+          const before = this.parts[k];
+          const d = parseTrackDump(await this.req(CMD.TRACK_DUMP, [k]), L.P_COUNT);
+          const x = await this.readX(k);
+          const changed = !before || before.eng !== d.eng || before.preset !== d.preset || d.p.some((v, i) => i !== ID.P_LEVEL && i !== ID.P_PAN && i !== ID.P_MUTE && v !== before.p[i]) || x.some((v, i) => v !== before.x?.[i]);
+          const reloaded = byUnit && changed && before && (before.eng !== d.eng || before.preset !== d.preset || d.p.filter((v, i) => v !== before.p[i]).length + x.filter((v, i) => v !== before.x?.[i]).length > 6);
+          this.parts[k] = { eng: d.eng, preset: d.preset, p: d.p, x, name: reloaded ? null : before?.name ?? null, slot: reloaded ? null : before?.slot ?? null, fromUnit: reloaded || (!changed && !!before?.fromUnit) };
+          if (changed) this.emit("reload", { part: k });
+        }
+        this.g = parseDump(await this.req(CMD.DUMP), L.P_COUNT, L.G_COUNT).g; this.emit("globals", {});
+      } while (this.readAgain);
+    })();
+    try { await this.reading; } finally { this.reading = null; }
+  }
+  // 0.2.25: a light check every few seconds (TRACK query: the selected part, each part's engine and preset): a change the unit did not push is read
+  startPoll(ms = 2500) {
+    clearInterval(this.pollTimer);
+    this.pollTimer = setInterval(async () => {
+      if (this.polling || this.reading || [...this.sending.values()].some(Boolean) || (typeof document !== "undefined" && document.hidden)) return;
+      this.polling = true;
+      try {
+        const t = parseTrackQuery(await this.req(CMD.TRACK, [], 1500), this.ntrk);
+        const sel = Math.min(t.selected, 1), diff = sel !== this.selected || [0, 1].some((k) => t.tracks[k] && this.parts[k] && (t.tracks[k].eng !== this.parts[k].eng || t.tracks[k].preset !== this.parts[k].preset));
+        if (diff) { const was = this.selected; this.selected = sel; this.emit("selected", { part: sel, was }); await this.readBoth(true); }
+        if (this.menu) await this.pollSettings();          // the MENU / device settings (WIDTH, BASS MONO, COMP ... the MODULES switches) and now and then the globals
+      } catch { /* the next poll */ } finally { this.polling = false; }
+    }, ms);
+    this.pollTimer.unref?.();                          // (node: the tests end without a disconnect)
+  }
+  // 0.2.25 (owner: a WIDTH or BASS MONO changed on the unit did not show in the editor): the unit pushes song.g[] changes (CHANGED) but the MENU / device settings (WIDTH, BASS MONO,
+  // COMP, SIDECHAIN, the MODULES switches and the MENU rows) only answer MENU_DESC. Every poll reads the ids 28..42 (the panel's own settings: one small request each) and a turn of
+  // the others (POLL_REST of the MENU rows), and every POLL_G polls the global dump (a push lost, a value changed by a load). A setting the user is writing now (a write queued or in flight),
+  // or any poll while a pointer is held down in the editor (isBusy, set by app.js: a slider being dragged), is left alone: the next poll reads it.
+  async pollSettings() {
+    if (this.isBusy?.()) return;
+    const mine = (key) => this.sending.get(key) || this.latest.has(key);
+    const hot = this.menu.filter((m) => m.id >= 28 && m.id <= 42), rest = this.menu.filter((m) => !(m.id >= 28 && m.id <= 42));
+    const n = Math.min(Unit.POLL_REST, rest.length), turn = [];
+    for (let i = 0; i < n; i++) turn.push(rest[((this.pollRest ?? 0) + i) % rest.length]);
+    this.pollRest = rest.length ? ((this.pollRest ?? 0) + n) % rest.length : 0;
+    let ch = false;
+    for (const m of [...hot, ...turn]) {
+      if (mine(`m:${m.id}`)) continue;
+      const f = parseMenu(await this.req(CMD.MENU_DESC, [m.index], 1500));
+      if (f && f.value !== m.value && !mine(`m:${m.id}`) && !this.isBusy?.()) { m.value = f.value; ch = true; }
+    }
+    if (ch) this.emit("menu", this.menu);
+    if (((this.pollG = (this.pollG ?? 0) + 1) % Unit.POLL_G) === 0) {
+      const g = parseDump(await this.req(CMD.DUMP, [], 2500), L.P_COUNT, L.G_COUNT).g;
+      for (let id = 0; id < g.length; id++) {
+        if (g[id] === this.g[id] || mine(`g:${id}`) || this.isBusy?.()) continue;
+        this.g[id] = g[id]; this.emit("global", { id, v: g[id], byUs: false });
+      }
     }
   }
   set(part, id, v, byUs) {
     const p = this.parts[part]; if (!p) return;
     p.p[id] = v; this.emit("param", { part, id, v, byUs });
   }
+  setX(part, k, v, byUs) {
+    const p = this.parts[part]; if (!p) return;
+    (p.x ||= xDefaults())[k] = v; this.emit("param", { part, id: k, scope: 2, v, byUs });
+  }
 
   // ---- parameter writes: the latest value of a parameter goes out when the one before is answered (a dragged slider sends what it needs)
   writeParam(part, id, v) {
     this.guard();
     const d = descOf(this.parts[part], id); v = clampTo(d, Math.round(v));
+    const old = this.parts[part].p[id];
     this.set(part, id, v, true);
+    if (!this.sending.get(`p${part}:${id}`)) (this.sentVal ||= new Map()).set(`p${part}:${id}`, old);   // (the slew starts from the value the unit has now)
     this.queueWrite(`p${part}:${id}`, v, async (val) => {
       const a = await this.req(CMD.TRACK_PARAM, [part, id, ...v14(val)]);
-      const got = rv14(a, 2); if (got !== val) this.set(part, id, got, true);
+      const got = rv14(a, 2); if (got !== val && !this.latest.has(`p${part}:${id}`)) this.set(part, id, got, true);
+      if (id === ID.P_TWTYPE && !this.latest.has(`p${part}:${id}`)) await this.readTwin(part);   // (a TYPE change moves CUTOFF 2 and RES 2 on entering or leaving COMB: the unit pushes only for the selected part)
+    }, { slew: slewOf(d) });
+  }
+  // an extension slot (protocol scope 2); LINK also converts CUTOFF 2 (twin_link_set), so CUTOFF 2 is read back
+  writeX(part, k, v) {
+    this.guard();
+    if (!this.hasX) throw new UnitError("This unit's firmware has no extension values (INFO tag 59 is missing).");
+    const d = xdescOf(this.parts[part], k); v = clampTo(d, Math.round(v));
+    this.setX(part, k, v, true);
+    this.queueWrite(`x${part}:${k}`, v, async (val) => {
+      const r = parseXReply(await this.req(CMD.TRACK_PARAM, xWriteArgs(part, k, val)));
+      if (r.v !== val && !this.latest.has(`x${part}:${k}`)) this.setX(part, k, r.v, true);
+      if (k === X.X_LINK && !this.latest.has(`x${part}:${k}`)) await this.readTwin(part);
     });
   }
-  // an edit with the two parts linked (the editor's BOTH): the same step on the other part; an engine parameter only while both play the same
-  // engine; never on a control that is inert there; an enum is copied only where both descriptors are the same control
-  writeParamLinked(part, id, v) {
-    const old = this.parts[part].p[id];
-    this.writeParam(part, id, v);
-    const q = 1 - part, a = this.parts[part], b = this.parts[q];
-    if (id >= P_E0 && a.eng !== b.eng) return;
-    if (inertReason(b, id)) return;
-    const da = descOf(a, id), db = descOf(b, id), nv = a.p[id];
-    this.writeParam(q, id, db.names ? (da.label === db.label ? nv : b.p[id]) : b.p[id] + (nv - old));
+  async readTwin(part) {                              // CUTOFF 2 and RES 2 of a part (they change meaning with LINK and TYPE)
+    for (const id of [ID.P_CUT2, ID.P_RES2]) { const a = await this.req(CMD.TRACK_PARAM, [part, id]); this.set(part, id, rv14(a, 2), true); }
   }
   writeGlobal(id, v) {
     this.guard();
@@ -104,13 +193,27 @@ export class Unit {
       const got = rv14(a, 2); if (got !== val) { this.g[id] = got; this.emit("global", { id, v: got, byUs: true }); }
     });
   }
-  queueWrite(key, v, send) {
+  // 0.2.25 (owner: the cutoff crackled when it was dragged in the editor): at most one write of a parameter every MIN_GAP ms (about 50 a second; the
+  // last value always goes out), and a value with a slew (opt.slew: the largest step a write may take, the filter cutoffs) walks to its target in
+  // steps of that size instead of jumping: a fast drag reaches the unit as a quick, even sweep
+  queueWrite(key, v, send, opt = {}) {
     this.latest.set(key, v);
+    if (opt.slew) (this.slew ||= new Map()).set(key, opt.slew);
     if (this.sending.get(key)) return;
     this.sending.set(key, true);
+    const sent = (this.sentAt ||= new Map()), last = (this.sentVal ||= new Map());
     (async () => {
       try {
-        while (this.latest.has(key)) { const val = this.latest.get(key); this.latest.delete(key); await send(val); }
+        while (this.latest.has(key)) {
+          const gap = Unit.MIN_GAP - (Date.now() - (sent.get(key) ?? 0));
+          if (gap > 0) await new Promise((r) => setTimeout(r, gap));
+          let val = this.latest.get(key);
+          const st = this.slew?.get(key), prev = last.get(key);
+          if (st && prev != null && Math.abs(val - prev) > st) val = prev + Math.sign(val - prev) * st;   // (the target stays in latest: the loop goes on)
+          else this.latest.delete(key);
+          sent.set(key, Date.now()); last.set(key, val);
+          await send(val);
+        }
       } catch (e) { this.latest.delete(key); this.emit("error", e); }
       finally { this.sending.set(key, false); }
     })();
@@ -130,6 +233,33 @@ export class Unit {
     await this.select(part); await this.idle();
     await this.req(CMD.SET, [1, ID.G_ENGSEL, ...v14(eng)]);
     await this.readPart(part);
+  }
+
+  // INIT (the unit's SAVE > TOOLS > INIT SOUND, ui.c init_sound): the engine's first sound with every common setting at its default, then KEY TRACKING at
+  // its new-sound default. PRESET (engine, 0) is exactly the first half (ui.c apply_preset_to); the steps, the mixer and the arp stay
+  async initSound(part) {
+    this.guard(); await this.select(part); await this.idle();
+    const eng = L.ENG[this.parts[part].eng]?.name === "-" ? 0 : this.parts[part].eng;
+    await this.req(CMD.PRESET, [eng, 0]);
+    await this.req(CMD.TRACK_PARAM, [part, ID.P_KTRK, ...v14(L.TP[ID.P_KTRK].def)]);
+    await this.readPart(part);
+    this.parts[part].name = null;
+    this.parts[part].slot = null;
+  }
+  // FM6: the part's own voice, the 128-byte packed record (FM6_GET / FM6_PUT target 0, index = the part). A PUT is heard at once and makes SLOT OWN.
+  async readFm6(part) {
+    const a = await this.req(CMD.FM6_GET, [0, part], 2000);
+    if (a[2]) throw new UnitError("The unit did not give the FM6 voice of this part.", a[2]);
+    return a.slice(3, 3 + 128);
+  }
+  writeFm6(part, packed) {
+    this.guard();
+    this.queueWrite(`fm6:${part}`, Array.from(packed), async (val) => {
+      const a = await this.req(CMD.FM6_PUT, [0, part, ...val.map((x) => x & 127)], 2000);
+      if (a[2]) throw new UnitError("The unit refused the FM6 voice.", a[2]);
+      const s = await this.req(CMD.TRACK_PARAM, [part, P_E0 + 7]);                   // SLOT is OWN now (or F n when it is a factory voice unchanged)
+      this.set(part, P_E0 + 7, rv14(s, 2), false);
+    });
   }
 
   // ---- patch slots (DUELL 0.2.17: ONE list of 128 slots; slot i is its saved record, or else the factory sound at browse position i, #NN = i + 1)
@@ -156,6 +286,7 @@ export class Unit {
     const a = await this.req(CMD.UP_LOAD, [slot]);
     if (a[1] !== 0) throw new UnitError("That slot is not valid.", a[1]);
     await this.readPart(part);
+    this.parts[part].slot = slot;
   }
   // Saves the part's CURRENT sound over a slot (UP_STORE: the unit stores it itself, so End B and the arp block are kept; UP_PUT would drop them). What
   // the slot held is gone (a saved record, or nothing but its factory sound, which RESTORE brings back).
@@ -165,6 +296,7 @@ export class Unit {
     if (a[1] === 1) throw new UnitError("The unit refused the name or the slot.", 1);
     if (a[1] === 2) throw new UnitError("The unit could not write: it could not stop playback in time, or the flash failed. Stop playback on the unit and try again.", 2);
     if (a[1] !== 0) throw new UnitError(`The unit answered error ${a[1]}.`, a[1]);
+    if (this.parts[part]) this.parts[part].slot = slot;
     await this.listSlots();
   }
   // RESTORE: the slot's saved record is removed and its factory sound is back (UP_ERASE; a slot that holds its factory sound already: rc 0, nothing written)

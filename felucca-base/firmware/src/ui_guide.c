@@ -39,6 +39,15 @@ static int guide_seen(void) { return (ui_prefs2 & (PREF_GUIDE_SEEN >> 16)) != 0u
 /* opened: by the splash's end (from_menu 0: the first start) or MENU > SYSTEM > GUIDE (1) */
 static void guide_open(uint32_t from_menu)
 {
+#if DUELL_BENCH
+    if (from_menu) {                                    /* (bench builds: the GUIDE row is the BENCH row, menu_items.c: it opens the BENCH screen, src/bench.c;
+                                                         * the first start's guide opens as ever) */
+        ui.menu = 5;
+        bench_open();
+        ui.force = 1;
+        return;
+    }
+#endif
     ui.guide = 1;
     ui.guide_menu = (uint8_t)(from_menu != 0u);
     guide_sig = 0;

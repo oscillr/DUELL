@@ -160,7 +160,8 @@ async function connect() { const m = new MockUnit(), u = new Unit(new MockLink(m
 }
 // ---- the layout: a PIANO ROLL tab per part
 {
-  ok(PART_TABS.at(-1).key === "roll" && PART_TABS.at(-1).label === "PIANO ROLL" && uncoveredPages().length === 0, "layout: the part columns have a PIANO ROLL tab (the last one) and every firmware page is still covered");
+  const rl = PART_TABS.filter((t) => !t.only).at(-1);
+  ok(rl.key === "roll" && rl.label === "SEQ" && uncoveredPages().length === 0, "layout: the part columns have a SEQ tab (the last one of every engine) and every firmware page is still covered");
 }
 // ---- the simulated unit's step commands (the same rules as the unit)
 {

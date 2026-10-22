@@ -1,6 +1,10 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
-/* NOISE: from analog-style noise to shift-register noise, through a resonant filter.
+/* NOISE: from analog-style noise to shift-register noise. No filter of its own since the engine filters left (TWIN_FILTER_DESIGN_2, cloud job J): its FREQ / RES / TRK are filter 1, the MULTI FILTER
+ * (voice.c uf_run; RES as MODE LP > BP and the damping). What stays here is the loudness make-up, which now reads filter 1's effective cutoff (vmod_t.ucut, set by the voice path):
+ * the source is made louder the lower the filter will close, BEFORE the filter (the amp ramp is applied to the signal scaled down by 2^sh, sh 0..4, and the shift put back, so the
+ * x16 of a low cutoff cannot overflow mulq15). DRFT's wander of the cutoff is handed to filter 1 one block late (v->s[0], voice.c track_render adds it to the voice's cutoff routes while
+ * filter 1 is on). CRSH is the last thing the engine does, so it runs before filter 1 and the filter smooths its steps.
  *
  * MODE picks the source:
  *   ANLG  xorshift white noise, plus random impulses (DENS: their density, 0 = none)
@@ -8,12 +12,10 @@
  *   LFSR  a long shift register (LEN: 23 down to 7 bits) clocked CLK semitones above the key
  *   META  one cycle of a short register sequence per period of the key (LEN: which one): a metallic tone
  * COLR tilts the source from white (0) through pink (64, -3 dB/oct) to brown (127, -6 dB/oct).
- * FREQ / RES: a trapezoidal SVF that morphs from low-pass (RES 0) to a narrow band-pass (RES 127);
- * TRK key-tracks FREQ (127 = one semitone a semitone, around C4). DRFT: a slow random wander of FREQ
- * (and the clock), the level following it. CRSH (ANLG, DUST): sample-and-hold and fewer bits.
- * The track's FLT moves FREQ, SHP moves COLR, PIT the key (so FREQ with TRK, and the clock).
+ * DRFT: a slow random wander of filter 1's cutoff (and the clock), the level following it. CRSH (ANLG, DUST): sample-and-hold and fewer bits.
+ * The track's SHP moves COLR, PIT the key (so the clock).
  *
- * State: s[0] s[1] the filter, s[2] the random generator (seeded by the note and the unison detune: a
+ * State: s[0] the cutoff wander handed to filter 1 (Q8 dial steps), s[2] the random generator (seeded by the note and the unison detune: a
  * note from silence sounds the same each time), s[3] the drift target and its countdown, s[4..6] the pink
  * poles, s[7] the brown pole; ph[0] the clock phase (LFSR, META) or the hold count (CRSH), ph[1] the
  * register, the held sample or META's DC blocker, ph[2] the drift. */
@@ -85,7 +87,7 @@ static void noise_note_on(track_t *t, voice_t *v)
 {
     uint32_t seed = (v->note + 1u) * 0x9E3779B9u ^ (uint32_t)v->fine * 0x85EBCA6Bu;   /* UNISON: each its own */
     (void)t;
-    v->s[0] = v->s[1] = 0;
+    v->s[0] = v->s[1] = 0;                            /* (s[0]: the cutoff wander handed to filter 1; s[1] unused) */
     v->s[2] = (int32_t)(seed ? seed : 1u);
     v->s[3] = 0;                                      /* a new drift target at once */
     v->s[4] = v->s[5] = v->s[6] = v->s[7] = 0;
@@ -98,10 +100,10 @@ static void noise_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const
 {
     const int16_t *p = t->p;
     uint32_t mode = (uint32_t)p[P_E0] & 3u, sel = ((uint32_t)p[P_E5] >> 4) & 7u, i;
-    int32_t res = p[P_E3], drft = p[P_E6], crsh = mode < NZ_LFSR ? p[P_E7] : 0;
-    int32_t ic1 = v->s[0], ic2 = v->s[1], rng = v->s[2], b0 = v->s[4], b1 = v->s[5], b2 = v->s[6], br = v->s[7];
+    int32_t drft = p[P_E6], crsh = mode < NZ_LFSR ? p[P_E7] : 0;
+    int32_t rng = v->s[2], b0 = v->s[4], b1 = v->s[5], b2 = v->s[6], br = v->s[7];
     uint32_t ph = v->ph[0], reg = v->ph[1];         /* state in locals: out[] may alias v->s[] */
-    int32_t drift = (int32_t)v->ph[2], d16 = 0, gain = 32767, gq, colr, cut, k, a1, a2, a3, g, bpg, mix, cf, thr = 0;
+    int32_t drift = (int32_t)v->ph[2], d16 = 0, gain = 32767, gq, colr, cut, cf, thr = 0, sh = 0, wand = 0;
     uint32_t inc = 0, taps = NOISE_TAPS[sel];
     /* drift: a new random target every 0.7..3 s, followed with a 0.7 s lag */
     if (drft) {
@@ -119,18 +121,10 @@ static void noise_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const
     /* COLR (+ SHP), 0..127 << 8: white -> pink -> brown */
     colr = clamp((p[P_E1] << 8) + m->shape - (64 << 8), 0, 127 << 8);
     cf = colr <= (64 << 8) ? colr << 1 : ((colr - (64 << 8)) * 520) >> 8;   /* the crossfade, Q15 */
-    /* FREQ (+ FLT), key-tracked by TRK around C4, the drift: SVF cutoff units (256 an index, 0.86 st) */
-    cut = (p[P_E2] << 8) + m->cutoff + (((m->pitch16 - 60 * 16) * p[P_E4] * 151) >> 10) + ((d16 * 4785) >> 8);
-    cut = clamp(cut, 0, 127 << 8);
-    g = SVF_G[cut >> 8];
-    if (cut < (127 << 8))
-        g += ((SVF_G[(cut >> 8) + 1] - g) * (cut & 255)) >> 8;
-    k = 8192 - res * 7800 / 127;                      /* damping, Q12: 2.0 .. 0.1 */
-    a1 = (int32_t)((4096u << 13) / (uint32_t)(4096 + ((g * (g + k)) >> 12)));
-    a2 = (a1 * g) >> 12;
-    a3 = (a2 * g) >> 12;
-    bpg = (int32_t)isqrt32((uint32_t)k << 12);        /* band-pass x 1.5 sqrt(damping): its level holds with the Q */
-    mix = res * 258;                                  /* low-pass -> band-pass, Q15 */
+    /* filter 1's effective cutoff (voice.c: the dial, its routes, KEY TRK, the wander of the block before) as the SVF table's index, Q8 (uf_run's idx: 40 + 396 a dial step; 127 << 8 at the open end) */
+    cut = clamp(40 + ((m->ucut * 99) >> 6), 0, 127 << 8);
+    if (d16 && (p[P_FREEA] < (int16_t)UF_STEPS || p[P_FREEC] > 0))   /* DRFT's wander of the cutoff, for the next block: 3093 / 256 dial steps a 1/16 semitone (the 0.86 semitone a table index and the 1.547 table indices a dial step); not while filter 1 is open (it would switch it on) */
+        wand = (d16 * 3093) >> 8;
     {   /* level: make up most of what the filter takes from white noise (less for pink and brown), +12 dB for
          * the sparse DUST, the drift's level; Q12, mk in 1/256 octave: 2^(mk / 256), at most x 16 */
         int32_t wf = 32767 - ((colr * 230) >> 8), mk = (((((127 << 8) - cut) >> 8) * 7) * wf) >> 15;
@@ -141,6 +135,9 @@ static void noise_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const
         gq = (gq * (gain >> 3)) >> 12;
         if (gq > 65535)
             gq = 65535;
+        while ((gq >> sh) > 4096)                     /* the make-up is applied scaled down by 2^sh: the largest signal (57343, an impulse on noise) times gq stays under mulq15's 65536 */
+            sh++;
+        gq >>= sh;
     }
     if (mode <= NZ_DUST && p[P_E5]) {                 /* impulses: 1 .. 2000 a second */
         uint32_t e = (uint32_t)p[P_E5] * 22u, r = 1u << (e >> 8);   /* 2^(DENS * 11 / 127), Q8 fraction */
@@ -162,7 +159,7 @@ static void noise_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const
         inc = p[P_E7] || d16 ? noise_inc(m->pitch16 + p[P_E7] * 16 + d16) : m->inc;
     }
     for (i = 0; i < n; i++) {
-        int32_t w, x, v1, v2, v3, y;
+        int32_t w, x, y;
         switch (mode) {
         case NZ_DUST:
         case NZ_ANLG: {
@@ -203,16 +200,7 @@ static void noise_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const
                 x = pk + mulq15(br - pk, cf);
             }
         }
-        /* the SVF (dsp.c tsvf_lp, with the band-pass), rounded: at low cutoffs the floor of the shifts
-         * walked the integrators off zero (DC) */
-        v3 = x - ic2;
-        v1 = (a1 * ic1 + a2 * v3 + 4096) >> 13;
-        v2 = ic2 + ((a2 * ic1 + a3 * v3 + 4096) >> 13);
-        ic1 = clamp(2 * v1 - ic1, -150000, 150000);
-        ic2 = clamp(2 * v2 - ic2, -150000, 150000);
-        v1 = (v1 * bpg * 3) >> 13;
-        y = v2 + (((v1 - v2) * (mix >> 3)) >> 12);
-        y = soft_knee(((y >> 4) * gq) >> 8, 24000);
+        y = soft_knee(((x >> 4) * gq) >> 8, 48000);   /* the make-up (a bound for mulq15 too: 64383 at the most) */
         if (mode == NZ_META) {                        /* the knee bends a lopsided tone: a DC blocker, ~14 Hz */
             reg += (uint32_t)(((y << 8) - (int32_t)reg) >> 9);
             y -= (int32_t)reg >> 8;
@@ -224,10 +212,9 @@ static void noise_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const
             }
             y = (int32_t)reg;
         }
-        out[i] += voice_amp(y, m, i);
+        out[i] += voice_amp(y, m, i) << sh;
     }
-    v->s[0] = ic1;
-    v->s[1] = ic2;
+    v->s[0] = wand;
     v->s[2] = rng;
     v->s[4] = b0;
     v->s[5] = b1;
@@ -238,15 +225,17 @@ static void noise_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const
     v->ph[2] = (uint32_t)drift;
 }
 
-/* {MODE, COLR, FREQ, RES, TRK, DENS, DRFT, CRSH / CLK} */
+/* {MODE, COLR, -, -, -, DENS, DRFT, CRSH / CLK} (FREQ RES TRK are filter 1's since cloud job J) */
 static const preset_t NOISE_PRESETS[] = {
-    {"WIND", {NZ_ANLG, 64, 70, 100, 127, 0, 70, 0}, {90, 90, 110, 90}, 0, 0, FX(0, 30, 20, 80), PAT(5)},
-    {"RAIN", {NZ_DUST, 30, 88, 80, 64, 105, 40, 0}, {10, 90, 127, 70}, 0, 0, FX(0, 0, 20, 70), PAT(5)},
+    {"WIND", {NZ_ANLG, 64, 0, 0, 0, 0, 70, 0}, {90, 90, 110, 90}, 0, 0, FX(0, 30, 20, 80), PAT(5)},
+    {"RAIN", {NZ_DUST, 30, 0, 0, 0, 105, 40, 0}, {10, 90, 127, 70}, 0, 0, FX(0, 0, 20, 70), PAT(5)},
     /* a 7-bit register (127 steps) clocked 84 semitones (7 octaves) above the key: one period per key period,
      * a pitched chip-style buzz */
-    {"ARCADE", {NZ_LFSR, 0, 127, 0, 127, 112, 0, 84}, {0, 80, 0, 50}, 0, 0, FX(0, 0, 10, 20), PAT(3)},
-    {"METAL", {NZ_META, 0, 100, 40, 100, 32, 0, 0}, {0, 75, 40, 60}, 10, 0, FX(0, 20, 30, 45), PAT(7)},
+    {"ARCADE", {NZ_LFSR, 0, 0, 0, 0, 112, 0, 84}, {0, 80, 0, 50}, 0, 0, FX(0, 0, 10, 20), PAT(3)},
+    {"METAL", {NZ_META, 0, 0, 0, 0, 32, 0, 0}, {0, 75, 40, 60}, 10, 0, FX(0, 20, 30, 45), PAT(7)},
 };
+
+static const uint8_t NOISE_UIORD[8] = {0, 1, 5, 6, 7, 2, 3, 4};   /* card position -> E index: ENGINE MODE COLR DENS; EDIT 1 DRFT CRSH (FREQ RES TRK are unused slots, hidden); the stored ids never move */
 
 static const engine_t ENG_NOISE = {
     .name = "NOISE",
@@ -254,9 +243,9 @@ static const engine_t ENG_NOISE = {
     .edit = {
         {"MODE", F_ENUM, 0, 3, 0, N_NOISE_MODE, 0},
         {"COLR", F_PCT, 0, 127, 64, 0, 0},
-        {"FREQ", F_CUTOFF, 0, 127, 80, 0, 0},
-        {"RES", F_PCT, 0, 127, 30, 0, 0},
-        {"TRK", F_PCT, 0, 127, 64, 0, 0},
+        {"-", F_INT, 0, 0, 0, 0, 0},                 /* was FREQ: filter 1's CUT */
+        {"-", F_INT, 0, 0, 0, 0, 0},                 /* was RES: filter 1's RES and MODE */
+        {"-", F_INT, 0, 0, 0, 0, 0},                 /* was TRK: filter 1's KEY TRK */
         {"DENS", F_PCT, 0, 127, 0, 0, 0},           /* LFSR, META: the register (noise_desc) */
         {"DRFT", F_PCT, 0, 127, 0, 0, 0},
         {"CRSH", F_PCT, 0, 127, 0, 0, 0},           /* LFSR, META: the clock above the key */
@@ -265,8 +254,9 @@ static const engine_t ENG_NOISE = {
     .npresets = NELEM(NOISE_PRESETS),
     .note_on = noise_note_on,
     .render = noise_render,
-    .knob = {P_E2, P_E3, P_E1, P_REL},
-    .keep = 0xF3,                /* the filter, the colour poles */
+    .knob = {P_FREEA, P_FREEB, P_E1, P_REL},   /* filter 1's CUT and RES (FREQ and RES were here) */
+    .keep = 0xF1,                /* the wander handed to filter 1, the colour poles */
     .desc = noise_desc,
-    .ufilt = 2,                  /* its own filter stays; the multimode filter (the FILTER page, ids 45..48) runs in series after it (DUELL 0.2.9, voice.c) */
+    .uiord = NOISE_UIORD,
+    .ufilt = 1,                  /* no filter of its own since cloud job J: the multimode filter (voice.c uf_run) */
 };

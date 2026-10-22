@@ -5,9 +5,8 @@
  *                pages go round in PAGES order (ENGINE first) and back to ENGINE; SELECT turns the same round
  *   KNOB 1       ENGINE: the next / previous engine in PRESETS order (engines.c ENGINE_ORDER), only the ones shown
  *                (NENG_SHOWN: never DRUM, never hidden DIGITAL); wraps at both ends
- *   KNOB 2       SOUND: the next / previous sound of the engine (wraps); the engine stays
- *   KNOB 3       FAV: right marks, left unmarks the sound as a favourite
- *   KNOB 4       INIT: a turn right asks (the dialog INITIALIZE SOUND?), OCT+ does it, OCT- leaves it; left nothing
+ *   KNOB 2..4    T0227 (owner): the engine's first three controls (no SOUND list, no FAV, no INIT here: SAVE > TOOLS keeps INIT SOUND);
+ *                EDIT 1 holds the next four, EDIT 2 the eighth (only on an engine that has one); an engine change keeps the patch's name
  *   ALGORITHM    the other part keeps its own engine, the page stays ENGINE and shows that part's engine
  * Built and run by DUELL/host_tests.sh (name: engine): the UI sources against ui_test.c's stub display and knobs. */
 #define UI_TEST_NO_MAIN 1
@@ -29,7 +28,7 @@ static int on_engine_page(void) { return !at_home() && str_eq(cur_page()->title,
 static void fresh(uint32_t e)                       /* power on, part A on engine e, HOME */
 {
     ui_power_on();
-    set_engine_of(TSEL, e);
+    init_engine_of(TSEL, e);                        /* (0.2.24: the full INIT; set_engine_of keeps the common settings now) */
     TSEL->engine = TSEL->eng_req;
     memset(ui.fam_last, 0, sizeof ui.fam_last);
     frames(320);
@@ -84,26 +83,27 @@ static void test_open_and_order(void)
         expect("SELECT right: ENGINE again", on_engine_page());
     }
     {   /* the order spelled out for two engines (ANALOG: FILTER; FM6: OPERATOR pages) */
-        static const char *const A[] = {"ENGINE", "EDIT 1", "EDIT 2", "MULTI FILTER", "VCF", "VOICE 1/2", "VOICE 2/2"};
-        static const char *const F[] = {"ENGINE", "EDIT 1", "EDIT 2", "MULTI FILTER", "OP TUNE", "OP ENV", "OP MODE", "VOICE 1/2", "VOICE 2/2"};
+        static const char *const A[] = {"ENGINE", "EDIT 1", "SUB OSC", "MULTI FILTER 1/2", "MULTI FILTER 2/2", "TWIN FILTER", "VOICE 1/2", "VOICE 2/2"};   /* (cloud job H: SUB OSC, TWIN FILTER; TWIN MOD and CHAIN while filter 2 runs; cloud job J: no EDIT 2 and no VCF on ANALOG) */
+        static const char *const F[] = {"ENGINE", "EDIT 1", "EDIT 2", "SUB OSC", "MULTI FILTER 1/2", "MULTI FILTER 2/2", "TWIN FILTER", "OP TUNE", "OP ENV", "OP MODE", "VOICE 1/2", "VOICE 2/2"};
         const char *got[16];
         uint32_t n, k, ok = 1;
         fresh(0);
+        TSEL->p[P_TWTYPE] = 0;                              /* (0.2.31: ANALOG's first factory sound runs filter 2, which adds TWIN MOD and TWIN CHAIN; the order is tested with filter 2 off) */
         n = edit_pages(got, 16);
         for (k = 0; k < n && k < NELEM(A); k++) ok &= str_eq(got[k], A[k]);
-        expect("ANALOG: ENGINE EDIT 1 EDIT 2 FILTER (multimode) VCF (its own) VOICE 1/2 VOICE 2/2", ok && n == NELEM(A));
+        expect("ANALOG: ENGINE EDIT 1 SUB OSC MULTI FILTER 1/2 2/2 TWIN FILTER VOICE 1/2 VOICE 2/2 (EDIT 2 is not shown: ANALOG has no eighth card)", ok && n == NELEM(A));
         fresh(ENGI_FM6);
         n = edit_pages(got, 16);
         for (k = 0, ok = 1; k < n && k < NELEM(F); k++) ok &= str_eq(got[k], F[k]);
-        expect("FM6: ENGINE EDIT 1 EDIT 2 OPERATOR OP ENV OPERATOR 2 VOICE 1/2 VOICE 2/2", ok && n == NELEM(F));
+        expect("FM6: ENGINE EDIT 1 EDIT 2 SUB OSC MULTI FILTER 1/2 2/2 TWIN FILTER OP TUNE OP ENV OP MODE VOICE 1/2 VOICE 2/2", ok && n == NELEM(F));
     }
     /* the engine changes on the ENGINE page: it stays there; on a parameter page that the new engine lacks: ENGINE */
-    fresh(0);
-    tap_edit(); tap_edit(); tap_edit(); tap_edit(); tap_edit();   /* ENGINE, EDIT 1, EDIT 2, FILTER (multimode), VCF (ANALOG's own) */
-    expect("on VCF", str_eq(cur_page()->title, "VCF"));
-    set_engine_of(TSEL, ENGI_FM6);
+    fresh(ENGI_FM6);
+    tap_edit(); tap_edit(); tap_edit(); tap_edit(); tap_edit(); tap_edit(); tap_edit(); tap_edit();   /* ENGINE, EDIT 1, EDIT 2, SUB OSC, MULTI FILTER 1/2, 2/2, TWIN FILTER, OP TUNE (FM6's) */
+    expect("on OP TUNE", str_eq(cur_page()->title, "OP TUNE"));
+    set_engine_of(TSEL, 0);
     frames(64);
-    expect("VCF of a part that is no longer ANALOG: the family's first page, ENGINE", on_engine_page());
+    expect("OP TUNE of a part that is no longer FM6: the family's first page, ENGINE", on_engine_page());
 }
 
 static void test_knob1(void)
@@ -145,85 +145,91 @@ static void test_knob1(void)
     fresh(0);
     tap_edit();
     turn(EN_K1, 1);
-    expect("KNOB 1: the new engine plays its first sound", TSEL->eng_req == eng_vis(1) && !TSEL->user);
+    expect("KNOB 1: the new engine (T0227: the patch stays the slot it came from: t->user)", TSEL->eng_req == eng_vis(1) && TSEL->user);
     turn(EN_K1, 1);                                  /* (the click-free swap is set_engine's own, select_engine; the audio fades) */
     expect("KNOB 1: eng_req moves at once, the voices follow through set_engine's fade", TSEL->eng_req == eng_vis(2));
 }
 
+/* T0227 (owner): K2..K4 are the engine's first three controls (card positions 0..2, engine_t.uiord: FM6's SOURCE first); no SOUND list, no FAV, no INIT here */
 static void test_knob2(void)
 {
-    uint32_t r;
+    uint32_t r, j;
     for (r = 0; r < NENG_SHOWN; r++) {
-        uint32_t e = eng_vis(r), total, i, s0;
-        int ok = 1;
-        char w[64];
+        uint32_t e = eng_vis(r), s0;
+        int ok = 1, fav0;
+        char w[96];
         fresh(e);
         tap_edit();
-        eng_list_pos(&total);
         s0 = snd();
-        for (i = 0; i < total; i++) {
-            uint32_t before = snd();
-            turn(EN_K2, 1);
-            ok &= TSEL->eng_req == e && (total < 2u || snd() != before);
+        fav0 = preset_favorite();
+        for (j = 1; j < 4u; j++) {
+            uint32_t id = pg_id(cur_page(), j);
+            const param_desc_t *d = track_desc(TSEL, id);
+            int16_t v0;
+            if (!d || !d->label || d->label[0] == '-' || d->max == d->min)
+                continue;
+            v0 = TSEL->p[id];
+            turn(EN_K1 + j, v0 < d->max ? 1 : -1);
+            ok &= TSEL->p[id] != v0 && id == P_E0 + (ENGINES[e]->uiord ? ENGINES[e]->uiord[j - 1u] : j - 1u);
+            frames(320);
         }
-        snprintf(w, sizeof w, "%s: KNOB 2 right x %u: the engine stays, every step is another sound", ENGINES[e]->name, total);
-        expect(w, ok);
-        snprintf(w, sizeof w, "%s: KNOB 2 right x all sounds: round to the first (wraps)", ENGINES[e]->name);
-        expect(w, snd() == s0);
-        if (total > 1u) {
-            turn(EN_K2, -1);
-            expect("KNOB 2 left: the previous sound (wraps below the first), the engine stays",
-                   TSEL->eng_req == e && snd() != s0);
-            turn(EN_K2, 1);
-            expect("KNOB 2 right: back", snd() == s0 && on_engine_page());
-        }
+        snprintf(w, sizeof w, "%s: ENGINE K2..K4 turn the engine's first three controls; the sound, FAV and the page stay, no dialog", ENGINES[e]->name);
+        expect(w, ok && snd() == s0 && preset_favorite() == fav0 && TSEL->eng_req == e && !ui.confirm && on_engine_page());
     }
 }
-
+/* the cards: K1 ENGINE, K2..K4 the engine's own (their shown names), never SOUND / FAV / INIT */
 static void test_knob3(void)
 {
     uint32_t r;
     for (r = 0; r < NENG_SHOWN; r++) {
         uint32_t e = eng_vis(r);
-        char w[64];
+        char w[96];
         fresh(e);
         tap_edit();
-        turn(EN_K3, -1);
-        snprintf(w, sizeof w, "%s: KNOB 3 left: not a favourite", ENGINES[e]->name);
-        expect(w, !preset_favorite());
-        turn(EN_K3, 1);
-        snprintf(w, sizeof w, "%s: KNOB 3 right: FAV on", ENGINES[e]->name);
-        expect(w, preset_favorite() && TSEL->eng_req == e);
-        turn(EN_K3, 1);
-        expect("KNOB 3 right again: stays on", preset_favorite());
-        turn(EN_K3, -1);
-        snprintf(w, sizeof w, "%s: KNOB 3 left: FAV off", ENGINES[e]->name);
-        expect(w, !preset_favorite());
+        ui.force = 1; draw_columns();
+        snprintf(w, sizeof w, "%s: ENGINE page cards: ENGINE, then the engine's own (no SOUND, FAV, INIT)", ENGINES[e]->name);
+        expect(w, !strncmp(ui.col[0], "ENGINE|", 7) && strncmp(ui.col[1], "SOUND|", 6) && strncmp(ui.col[2], "FAV|", 4) && strncmp(ui.col[3], "INIT|", 5) &&
+                  ui.col[1][0] != 0x7f);
     }
-    fresh(0);
-    tap_edit();
-    turn(EN_K3, 1);
-    turn(EN_K2, 1);
-    expect("FAV marks the sound shown, not the next one", !preset_favorite());
-    turn(EN_K2, -1);
-    expect("... and it is still marked", preset_favorite());
 }
-
 static void test_knob4(void)
 {
     fresh(0);
     tap_edit();
-    TSEL->p[P_E0] = 77;
-    turn(EN_K4, -1);
-    expect("KNOB 4 left: nothing", !ui.confirm && TSEL->p[P_E0] == 77);
+    TSEL->p[P_E2] = 77;                                 /* (ANALOG: K4 is MIX, E2) */
     turn(EN_K4, 1);
-    expect("KNOB 4 right: the dialog INITIALIZE SOUND?", ui.confirm == CF_INIT_SOUND && TSEL->p[P_E0] == 77);
-    press(B_OCTDN);
-    expect("OCT- leaves the dialog, nothing initialised", !ui.confirm && TSEL->p[P_E0] == 77 && on_engine_page());
-    turn(EN_K4, 1);
+    expect("ENGINE K4 right: no INIT dialog any more (SAVE > TOOLS has INIT SOUND); it turns the third control", !ui.confirm && TSEL->p[P_E2] == 78);
+    /* (B) an engine change changes the engine and its own eight only; the patch's name and slot shown stay */
+    {
+        int16_t p0[P_COUNT];
+        char n0[20], n1[20];
+        uint32_t i, ok = 1, sl0;
+        fresh(0);
+        tap_edit();
+        sound_label(TSEL, n0);
+        sl0 = slot_of(TSEL);
+        memcpy(p0, TSEL->p, sizeof p0);
+        turn(EN_K1, 1);
+        frames(64);
+        for (i = 0; i < P_E0; i++)
+            ok &= TSEL->p[i] == p0[i];
+        sound_label(TSEL, n1);
+        expect("K1 (ENGINE): only the engine and its own eight change; the patch name and its slot stay on the screen",
+               ok && TSEL->eng_req != 0u && str_eq(n0, n1) && slot_of(TSEL) == sl0 && sl0 < UP_SLOTS);
+        turn(EN_K1, -1);
+        frames(64);
+        sound_label(TSEL, n1);
+        expect("  .. and back: the same", TSEL->eng_req == 0u && str_eq(n0, n1));
+    }
+    /* SAVE > TOOLS keeps INIT SOUND */
+    fresh(0);
+    go_title("TOOLS");
+    TSEL->p[P_E0] = 5;
+    turn(EN_K2, 1);
     press(B_OCTUP);
-    expect("OCT+ does it: the engine's defaults, the engine kept", !ui.confirm && TSEL->p[P_E0] != 77 && TSEL->eng_req == eng_vis(0));
-    expect("... the page stays ENGINE", on_engine_page());
+    expect("SAVE > TOOLS: K2 INIT, OCT+ asks INITIALIZE SOUND?", ui.confirm == CF_INIT_SOUND);
+    press(B_OCTUP);
+    expect("  .. OCT+ does it", !ui.confirm && TSEL->p[P_E0] != 5);
     /* (the song chain and its 'STOP TO EDIT' lock were removed with the song mode) */
     /* the hold-EDIT layer (0.2.9: QUICK FILTER, 0.2.20: K1..K4 CUT RES MODE REL; the engine is the ENGINE page's alone) */
     fresh(0);
@@ -241,13 +247,12 @@ static void test_knob4(void)
                TSEL->p[qp->id[0]] < c0);
     }
 }
-
 static void test_parts(void)
 {
     uint32_t a = eng_vis(2), b = eng_vis(5);
     ui_power_on();
-    song.sel = 0; set_engine_of(TSEL, a);
-    song.sel = 1; set_engine_of(TSEL, b);
+    song.sel = 0; init_engine_of(TSEL, a);
+    song.sel = 1; init_engine_of(TSEL, b);
     song.sel = 0;
     memset(ui.fam_last, 0, sizeof ui.fam_last);
     frames(320);

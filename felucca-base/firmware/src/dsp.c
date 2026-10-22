@@ -79,6 +79,22 @@ static inline uint32_t noise32(int32_t *st)
     return s;
 }
 
+/* Random draws of the VOICE stage (job 3: the two parts' stages must not touch the same state). Part 1 draws from the shared generator (libc.c rng(), the one the
+ * events, the arp and the note-on seeds use: its sequence is what it always was while part 1 alone draws in the voice stage); the other parts (part 2, hidden 3 and 4)
+ * have a generator of their own and do not touch rng(). LFO_SHARED_RNG parts draw shared. Before, parts 1..3 all drew from rng() in whatever order they ran */
+#define LFO_SHARED_RNG 1u
+static uint32_t part_rand(track_t *t, uint32_t *st)
+{
+    uint32_t s = *st ? *st : 0x9E3779B9u;
+    if ((uint32_t)(t - trk) < LFO_SHARED_RNG)
+        return rng();
+    s ^= s << 13;
+    s ^= s >> 17;
+    s ^= s << 5;
+    *st = s;
+    return s;
+}
+
 /* Trapezoidal SVF (A. Simper), unconditionally stable. Coefficients per
  * block in Q13; signals stay within +-150000 so products fit in 32 bits. */
 typedef struct { int32_t a1, a2, a3; } tsvf_t;

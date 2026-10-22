@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
 /* Host test of the project format (firmware/src/project.c, -DPROJ_HOST part). DUELL 0.2.14 reads one format only: FUN11 ("FUNB",
- * 3840 bytes, parts A and B, P_COUNT parameters, revision 3). What it checks:
+ * 3840 bytes, parts A and B, P_COUNT parameters, revision 6: memory trim 1 (two parts, no song chain block) and the cloud plan's job A (per part the NX extension slots and the hand-set B edit list after the values)). What it checks:
  *  - a project round trips (globals, selection, values, steps with RATCH / NUDGE / chance, locks and automation, the FM6 patches, the name),
  *    tracks 3..4 load with their power-on sound;
  *  - damaged ones are refused (hash, a byte of the name or a patch, ranges), and a step or patch that cannot be packed is not packed;
@@ -36,7 +36,6 @@ static void base_project(project_t *a)
         a->g[i] = (int16_t)(100 + i);
     a->g[G_RTYPE] = 1;
     a->sel = 1;
-    chain_defaults(&a->chain);
     for (t = 0; t < NTRK; t++) {
         for (i = 0; i < P_COUNT; i++)
             a->t[t].p[i] = (int16_t)(param_desc_of(0, i)->def);
@@ -57,9 +56,9 @@ int main(void)
     static project_store_t st, st2, slot;
     static uint8_t old[3840];
 
-    bad += check("layout: name at 3824, A B's patches at 3568, 1618 spare before them, P_COUNT 127 at byte 66, revision 3",
-                 PROJ_NAME_OFF == 3824u && PROJ_FM6_OFF == 3568u && PROJ_NTRK == 2u && P_COUNT == 127u && PROJ_REV == 3u &&
-                 68u + PROJ_NTRK * (P_COUNT + 2u + NSTEP * 9u) + sizeof(chain_config_t) + sizeof(motion_store_t) + 1618u == PROJ_FM6_OFF);
+    bad += check("layout: name at 3824, A B's patches at 3568, 1666 spare before them (no edits), P_COUNT 127 at byte 66, revision 7, two parts, no song chain",
+                 PROJ_NAME_OFF == 3824u && PROJ_FM6_OFF == 3568u && PROJ_NTRK == 2u && P_COUNT == 127u && PROJ_REV == 7u && NPART == 2u &&
+                 68u + PROJ_NTRK * (P_COUNT + 1u + NX + 1u + 2u + NSTEP * 9u) + sizeof(motion_store_t) + 1666u == PROJ_FM6_OFF);
 
     /* a round trip */
     base_project(&a);
@@ -87,11 +86,7 @@ int main(void)
          !memcmp(&c.motion, &a.motion, sizeof a.motion) && !memcmp(c.fm6, a.fm6, NSHOWN * sizeof a.fm6[0]) &&
          !memcmp(c.name, "LOFI JAM\0\0\0\0", 12) && !memcmp(st.raw + PROJ_NAME_OFF, "LOFI JAM\0\0\0\0", 12) && proj_ok(&c);
     bad += check("  globals, selection, both parts' values / steps (RATCH, NUDGE, chance), locks, automation, FM6 patches, the name (upper case)", ok);
-    ok = 1;
-    for (t = NSHOWN; t < NTRK; t++)
-        ok &= c.t[t].preset == PROJ_DEF_SOUND && c.t[t].engine == trk_def_engine(t) && c.t[t].step[0].time == ST_REST &&
-              !memcmp(c.fm6[t], FM6_INIT, FM6_PACKED);
-    bad += check("  tracks 3..4 are not stored: their power-on sound, no steps, the init patch", ok);
+    bad += check("  two parts exist and are stored (NPART 2: no hidden tracks 3..4, no song chain)", NTRK == 2u && sizeof c.t == 2u * sizeof c.t[0] && st.raw[63] == 2u);
     bad += check("  imported and packed again: the same bytes", proj_pack(&st2, &c) && !memcmp(&st, &st2, sizeof st));
 
     /* the name */
@@ -133,7 +128,7 @@ int main(void)
     bad += check("a value that does not fit a byte (-64..127) cannot be packed", !proj_pack(&st2, &d));
     st2 = st; st2.raw[68] = 250; rehash(&st2);
     bad += check("a value byte above 191 (hash right): refused", !proj_import(&c, &st2, sizeof st2));
-    st2 = st; st2.raw[68u + P_COUNT] = NENGINES; rehash(&st2);
+    st2 = st; st2.raw[68u + P_COUNT + 2u + NX + PROJ_MB_N] = NENGINES; rehash(&st2);
     bad += check("an engine number past the last (hash right): refused", !proj_import(&c, &st2, sizeof st2));
     bad += check("one byte short, or none: refused", !proj_import(&c, &st, sizeof st - 1u) && !proj_import(&c, &st, 0));
 
@@ -157,6 +152,70 @@ int main(void)
                      ok && c.motion.count == 2u && motion_valid(&c.motion) && proj_ok(&c));
     }
 
+    /* PROJ_REV 6: per part the NX extension slots (dense) and the hand-set B edit list, after the values */
+    {
+        project_t e, c0;
+        uint32_t at = 68u + P_COUNT, ins = at + 1u + NX, j;       /* part A: the byte nx, the NX slots, then the byte ne */
+        base_project(&e);
+        for (j = 0; j < NX; j++) { e.t[0].x[j] = (int16_t)(j * 7u) - 50; e.t[1].x[j] = (int16_t)(127 - 3 * (int)j); }
+        e.t[0].x[3] = -64; e.t[0].x[4] = 127;
+        e.xe_n[0] = XB_MAX; e.xe_n[1] = 3;
+        for (j = 0; j < XB_MAX; j++) { e.xe[0][j].wid = (uint8_t)(j < 31u ? j * 4u : 128u + 5u); e.xe[0][j].val = (int16_t)(j * 5) - 64; }
+        e.xe[1][0] = (xb_edit_t){2, 127}; e.xe[1][1] = (xb_edit_t){126, -64}; e.xe[1][2] = (xb_edit_t){255, 0};
+        for (j = 0; j < PROJ_MB_N; j++) { e.mb[0][j] = (uint8_t)(0x4Du + j * 3u); e.mb[1][j] = (uint8_t)(j ? 0x11u * j : 0x4Du); }   /* (PROJ_REV 7: End B's block, any 7 bytes: the morph checks them when it uses them) */
+        e.sum = proj_sum(&e);
+        ok = proj_pack(&st, &e) && proj_import(&c0, &st, sizeof st);
+        bad += check("rev 5: the extension slots and 32 + 3 hand-set B edits round trip (both parts)", ok && !memcmp(c0.t[0].x, e.t[0].x, sizeof e.t[0].x) &&
+                     !memcmp(c0.t[1].x, e.t[1].x, sizeof e.t[1].x) && c0.xe_n[0] == XB_MAX && c0.xe_n[1] == 3u &&
+                     !memcmp(c0.xe[0], e.xe[0], sizeof e.xe[0]) && !memcmp(c0.xe[1], e.xe[1], 3u * sizeof e.xe[1][0]) && proj_ok(&c0));
+        bad += check("  imported and packed again: the same bytes", proj_pack(&st2, &c0) && !memcmp(&st, &st2, sizeof st));
+        bad += check("  nx on the wire is NX, ne is the list's length", st.raw[at] == NX && st.raw[ins] == XB_MAX);
+        bad += check("rev 7: End B's 7-byte block of each part round trips and sits right after the part's edit list", !memcmp(c0.mb, e.mb, sizeof e.mb) &&
+                     !memcmp(st.raw + ins + 1u + 2u * XB_MAX, e.mb[0], PROJ_MB_N) && PROJ_MB_N == 7u);
+        base_project(&e);
+        ok = proj_pack(&st, &e) && proj_import(&c0, &st, sizeof st);
+        for (j = 0; j < NX; j++) ok &= c0.t[0].x[j] == e.t[0].x[j];
+        bad += check("  no slot set, no edit: round trips (the base project's slots), ne 0", ok && !c0.xe_n[0] && !c0.xe_n[1] && st.raw[ins] == 0u);
+        /* a newer firmware's longer list: the extra bytes are ignored, everything after them is read from where it moved to */
+        st2 = st;
+        memmove(st2.raw + ins + 4u, st2.raw + ins, PROJ_FM6_OFF - ins - 4u);
+        st2.raw[at] = NX + 4u;
+        memset(st2.raw + ins, 0x6B, 4);
+        rehash(&st2);
+        bad += check("a longer slot list (nx = NX + 4, a newer firmware): loads, the extra bytes ignored, the rest as it was",
+                     proj_import(&c, &st2, sizeof st2) && !memcmp(&c, &c0, sizeof c));
+        /* an older, shorter list: the slots it does not hold are their defaults */
+        st2 = st;
+        memmove(st2.raw + at + 1u + 10u, st2.raw + ins, PROJ_FM6_OFF - ins);
+        st2.raw[at] = 10u;
+        for (j = 0; j < NX; j++) st2.raw[at + 1u + j] = (uint8_t)(j < 10u ? 64 + 20 + j : 0xEE);   /* (bytes past nx are the next fields now: overwritten below) */
+        memcpy(st2.raw + at + 1u + 10u, st.raw + ins, PROJ_FM6_OFF - ins);
+        memset(st2.raw + PROJ_FM6_OFF - 6u, 0, 6);
+        rehash(&st2);
+        ok = proj_import(&c, &st2, sizeof st2);
+        for (j = 0; j < NX; j++) ok &= c.t[0].x[j] == (j < 10u ? (int16_t)(20 + j) : (int16_t)xb_def(j) - 64);
+        bad += check("a shorter slot list (nx = 10, an older firmware): loads, the other six are their defaults", ok && c.t[1].x[15] == c0.t[1].x[15]);
+        st2 = st; st2.raw[ins] = XB_MAX + 1u; rehash(&st2);
+        bad += check("a list of 33 edits (hash right): refused", !proj_import(&c, &st2, sizeof st2));
+        e.xe_n[0] = 2; e.xe[0][0] = (xb_edit_t){9, 3}; e.xe[0][1] = (xb_edit_t){9, 4};
+        e.sum = proj_sum(&e);
+        ok = proj_pack(&st2, &e);
+        st2.raw[ins] = 2; st2.raw[ins + 1] = 9; st2.raw[ins + 2] = 67; st2.raw[ins + 3] = 9; st2.raw[ins + 4] = 68; rehash(&st2);
+        bad += check("an edit id twice (hash right): refused", !proj_import(&c, &st2, sizeof st2));
+        st2.raw[ins + 3] = 127; rehash(&st2);
+        bad += check("wide id 127 in an edit (hash right): refused", !proj_import(&c, &st2, sizeof st2));
+        st2.raw[ins + 3] = 10; st2.raw[ins + 4] = 192; rehash(&st2);
+        bad += check("an edit value byte above 191 (hash right): refused", !proj_import(&c, &st2, sizeof st2));
+        st2 = st; st2.raw[at + 1u + 5u] = 192; rehash(&st2);
+        bad += check("a slot value byte above 191 (hash right): refused", !proj_import(&c, &st2, sizeof st2));
+        e.xe_n[0] = XB_MAX + 1u;
+        bad += check("33 edits cannot be packed", !proj_pack(&st2, &e));
+        e.xe_n[0] = 1; e.xe[0][0] = (xb_edit_t){127, 0};
+        bad += check("an edit with wide id 127 cannot be packed", !proj_pack(&st2, &e));
+        e.xe[0][0] = (xb_edit_t){9, 0}; e.t[0].x[2] = 128;
+        bad += check("a slot value outside -64..127 cannot be packed", !proj_pack(&st2, &e));
+    }
+
     /* every old format is refused (with a valid hash) and changes nothing */
     base_project(&a);
     a.sel = 0;
@@ -170,8 +229,18 @@ int main(void)
     bad += check("  a FUN11 of 0.2.14 / 0.2.15 (revision 1: the PING switch, the old MODE values; valid hash): refused", !proj_import(&c, &st2, sizeof st2));
     st2 = st; st2.raw[67] = 2; rehash(&st2);
     bad += check("  a FUN11 of 0.2.16 .. 0.2.18 (revision 2: one level, P_TRIM's id was the legacy DUCK HOLD; valid hash): refused", !proj_import(&c, &st2, sizeof st2));
+    st2 = st; st2.raw[67] = 3; rehash(&st2);
+    bad += check("  a FUN11 of 0.2.19 .. 0.2.21 (revision 3: DUCK SRC 2..17 were the MIDI channels; valid hash): refused", !proj_import(&c, &st2, sizeof st2));
     st2 = st; st2.raw[67] = 4; rehash(&st2);
+    bad += check("  a FUN11 of 0.2.22 .. 0.2.25 (revision 4: four parts, the song chain block, no extension slots; valid hash): refused", !proj_import(&c, &st2, sizeof st2));
+    st2 = st; st2.raw[67] = 5; rehash(&st2);
+    bad += check("  a FUN11 of revision 5 (either memory trim 1's two-part format or job A's slots alone; valid hash): refused", !proj_import(&c, &st2, sizeof st2));
+    st2 = st; st2.raw[67] = 6; rehash(&st2);
+    bad += check("  a FUN11 of revision 6 (job A's lists, no End B block; valid hash): refused", !proj_import(&c, &st2, sizeof st2));
+    st2 = st; st2.raw[67] = 8; rehash(&st2);
     bad += check("  a revision above this firmware's: refused", !proj_import(&c, &st2, sizeof st2));
+    st2 = st; st2.raw[63] = 4; rehash(&st2);
+    bad += check("  `parts` 4 (the hidden parts 3 and 4 of 0.2.25 and before; valid hash): refused", !proj_import(&c, &st2, sizeof st2));
     st2 = st; st2.raw[66] = (uint8_t)(P_COUNT - 5u); rehash(&st2);
     bad += check("  a FUN11 of fewer parameters (122, 119, 113, 111 were mapped by count): refused", !proj_import(&c, &st2, sizeof st2));
     st2 = st; st2.raw[66] = (uint8_t)(P_COUNT + 1u); rehash(&st2);

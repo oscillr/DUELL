@@ -38,6 +38,7 @@ void *memcpy(void *d, const void *s, size_t n) { return mf_memcpy(d, s, (unsigne
 static void fm1_irq_off(void);                  /* (ui_test.c defines them: the hook counts the windows; morph.c needs them early) */
 static void fm1_irq_on(void);
 #include "ui_test.c"
+#include "scenes.h"
 
 static uint8_t nor[0x100000];
 static long cut_bytes = -1;
@@ -121,6 +122,9 @@ static uint64_t median(uint64_t *v, uint32_t n)
     return t[n / 2u];
 }
 
+static const char *const LC_SCENE[16] = {"M01_REESE_SWAMP", "M02_WHISPER_TIDE", "M03_EERIE_SIGNAL", "M04_WIRED_SNAIL", "M05_DEAD_BUFFER", "M06_ACID_ETHER",
+                                         "M07_COLD_CHAPEL", "M08_GARGLE_ACID", "M09_NIGHT_ORGAN", "M10_FINAL_REEL", 0, 0,
+                                         "M13_TEST_1_BASE", "M14_TEST_2_PHASE", "M15_TEST_3_HEAVY", "M16_TEST_4_MIX"};
 static void power_cycle(void)
 {
     uint32_t k;
@@ -133,6 +137,17 @@ static void power_cycle(void)
     flash_ok = 1;
     multi_boot();
     frame();
+    for (k = 0; k < MU_SLOTS; k++)                      /* DUELL 0.2.23: the scenes these cases were written for (0.2.22's multis, tests/scenes.h), */
+        if (LC_SCENE[k])                                /* saved in the slots they had (M11 M12: the factory ones of today) */
+            scene_put(k, LC_SCENE[k]);
+}
+static void load_old(uint32_t k)                        /* a load as then: the CPU TEST multis (M13..M16) with their MODE, the others in the unit's */
+{
+    uint8_t keep = ui_prefs2;
+    if (k >= 12u)
+        ui_prefs2 |= PREF_MODE_RECALL >> 16;
+    project_load(k);
+    ui_prefs2 = keep;
 }
 
 static const uint8_t NTA[4] = {48, 55, 60, 64}, NTB[4] = {67, 71, 74, 79};
@@ -181,7 +196,7 @@ static res_t run_case(const case_t *c)
     uint32_t i, at = 0, nb = HALF_FRAMES / CTL;
     res_t r;
     power_cycle();
-    project_load(c->base);
+    load_old(c->base);
     song.sel = 0;
     if (c->pre)
         c->pre(c->a);
@@ -355,7 +370,7 @@ static void op_patch(uint32_t a)                        /* part 1 loads sound (a
     load_patch(&trk[0], a >> 8, a & 255u);
 }
 static void op_engine(uint32_t a) { song.sel = 0; set_engine_of(&trk[0], a); }
-static void op_multi(uint32_t a) { project_load(a); }
+static void op_multi(uint32_t a) { load_old(a); }
 static void op_rtype(uint32_t a) { song.g[G_RTYPE] = (int16_t)a; }
 static void pre_rtype(uint32_t a) { song.g[G_RTYPE] = (int16_t)a; }
 static void op_itype(uint32_t a)                        /* a: type | 16 both parts */

@@ -76,11 +76,19 @@ static void fm1_guard_enable(uint32_t which)
     if (which & FM1_GUARD_PC) {
         FM1_PC_LIMIT0_L = 0x02000120u;
         FM1_PC_LIMIT0_H = (uint32_t)(uintptr_t)_etext;
+#if DUELL_RAMPLACE
+        {   /* DUELL_RAMPLACE (firmware/app_ram.ld): one RAM window from range X (_pc_ram_lo, 0x01C00000) to the end of the hot block */
+            extern uint32_t _pc_ram_lo[];
+            FM1_PC_LIMIT1_L = (uint32_t)(uintptr_t)_pc_ram_lo;
+            FM1_PC_LIMIT1_H = (uint32_t)(uintptr_t)_rt_end - 1u;
+        }
+#else
         {   /* RAM code (.ram_text); with none, repeat the XIP window */
             volatile uint32_t rs = (uint32_t)(uintptr_t)_rt_start, re = (uint32_t)(uintptr_t)_rt_end;
             FM1_PC_LIMIT1_L = re > rs ? rs : 0x02000120u;
             FM1_PC_LIMIT1_H = re > rs ? re - 1u : (uint32_t)(uintptr_t)_etext;
         }
+#endif
     }
     fm1__dbg_lock();
 }

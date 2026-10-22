@@ -22,9 +22,7 @@
 
 #define FELUCCA_WEB 1
 #define FELUCCA_METER_EST 1              /* audio.c: no clock here, the CPU meter reads a voice-count model (labelled EST) */
-#ifndef FELUCCA_CDC
-#define FELUCCA_CDC 1                    /* as src/felucca.c: MENU > USB SERIAL is there (nothing behind it) */
-#endif
+/* (FELUCCA_CDC: src/felucca.c's default: the console and MENU > USB SERIAL only in a DUELL_TEST_MODE build; the product emulator has neither) */
 #define FELUCCA_FLASH 1
 #define FELUCCA_OTA 0
 #define FELUCCA_UAC 0
@@ -175,6 +173,7 @@ static void lcd_init(void) {}
 #include "../../firmware/src/menu_items.c"
 #include "../../firmware/src/icons.c"
 #include "../../firmware/src/ui_graph.c"
+#include "../../firmware/src/twin_graph.c"
 #include "../../firmware/src/ui_draw.c"
 #include "../../firmware/src/ui_menu.c"
 #include "../../firmware/src/ui_input.c"
@@ -477,7 +476,7 @@ EXPORT void web_test_heavy(void)
     static const uint8_t ENG[3][2] = {{12, 4}, {ENGI_PHYS, 7}, {ENGI_WAVE, 0}};
     static const uint8_t CH[4][4] = {{48, 55, 60, 64}, {45, 52, 57, 60}, {41, 48, 53, 57}, {43, 50, 55, 59}};
     uint32_t p, i;
-    for (p = 0; p < 3u; p++) {
+    for (p = 0; p < NTRK; p++) {                /* (cloud wave 3: NTRK is 2 since memory trim 1; the loop ran to 3 and wrote trk[2] and trk[3] past the array, and the drums below trk[3]: harmless until job F's statics moved what lies after trk) */
         track_t *t = &trk[p];
         for (i = 0; i < P_E0; i++)                /* (0.2.13: the part's own values at their defaults first: the song must not depend on what the */
             t->p[i] = TP[i].def;                  /* first start's M01 left there; REESE SWAMP's SEQUENCER arp and TRN -24 silenced it) */
@@ -490,17 +489,6 @@ EXPORT void web_test_heavy(void)
                 n[k] = (uint8_t)(CH[i / 4u][k] + 12u * p);
             put_step(t, i, 4, n, ST_NOTE, 0);
         }
-    }
-    host_drums(&trk[3]);
-    for (i = 0; i < 16u; i++) {
-        uint8_t n[4];
-        uint32_t k = 0;
-        if (i % 4u == 0u)
-            n[k++] = 36;
-        if (i == 4u || i == 12u)
-            n[k++] = 38;
-        n[k++] = i % 2u ? 42 : 46;
-        put_step(&trk[3], i, k, n, ST_NOTE, 0);
     }
     ui.force = 1;
 }

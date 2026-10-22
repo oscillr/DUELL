@@ -19,7 +19,6 @@ Symptom, then fix. For a failed or interrupted flash read [RECOVERY.md](RECOVERY
 | Emulator pitch sounds off | The browser plays at a rate other than 44.1 kHz; the console warns about it. |
 | A sound does not change when I turn SELECT | SELECT switches sub-pages and moves rows; knobs 1-4 adjust. See [QUICKSTART.md](QUICKSTART.md). |
 | MIDI notes play the wrong part | Part 1 listens on channel 1 and part 2 on channel 2. In LAYER, channel 1 plays both parts. |
-| A saved patch will not load after an update | Saved formats may change between betas. Restore from a backup made on the same beta, or re-save. |
 | SAVE ERROR | The flash failed to write: try again, and report it if it repeats. A save never runs out of room: every one of the 128 slots can always be written. |
 | STOP TO SAVE | Saving needs the transport stopped. Press PLAY/STOP. |
 | Anything else | Open a bug report with the [form on GitHub](https://github.com/oscillr/DUELL/issues/new/choose). |

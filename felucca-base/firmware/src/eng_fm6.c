@@ -388,6 +388,23 @@ static void fm6_block(track_t *t)       /* once a block and part: the macros, th
     fm6_lfo_d[tr] = fm6_lfo_delay(&fm6_lfo[tr]);
 }
 
+/* the SUB LAYER's follow (chain_sub.c; FM6 owns its amplitude, the operators' envelopes are inside its signal): voice v's level as the block just rendered left it, 0..1 as Q15. It is the loudest
+ * carrier's gain_out (fm6_note_t, Q24: the operator's linear amplitude, which fm6_op_run multiplies the sine by) against 2^25, the gain of a carrier at full level (one carrier at full: VOICE_FS / 2
+ * at the output, as fm6_render's comment has it). Read only; once a block, after fm6_render */
+static __attribute__((noinline)) int32_t fm6_sub_follow(track_t *t, voice_t *v)
+{
+    const fm6_note_t *n = fm6_note_of(t, v);
+    uint32_t car, k;
+    int32_t g = 0;
+    if (!n || !n->live)
+        return 0;
+    car = fm6_carriers(fm6_eff[t - trk].alg);
+    for (k = 0; k < 6u; k++)
+        if ((car >> k & 1u) && n->op[k].gain_out > g)
+            g = n->op[k].gain_out;
+    return g >= (1 << 25) ? 32767 : g >> 10;
+}
+
 /* every carrier has gone silent for good: the voice ends (voice.c, engine_t.done) */
 static int fm6_done(track_t *t, voice_t *v)
 {
@@ -432,7 +449,7 @@ static void fm6_render(track_t *t, voice_t *v, int32_t *out, uint32_t len, const
     fm6_note_t *n = fm6_note_of(t, v);
     uint32_t tr = (uint32_t)(t - trk), i;
     const uint8_t *p;
-    int32_t bus[FM6_N], lf, fb, lvl, k, a, da, dt2[6], ul[6];
+    int32_t bus[3 * FM6_N], lf, fb, lvl, k, a, da, dt2[6], ul[6];   /* bus: the block (first FM6_N) and fm6_core_render's two operator buses */
     if (!n || !n->live || len != FM6_N)
         return;
     p = fm6_eff[tr].p;

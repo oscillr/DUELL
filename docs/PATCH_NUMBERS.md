@@ -1,136 +1,136 @@
-# DUELL factory sounds: PATCHES numbers (0.2.17)
+# DUELL factory sounds: PATCHES numbers (1.0)
 
-The 128 factory sounds in the order the device lists them in PATCHES (TYPE ALL): by category (BASS, LEAD, PAD, PLUCK, KEYS, PERC, FX, OTHER), then engine, then name. **A number is a patch slot** (0.2.17): slot #NN holds the factory sound of this list at position NN until you save a sound there (RESTORE brings it back); MIDI program change n loads slot n, #n + 1. Generated from `felucca-base/tools/duell_sounds.py` with the sort in `felucca-base/tools/gen_duell_sounds.py` (`gen_duell_sounds.py --check` prints the same list).
+The 128 factory sounds in the order the device lists them in PATCHES (TYPE ALL): by category (BASS, LEAD, PAD, PLUCK, KEYS, PERC, FX, OTHER), then engine, then name. **A number is a patch slot**: slot #NN holds the factory sound of this list at position NN until you save a sound there (RESTORE brings it back); MIDI program change n loads slot n, #n + 1. Generated from `felucca-base/tools/duell_sounds.py` with the sort in `felucca-base/tools/gen_duell_sounds.py` (`gen_duell_sounds.py --check` prints the same list).
 
-**0.2.17 added 14 sounds (marked NEW), so the numbers moved:** a number is the sound's place in this sorted list, not its identity: the factory multis and the MORPH End B seeds follow the sound itself (engine and factory index), so they did not change; the number on the display did, and so did the sound a slot you never saved falls back to. A sound you saved stays in its slot number. The Old column is the number in 0.2.16.
+**1.0: the factory bank is the owner's bank** (`felucca-base/tools/factory_bank.duell-patches.json`, imported by `tools/import_bank.py`; each patch exactly as exported, only its TRIM balanced, release_drafts/BANK_LEVELS.md). YO YA is new (marked NEW), CARNIVAL is not in the bank, so #108 to #125 moved by one. The Old column is the number in 0.2.31.
 
-| PATCHES # | Name | Old (0.2.16) |
+| PATCHES # | Name | Old (0.2.31) |
 |---|---|---|
-| 1 | BEEHIVE | 1 |
-| 2 | FOLD BASS (NEW) |  |
-| 3 | LADDER BASS | 2 |
-| 4 | RUBBER BAND | 3 |
-| 5 | SQUELCH | 4 |
-| 6 | TIDAL SUB | 5 |
-| 7 | FM BASS 2 (NEW) |  |
-| 8 | FRETLESS | 6 |
-| 9 | SLAP DOCTOR | 7 |
-| 10 | ELASTIC BASS | 8 |
-| 11 | FUZZ BASS (NEW) |  |
-| 12 | ARP BASS (NEW) |  |
-| 13 | CARTRIDGE | 9 |
-| 14 | BULLFROG | 10 |
-| 15 | BREADBIN | 11 |
-| 16 | SID BASS (NEW) |  |
-| 17 | SYNC BASS (NEW) |  |
-| 18 | PEDAL BASS | 12 |
-| 19 | PLUCK BASS | 13 |
-| 20 | GEARBOX | 14 |
-| 21 | GROWL BASS | 15 |
-| 22 | HARM BASS | 16 |
-| 23 | KICK BASS (NEW) |  |
-| 24 | REESE BASS | 17 |
-| 25 | FUNFARE | 18 |
-| 26 | RAZORWIRE | 19 |
-| 27 | SQUARE LEAD (NEW) |  |
-| 28 | TORCH SONG | 20 |
-| 29 | WALL OF SAW | 21 |
-| 30 | HAN SOLO | 22 |
-| 31 | BRAZEN | 23 |
-| 32 | PIXEL HERO | 24 |
-| 33 | CROONER | 25 |
-| 34 | BANSHEE | 26 |
-| 35 | OBOE-ISH | 27 |
-| 36 | SMOKE RING | 28 |
-| 37 | PAN WHISTLE | 29 |
-| 38 | HORNET | 30 |
-| 39 | HOOVER | 31 |
-| 40 | LICORICE | 32 |
-| 41 | PURPLE FLUTE | 33 |
-| 42 | SCREAMER (NEW) |  |
-| 43 | SYNC LEAD | 34 |
-| 44 | EMBER GLOW | 35 |
-| 45 | SILK CHORUS | 36 |
-| 46 | VELVET BOW | 37 |
-| 47 | GLASS HALL | 38 |
-| 48 | LAMPLIGHT | 39 |
-| 49 | WOW FLUTTER | 40 |
-| 50 | PLATE CHOIR (NEW) |  |
-| 51 | VESPERS | 41 |
-| 52 | WHISPER PAD | 42 |
-| 53 | CHIP CHAPEL | 43 |
-| 54 | STRING MACH | 44 |
-| 55 | CHOIR LOFT | 45 |
-| 56 | SINGING BOWL | 46 |
-| 57 | SEA ORGAN | 47 |
-| 58 | BRASS PAD | 48 |
-| 59 | BREATH PAD | 49 |
-| 60 | DIGITAL PAD | 50 |
-| 61 | EVOLVING PAD | 51 |
-| 62 | GLASS PAD | 52 |
-| 63 | PWM PAD | 53 |
-| 64 | VOWEL PAD | 54 |
-| 65 | ARP PLUCK (NEW) |  |
-| 66 | PIZZICATO | 55 |
-| 67 | ISLAND STEEL | 56 |
-| 68 | MALLET WOOD | 57 |
-| 69 | FAKE KOTO | 58 |
-| 70 | WIRE HARP | 59 |
-| 71 | MARBLE RUN | 60 |
-| 72 | DOO WOP | 61 |
-| 73 | PEBBLE POP | 62 |
-| 74 | NIGHT BOX | 63 |
-| 75 | GHOST HARP | 64 |
-| 76 | NURSERY KEYS | 65 |
-| 77 | NYLON GUT | 66 |
-| 78 | DIGI PLUCK | 67 |
-| 79 | SFORZANDO | 68 |
-| 80 | BIG STAB | 69 |
-| 81 | FROST BELLS | 70 |
-| 82 | SALOON KEYS | 71 |
-| 83 | TINE ROOM | 72 |
-| 84 | TUBE BELLS (NEW) |  |
-| 85 | CLAVICLE | 73 |
-| 86 | TIN TOLL | 74 |
-| 87 | JAZZ CLUB | 75 |
-| 88 | FAUX HARPSI | 76 |
-| 89 | MOTOR VIBES | 77 |
-| 90 | ROSEWOOD | 78 |
-| 91 | DRAWBARS | 79 |
-| 92 | PLATE BELL | 80 |
-| 93 | SYNTH BRASS | 81 |
-| 94 | WAVE CHIMES | 82 |
-| 95 | DEEP KICK | 83 |
-| 96 | HARD KICK (NEW) |  |
-| 97 | FIELD CLANK | 84 |
-| 98 | FLOOR THUD | 85 |
-| 99 | OPEN SIZZLE | 86 |
-| 100 | STATIC SNARE | 87 |
-| 101 | TIZZ HAT | 88 |
-| 102 | STORM FRONT | 89 |
-| 103 | ALIEN CHIMES | 90 |
-| 104 | CRYSTAL CAVE | 91 |
-| 105 | SONAR PING | 92 |
-| 106 | DIVE BOMB | 93 |
-| 107 | GHOST VOICES | 94 |
-| 108 | CIRCUIT BEND | 95 |
-| 109 | LESLIE STORM | 96 |
-| 110 | TAPE DRONE (NEW) |  |
-| 111 | RAIN CHIMES | 97 |
-| 112 | MOOR WIND | 98 |
-| 113 | REV CYMBAL | 99 |
-| 114 | WHITE OUT | 100 |
-| 115 | FROZEN AIR | 101 |
-| 116 | RESO SWEEP | 102 |
-| 117 | GLASS SHARDS | 103 |
-| 118 | TEMPLE BLOCK | 104 |
-| 119 | DEAD BATTERY | 105 |
-| 120 | DUSTY DRONE | 106 |
-| 121 | PIXEL KICK | 107 |
-| 122 | VOCAL BEATS | 108 |
-| 123 | DIAL TONE | 109 |
-| 124 | GRAVEL SNARE | 110 |
-| 125 | CARNIVAL | 111 |
-| 126 | TABLA TALK | 112 |
-| 127 | GEIGER | 113 |
-| 128 | MODEM | 114 |
+| 1 | BEHIVE | 1 |
+| 2 | FOLD BASS | 2 |
+| 3 | LADDER BASS | 3 |
+| 4 | RUBBER BAND | 4 |
+| 5 | SQUELCH | 5 |
+| 6 | TIDAL SUB | 6 |
+| 7 | FM BASS 2 | 7 |
+| 8 | FRETLESS | 8 |
+| 9 | SLAP DOCTOR | 9 |
+| 10 | ELASTIC BASS | 10 |
+| 11 | FUZZ BASS | 11 |
+| 12 | ARP BASS | 12 |
+| 13 | CARTRIDGE | 13 |
+| 14 | BULLFROG | 14 |
+| 15 | BREADBIN | 15 |
+| 16 | SID BASS | 16 |
+| 17 | SYNC BASS | 17 |
+| 18 | PEDAL BASS | 18 |
+| 19 | PLUCK BASS | 19 |
+| 20 | GEARBOX | 20 |
+| 21 | GROWL BASS | 21 |
+| 22 | HARM BASS | 22 |
+| 23 | KICK BASS | 23 |
+| 24 | REESE BASS | 24 |
+| 25 | DRIVEN SAW | 25 |
+| 26 | FUNFARE | 26 |
+| 27 | RAZORWIRE | 27 |
+| 28 | SQUARE LEAD | 28 |
+| 29 | TORCH SONG | 29 |
+| 30 | WALL OF SAW | 30 |
+| 31 | HAN SOLO | 31 |
+| 32 | BRAZEN | 32 |
+| 33 | PIXEL HERO | 33 |
+| 34 | BANSHEE | 34 |
+| 35 | OBOE-ISH | 35 |
+| 36 | SMOKE RING | 36 |
+| 37 | PAN WHISTLE | 37 |
+| 38 | HORNET | 38 |
+| 39 | HOOVER | 39 |
+| 40 | LICORICE | 40 |
+| 41 | PURPLE FLUTE | 41 |
+| 42 | SCREAMER | 42 |
+| 43 | SYNC LEAD | 43 |
+| 44 | EMBER GLOW | 44 |
+| 45 | SILK CHORUS | 45 |
+| 46 | VELVET BOW | 46 |
+| 47 | GLASS HALL | 47 |
+| 48 | LAMPLIGHT | 48 |
+| 49 | WOW FLUTTER | 49 |
+| 50 | PLATE CHOIR | 50 |
+| 51 | VESPERS | 51 |
+| 52 | WHISPER PAD | 52 |
+| 53 | CHIP CHAPEL | 53 |
+| 54 | STRING MACH | 54 |
+| 55 | CHOIR LOFT | 55 |
+| 56 | SINGING BOWL | 56 |
+| 57 | SEA ORGAN | 57 |
+| 58 | BRASS PAD | 58 |
+| 59 | BREATH PAD | 59 |
+| 60 | DIGITAL PAD | 60 |
+| 61 | EVOLVING PAD | 61 |
+| 62 | GLASS PAD | 62 |
+| 63 | PWM PAD | 63 |
+| 64 | VOWEL PAD | 64 |
+| 65 | ARP PLUCK | 65 |
+| 66 | PIZZICATO | 66 |
+| 67 | ISLAND STEEL | 67 |
+| 68 | MALLET WOOD | 68 |
+| 69 | FAKE KOTO | 69 |
+| 70 | WIRE HARP | 70 |
+| 71 | MARBLE RUN | 71 |
+| 72 | DOO WOP | 72 |
+| 73 | PEBBLE POP | 73 |
+| 74 | NIGHT BOX | 74 |
+| 75 | GHOST HARP | 75 |
+| 76 | NURSERY KEYS | 76 |
+| 77 | NYLON GUT | 77 |
+| 78 | DIGI PLUCK | 78 |
+| 79 | SFORZANDO | 79 |
+| 80 | BIG STAB | 80 |
+| 81 | FROST BELLS | 81 |
+| 82 | SALOON KEYS | 82 |
+| 83 | TINE ROOM | 83 |
+| 84 | TUBE BELLS | 84 |
+| 85 | CLAVICLE | 85 |
+| 86 | TIN TOLL | 86 |
+| 87 | JAZZ CLUB | 87 |
+| 88 | FAUX HARPSI | 88 |
+| 89 | MOTOR VIBES | 89 |
+| 90 | ROSEWOOD | 90 |
+| 91 | DRAWBARS | 91 |
+| 92 | PLATE BELL | 92 |
+| 93 | SYNTH BRASS | 93 |
+| 94 | WAVE CHIMES | 94 |
+| 95 | DEEP KICK | 95 |
+| 96 | HARD KICK | 96 |
+| 97 | FIELD CLANK | 97 |
+| 98 | FLOOR THUD | 98 |
+| 99 | OPEN SIZZLE | 99 |
+| 100 | STATIC SNARE | 100 |
+| 101 | TIZZ HAT | 101 |
+| 102 | STORM FRONT | 102 |
+| 103 | ALIEN CHIMES | 103 |
+| 104 | CRYSTAL CAVE | 104 |
+| 105 | SONAR PING | 105 |
+| 106 | DIVE BOMB | 106 |
+| 107 | GHOST VOICES | 107 |
+| 108 | YO YA (NEW) |  |
+| 109 | CIRCUIT BEND | 108 |
+| 110 | LESLIE STORM | 109 |
+| 111 | TAPE DRONE | 110 |
+| 112 | RAIN CHIMES | 111 |
+| 113 | MOOR WIND | 112 |
+| 114 | REV CYMBAL | 113 |
+| 115 | WHITE OUT | 114 |
+| 116 | FROZEN AIR | 115 |
+| 117 | RESO SWEEP | 116 |
+| 118 | GLASS SHARDS | 117 |
+| 119 | TEMPLE BLOCK | 118 |
+| 120 | DEAD BATTERY | 119 |
+| 121 | DUSTY DRONE | 120 |
+| 122 | PIXEL KICK | 121 |
+| 123 | VOCAL BEATS | 122 |
+| 124 | DIAL TONE | 123 |
+| 125 | GRAVEL SNARE | 124 |
+| 126 | TABLA TALK | 126 |
+| 127 | GEIGER | 127 |
+| 128 | MODEM | 128 |

@@ -7,10 +7,14 @@
  * ones, M01..M04 before 0.2.13), M14, M15 at fader 0 / 63 / 127 (4 + 4 notes and 8 on part 1), with
  * guards on the fader in the middle (SMART's wake rule, morph.c morph_wake_half: the morph must not creep back up); C, the VOICE CAP
  * (voice.c vcap: the caps of heavy pairs and the factory multis, measured with and without, never below 4, new notes only).
+ * DUELL 0.2.23: the multis of Q, N, K, O are the TEST SCENES of tests/scenes.h (0.2.22's factory multis and CPU TEST multis, byte for byte, loaded as then);
+ * G (default) today's sixteen factory multis (MODE RECALL ON), 4 + 4 notes at fader 63, guarded at 100 % (M16 the STRESS TEST unguarded); S the STRESS TEST
+ * played from the keys in LAYER / STEREO / DUEL, 1..8 keys (docs/TESTING.md).
  * CPU_SCEN=letters for more: I the INSERT types incl. TAPE, VINYL (0.2.14), N the other factory multis (M02, M07..M10) as Q (no guard), P the cap's per-voice table, E engine pairs x SMART / WILD rolls, M what a factory End B moves, X the
  * stages a small move wakes, W WAVE incl. the kitchen sink, K the faded choices of M04 (WIRED SNAIL) / M14 / M15, F bursts (retrigger, 64 MIDI
  * events, 63 CC74), L (0.2.14) PERFORM's K3 FILTER steady and turned, on one scene. Y (0.2.14, default): a flat part EQ (gains 0) is not run:
- * the output bit for bit and the cost as with none, and what an EQ on costs */
+ * the output bit for bit and the cost as with none, and what an EQ on costs. V (0.2.25, default): M16 STRESS TEST (as S, fader at A, COMP off) in LAYER and
+ * DUEL, 1..3 keys, with the OVERLOAD GUARD engaged (fx.c ovl_lite: RANDOM as the plain delay) against not: the points it saves */
 #define UI_TEST_NO_MAIN 1
 #define FELUCCA_FLASH 1
 #define _FORTIFY_SOURCE 0
@@ -30,6 +34,7 @@ void *memcpy(void *d, const void *s, size_t n) { return mf_memcpy(d, s, (unsigne
 static void fm1_irq_off(void);
 static void fm1_irq_on(void);
 #include "ui_test.c"
+#include "scenes.h"
 static uint8_t nor[0x100000];
 static int st_read(uint32_t off, void *dst, uint32_t n) { memcpy(dst, nor + off, n); return 0; }
 static int st_erase(uint32_t off) { memset(nor + off, 0xFF, 4096); return 0; }
@@ -196,13 +201,32 @@ static void guard(const char *what, double v, double lim)
     printf("cpuscen: %-66s %6.1f %% (limit %5.1f) %s\n", what, v, lim, v <= lim ? "ok" : "FAIL");
     bad += v > lim;
 }
-/* the factory multis as stored, nn notes (4: 4 + 4 on both parts, 8: on part 1), the fader at f; avg (returned) and *pk the worst half */
+/* DUELL 0.2.23: the multis these scenarios were written for (0.2.22's factory multis and the CPU TEST multis M13..M16) are test scenes now
+ * (tests/scenes.h): load_scene_of(slot) loads the one that slot held, as it loaded then (the TEST ones with their MODE) */
+static const char *const OLD_SCENE[16] = {"M01_REESE_SWAMP", "M02_WHISPER_TIDE", "M03_EERIE_SIGNAL", "M04_WIRED_SNAIL", "M05_DEAD_BUFFER", "M06_ACID_ETHER",
+                                          "M07_COLD_CHAPEL", "M08_GARGLE_ACID", "M09_NIGHT_ORGAN", "M10_FINAL_REEL", 0, 0,
+                                          "M13_TEST_1_BASE", "M14_TEST_2_PHASE", "M15_TEST_3_HEAVY", "M16_TEST_4_MIX"};
+static void load_scene_of(uint32_t slot)
+{
+    if (slot >= 12u)
+        scene_load(slot, OLD_SCENE[slot]);
+    else {
+        scene_put(slot, OLD_SCENE[slot]);
+        project_load(slot);
+    }
+}
+/* the multis as stored (the scenes, above), nn notes (4: 4 + 4 on both parts, 8: on part 1), the fader at f; avg (returned) and *pk the worst half */
+static int g_factory;                             /* (0.2.23, F: multi_run on the factory multi of the slot, loaded with its MODE) */
 static double multi_run(uint32_t slot, uint32_t nn, uint32_t f, double *pk)
 {
     uint64_t sum = 0, p = 0, h;
     uint32_t i, n;
     power();
-    project_load(slot);
+    if (g_factory) {
+        ui_prefs2 |= PREF_MODE_RECALL >> 16;
+        project_load(slot);
+    } else
+        load_scene_of(slot);
     for (i = 0; i < 40; i++) { half(0); while (wave_service()) ; }
     morph_set_target(1);
     morph_set_fader(f);
@@ -319,13 +343,13 @@ static void cap_tests(void)
         ok &= c[0] >= VC_MIN || c[0] == vc_eng_cap(ENGINES[eng_idx(trk[0].eng_req)]);
         ok &= c[1] >= VC_MIN || c[1] == vc_eng_cap(ENGINES[eng_idx(trk[1].eng_req)]);
     }
-    {   /* the factory multis as loaded */
-        static const uint32_t MS[14] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 13, 14, 15};   /* (0.2.11: M05..M10 too) */
-        for (i = 0; i < 14u; i++) {
+    {   /* the factory multis as loaded (0.2.23: all sixteen, with their MODE: MODE RECALL ON) */
+        for (i = 0; i < MU_SLOTS; i++) {
             power();
-            project_load(MS[i]);
+            ui_prefs2 |= PREF_MODE_RECALL >> 16;
+            project_load(i);
             frame();
-            printf("C M%02u (%s / %s) as loaded: caps %u / %u, predicted worst %5.1f %%\n", MS[i] + 1, ENGINES[eng_idx(trk[0].eng_req)]->name,
+            printf("C M%02u %-12s (%s / %s) as loaded: caps %u / %u, predicted worst %5.1f %%\n", i + 1, mu_names[i], ENGINES[eng_idx(trk[0].eng_req)]->name,
                    ENGINES[eng_idx(trk[1].eng_req)]->name, vcap_shown(0), vcap_shown(1), vcap_worst / 10.0);
             {   uint32_t q;                              /* (an engine's own cap under 4 stays: M05's PHYS plays 3) */
                 for (q = 0; q < 2u; q++)
@@ -401,12 +425,77 @@ static void cap_tests(void)
     }
 }
 
+/* ---- S (0.2.23): M16 STRESS TEST played as on the unit: the keys (the real input path, the arps on the internal clock, the transport stopped) in
+ * LAYER, STEREO and DUEL; in STEREO and DUEL the keys play the selected part only (part 1), so there the same notes also come on MIDI channel 2
+ * (part 2), the dearest case. n keys held (1..8: C4 E4 G4 B4 D5 F5 D4 A4), the MORPH fader at A (as loaded) or at 63, the master COMP (a device
+ * setting, not in a multi) off or on (4:1, -20 dB); the load once the voices settle (avg and the worst half of 160 halves after 120). The voice cap
+ * (voice.c vcap) is on, as on the unit. 100 % = 420 k host instructions a half (33 a sample = 1 %; the device reads about 0.75 .. 0.9 of it) */
+static uint32_t key_of_note(uint32_t note) { uint32_t k; for (k = 0; k < 27u; k++) if (kb_map(&trk[0], k) == note) return k; return 27u; }
+static uint32_t g_ovl;                            /* (0.2.25, section V: the overload guard forced on for the run: fx.c ovl_lite) */
+static double stress_run(uint32_t mode, uint32_t nk, uint32_t fader, uint32_t comp, double *pk, uint32_t *voices)
+{
+    static const uint8_t KN[8] = {60, 64, 67, 71, 74, 77, 62, 69};
+    uint64_t sum = 0, p = 0, h;
+    uint32_t i, n, keys = 0, vb = 0;
+    power();
+    ui_prefs2 |= PREF_MODE_RECALL >> 16;
+    project_load(15);
+    duell_mode_req = (uint8_t)mode;
+    if (comp) {
+        song.cp[0] = 20; song.cp[1] = 4;
+    }
+    ovl_lite = (uint8_t)g_ovl;
+    frame();
+    for (i = 0; i < 40; i++) { half(0); while (wave_service()) ; frame(); }
+    morph_set_target(1);
+    morph_set_fader(fader);
+    for (i = 0; i < nk; i++) {
+        keys |= 1u << key_of_note(KN[i]);
+        if (mode != DM_LAYER)
+            midi_in_event(0x09u | 0x91u << 8 | (uint32_t)KN[i] << 16 | 110u << 24);
+    }
+    fm1_in.notes = keys;
+    for (i = 0; i < 120; i++) { half(0); while (wave_service()) ; }
+    for (n = 0; n < 160; n++) {
+        uint32_t v = voices_busy();
+        h = half(0); sum += h; if (h > p) p = h;
+        vb = v > vb ? v : vb;
+    }
+    fm1_in.notes = 0;
+    *pk = p * 100.0 / HB;
+    *voices = vb;
+    return sum / 160.0 * 100.0 / HB;
+}
+static void stress_table(void)
+{
+    static const uint32_t MD[3] = {DM_LAYER, DM_STEREO, DM_SPLIT};
+    static const char *const MN[3] = {"LAYER (keys: both parts)", "STEREO (keys part 1 + MIDI ch 2 part 2)", "DUEL (keys part 1 + MIDI ch 2 part 2)"};
+    static const uint32_t CF[3][2] = {{0, 0}, {0, 1}, {63, 1}};          /* (fader, COMP) */
+    uint32_t m, nk, c, vb;
+    double pk, av;
+    for (m = 0; m < 3u; m++)
+        for (c = 0; c < 3u; c++) {
+            uint32_t ok_avg = 0, ok_pk = 0;
+            for (nk = 1; nk <= 8u; nk++) {
+                av = stress_run(MD[m], nk, CF[c][0], CF[c][1], &pk, &vb);
+                printf("S M16 %-40s fader %2u COMP %-3s %u keys: avg %6.1f %%  peak half %6.1f %%  voices %u\n", MN[m], CF[c][0], CF[c][1] ? "ON" : "off",
+                       nk, av, pk, vb);
+                if (av <= 100.0 && ok_avg == nk - 1u)
+                    ok_avg = nk;
+                if (pk <= 100.0 && ok_pk == nk - 1u)
+                    ok_pk = nk;
+            }
+            printf("S   = %s, fader %u, COMP %s: at most %u keys with the average under 100 %%, %u with every half under it\n", MN[m], CF[c][0],
+                   CF[c][1] ? "ON" : "off", ok_avg, ok_pk);
+        }
+}
+
 int main(void)
 {
     uint32_t i, k, ei, n;
     scn_t s;
     char b[200];
-    const char *sec = getenv("CPU_SCEN") ? getenv("CPU_SCEN") : "QCYO";
+    const char *sec = getenv("CPU_SCEN") ? getenv("CPU_SCEN") : "QGCYOV";
     uint64_t a0 = instr_now(), a1 = instr_now();
     setvbuf(stdout, NULL, _IONBF, 0);
     if (!a0) {
@@ -438,6 +527,39 @@ int main(void)
             printf("N M%02u %s fader %3u: avg %5.1f %%  peak half %5.1f %%  (parts: %s / %s, mode %u)\n", m + 1, nn == 4 ? "4+4 notes" : "8 notes p1",
                    f * 63u + (f == 2), av, pk, ENGINES[trk[0].engine]->name, ENGINES[trk[1].engine]->name, (unsigned)dm_cur);
         }
+    }
+    if (strchr(sec, 'G')) {                       /* 0.2.23: the factory multis of today (MODE RECALL ON), 4 + 4 notes, fader 63; M16 (the STRESS TEST) unguarded */
+        uint32_t m;
+        g_factory = 1;
+        for (m = 0; m < MU_SLOTS; m++) {
+            double pk, av = multi_run(m, 4, 63, &pk);
+            printf("G M%02u %-12s 4+4 notes fader  63: avg %5.1f %%  peak half %5.1f %%  (parts: %s / %s, mode %u)\n", m + 1, mu_names[m], av, pk,
+                   ENGINES[trk[0].engine]->name, ENGINES[trk[1].engine]->name, (unsigned)dm_cur);
+            if (m < 15u) {
+                snprintf(b, sizeof b, "M%02u %s 4 + 4 notes, fader 63, average (a factory multi)", m + 1, mu_names[m]);
+                guard(b, av, 100.0);
+            }
+        }
+        g_factory = 0;
+    }
+    if (strchr(sec, 'S'))
+        stress_table();
+    if (strchr(sec, 'V')) {                       /* 0.2.25 (default): M16 STRESS TEST with the OVERLOAD GUARD engaged (RANDOM as the plain delay; 0.2.25: its PITCH BOTH reads UP) against not */
+        static const uint32_t MD[2] = {DM_LAYER, DM_SPLIT};
+        static const char *const MN[2] = {"LAYER", "DUEL"};
+        uint32_t m, nk, vb;
+        double pk, av[2];
+        for (m = 0; m < 2u; m++)
+            for (nk = 1; nk <= 3u; nk++) {
+                for (g_ovl = 0; g_ovl < 2u; g_ovl++)
+                    av[g_ovl] = stress_run(MD[m], nk, 0, 0, &pk, &vb);
+                g_ovl = 0;
+                printf("V M16 %-5s %u keys: avg %5.1f %%, with the guard engaged %5.1f %% (%.1f points lighter)\n", MN[m], nk, av[0], av[1], av[0] - av[1]);
+                if (nk == 1u) {
+                    snprintf(b, sizeof b, "M16 %s 1 key: the guard engaged saves at least %s points", MN[m], m ? "6" : "3");
+                    guard(b, -(av[0] - av[1]), m ? -6.0 : -3.0);
+                }
+            }
     }
     if (strchr(sec, 'C'))
         cap_tests();
@@ -587,7 +709,7 @@ int main(void)
         static const uint32_t MS[3] = {3, 13, 14};
         uint32_t m, pi, j;
         for (m = 0; m < 3; m++) {
-            power(); project_load(MS[m]);
+            power(); load_scene_of(MS[m]);
             for (i = 0; i < 4; i++) half(0);
             for (pi = 0; pi < 2; pi++) {
                 const morph_part_t *mp = &mph[pi];

@@ -10,7 +10,7 @@
  *   5. MIDI CC7 is the mixer level (the trim stays); MIDI LEARN of the mixer level
  *   6. the audio gain is the product: the gain function, the output of two splits of one product bit for bit, mixer 0 / trim 0 silent, the +7.5 dB ceiling, unity = the old single level
  *   6b. MORPH with TARGET BOTH never moves the trim or the mixer level
- *   7. the pages: TRIM on VOICE 2/2 (K4), the MIXER's K4 is the mixer LEVEL; the mixer's page is untouched by a sound load
+ *   7. the pages: TRIM on VOICE 2/2 (K4, shown PATCH LEVEL), GLO > MIXER's K1 / K3 are the mixer LEVELs; the mixer's page is untouched by a sound load
  *   build/host/level_test            (DUELL/host_tests.sh "level") */
 #define UI_TEST_NO_MAIN 1
 #define FELUCCA_FLASH 1
@@ -124,17 +124,19 @@ static void lv_load(void)
     sl_fac(a, &e, &f);
     apply_preset_to(&trk[1], f);                      /* the engine's own presets list, as the old PRESETS knob */
     ck("  apply_preset_to: the mixer stays", trk[1].p[P_LEVEL] == 61);
-    set_engine_of(&trk[1], ENGI_PHYS);
-    ck("an engine change (its first factory sound): the mixer stays, the trim is that sound's",
-       trk[1].p[P_LEVEL] == 61 && trk[1].p[P_TRIM] == ds_value(ds_get(ENGI_PHYS, 0), P_TRIM, TP[P_TRIM].def));
+    {
+        int16_t tr = trk[1].p[P_TRIM];
+        set_engine_of(&trk[1], ENGI_PHYS);
+        ck("an engine change (0.2.24: the common settings stay): the mixer stays, the trim stays too (no sound is loaded)", trk[1].p[P_LEVEL] == 61 && trk[1].p[P_TRIM] == tr);
+    }
     /* INIT: the engine's defaults and its first sound; an engine with no sound: the default trim */
     trk[1].p[P_TRIM] = 33;
-    set_engine(TSEL->eng_req);
-    ck("INIT (set_engine of the same engine): the trim is the first sound's, the mixer stays", trk[1].p[P_LEVEL] == 61 && trk[1].p[P_TRIM] == ds_value(ds_get(trk[1].eng_req, 0), P_TRIM, TP[P_TRIM].def));
+    init_engine_of(TSEL, TSEL->eng_req);
+    ck("INIT (init_engine_of the same engine): the trim is the first sound's, the mixer stays", trk[1].p[P_LEVEL] == 61 && trk[1].p[P_TRIM] == ds_value(ds_get(trk[1].eng_req, 0), P_TRIM, TP[P_TRIM].def));
     for (e = 0; e < NENGINES; e++)
         if (!ds_count(e) && eng_ok(e))
             break;
-    ck("INIT on an engine with no factory sound: the default trim", e >= NENGINES || (set_engine_of(&trk[1], e), trk[1].p[P_TRIM] == TP[P_TRIM].def && trk[1].p[P_LEVEL] == 61));
+    ck("INIT on an engine with no factory sound: the default trim", e >= NENGINES || (init_engine_of(&trk[1], e), trk[1].p[P_TRIM] == TP[P_TRIM].def && trk[1].p[P_LEVEL] == 61));
     /* UNDO (a sound's undo copy) swaps the sound, with its trim, never the mixer */
     sl_load(a);
     trk[1].p[P_LEVEL] = 55;
@@ -213,7 +215,7 @@ static void lv_save(void)
         p = pt_raw(s);
         c = pt_dir[s].ch;
         rl = pt_dir[s].len;
-        pt_work[0] = (uint8_t)PT_MAGIC; pt_work[1] = (uint8_t)(PT_MAGIC >> 8); pt_work[2] = 1; pt_work[3] = 0;
+        pt_work[0] = (uint8_t)PT_MAGIC; pt_work[1] = (uint8_t)(PT_MAGIC >> 8); pt_work[2] = PT_VER; pt_work[3] = 0;
         memcpy(pt_work + PT_HDR, p, rl);
         pt_work[PT_HDR + 4u] &= (uint8_t)~PTF_TR;       /* no TRIM flag ... */
         pt_work[PT_HDR + PT_FIX] = id0;                  /* ... and the pair is LEVEL's, id 0 (the first pair after the fixed part) */
@@ -235,7 +237,7 @@ static void lv_save(void)
         p = pt_raw(s);
         c = pt_dir[s].ch;
         rl = pt_dir[s].len;
-        pt_work[0] = (uint8_t)PT_MAGIC; pt_work[1] = (uint8_t)(PT_MAGIC >> 8); pt_work[2] = 1; pt_work[3] = 0;
+        pt_work[0] = (uint8_t)PT_MAGIC; pt_work[1] = (uint8_t)(PT_MAGIC >> 8); pt_work[2] = PT_VER; pt_work[3] = 0;
         memcpy(pt_work + PT_HDR, p, rl);
         pt_work[PT_HDR + 4u] &= (uint8_t)~PTF_TR;
         pt_sv(c, pt_work, PT_HDR + rl);
@@ -261,6 +263,13 @@ static void lv_multi(void)
     project_load(10u);
     ck("  MULTI LOAD: both mixer levels and both trims come back",
        trk[0].p[P_LEVEL] == 77 && trk[1].p[P_LEVEL] == 33 && trk[0].p[P_TRIM] == 91 && trk[1].p[P_TRIM] == 97);
+    /* 0.2.21 (owner): a load never keeps the unit's levels - not a low one, not 0 (OFF), not 127 - the multi sets its own, also a muted part's level */
+    trk[0].p[P_LEVEL] = 0; trk[1].p[P_LEVEL] = 127;
+    project_load(10u);
+    ck("  MULTI LOAD over LEVEL 0 and 127 (GLO K3 / K4): the multi's 77 / 33, not the unit's", trk[0].p[P_LEVEL] == 77 && trk[1].p[P_LEVEL] == 33);
+    trk[0].p[P_LEVEL] = 9; trk[1].p[P_LEVEL] = 9;
+    project_load(0u);
+    ck("  a factory multi over LEVEL 9 / 9: both at unity (112, 0 dB)", trk[0].p[P_LEVEL] == 112 && trk[1].p[P_LEVEL] == 112);
     cycle();
     trk[0].p[P_LEVEL] = 1; trk[1].p[P_LEVEL] = 2;
     project_load(10u);
@@ -270,33 +279,36 @@ static void lv_multi(void)
     ok = pr.t[0].p[P_LEVEL] == 77 && pr.t[1].p[P_LEVEL] == 33 && pr.t[0].p[P_TRIM] == 91 && pr.t[1].p[P_TRIM] == 97;
     ck("project_capture holds both", ok);
     pr.sum = proj_sum(&pr);
-    ok = proj_pack(&st, &pr) && st.raw[67] == PROJ_REV && PROJ_REV == 3 && proj_import(&back, &st, sizeof st) && back.t[0].p[P_LEVEL] == 77 && back.t[1].p[P_LEVEL] == 33 &&
+    ok = proj_pack(&st, &pr) && st.raw[67] == PROJ_REV && PROJ_REV == 7 && proj_import(&back, &st, sizeof st) && back.t[0].p[P_LEVEL] == 77 && back.t[1].p[P_LEVEL] == 33 &&
          back.t[0].p[P_TRIM] == 91 && back.t[1].p[P_TRIM] == 97;
-    ck("project format revision 3: packed and read back with both", ok);
+    ck("project format revision 6: packed and read back with both", ok);
     st.raw[67] = 2;                                   /* (the hash covers the revision byte: rehash, so the format check says no, not the hash) */
     {
         uint32_t sum = proj_hash(st.raw, PROJ_STORE_SIZE - 4u);
         memcpy(st.raw + PROJ_STORE_SIZE - 4u, &sum, 4);
     }
     ck("  a project of revision 2 (one level) is refused", !proj_import(&back, &st, sizeof st));
-    ck("multi version 5", MU_VER == 5u);
-    /* the factory multis: the mixer at unity, the trim the old LEVEL */
+    ck("multi version 7", MU_VER == 7u);
+    /* the factory multis: a mixer level of their own (unity up to 0.2.22; 0.2.23: each multi's balance, -16 .. +4 dB), the trim the sound's */
     for (i = 0; i < DF_N; i++) {
         const uint8_t *b = DM_REC + DM_AT[i];
         uint32_t pos = MU_G_AT + 2u * b[2], t;
-        if (b[0] != 5u)
+        if (b[0] != 7u)
             ok = 0;
         for (t = 0; t < 2u; t++) {
             const uint8_t *v = b + pos + 4u + MB_N;
-            ok &= v[P_LEVEL] - 64 == 112 && v[P_TRIM] - 64 >= 30;
+            uint32_t fl = b[pos + 3];
+            ok &= v[P_LEVEL] - 64 >= 80 && v[P_LEVEL] - 64 <= 120 && v[P_TRIM] - 64 >= 30;   /* (0.2.23: the new multis set their own mix, -16 .. +4 dB) */
             n++;
             pos += 4u + MB_N + b[1];
+            pos += 1u + b[pos];                           /* (MU_VER 7: nx, the extension slots) */
+            pos += 1u + 2u * b[pos];                      /* (.. ne, the hand-set B edits) */
             pos += 8u + PS_STEP * (uint32_t)(__builtin_popcount(b[pos]) + __builtin_popcount(b[pos + 1]) + __builtin_popcount(b[pos + 2]) + __builtin_popcount(b[pos + 3]) +
                                            __builtin_popcount(b[pos + 4]) + __builtin_popcount(b[pos + 5]) + __builtin_popcount(b[pos + 6]) + __builtin_popcount(b[pos + 7])) +
-                   (b[pos - 4u - MB_N - b[1] + 3] & 1u ? 128u : 0u);
+                   (fl & 1u ? 128u : 0u);
         }
     }
-    ck("every factory multi record (version 5): each part's mixer level is 112 (unity), its trim the old LEVEL", ok && n == 2u * DF_N);
+    ck("every factory multi record (version 7): each part's mixer level a fader position of -16 .. +4 dB, its trim the sound's", ok && n == 2u * DF_N);
     /* a factory multi loads with the mixer at unity; the sounds' trims are the ones the multi's sounds carry */
     fresh();
     trk[0].p[P_LEVEL] = 20;
@@ -323,14 +335,14 @@ static void lv_midi(void)
     song.sel = 0;
     sl_load(5u);
     ck("a sound load after a CC7: the level the player set stays (66)", trk[0].p[P_LEVEL] == 66);
-    /* MIDI LEARN: a CC learned onto the mixer level (the map goes by the parameter id: id 0 is the mixer, as before the split) moves the mixer; the trim can be learned as any card */
-    ck("MIDI LEARN: CC20 -> part 1's mixer level, CC21 -> its trim", ml_learn(20u, 0u, P_LEVEL) == 1u && ml_learn(21u, 0u, P_TRIM) == 1u &&
-       ml_cc_of(0u, P_LEVEL) == 21u && ml_cc_of(0u, P_TRIM) == 22u);
+    /* MIDI LEARN (numbers the legacy map leaves free: 20 and 21 are the morph's): a CC learned onto the mixer level (the map goes by the parameter id: id 0 is the mixer, as before the split) moves the mixer; the trim can be learned as any card */
+    ck("MIDI LEARN: CC26 -> part 1's mixer level, CC27 -> its trim", ml_learn(26u, 0u, P_LEVEL) == 1u && ml_learn(27u, 0u, P_TRIM) == 1u &&
+       ml_cc_of(0u, P_LEVEL) == 27u && ml_cc_of(0u, P_TRIM) == 28u);
     trk[0].p[P_TRIM] = 93;
-    cc(20, 31);
-    ck("  CC20 31: the mixer level 31, the trim stays 93", trk[0].p[P_LEVEL] == 31 && trk[0].p[P_TRIM] == 93);
-    cc(21, 45);
-    ck("  CC21 45: the trim 45, the mixer level stays 31", trk[0].p[P_TRIM] == 45 && trk[0].p[P_LEVEL] == 31);
+    cc(26, 31);
+    ck("  CC26 31: the mixer level 31, the trim stays 93", trk[0].p[P_LEVEL] == 31 && trk[0].p[P_TRIM] == 93);
+    cc(27, 45);
+    ck("  CC27 45: the trim 45, the mixer level stays 31", trk[0].p[P_TRIM] == 45 && trk[0].p[P_LEVEL] == 31);
     (void)ml_clear_all();
 }
 
@@ -440,7 +452,7 @@ static void lv_pages(void)
     for (i = 0; i < NPAGES && strcmp(PAGES[i].title, "MIXER"); i++)
         ;
     m = &PAGES[i];
-    ck("the MIXER page is as before (hand drawn: MUTE PAN SPACE LEVEL)", i < NPAGES && m->graph == GR_TRK);
+    ck("the MIXER page is GLO's first (0.2.25 layout round: LEVEL 1, PAN 1, LEVEL 2, PAN 2, as the hold-GLO layer)", i < NPAGES && m->graph == GR_GLO && m->fam == FAM_GLO && i == page_first(FAM_GLO));
     {   /* no sound page holds a mixer setting, no page but VOICE 2/2 holds the trim */
         uint32_t n = 0, mix = 0;
         for (i = 0; i < NPAGES; i++) {
@@ -456,13 +468,15 @@ static void lv_pages(void)
     }
     fresh();
     go_title("VOICE 2/2");
+    trk[0].p[P_VOICE] = V_POLY;                          /* (T0227: SPREAD shows in POLY outside DUEL, so PATCH LEVEL stays K4; with SPREAD hidden it moves left to K3) */
+    duell_mode_req = DM_STEREO;
     trk[0].p[P_TRIM] = 100;
     trk[0].p[P_LEVEL] = 80;
     turn(EN_K4, 3);
     ck("VOICE 2/2 K4 turns the TRIM (103), the mixer level stays", trk[0].p[P_TRIM] == 103 && trk[0].p[P_LEVEL] == 80);
     go_title("MIXER");
-    turn(EN_K4, -4);
-    ck("MIXER K4 turns the MIXER level (76), the trim stays", trk[0].p[P_LEVEL] == 76 && trk[0].p[P_TRIM] == 103);
+    turn(EN_K1, -4);
+    ck("MIXER K1 (LEVEL 1) turns the MIXER level (76), the trim stays", trk[0].p[P_LEVEL] == 76 && trk[0].p[P_TRIM] == 103);
     {   /* the card is never hidden or faded: not in DUEL, not with PART FX or SENDS off */
         song.g[G_ROUTE] = 0;
         duell_mode_req = DM_SPLIT;

@@ -7,6 +7,9 @@ static uint8_t flash_ok;                 /* JEDEC id matched at boot (persist_bo
 static int st_read(uint32_t off, void *dst, uint32_t n)   /* 256-byte IRQ-off windows: audio keeps up */
 {
     uint8_t *d = dst;
+#if DUELL_TWOCORE
+    tc_flash_park();                            /* (the XIP map is off while the driver works: core 1 idle first, twocore.c) */
+#endif
     while (n) {
         uint32_t k = n > 256u ? 256u : n, f = irq_save();
         int rc = FL_FAR(fl_read_ram)(off, d, k);
@@ -45,6 +48,9 @@ static int st_erase(uint32_t off)
 {
     uint32_t took = 0, f;
     int rc;
+#if DUELL_TWOCORE
+    tc_flash_park();                            /* (the XIP map is off while the driver works: core 1 idle first, twocore.c) */
+#endif
     if (!FL_STORE_OK(off, 0x1000u))
         return -8;
     st_duck_begin();
@@ -67,6 +73,9 @@ static int st_prog(uint32_t off, const void *src, uint32_t n)   /* a page (256 b
 {
     const uint8_t *s = src;
     int rc = 0, burst = n > 256u;               /* more than one page: a burst of IRQ-off windows, ducked */
+#if DUELL_TWOCORE
+    tc_flash_park();                            /* (the XIP map is off while the driver works: core 1 idle first, twocore.c) */
+#endif
     if (!FL_STORE_OK(off, n))                   /* only inside the storage areas */
         return -8;
     if (burst)

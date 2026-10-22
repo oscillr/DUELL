@@ -309,11 +309,12 @@ static inline void perf_tick(uint32_t n)
     pf.sync = 0;
 }
 
-/* a part muted by MUTE 1 / MUTE 2: its signal ramps to 0 and back (fx.c mix_part, after the EQ, before the DUCK and the level) */
-static __attribute__((noinline)) void perf_mute(uint32_t k, int32_t *b, uint32_t n)
+/* a part muted by MUTE 1 / MUTE 2: its signal ramps to 0 and back (fx.c mix_part, after the EQ, before the DUCK and the level). t: the gain it goes to
+ * (the block's snapshot, blockstate_t mute_tg: 0 while its key is held, else 32768) */
+static __attribute__((noinline)) void perf_mute(uint32_t k, int32_t *b, uint32_t n, int32_t t)
 {
     uint32_t i;
-    int32_t g = pf.mg[k], t = (perf_held >> (PF_M1 + k)) & 1u && !perf_kill ? 0 : 32768;
+    int32_t g = pf.mg[k];
     for (i = 0; i < n; i++) {
         g += clamp(t - g, -SL_SLOPE, SL_SLOPE);
         b[i] = mulq16(b[i], (uint32_t)g << 1);
@@ -321,10 +322,10 @@ static __attribute__((noinline)) void perf_mute(uint32_t k, int32_t *b, uint32_t
     pf.mg[k] = g;
 }
 /* perf_mute with SPREAD's side signal sd (fx.c mix_spread): the same ramp on both */
-static __attribute__((noinline)) void perf_mute_sd(uint32_t k, int32_t *b, int32_t *sd, uint32_t n)
+static __attribute__((noinline)) void perf_mute_sd(uint32_t k, int32_t *b, int32_t *sd, uint32_t n, int32_t t)
 {
     uint32_t i;
-    int32_t g = pf.mg[k], t = (perf_held >> (PF_M1 + k)) & 1u && !perf_kill ? 0 : 32768;
+    int32_t g = pf.mg[k];
     for (i = 0; i < n; i++) {
         g += clamp(t - g, -SL_SLOPE, SL_SLOPE);
         b[i] = mulq16(b[i], (uint32_t)g << 1);
@@ -333,9 +334,9 @@ static __attribute__((noinline)) void perf_mute_sd(uint32_t k, int32_t *b, int32
     pf.mg[k] = g;
 }
 /* a part silent (fx.c mix_part's early way out): its mute's gain at once where it goes (nothing to ramp) */
-static __attribute__((noinline)) void perf_mute_rest(uint32_t k)
+static __attribute__((noinline)) void perf_mute_rest(uint32_t k, int32_t t)
 {
-    pf.mg[k] = (perf_held >> (PF_M1 + k)) & 1u && !perf_kill ? 0 : 32768;
+    pf.mg[k] = t;
 }
 
 /* the loop: frame f of it, both channels (Q15) */

@@ -15,6 +15,13 @@
  *      built from a slot against a reference computed here (double precision sums, the engine's 10 bit levels, RMS 63.5 / peak 127: within 2 steps of the
  *      8-bit samples, three levels), an EMPTY slot = a sine named EMPTY, the shown names, a slot stored again under a playing part (fade out, built anew,
  *      no click), a slot changed in the middle of its build (never half of each), determinism, the factory tables untouched (t_list's fingerprint)
+ *   9  DUELL 0.2.25: SUB and DTN without a zipper (a change on a held note: no curvature over 1.5 x the steady, where the unsmoothed engine
+ *      shows the step; the values land exactly; a value held is bit for bit the unsmoothed engine; a restart in place keeps SUB's level), the
+ *      EMPTY slot as it plays (a sine as loud as HARM's, no DC), a voice given up (stage 4) fades over one block
+ *  10  cloud job F's STEPS (E7, eng_wave.c wave_steps; SUB_AND_CYCLE_DESIGN.md C): the slot (label, OFF / 2..19, the matrix destination, table 24 renamed STAIR), the scan's place
+ *      rounded to its places (the place after each block of a POS sweep is one of the places, all of them reached; 19 places = every frame), the hysteresis (POS on an edge, an LFO
+ *      across it: no flicker), the cross-fade (a jump between places is the block ramp: no click), a route into E7, morph (counts blend rounded, OFF against a count flips at the middle;
+ *      a roll never turns it on and draws as the unused slot did)
  *   build/host/wave_test        (DUELL/host_tests.sh wave); WAVE_VERBOSE=1 prints the whole aliasing table */
 #define WV_TEST_HOOKS 1
 #define main hostsim_main
@@ -59,7 +66,7 @@ static void setup_part(uint32_t part, uint32_t table, int32_t pos, int32_t sub, 
     t->p[P_E0] = (int16_t)table;
     t->p[P_E1] = (int16_t)pos;
     t->p[P_E2] = t->p[P_E3] = 0;
-    t->p[P_E4] = (int16_t)sub;
+    (void)sub;                                           /* WAVE has no SUB (it is SUB LAYER's now) */
     t->p[P_E5] = (int16_t)dtn;
     t->p[P_DIST] = t->p[P_CHOR] = t->p[P_DLY] = t->p[P_REV] = 0;
     t->p[P_ATK] = 0;
@@ -659,7 +666,7 @@ static void t_cost(void)
         printf("wave: cost: no instruction counter on this host (proc_pid_rusage): not measured\n");
         return;
     }
-    printf("wave:   per voice and sample (8 voices, over the idle mix %.0f): plain %.1f, SUB %.1f, DTN %.1f, SUB + DTN %.1f, SYNC %.1f, BEND %.1f,"
+    printf("wave:   per voice and sample (8 voices, over the idle mix %.0f): plain %.1f, (SUB gone: %.1f), DTN %.1f, SUB + DTN %.1f, SYNC %.1f, BEND %.1f,"
            " all four %.1f\n", idle, (plain - idle) / 8, (sub - idle) / 8, (dtn - idle) / 8, (all - idle) / 8, (sy - idle) / 8, (bd - idle) / 8,
            (heavy - idle) / 8);
     i0 = instr_now();
@@ -945,6 +952,370 @@ static void t_user(void)
     (void)ref;
 }
 
+/* ------------------------------------------------------------------------- 9 SUB / DTN without a zipper (0.2.25) --- */
+/* One held C4, a value changed at block 'at' (8 phases of the change): the largest curvature |x[i] - 2 x[i-1] + x[i-2]| from the sample
+ * before the change's block through 12 blocks after it, over the steady largest at either value (blocks 20..37 and at + 40 .. at + 60).
+ * old = 1: v->s[7] forced to the knob's value every block (the onset count 0: values at once), which IS the engine before 0.2.25: the same measure must see the
+ * step there (the test's own check). The renders run without a break (a jump at a block boundary is seen: render() starts at rec[0]) */
+static int32_t zrec[120u * CTL];
+static double z_ratio(uint32_t table, int id, int a, int b, uint32_t at, int old, uint64_t *hash)
+{
+    int32_t o[2 * CTL], c = 0, st = 1;
+    uint32_t blk, k, i;
+    fresh();
+    wt_names();
+    setup_part(0, table, 30, 0, 0);
+    trk[0].p[id] = (int16_t)a;
+    trk_note_on(&trk[0], 60, 100);
+    for (blk = 0; blk < 120u; blk++) {
+        if (blk == at)
+            trk[0].p[id] = (int16_t)b;
+        if (old)
+            for (k = 0; k < NVOICE; k++)
+                trk[0].v[k].s[7] = wv_s7(trk[0].p);
+        mix_block(o, CTL);
+        for (k = 0; k < CTL; k++)
+            zrec[blk * CTL + k] = o[2u * k];
+    }
+    for (i = 20u * CTL; i < 120u * CTL; i++) {
+        int32_t d = abs(zrec[i] - 2 * zrec[i - 1] + zrec[i - 2]);
+        if (i >= at * CTL - 1u && i < (at + 12u) * CTL)
+            c = d > c ? d : c;
+        else if (i < 38u * CTL || (i >= (at + 40u) * CTL && i < (at + 60u) * CTL))
+            st = d > st ? d : st;
+    }
+    if (hash)
+        *hash = fnv(zrec, sizeof zrec);
+    return (double)c / st;
+}
+static uint64_t z_hash(uint32_t table, int id, int a, int old)   /* (in a child: every state as at boot, as sub_run) */
+{
+    uint64_t h = 0;
+    int fd[2];
+    pid_t pid;
+    if (pipe(fd))
+        return 0;
+    fflush(stdout);
+    pid = fork();
+    if (!pid) {
+        close(fd[0]);
+        z_ratio(table, id, a, a, 40, old, &h);
+        if (write(fd[1], &h, sizeof h) != sizeof h)
+            _exit(1);
+        _exit(0);
+    }
+    close(fd[1]);
+    if (read(fd[0], &h, sizeof h) != sizeof h)
+        h = 0;
+    close(fd[0]);
+    waitpid(pid, 0, 0);
+    return h;
+}
+static void t_zipper(void)
+{
+    static const struct { const char *nm; int id, a, b; } CH[] = {
+        {"DTN 0->10", P_E5, 0, 10}, {"DTN 0->1", P_E5, 0, 1}, {"DTN 10->0", P_E5, 10, 0}};
+    static const uint32_t TB[2] = {26, 4};               /* an EMPTY user slot (a sine: nothing masks a step) and ORGAN */
+    double wn = 0, wo = 0;
+    uint32_t c, ti, at, same = 1, settled = 1;
+    char m[220], wnm[40] = "", wom[40] = "";
+    for (ti = 0; ti < 2u; ti++)
+        for (c = 0; c < NELEM(CH); c++)
+            for (at = 40; at < 48u; at++) {
+                double rn = z_ratio(TB[ti], CH[c].id, CH[c].a, CH[c].b, at, 0, 0), ro = z_ratio(TB[ti], CH[c].id, CH[c].a, CH[c].b, at, 1, 0);
+                if (rn > wn)
+                    wn = rn, snprintf(wnm, sizeof wnm, "%s %s", N_WV_TABLE[TB[ti]], CH[c].nm);
+                if (ro > wo)
+                    wo = ro, snprintf(wom, sizeof wom, "%s %s", N_WV_TABLE[TB[ti]], CH[c].nm);
+                if (at == 40u)                           /* (z_ratio(.., 0) above left the new engine's voice: settled to the value) */
+                    settled &= (z_ratio(TB[ti], CH[c].id, CH[c].a, CH[c].b, at, 0, 0), (trk[0].v[0].s[7] & 0xFFFFF) == wv_s7(trk[0].p));
+            }
+    snprintf(m, sizeof m, "DTN changed on a held note (8 phases each, EMPTY and ORGAN): the worst curvature %.2f x the steady (%s; <= 1.5)", wn, wnm);
+    expect(m, wn <= 1.5);
+    snprintf(m, sizeof m, ".. the same changes unsmoothed (the engine of 0.2.24: s[7] forced) show the step: worst %.2f x (%s; > 3)", wo, wom);
+    expect(m, wo > 3.0);
+    expect(".. and DTN's share land exactly on the knob's values (s[7] after 72 blocks)", settled);
+    for (ti = 0; ti < 2u; ti++)                          /* values that do not move: bit for bit the unsmoothed engine */
+        for (c = 0; c < NELEM(CH); c++) {
+            uint64_t hn, ho;
+            hn = z_hash(TB[ti], CH[c].id, CH[c].a, 0);
+            ho = z_hash(TB[ti], CH[c].id, CH[c].a, 1);
+            same &= hn == ho && hn;
+        }
+    expect("DTN held at a value (0, 1, 10, 20, 60, 127): bit for bit the engine without smoothing (the renders' hashes)", same);
+}
+
+/* the EMPTY user slot as it plays: a sine (the slot's defined sound, not silence, DC or another table), as loud as the factory sine
+ * (HARM at POS 0); and a voice given up for another part / the overload (voice.c voice_kill, stage 4): its fade (one block, linear) */
+static void t_empty_and_kill(void)
+{
+    double r[2];
+    int32_t dc[2], pk[2], d1s = 0, d1k = 0, last = 0;
+    uint32_t k, i;
+    char m[200];
+    for (k = 0; k < 2u; k++) {
+        double ss = 0, sm = 0;
+        fresh();
+        wt_names();
+        setup_part(0, k ? 2u : 26u, 0, 0, 0);
+        trk_note_on(&trk[0], 60, 100);
+        render(200, 0);
+        for (i = 100u * CTL, pk[k] = 0; i < 200u * CTL; i++) {
+            ss += (double)rec[i] * rec[i];
+            sm += rec[i];
+            pk[k] = abs(rec[i]) > pk[k] ? abs(rec[i]) : pk[k];
+        }
+        r[k] = sqrt(ss / (100.0 * CTL));
+        dc[k] = (int32_t)(sm / (100.0 * CTL));
+    }
+    snprintf(m, sizeof m, "an EMPTY user slot plays a sine: RMS %.0f (HARM at POS 0, a sine: %.0f, within 1 dB), peak %d, DC %d (|DC| < 0.5 %% of the peak)",
+             r[0], r[1], pk[0], dc[0]);
+    expect(m, fabs(20 * log10(r[0] / r[1])) < 1.0 && abs(dc[0]) * 200 < pk[0] && !strcmp(N_WV_TABLE[26], "EMPTY"));
+    fresh();
+    setup_part(0, 26, 0, 0, 0);
+    trk_note_on(&trk[0], 60, 100);
+    render(60, 0);
+    for (i = 30u * CTL; i < 60u * CTL; i++)
+        d1s = abs(rec[i] - rec[i - 1]) > d1s ? abs(rec[i] - rec[i - 1]) : d1s;
+    last = rec[60u * CTL - 1u];
+    voice_kill(&trk[0].v[0]);
+    render(4, 0);
+    d1k = abs(rec[0] - last);
+    for (i = 1; i < CTL; i++)
+        d1k = abs(rec[i] - rec[i - 1]) > d1k ? abs(rec[i] - rec[i - 1]) : d1k;
+    for (i = CTL, k = 1; i < 4u * CTL; i++)
+        k &= abs(rec[i]) < 64;
+    snprintf(m, sizeof m, "a voice given up (stage 4) fades over ONE block (0.73 ms, linear: largest step %d vs %d held, peak %d), then silent", d1k, d1s, pk[0]);
+    expect(m, k && d1k <= d1s + pk[0] / (int32_t)CTL + 64);
+}
+
+
+/* ------------------------------------------------------------------------------------------------ 10 STEPS --- */
+/* the place (Q16 frames) a knob value (Q8 steps, 0..127 << 8) is on, as wave_render makes it */
+static int32_t st_fp(int32_t pq)
+{
+    int32_t fp = (pq * WV_FPQ) >> 10;
+    return fp > WV_FPMAX ? WV_FPMAX : fp;
+}
+static int32_t st_place(int32_t n1, int32_t k)             /* place k of n1 + 1 places */
+{
+    return st_fp(k * (127 << 8) / n1);
+}
+/* the place index (0 .. n1) that fp is on, -1 if none: the block ramp's step (fp1 - fp0) / CTL truncates, so the end of a ramp is within 31 units (of 65536 a frame) of the place */
+static int32_t st_on(int32_t n1, int32_t fp)
+{
+    int32_t k;
+    for (k = 0; k <= n1; k++)
+        if (abs(fp - st_place(n1, k)) < (int32_t)CTL)
+            return k;
+    return -1;
+}
+static void st_part(int32_t n1, int pos)                   /* WAVE SAWSQ, one held note (SUSTAIN 127), STEPS n1 (stored) */
+{
+    fresh();
+    setup_part(0, 0, pos, 0, 0);
+    trk[0].p[P_E6] = (int16_t)n1;
+    trk_note_on(&trk[0], 48, 100);
+    render(8, 0);
+}
+static void t_steps(void)
+{
+    char m[260];
+    int32_t n1, k, seen[19], fp, ok = 1, nseen, mono = 1, last = -1;
+    uint32_t b, i;
+    int32_t distinct[400], nd = 0;
+    /* the slot: label, range, names, the matrix destination, table 24 */
+    {
+        const param_desc_t *d = &ENG_WAVE.edit[6];
+        int nm = 1;
+        for (i = 0; i < 19u; i++)
+            nm &= d->names[i] != 0 && (i ? atoi(d->names[i]) == (int)i + 1 : !strcmp(d->names[i], "OFF"));
+        fresh();
+        setup_part(0, 0, 30, 0, 0);
+        snprintf(m, sizeof m, "STEPS: E7 is an enum %s, stored 0..18 shown OFF, 2 .. 19 (default OFF); the matrix offers it (mod_e_why: %s); table 24 is named %s", d->label, mod_e_why(ENGI_WAVE, 6) ? mod_e_why(ENGI_WAVE, 6) : "works", N_WV_TABLE[24]);
+        expect(m, !strcmp(d->label, "STEPS") && d->fmt == F_ENUM && d->min == 0 && d->max == 18 && d->def == 0 && nm && !mod_e_why(ENGI_WAVE, 6) && !mod_dst_why(&trk[0], MD_E1 + 6) &&
+               !strcmp(mod_dst_name(&trk[0], MD_E1 + 6), "STEPS") && !strcmp(N_WV_TABLE[24], "STAIR") && !strcmp(ENG_WAVE.edit[4].label, "-"));
+    }
+    /* the places: POS swept 0 .. 127 over 300 blocks, STEPS 8 places (stored 7): the place after each block */
+    for (n1 = 1; n1 <= 18; n1 += (n1 == 1 ? 6 : n1 == 7 ? 4 : n1 == 11 ? 7 : 1)) {
+        st_part(n1, 0);
+        nseen = 0;
+        mono = 1;
+        last = -1;
+        for (b = 0; b < 300u; b++) {
+            trk[0].p[P_E1] = (int16_t)(b * 127u / 299u);
+            render(1, 0);
+            fp = trk[0].v[0].s[0];
+            k = st_on(n1, fp);
+            ok = k >= 0;
+            if (!ok)
+                break;
+            for (i = 0; (int32_t)i < nseen && seen[i] != k; i++)
+                ;
+            if ((int32_t)i == nseen)
+                seen[nseen++] = k;
+            mono &= k >= last;
+            last = k;
+        }
+        snprintf(m, sizeof m, "STEPS %d places: a POS sweep 0..127 lands on %d different places, every one of the %d (the place after each block is exactly one of them), never back", n1 + 1, nseen, n1 + 1);
+        expect(m, b == 300u && ok && nseen == n1 + 1 && mono);
+        if (n1 == 18) {                                  /* 19 places = every frame: the places are frames 0 .. 18 */
+            for (k = 0, ok = 1; k <= 18; k++)
+                ok &= abs(st_place(18, k) - k * 65536) < 64;
+            expect("  .. with 19 places every place is a whole frame of the table (frame k at k << 16, within 64 of 65536)", ok);
+        }
+    }
+    /* OFF: the sweep is smooth (the engine as before): many different places */
+    st_part(0, 0);
+    for (b = 0, nd = 0; b < 300u; b++) {
+        trk[0].p[P_E1] = (int16_t)(b * 127u / 299u);
+        render(1, 0);
+        fp = trk[0].v[0].s[0];
+        for (k = 0; k < nd && distinct[k] != fp; k++)
+            ;
+        if (k == nd)
+            distinct[nd++] = fp;
+    }
+    snprintf(m, sizeof m, "STEPS OFF: the same sweep is not rounded (%d different places in 300 blocks)", nd);
+    expect(m, nd > 100);
+    /* hysteresis: POS on the edge between places 3 and 4 of 8 (knob 63.5), the knob alternating 63 / 64 every block; then an LFO across the edge */
+    st_part(7, 63);
+    for (b = 0, nd = 0, last = -1; b < 200u; b++) {
+        trk[0].p[P_E1] = (int16_t)(63 + (b & 1u));
+        render(1, 0);
+        fp = trk[0].v[0].s[0];
+        nd += last >= 0 && st_on(7, fp) != last;
+        last = st_on(7, fp);
+    }
+    snprintf(m, sizeof m, "hysteresis: POS alternating 63 / 64 across the edge between two places: %d changes of place in 200 blocks (a plain rounding flips every block)", nd);
+    expect(m, nd == 0);
+    {
+        int32_t before = trk[0].v[0].s[0], moved;
+        trk[0].p[P_E1] = 72;                            /* a quarter of a place past the edge is passed: it takes the next place */
+        render(2, 0);
+        moved = trk[0].v[0].s[0];
+        trk[0].p[P_E1] = 60;                            /* and back down by the same: the hysteresis keeps it a quarter of a place beyond the edge too */
+        render(2, 0);
+        snprintf(m, sizeof m, "  .. past the edge by a quarter of a place the next place is taken (%d -> %d), and held there when the knob comes back to 60 (%d)", before, moved, trk[0].v[0].s[0]);
+        expect(m, st_on(7, before) == 3 && st_on(7, moved) == 4 && trk[0].v[0].s[0] == moved);
+    }
+    st_part(7, 63);
+    trk[0].p[P_LD_SHP] = 3;                             /* LFO 1 -> SHP, +-3 knob steps: across the edge 3 | 4 twice a cycle */
+    trk[0].p[P_LRATE] = 90;
+    for (b = 0, nd = 0, last = -1; b < 400u; b++) {
+        render(1, 0);
+        fp = trk[0].v[0].s[0];
+        nd += last >= 0 && st_on(7, fp) != last;
+        last = st_on(7, fp);
+    }
+    snprintf(m, sizeof m, "  .. LFO 1 swinging +-3 knob steps across an edge (about 6 cycles in 400 blocks): %d changes of place (a plain rounding: about 12)", nd);
+    expect(m, nd <= 1);
+    /* the cross-fade: jumps between the places of 4 places, held: the largest sample step against the steady, and the place moves in ONE block */
+    {
+        int32_t steady, big = 0, first = 0, one = 1;
+        st_part(3, 0);
+        render(30, 0);
+        steady = max_step(rec + 10 * CTL, 20 * CTL);
+        for (b = 0; b < 40u; b++) {
+            int32_t f0 = trk[0].v[0].s[0], f1;
+            trk[0].p[P_E1] = (int16_t)(b % 2u ? 0 : 127);
+            render(1, 0);
+            f1 = trk[0].v[0].s[0];
+            big = max_step(rec, CTL) > big ? max_step(rec, CTL) : big;
+            one &= st_on(3, f1) == (b % 2u ? 0 : 3) && (b == 0 || st_on(3, f0) != st_on(3, f1));
+            first = steady;
+        }
+        render(2, 0);
+        snprintf(m, sizeof m, "the cross-fade: POS jumping 0 <-> 127 between the first and last of 4 places lands in one block (0.7 ms): the largest sample step %d against the held tone's %d (<= 1.5 x)", big, steady);
+        expect(m, one && big <= first * 3 / 2 + 64);
+    }
+    /* a route into E7 (the matrix): the count follows the LFO: some blocks stepped, some off */
+    {
+        int32_t on = 0, off = 0, g = 0;
+        st_part(0, 40);
+        trk[0].p[P_M1SRC] = MS_LFO;
+        trk[0].p[P_M1DST] = MD_E1 + 6;
+        trk[0].p[P_M1AMT] = 30;
+        trk[0].p[P_LRATE] = 90;
+        for (b = 0; b < 400u; b++) {
+            render(1, 0);
+            fp = trk[0].v[0].s[0];
+            ok = 0;
+            for (k = 1; k <= 18; k++)                    /* (on the grid of some count: the LFO moves the count between OFF and 18 + 1) */
+                ok |= st_on(k, fp) >= 0;
+            g += trk[0].p[P_E6] != 0;
+            on += ok;
+            off += !ok;
+        }
+        snprintf(m, sizeof m, "a matrix route into E7 (LFO 1, AMT 30): the count is moved block by block, the scan place is rounded where it is above OFF (%d of 400 blocks on a grid) and not rounded where it is OFF (%d off a grid)", on, off);
+        expect(m, on > 20 && off > 20 && g == 0);                 /* (the stored value is put back: mod_end) */
+    }
+    /* MORPH: a roll never turns it on; counts blend rounded, OFF against a count flips at the middle */
+    {
+        int8_t o[P_COUNT], end[P_COUNT];
+        uint32_t seed, on_smart = 0, on_wild = 0;
+        fresh();
+        setup_part(0, 2, 60, 0, 0);
+        for (i = 0; i < P_COUNT; i++)
+            o[i] = (int8_t)trk[0].p[i];
+        for (seed = 1; seed <= 300u; seed++) {
+            mrc = 0;
+            morph_roll_pure(o, end, &ENG_WAVE, 100, seed, 0, 1);
+            on_smart += end[P_E6] != 0;
+            mrc = MC_WILD;
+            morph_roll_pure(o, end, &ENG_WAVE, 100, seed, 0, 1);
+            on_wild += end[P_E6] != 0;
+            mrc = 0;
+        }
+        snprintf(m, sizeof m, "MORPH: a roll never turns STEPS on (300 SMART and 300 WILD rolls at AMOUNT 100: %u / %u ends with STEPS above OFF)", on_smart, on_wild);
+        expect(m, !on_smart && !on_wild);
+    }
+    {
+        uint32_t pi = 0, fi;
+        track_t *t;
+        int8_t *a, *bb;
+        int ok2 = 1, ok3 = 1, ok4 = 1;
+        static const uint8_t F[5] = {0, 30, 63, 64, 127};
+        fresh();
+        setup_part(0, 2, 60, 0, 0);
+        t = &trk[pi];
+        mph[pi].n[0] = 1;
+        morph_rebase_part(pi);
+        a = mph[pi].h[0][mph[pi].top[0]];
+        bb = mph[pi].h[1][mph[pi].top[1]];
+        memcpy(bb, mph[pi].base, P_COUNT);
+        a[P_E6] = 3; bb[P_E6] = 9;                      /* two counts: blend */
+        morph_build(&mph[pi]);
+        for (fi = 0; fi < 5u; fi++) {
+            int32_t w = morph_wb(F[fi]), want = (3 * 256 + (((9 - 3) * 256 * w) >> 15) + 128) >> 8;
+            mph[pi].fader = F[fi];
+            morph_begin(t, 1);
+            ok2 &= t->p[P_E6] == want;
+            morph_end(t);
+            ok2 &= t->p[P_E6] == 0;
+        }
+        a[P_E6] = 0; bb[P_E6] = 9;                      /* OFF against a count: the middle */
+        morph_build(&mph[pi]);
+        for (fi = 0; fi < 5u; fi++) {
+            int32_t w = morph_wb(F[fi]);
+            mph[pi].fader = F[fi];
+            morph_begin(t, 1);
+            ok3 &= t->p[P_E6] == (w < 16384 ? 0 : 9);
+            morph_end(t);
+        }
+        a[P_E6] = 5; bb[P_E6] = 0;
+        morph_build(&mph[pi]);
+        for (fi = 0; fi < 5u; fi++) {
+            int32_t w = morph_wb(F[fi]);
+            mph[pi].fader = F[fi];
+            morph_begin(t, 1);
+            ok4 &= t->p[P_E6] == (w < 16384 ? 5 : 0);
+            morph_end(t);
+        }
+        expect("MORPH: STEPS 3 -> 9 blends along the fader (rounded; put back after the block); OFF -> 9 and 5 -> OFF flip at the middle of the fader (no pass through 2 places at the OFF end)", ok2 && ok3 && ok4);
+    }
+}
+
 /* each part in a child of a process that never rendered (every state as at boot: voices, FX tails, seeds), as regress.c */
 static int sub_run(void (*fn)(void))
 {
@@ -980,6 +1351,9 @@ int main(void)
     nbad += sub_run(t_alias_cost);
     nbad += sub_run(t_syncbend);
     nbad += sub_run(t_cost);
+    nbad += sub_run(t_zipper);
+    nbad += sub_run(t_empty_and_kill);
+    nbad += sub_run(t_steps);
     printf("wave: %s\n", nbad ? "FAILED" : "all ok");
     return nbad != 0;
 }

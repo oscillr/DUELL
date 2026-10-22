@@ -5,7 +5,7 @@
  * SCREEN OFF; 1.2: SCOPE; 1.3: HOME), the
  * controls (HOLD: the layer threshold, KNOB ACCEL; 1.2: SCALE LEDS, the keys, STEP PREVIEW, CHORD
  * ENTRY), the sound (1.x SPEAKER EQ: FLAT LOWCUT BASS+, removed in 0.2.19;
- * USB LEVEL; 1.1: CLICK, CLICK LEVEL, COUNT-IN; 1.2: TUNE), MIDI (1.2: MIDI IN; 1.5: LEARN CLEAR), USB SERIAL, RESTORE
+ * 1.x USB LEVEL, removed in 0.2.25; 1.1: CLICK, CLICK LEVEL, COUNT-IN; 1.2: TUNE), MIDI (1.2: MIDI IN; 1.5: LEARN CLEAR), USB SERIAL, RESTORE
  * LAST (1.2), then CALIBRATION (the setup screen: HARDWARE CALIBRATION), TEST (1.2: INFO; DUELL 0.2.2: the CPU test screen, the id is the old INFO's), GUIDE (DUELL 0.2.11:
  * the first-start guide's pages again, ui_guide.c; no editor id) and ABOUT, the rows with no value
  * (menu_valued; up to 0.2.13 the rows after MI_VALUES). 1.0.5: in four tabs (MI_TAB); 1.2: five.
@@ -22,8 +22,15 @@
  * the order is no id. MI_NAME is the editor's name (at most 12 characters, ed_str) and the device's label unless MI_LABEL has one */
 enum { MI_COLOR, MI_LEDS, MI_SCLLED, MI_ANIM, MI_SCROFF, MI_CPU,                    /* DISPLAY */
        MI_MODERECALL, MI_HOMEPG, MI_ACCEL, MI_HOLD, MI_CHADD, MI_PREVIEW, MI_PERFLEAVE,  /* CONTROL (MULTI LOAD .. STEP KEYS .., PERF LEAVE) */
-       MI_USB, MI_CLICK, MI_CLKLVL, MI_COUNTIN, MI_TUNE,                 /* AUDIO (USB LEVEL, CLICK .. COUNT-IN, TUNE; 0.2.19: OUTPUT EQ removed) */
-       MI_RESTORE, MI_PANEL, MI_SERIAL,                                             /* SYSTEM (RESTORE LAST, BUTTON MAP, USB SERIAL) */
+#if DUELL_VELO
+       MI_KEYVEL,                                      /* (KEY VELOCITY OFF / ON: builds with KEY SENSE built in only, DUELL_VELO; no row, no editor id otherwise) */
+       MI_AFTERT,                                      /* (DUELL 1.0: AFTERTOUCH OFF / ON, its own line, the same builds) */
+#endif
+       MI_CLICK, MI_CLKLVL, MI_COUNTIN, MI_TUNE,                 /* AUDIO (CLICK .. COUNT-IN, TUNE; 0.2.19: OUTPUT EQ removed; 0.2.25: USB LEVEL removed) */
+       MI_RESTORE, MI_PANEL,                                                        /* SYSTEM (RESTORE LAST, BUTTON MAP) */
+#if FELUCCA_CDC
+       MI_SERIAL,                                      /* (USB SERIAL: developer builds only, FELUCCA_CDC: the product has no serial console, so no row that would do nothing) */
+#endif
 #if DUELL_TEST_MODE
        MI_TEST,                                        /* (developer builds only: DUELL_TEST_MODE; the release has no TEST row) */
 #endif
@@ -48,15 +55,33 @@ static int menu_valued(uint32_t row) { return row < MI_COUNT && row != MI_PANEL 
 #define MI_PROJECT(row) ((row) == MI_TUNE)   /* the project's value (song.g), not a setting */
 static const char *const MI_NAME[MI_COUNT] = {"COLOR", "LEDS", "SCALE LEDS", "ANIMATION", "SCREEN OFF", "CPU METER",
                                               "MULTI LOAD", "HOME OPENS", "KNOB ACCEL", "BUTTON HOLD", "STEP KEYS", "STEP PREVIEW", "PERF LEAVE",
-                                              "USB LEVEL", "CLICK", "CLICK LEVEL", "COUNT-IN", "TUNE",
-                                              "RESTORE LAST", "BUTTON MAP", "USB SERIAL",
+#if DUELL_VELO
+                                              "KEY VELOCITY", "AFTERTOUCH",
+#endif
+                                              "CLICK", "CLICK LEVEL", "COUNT-IN", "TUNE",
+                                              "RESTORE LAST", "BUTTON MAP",
+#if FELUCCA_CDC
+                                              "USB SERIAL",
+#endif
 #if DUELL_TEST_MODE
                                               "TEST",
 #endif
-                                              "GUIDE", "ABOUT", "ERASE DATA"};
+#if DUELL_BENCH
+                                              "BENCH",         /* (bench builds: the GUIDE row opens the BENCH screen, src/bench.c bench_input; the row and its
+                                                                * code stay as they are, so the menu's code keeps its size: the first-start GUIDE still opens) */
+#else
+                                              "GUIDE",
+#endif
+                                              "ABOUT", "ERASE DATA"};
 /* DUELL 0.2.14: the device's label where it is not MI_NAME (0: MI_NAME). One '\n' at most, a designed break (nothing wraps by itself):
  * the line after it is drawn small (S, MID: a hint, or the rest of a long name) and the row takes two units (ui_menu.c) */
-static const char *const MI_LABEL[MI_COUNT] = {[MI_SERIAL] = "USB SERIAL\nDEVELOPER CONSOLE"};   /* (USB SERIAL: its hint) */
+static const char *const MI_LABEL[MI_COUNT] = {
+#if FELUCCA_CDC
+    [MI_SERIAL] = "USB SERIAL\nDEVELOPER CONSOLE"      /* (USB SERIAL: its hint) */
+#else
+    0
+#endif
+};
 static const char *menu_label(uint32_t row)
 {
     return row >= MI_COUNT ? "" : MI_LABEL[row] ? MI_LABEL[row] : MI_NAME[row];
@@ -74,8 +99,14 @@ static const uint8_t MI_TAB[MI_COUNT] = {
     MTAB_CONTROL, MTAB_CONTROL, MTAB_CONTROL, MTAB_CONTROL, MTAB_CONTROL, MTAB_CONTROL,   /* MULTI LOAD HOME OPENS KNOB ACCEL BUTTON HOLD STEP KEYS
                                                                                           * STEP PREVIEW */
     MTAB_CONTROL,                                                                         /* PERF LEAVE (FADE / KEEP; the 7th unit: one page is full) */
-    MTAB_AUDIO, MTAB_AUDIO, MTAB_AUDIO, MTAB_AUDIO, MTAB_AUDIO,                           /* USB LEVEL CLICK CLICK LEVEL COUNT-IN TUNE */
-    MTAB_SYSTEM, MTAB_SYSTEM, MTAB_SYSTEM,                                                /* RESTORE LAST BUTTON MAP USB SERIAL */
+#if DUELL_VELO
+    MTAB_CONTROL, MTAB_CONTROL,                                                           /* KEY VELOCITY, AFTERTOUCH (OFF / ON; CONTROL page 2) */
+#endif
+    MTAB_AUDIO, MTAB_AUDIO, MTAB_AUDIO, MTAB_AUDIO,                                       /* CLICK CLICK LEVEL COUNT-IN TUNE */
+    MTAB_SYSTEM, MTAB_SYSTEM,                                                             /* RESTORE LAST BUTTON MAP */
+#if FELUCCA_CDC
+    MTAB_SYSTEM,                                                                          /* USB SERIAL */
+#endif
 #if DUELL_TEST_MODE
     MTAB_SYSTEM,                                                            /* TEST (1.2: INFO) */
 #endif
@@ -83,10 +114,9 @@ static const uint8_t MI_TAB[MI_COUNT] = {
     MTAB_SYSTEM,                                                            /* ABOUT */
     MTAB_SYSTEM,                                                            /* ERASE DATA (DUELL 0.2.2: OCT+ opens its dialog, ui_menu.c) */
 };
-/* TUNE: the project's tuning in cents (G_TUNE, -50..+50); as a row its values 0..TUNE_N - 1 (value - TUNE_MIN). The
- * editor gets it as a number (EDM_INT: the cents, min..max, its unit) */
-#define TUNE_MIN (-50)
-#define TUNE_N 101u
+/* TUNE (DUELL 0.2.22: MASTER TUNE like a Roland keyboard's): the project's G_TUNE, the frequency of A4 in 0.1 Hz, 415.3 .. 466.2 Hz (core.h TUNE_MIN .. TUNE_MAX); as a row
+ * its values 0..TUNE_N - 1 (value - TUNE_MIN, 510 steps, 247 = 440.0 Hz). The editor gets it as a number in tenths (EDM_TENTHS: min..max, its unit "Hz") */
+#define TUNE_N ((uint32_t)(TUNE_MAX - TUNE_MIN + 1))
 typedef char mtab_fits_ui[sizeof ui.menu_row >= MTAB_COUNT ? 1 : -1];   /* (ui.c: the row last picked per tab) */
 static uint32_t mtab_first(uint32_t t)                 /* a tab's first row */
 {
@@ -135,12 +165,13 @@ static uint32_t mtab_pages(uint32_t t)                 /* a tab's pages (1 ..) *
 /* the two-valued rows: a bit of ui_prefs (PREF_REC: of ui_rec_prefs, ui.c PREF_SCALE_LEDS_OFF) and its names (bit clear =
  * the default, bit set). A step up (a knob right,
  * OCT+) = ON on the ON / OFF rows (the switch's knob to the right; ANIM, USB SERIAL: their bit clears), else the
- * second name (USB LEVEL FIXED); a step down the other (menu_step) */
+ * second name; a step down the other (menu_step) */
 typedef struct { uint8_t row; uint32_t bit; const char *name[2]; } menu_flag_t;
 static const menu_flag_t MENU_FLAGS[] = {
     {MI_ACCEL, PREF_ACCEL, {"OFF", "ON"}},            /* #52: ui_input.c accel */
-    {MI_USB, PREF_USB_FIXED, {"MASTER", "FIXED"}},     /* fx.c fx_usb_fixed: FIXED, USB at the default MASTER level */
+#if FELUCCA_CDC
     {MI_SERIAL, PREF_SERIAL_OFF, {"ON", "OFF"}},       /* #67: OFF, no serial console (usb_serial_apply) */
+#endif
     {MI_RESTORE, PREF_RESTORE_OFF, {"ON", "OFF"}},     /* 1.2, #130: OFF, no autosave, power-on as new (project.c) */
     {MI_SCLLED, PREF_SCALE_LEDS_OFF, {"AUTO", "OFF"}}, /* 1.2, Discussion #127; 0.2.5: AUTO (default), the keys show the scale when it is not CHROMATIC; OFF, they do not (ui_input.c) */
                                                        /* (1.2's SCOPE OUT / MIX, ui_prefs2 bit 0: removed in DUELL 0.2.14, the bit ignored) */
@@ -167,11 +198,11 @@ static const uint8_t ANIM_ORD[3] = {1, 0, 2};          /* (a value's place in th
  * its byte [15][26] kept as stored) */
 /* HOME OPENS (DUELL): the page the HOME button opens from another page, power-on and leaving the menu (ui.c go_main): MORPH (the
  * default, stored 0), MODE, MIXER; ui_home_pg (ui.c), an unknown stored code reads as MORPH (0.2.14: OVERVIEW's 3 too) */
-static const char *const HOMEPG_N[HP_COUNT] = {"MORPH", "MODE", "MIXER"};
+static const char *const HOMEPG_N[HP_COUNT] = {"MORPH", "MODE"};   /* (0.2.25: MIXER left HOME for GLO; a stored MIXER reads MORPH) */
 /* (SCALE LINK, a CONTROL row of 0.2.1 builds before the global scale, is RETIRED: the scale is the instrument's, core.h; the editor protocol never
  * listed it, so no id is lost) */
 
-/* MENU > USB SERIAL (#67). The serial console is a developer tool (README: FELUCCA_CDC). DUELL 0.2.14: OFF is the default (a new unit,
+/* MENU > USB SERIAL (#67). The serial console is a developer tool (README: FELUCCA_CDC); since memory trim 1 only developer builds (DUELL_BENCH / DUELL_TEST_MODE) have it, and the row. The product never has it: usb_serial_apply is empty there, and the saved PREF_SERIAL_OFF bit is read by nobody. DUELL 0.2.14: OFF is the default (a new unit,
  * ERASE DATA, and once on a unit that had the old default ON: settings_persist.c settings_defaults). ON presents it,
  * the descriptors byte for byte as before; OFF re-enumerates as audio + MIDI only, device class 0 (the bytes of a
  * FELUCCA_CDC=0 build): macOS 13-15 then attach their USB audio driver (with the console Apple's CDC composite driver
@@ -180,14 +211,20 @@ static const char *const HOMEPG_N[HP_COUNT] = {"MORPH", "MODE", "MIXER"};
  * on then off) and while the menu is closed (ui_input: one re-enumeration when it closes, not one per KNOB 1 step).
  * A change from the editor (MENU_SET) waits 200 ms (menu_serial_at) so its reply leaves before the device drops off
  * the bus: the whole device re-enumerates, USB-MIDI and audio too */
+#if FELUCCA_CDC
 static uint32_t menu_serial_at;                        /* fm1_ms | 1 of the editor's change; 0 none */
+#endif
 static void usb_serial_apply(void)
 {
 #if FELUCCA_CDC
     if (menu_serial_at && fm1_ms - (menu_serial_at & ~1u) < 200u)   /* (& ~1: at an even fm1_ms the | 1 was 1 ms ahead) */
         return;
     menu_serial_at = 0;
+#if DUELL_BENCH
+    usb_cdc_switch(FELUCCA_CDC_DEFAULT);                /* (bench builds: the console is always presented, whatever USB SERIAL says: the bench suite's runner needs it) */
+#else
     usb_cdc_switch(FELUCCA_CDC_DEFAULT && !(ui_prefs & PREF_SERIAL_OFF));   /* (a FELUCCA_CDC_DEFAULT=0 build: off) */
+#endif
 #endif
 }
 static const menu_flag_t *menu_flag(uint32_t row)
@@ -219,8 +256,12 @@ static uint32_t menu_get(uint32_t row)
     case MI_ANIM: return ui_prefs & PREF_ANIM_OFF ? 1u : (ui_idle & 1u) ? 2u : 0u;
     case MI_HOMEPG: return ui_home_pg < HP_COUNT ? ui_home_pg : HP_MORPH;
     case MI_PERFLEAVE: return perf_keep();
+#if DUELL_VELO
+    case MI_KEYVEL: return keyvel_on();                /* 1 = ON (the stored bit is ON: set = ON, clear = OFF, the default) */
+    case MI_AFTERT: return aftert_on();                /* the same, bit 7 */
+#endif
     case MI_CLICK: case MI_CLKLVL: case MI_COUNTIN: return rp_get(row - MI_CLICK);
-    case MI_TUNE: return (uint32_t)(clamp(song.g[G_TUNE], TUNE_MIN, TUNE_MIN + (int32_t)TUNE_N - 1) - TUNE_MIN);
+    case MI_TUNE: return (uint32_t)((song.g[G_TUNE] >= TUNE_MIN && song.g[G_TUNE] <= TUNE_MAX ? song.g[G_TUNE] : TUNE_DEF) - TUNE_MIN);   /* (out of range: 440.0) */
     case MI_LEDS:
         while (i + 1u < LEDS_COUNT && LEDS_MENU[i] != settings_leds)
             i++;
@@ -242,19 +283,20 @@ static const char *menu_vname(uint32_t row, uint32_t v)
     case MI_SCROFF: return SCROFF_N[v % NELEM(SCROFF_N)];
     case MI_ANIM: return ANIM_N[v % 3u];
     case MI_HOMEPG: return HOMEPG_N[v % HP_COUNT];
+#if DUELL_VELO
+    case MI_KEYVEL: case MI_AFTERT: return v & 1u ? "ON" : "OFF";
+#endif
     case MI_PERFLEAVE: return v & 1u ? "KEEP" : "FADE";   /* DUELL 0.2.14: leaving PERFORM / loading a sound: SPACE and KILL fade to neutral (default) / stay */
     case MI_LEDS: return LEDS_NAME[LEDS_MENU[v % LEDS_COUNT]];
-    case MI_TUNE: {                                    /* the cents, signed ("+12", "0", "-7"; the menu adds "ct") */
+    case MI_TUNE: {                                    /* A4 in Hz with one decimal ("440.0"; the menu adds "Hz") */
         static char b[8];
-        int32_t c = (int32_t)(v % TUNE_N) + TUNE_MIN;
-        b[0] = '+';
-        fmt_int(b + (c > 0), c);
+        fmt_fix(b, (int32_t)(v % TUNE_N) + TUNE_MIN, 1);
         return b;
     }
     }
     return "";
 }
-/* set a row (v below menu_n(row)) and do what the menu does on a change: the palette, the EQ and USB LEVEL at once;
+/* set a row (v below menu_n(row)) and do what the menu does on a change: the palette and the EQ at once;
  * ANIM, LEDS, HOLD, the flags are read where they are used, every frame;
  * USB SERIAL when the menu has closed (usb_serial_apply). Saved by the caller (menu_close, the editor). TUNE: the project's
  * value, as its page knob set it up to 1.1.5 (voice.c reads TUNE); kept with the project (the autosave), not by settings_save */
@@ -268,7 +310,6 @@ static void menu_put(uint32_t row, uint32_t v)
             ui_rec_prefs = (uint8_t)(v ? ui_rec_prefs | f->bit >> 8 : ui_rec_prefs & ~(f->bit >> 8));
         else
             ui_prefs = (uint8_t)(v ? ui_prefs | f->bit : ui_prefs & ~f->bit);
-        fx_usb_fixed = (ui_prefs & PREF_USB_FIXED) != 0u;   /* (at once; every frame too: ui_input) */
         return;
     }
     switch (row) {
@@ -285,14 +326,24 @@ static void menu_put(uint32_t row, uint32_t v)
         break;                                         /* (1.5: up to 1.4.1 it fell through: ANIM set HOME too) */
     case MI_HOMEPG: ui_home_pg = (uint8_t)(v < HP_COUNT ? v : HP_MORPH); break;   /* (read where HOME opens: go_main) */
     case MI_LEDS: settings_leds = LEDS_MENU[v]; break;
+#if DUELL_VELO
+    case MI_KEYVEL:                                    /* (ON = the bit set; sense.c takes it at once, ui_input.c again every frame) */
+        ui_idle = (uint8_t)(v ? ui_idle | KEYVEL_ON_BIT : ui_idle & ~KEYVEL_ON_BIT);
+        sense_enable(v != 0u);
+        break;
+    case MI_AFTERT:                                    /* (its own bit, inverted: the bit set = OFF, so the default is ON; the keys' channel pressure) */
+        ui_idle = (uint8_t)(v ? ui_idle & ~AFTERT_OFF_BIT : ui_idle | AFTERT_OFF_BIT);
+        sense_at_enable(v != 0u);
+        break;
+#endif
     case MI_PERFLEAVE: ui_idle = (uint8_t)(v ? ui_idle | PERF_KEEP_BIT : ui_idle & ~PERF_KEEP_BIT); break;   /* (read where PERFORM is left: ui_perform.c) */
     case MI_CLICK: case MI_CLKLVL: case MI_COUNTIN: rp_put(row - MI_CLICK, v); break;   /* (at once: click.c, seq.c) */
     case MI_TUNE: song.g[G_TUNE] = (int16_t)((int32_t)v + TUNE_MIN); break;
     }
 }
 /* the menu's step, any of KNOB 1..4 or OCT+ (s > 0) / OCT- (s < 0): the next / previous value, stopping at the ends;
- * COLOR wraps round its palettes. On an ON / OFF row up is ON (MENU_FLAGS). TUNE: s cents at a time (101 values: a fast
- * turn goes as far as the knob went, as the old page's knob did) */
+ * COLOR wraps round its palettes. On an ON / OFF row up is ON (MENU_FLAGS). TUNE: s steps of 0.1 Hz at a time (510 values; ui_menu.c
+ * gives a fast turn KNOB ACCEL's multiple over that range, up to x8) */
 static uint32_t menu_step(uint32_t row, int32_t s)
 {
     const menu_flag_t *f = menu_flag(row);

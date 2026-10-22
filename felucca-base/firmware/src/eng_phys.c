@@ -156,7 +156,7 @@ static void phys_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const 
     if (n > CTL)
         n = CTL;
     if (S->model != md)                                  /* MODEL changed under a sounding note */
-        phys_reset(S, md, rng());
+        phys_reset(S, md, part_rand(t, &t->rngs));      /* (job 3: part 1 the shared generator, the others their own: voice.c part_rand) */
     switch (md) {
     case PM_MODAL: {
         px_modal_blk_t B;

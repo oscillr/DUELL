@@ -13,20 +13,12 @@
  *              the controls (1.2 pages, Discussion #153): SEQ > AUTOMATION's QUANTIZE row (KNOB 4 ON / OFF) and NUDGE
  *              rows (+ ADD NUDGE +4/16, KNOB 4 -8..+7, KNOB 2 the step, EDIT 0; "QUANTIZE IS ON"
  *              while it is), and on STEP steps held + the PRESETS knob (let go: the cursor).
- *   MOTION     128 records shared by the four tracks, all played.
+ *   MOTION     128 records shared by the tracks, all played.
  *   (DUELL: the FORMATS group, FUN10's four-track pack layout, is gone with FUN10: FUN11 stores parts A and B, and
  *   tests/project_test.c holds the format round trips and the refusal of FUN1..FUN10, 0.2.14.)
  * Built and run by tests/run_tests.sh. */
 #define UI_TEST_NO_MAIN 1
 #include "ui_test.c"
-/* (DUELL: the song chain is a stored format only; the old chain_row_of helper is local to this test) */
-static chain_row_t chain_row_of(uint32_t slot, uint32_t repeat)
-{
-    chain_row_t r;
-    for (uint32_t k = 0; k < NTRK; k++) r.slot[k] = (uint8_t)slot;
-    r.repeat = (uint8_t)repeat;
-    return r;
-}
 
 /* ---------------------------------------------------------------- LFO 2 --- */
 /* the LFO's phase over `blocks` blocks, in cycles (wraps + the phase) */
@@ -153,10 +145,11 @@ static int lfo(void)
         int32_t g[4];
         t->p[P_M1SRC] = MS_LFO; t->p[P_M1DST] = MD_AMP; t->p[P_M1AMT] = 63;
         t->lfo_fade = 32767;
-        t->p[P_LPOL] = 0; t->lfo_val = 0; mod_begin(t); g[0] = mod.gain; mod_end(t);
-        t->p[P_LPOL] = 1; t->lfo_val = 0; mod_begin(t); g[1] = mod.gain; mod_end(t);
-        t->lfo_val = 16384; mod_begin(t); g[2] = mod.gain; mod_end(t);
-        t->p[P_LPOL] = 0; t->lfo_val = -32768; mod_begin(t); g[3] = mod.gain; mod_end(t);
+        /* (0.2.25: mapping probes: each value at once, not through the matrix's source slew: mx_sl[].ok cleared before each) */
+        t->p[P_LPOL] = 0; t->lfo_val = 0; mx_sl[0].ok = 0; mod_begin(t); g[0] = trk[0].mdw.gain; mod_end(t);
+        t->p[P_LPOL] = 1; t->lfo_val = 0; mx_sl[0].ok = 0; mod_begin(t); g[1] = trk[0].mdw.gain; mod_end(t);
+        t->lfo_val = 16384; mx_sl[0].ok = 0; mod_begin(t); g[2] = trk[0].mdw.gain; mod_end(t);
+        t->p[P_LPOL] = 0; t->lfo_val = -32768; mx_sl[0].ok = 0; mod_begin(t); g[3] = trk[0].mdw.gain; mod_end(t);
         bad += check("  the matrix's LFO > AMP: UNI 0 = BI -1 (closed), UNI 0.5 = BI 0", g[1] == g[3] && abs(g[2] - g[0]) < 64 &&
                      g[1] < 1000);
         t->p[P_M1SRC] = t->p[P_M1DST] = t->p[P_M1AMT] = 0;
@@ -437,8 +430,8 @@ static int motion128(void)
     int bad = 0, ok = 1;
     uint32_t i;
     track_t *t = seq1(1);
-    for (i = 0; i < MOTION_MAX - 1u; i++)            /* 127 on tracks 2..4 */
-        ok &= !motion_set_event(&trk[1 + i % 3u], (i / 3u) % NSTEP, i / 3u < NSTEP ? P_REV : P_DLY, 5);
+    for (i = 0; i < MOTION_MAX - 1u; i++)            /* 127 on track 2 (DUELL: two tracks; the 127 records need 64 steps x 2 ids) */
+        ok &= !motion_set_event(&trk[1], i % NSTEP, i / NSTEP ? P_DLY : P_REV, 5);
     ok &= !motion_set_event(t, 3, P_REV, 90) && motion.count == MOTION_MAX && motion_set_event(t, 4, P_REV, 1) == 2;
     seq_start();
     for (i = 0; i < 4u * P16 / CTL + 2u; i++)

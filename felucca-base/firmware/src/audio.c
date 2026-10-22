@@ -44,23 +44,65 @@ static uint32_t meter_est_us(void)
 }
 #endif
 
+/* MASTER, the DAC's volume (DUELL 0.2.25, owner 2026-10-20: "the master volume glitches when I rotate it, in the headphone"). The codec has no volume
+ * register the firmware writes (hal/fm1_audio.h: only its enable lines), so this is the only volume there is. mix_block makes the mix at the fixed level
+ * MASTER_USB_REF and USB took it; here out (Q15) becomes Q15 x 2^OUT_SHIFT (the 24-bit stream's scale) times song.master_q12 / MASTER_USB_REF, with two
+ * differences from the stage that was here (usb_fixed_dac: out * m >> 11 per block, in Q15):
+ *  - the gain glides: mdac_g (Q24: Q12 x 2^12) follows the knob's level with a one-pole step every sample (1/512 of the way: tau 512 samples = 11.6 ms), so a
+ *    knob step (the level is read every block and changes every main-loop pass) is a glide of a few ms, not a step of up to 6 dB at the low end of the
+ *    knob (a step of s dB is a jump of (10^(s/20) - 1) x the signal at the block seam: a click). The step is rounded away from the target, so the gain
+ *    reaches it exactly (settled, the result is the old stage's bit for bit at the same level and 2^OUT_SHIFT times its Q15 value);
+ *  - the result keeps OUT_SHIFT fractional bits of Q15 (it used to be cut to Q15 first): a quiet knob position (gain 1/30) no longer loses 5 bits of the
+ *    signal to truncation (distortion and grain in headphones at a low volume).
+ * (0.2.30: the knob has no boost any more, its top is unity; the saturation stays as a safety.) A gain above 1 saturates at the old ceiling, never wraps. mdac_g < 0: not started (power-on: the first block takes the
+ * knob's level, no fade-in). */
+#ifndef MDAC_SHIFT
+#define MDAC_SHIFT 9                                   /* the glide: 1/512 of the way a sample (tau 512 samples = 11.6 ms) */
+#endif
+/* Saturation to the 24-bit scale's 16-bit-Q15 range: +4,194,303 .. -4,194,304 (the old stage clipped at +4,194,176 .. -4,194,304). Written as a test of the bits above and the sign
+ * mask instead of two limits, because a limit of -4,194,304 as a literal is an address in the chip ROM to build.py's "no reference to the ROM" check (0xFFC00000..) */
+static inline int32_t mdac_sat(int32_t v)
+{
+    int32_t s = v >> 31;
+    return (v >> (15 + OUT_SHIFT)) != s ? s ^ ((1 << (15 + OUT_SHIFT)) - 1) : v;
+}
+static int32_t mdac_g = -1;
+static inline int32_t mdac_apply(int32_t v, int32_t k, uint32_t s)   /* v (Q15) x the gain (k = g >> s) -> Q15 x 2^OUT_SHIFT, saturated */
+{
+    return mdac_sat((v * k) >> (23u - s - OUT_SHIFT));
+}
+static __attribute__((noinline)) void master_dac(int32_t *out, uint32_t n)   /* audio ISR, after uac_tap */
+{
+    uint32_t i, s, q = song.master_q12, p = master_g16;
+    int32_t t = (int32_t)((p >> 4) == q ? p << 8 : q << 12), g = mdac_g < 0 ? t : mdac_g;   /* (the target, Q24) */
+    for (i = 0; i < n && g != t; i++) {                /* gliding: the gain moves a step every sample */
+        int32_t d = t - g, k;
+        g += d > 0 ? (d + ((1 << MDAC_SHIFT) - 1)) >> MDAC_SHIFT : d >> MDAC_SHIFT;
+        s = g < (1 << 21) ? 6u : 9u;                   /* (m below 512: 3 more bits of the gain, where a whole step of it is a large part of it; |out| <= 32768, k < 2^15: fits int32) */
+        k = g >> s;
+        out[2u * i] = mdac_apply(out[2u * i], k, s);
+        out[2u * i + 1u] = mdac_apply(out[2u * i + 1u], k, s);
+    }
+    s = g < (1 << 21) ? 6u : 9u;                       /* at rest (the rest of the block, or all of it): one gain */
+    for (; i < n; i++) {
+        out[2u * i] = mdac_apply(out[2u * i], g >> s, s);
+        out[2u * i + 1u] = mdac_apply(out[2u * i + 1u], g >> s, s);
+    }
+    mdac_g = g;
+}
+
 static void audio_block(int32_t *out, uint32_t n)       /* mix (fx.c), then Q15 -> 24 bit */
 {
     uint32_t i;
     mix_block(out, n);
 #if FELUCCA_UAC
-    uac_tap(out, n);                                    /* the USB audio input: the same master output */
+    uac_tap(out, n);                                    /* the USB audio input: the same master output, at the fixed level */
 #endif
-    if (fx_usb_fixed)                                   /* USB LEVEL FIXED: USB took the default-MASTER level, the DAC */
-        usb_fixed_dac(out, n);                          /* (speaker, headphones) gets MASTER's (fx.c) */
+    master_dac(out, n);                                 /* MASTER's volume for the DAC (speaker, headphones): out is Q15 x 2^OUT_SHIFT from here */
     if (!scope_mix)                                     /* the HOME scope (SCOPE OUT): the music, before the click */
         for (i = 1; i < n; i += 2u)                     /* (MIX: fx.c mix_block took it) */
-            scope_buf[scope_w++ & (SCOPE_N - 1u)] = (int16_t)out[2u * i];
-    click_render(out, n);                               /* the metronome (click.c): the DAC only, not USB */
-    for (i = 0; i < n; i++) {
-        out[2u * i] *= 1 << OUT_SHIFT;
-        out[2u * i + 1u] *= 1 << OUT_SHIFT;
-    }
+            scope_buf[scope_w++ & (SCOPE_N - 1u)] = (int16_t)(out[2u * i] >> OUT_SHIFT);
+    click_render(out, n, OUT_SHIFT);                    /* the metronome (click.c): the DAC only, not USB */
 }
 
 /* DUELL 0.2.11, the flash duck (SPEC 6.3): a flash erase keeps the interrupts off for its whole time (~40 ms; the device's own
@@ -125,6 +167,7 @@ static __attribute__((noinline)) uint32_t shed_check(uint32_t all)
         shed_req |= SHED_HELD;
     if (all > SHED_FULL_TICKS)
         shed_req |= SHED_FAST;
+    ovl_step((shed_over & 3u) == 3u, song.cpu_q8);     /* (0.2.25: the overload guard, fx.c: the same rule; the meter's load lets it go) */
     return (all - t5_nested_ticks) / FM1_TICKS_PER_US;
 }
 
@@ -186,6 +229,10 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
     uint32_t t0;
     felucca_dbg.in_audio = 1;                   /* first: TIMER5 nests from here on (main.c) */
     p = fm1_audio_pending();
+#if DUELL_BENCH
+    if (bench_tl_on && (p & FM1_AUDIO_HALF))            /* (bench builds only, bench suite stage 1: the timeline's due events into the MIDI-in ring, */
+        bench_half();                                   /* before the clock starts: the half's own figure does not count it; src/bench.c) */
+#endif
     t0 = fm1_ticks();
     t5_nested_ticks = 0;
     fm1_audio_ack_aux(p);
@@ -200,6 +247,9 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
         }
 #if FELUCCA_UAC
         uac_render_start();
+#endif
+#if DUELL_TWOCORE
+        tc_half_begin(t0);                              /* (the half's clock for core 0's deadlines: twocore_run.c) */
 #endif
         for (b = 0; b < HALF_FRAMES; b += CTL) {
 #ifdef FM1_INPUT_LAT

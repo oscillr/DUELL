@@ -3,7 +3,7 @@
 /* Felucca UI: the panel (Y_GRAPH .. Y_GRAPH + H_GRAPH) between the cards and the footer: a SURF area
  * (rounded, on BG) holding the page graphs (ADSR, LFO, steps, piano roll, scale, FX, SLICER,
  * MOD, lists: presets, user presets, patterns, project slots, song), the HOME oscilloscope, the
- * instrument diagrams; the MIXER page draws both parts side by side instead (ui_layer.c mixer_panel). Each graph is redrawn only when
+ * instrument diagrams (GLO's MIXER page is drawn by ui_layer.c draw_layer, as the hold-GLO layer). Each graph is redrawn only when
  * graph_signature() changes. The look:
  * curves THEME (2 px), guides and empty marks RAISE, captions MID / DIM, the active thing ACCENT,
  * bars rounded; a list's selected row is a THEME bar with INK text. */
@@ -12,16 +12,24 @@
 #define GOY 11                                       /* graphs drawn on a 100 px scale sit at y 11..111 */
 /* the height ADSR and LFO are drawn on: 100 px */
 #define graph_ht 100
+static uint32_t knob_slot(const page_t *pg, uint32_t k);   /* (ui_draw.c, T0227: the page slot a knob addresses once the cards moved left) */
 #include "ui_fm6op.c"                                /* EDIT > OPERATOR, OP ENV, OPERATOR 2: FM6's operators (their charts below) */
 
 /* Matches voice.c: attack is linear, decay and release are exponential
  * (env += (target - env) * k each tick, ~99 % after the set time). Time
  * axis is the parameter value (the times themselves are exponential). */
+/* the envelope a GR_ADSR page draws (0.2.25 layout round, owner: a DEST page draws its envelope's curve, as its first page): AMP DEST the AMP ENV's, ENV 2 DEST ENV 2's;
+ * the envelope pages their own four. -> its first id (ATTACK; DECAY, SUSTAIN, RELEASE follow it) */
+static uint32_t env_of(const page_t *pg)
+{
+    return pg->id[0] == P_ED_PIT ? (uint32_t)P_ATK : pg->id[0] == P_E2FLT ? (uint32_t)P_E2ATK : pg->id[0];
+}
 static void graph_adsr(const track_t *t, uint16_t c)
 {
     const page_t *pg = cur_page();
-    int32_t a = 4 + t->p[pg->id[0]] * 50 / 127, d = 6 + t->p[pg->id[1]] * 50 / 127, r = 6 + t->p[pg->id[3]] * 60 / 127;
-    int32_t top = 6 * graph_ht / 100, bot = 88 * graph_ht / 100, sus = t->p[pg->id[2]] * 1000 / 127;   /* 0..1000 */
+    uint32_t e0 = env_of(pg);
+    int32_t a = 4 + t->p[e0] * 50 / 127, d = 6 + t->p[e0 + 1u] * 50 / 127, r = 6 + t->p[e0 + 3u] * 60 / 127;
+    int32_t top = 6 * graph_ht / 100, bot = 88 * graph_ht / 100, sus = t->p[e0 + 2u] * 1000 / 127;   /* 0..1000 */
     int32_t x0 = 12, x1 = x0 + a, x3 = 226 - r, i, px, py;
     int32_t e = 32768;                                                  /* exp(-4.6 u), Q15 */
 #define EGY(lvl) (bot - (lvl) * (bot - top) / 1000)
@@ -53,7 +61,7 @@ static void graph_adsr(const track_t *t, uint16_t c)
 static void graph_lfo(const track_t *t, uint16_t c)
 {
     const page_t *pg = cur_page();
-    int l2 = (pg->id[0] >= P_L2RATE && pg->id[0] <= P_L2FADE) || (pg->id[0] >= P_L2SYNC && pg->id[0] <= P_L2POL);   /* DUELL: LFO 2's pages (any of its ids in slot 1) draw LFO 2 */
+    int l2 = (pg->id[0] >= P_L2RATE && pg->id[0] <= P_L2FADE) || (pg->id[0] >= P_L2SYNC && pg->id[0] <= P_L2POL) || pg->id[0] == P_L2PIT;   /* DUELL: LFO 2's pages (any of its ids in slot 1) draw LFO 2; 0.2.25: LFO 2 DEST too (LFO 1 DEST: LFO 1's) */
     uint32_t r = l2 ? P_L2RATE : P_LRATE, s = l2 ? P_L2SYNC : P_LSYNC;
     int32_t x, cy = graph_ht / 2, a = 38 * graph_ht / 100, py = cy, uni = t->p[s + 2u] != 0;
     uint32_t ph = (uint32_t)t->p[r + 2u] << 25;
@@ -384,6 +392,13 @@ static void graph_insert(const track_t *t, uint16_t c)
  * nothing (SRC, DEST or AMT at 0, or a destination the part cannot move now: mod.c mod_dst_why) dim. Under them (0.2.7, owner:
  * "you do not know what E7 or SYNC is") the selected slot's destination in full, "DEST: WAVE SYNC" (M), and on a line of its
  * own (S) why it does nothing, or which bus a bus value moves (mod.c mod_dst_line) */
+/* a matrix source as the unit shows it (T0227, owner: the second envelope is FILT ENV; the stored N_MSRC names stay the keys: the factory sound tool, the editor).
+ * (AMP ENV stays AENV here: "AMP ENV" is 50 px, the SOURCE card's value has 49) */
+static const char *msrc_shown(int32_t s)
+{
+    s = clamp(s, 0, MS_N - 1);
+    return s == MS_ENV2 ? "FILT ENV" : N_MSRC[s];
+}
 static void graph_mod(const track_t *t, uint16_t c)
 {
     uint32_t k, base = mod_page_base(cur_page());      /* (MOD: slots 1..4, MOD 2: 5..8) */
@@ -403,11 +418,31 @@ static void graph_mod(const track_t *t, uint16_t c)
         GFX_HOOK_ALIGN(0, y, 0, y + 17, AL_V, "mod row text centred up/down");
         cv_text_on(14, y + CAP_IN(M, 17), &AF_M, b, sel ? T_INK : T_MID, bg);
         GFX_HOOK_ALIGN(0, y, 0, y + 17, AL_V, "mod row text centred up/down");
-        cv_text_on(30, y + CAP_IN(M, 17), &AF_M, N_MSRC[clamp(p[0], 0, MS_N - 1)], col, bg);
+        if (text_w(&AF_M, msrc_shown(p[0])) <= 54)       /* (T0227: FILT ENV in S: the column has 54 px) */
+            cv_text_on(30, y + CAP_IN(M, 17), &AF_M, msrc_shown(p[0]), col, bg);
+        else
+            cv_text_on(30, y + CAP_IN(S, 17), &AF_S, msrc_shown(p[0]), col, bg);
         cv_line(84, y + 8, 98, y + 8, col);              /* an arrow */
         cv_line(94, y + 4, 98, y + 8, col);
         cv_line(94, y + 12, 98, y + 8, col);
-        cv_text_on(106, y + CAP_IN(M, 17), &AF_M, mod_dst_name(t, p[1]), col, bg);
+        {                                                /* (T0229: a two-line name, FILTER RES, on one line in S) */
+            const char *dn = mod_dst_name(t, p[1]);
+            char one[16];
+            uint32_t i;
+            for (i = 0; dn[i] && i < 15u; i++)
+                one[i] = dn[i] == '\n' ? ' ' : dn[i];
+            one[i] = 0;
+            if (text_w(&AF_S, one) > 64 && p[1] >= MD_AATK) {   /* (the AMP ENV times: AMP ATK .. in the 64 px of a row; the DEST card and line say them in full) */
+                static const char *const AT[4] = {"AMP ATK", "AMP DEC", "AMP SUS", "AMP REL"};
+                str_cpy(one, AT[(p[1] - MD_AATK) & 3], sizeof one);
+            } else if (text_w(&AF_S, one) > 64 && (p[1] == MD_CUT || p[1] == MD_CUT2)) {   /* (1.0, owner: MULTI CUTOFF / TWIN CUTOFF do not fit a row's 64 px (81, 77): MULTI CUT 60 px, TWIN CUT 56 px) */
+                str_cpy(one, p[1] == MD_CUT ? "MULTI CUT" : "TWIN CUT", sizeof one);
+            }
+            if (text_w(&AF_M, one) <= 64)
+                cv_text_on(106, y + CAP_IN(M, 17), &AF_M, one, col, bg);
+            else
+                cv_text_on(106, y + CAP_IN(S, 17), &AF_S, one, col, bg);
+        }
         param_format(&TP[P_M1AMT], p[2], b, &unit);
         GFX_HOOK_ALIGN(0, y, 0, y + 17, AL_V, "mod row text centred up/down");
         x = cv_text_on(172, y + CAP_IN(M, 17), &AF_M, b, col, bg) + 2;
@@ -448,8 +483,8 @@ static void graph_wheel(const track_t *t, uint16_t c)
     for (k = 0; k < 9u; k++) {
         int32_t x = 11 + (int32_t)k * 25, level = drw_level(t->p, k);
         if (t->p[P_E4] && k == 8u) level = 0; /* DSP's percussion cancels the 1-foot bar. */
-        int hot = ui.hot_t && cur_page()->id[0] == P_E0 &&
-                  (ui.hot_col == 0u || ui.hot_col == (k < 2u ? 1u : k < 4u ? 2u : 3u));
+        uint32_t he = ui.hot_t && knob_slot(cur_page(), ui.hot_col) < 4u ? pg_id(cur_page(), knob_slot(cur_page(), ui.hot_col)) : 0u;   /* (T0227: the card turned, whichever page) */
+        int hot = he >= P_E0 && he <= P_E3 && (he == P_E0 || (k >= 2u && he - P_E0 == (k < 4u ? 2u : 3u)));   /* (the sub bars: REG's alone) */
         cv_rrect(x + 7, 2, 4, 73, 2, T_RAISE, T_SURF);
         if (level) cv_rrect(x + 3, 75 - level * 8, 12, level * 8, 3, hot ? T_ACCENT : c, T_SURF);
         else cv_rrect(x + 3, 73, 12, 2, 1, hot ? T_ACCENT : T_DIM, T_SURF);
@@ -549,7 +584,7 @@ static uint32_t fm6_alg_of(const track_t *t)
 static void graph_fm6(const track_t *t, uint16_t c, uint32_t sel)
 {
     uint32_t alg = fm6_alg_of(t), k, j, car = fm6_car_ops(alg), top = 0, hi = 0, fbop = fm6_fb_op(alg), hotset = 0;
-    uint32_t hot = ui.hot_t ? pg_id(cur_page(), ui.hot_col) : 0u;
+    uint32_t hot = ui.hot_t && knob_slot(cur_page(), ui.hot_col) < 4u ? pg_id(cur_page(), knob_slot(cur_page(), ui.hot_col)) : 0u;
     const uint8_t *pt = fm6_patch[(t - trk) % NTRK];
     int32_t x[6], y[6], bus, cl = 240, cr = 0, fb = clamp(pt[FP_FB] + t->p[P_E1], 0, 7);
     uint8_t m[6], fan[6] = {0, 0, 0, 0, 0, 0};
@@ -675,7 +710,7 @@ static const char *graph_project_name(uint32_t slot)  /* (after graph_project_us
 
 
 /* the page's name and its number in its family, apart (the header shows the name, the footer the number; nm holds
- * 16, ct 8; ct empty: the page is alone in its family): "ENV DEST" "2/2", EDIT: the engine's "OSC" "1/2"; the piano
+ * 20, ct 8; ct empty: the page is alone in its family): "ENV DEST" "2/2", EDIT: the engine's "OSC" "1/2"; the piano
  * roll: its scale ("C MIN") for the name. Returns 1 for a piano roll whose scale is the name (the strip's title
  * leaves the number out there) */
 static int page_parts(char *nm, char *ct)
@@ -685,7 +720,8 @@ static int page_parts(char *nm, char *ct)
     const engine_t *e = ENGINES[t->eng_req % NENGINES];
     uint32_t i, n = 0, k = 0;
     int roll = 0;
-    const char *pt = pg->scope == SC_ENGINE ? e->page_title[pg->id[0] != P_E0] : 0;   /* EDIT: the engine's */
+    const char *pt = pg->scope == SC_ENGINE && pg->graph != GR_ENGINE ? e->name : 0;   /* EDIT 1 / 2: the engine's name (T0227: the pages no longer follow its two groups;
+                                                     * ENGINE: its own title) */
     ct[0] = 0;
     for (i = 0; i < NPAGES && pg->scope != SC_TEST && pg->scope != SC_PERF; i++)   /* (TEST, PERFORM: on no family's round, no number) */
         if (PAGES[i].fam == pg->fam && page_visible(i)) {
@@ -693,7 +729,7 @@ static int page_parts(char *nm, char *ct)
             if (i == ui.page)
                 k = n;
         }
-    str_cpy(nm, pt ? pt : pg->title, 16);
+    str_cpy(nm, title_shown(pt ? pt : pg->title), 20);   /* (T0227: the shown title, params.c title_shown) */               /* (0.2.21: 20, "MULTI FILTER 1/2" is 16) */
     if (pg->scope == SC_SCALE)                      /* the SCALE page is GLOBAL (core.h): its title says so, whichever part is selected */
         str_cpy(nm, "GLOBAL SCALE", 16);
                                                     /* (HOME's pages: "MORPH 1/4"; 0.2.14: OVERVIEW is no longer the round's last, 1/5) */
@@ -714,14 +750,566 @@ static int page_parts(char *nm, char *ct)
  * scale ("C MIN"); ti holds 28 (the strip) */
 static void page_title(char *ti)
 {
-    char nm[16], ct[8];
+    char nm[20], ct[8];
     int roll = page_parts(nm, ct);
-    str_cpy(ti, nm, 16);
+    str_cpy(ti, nm, 20);
     if (ct[0] && !roll) {
         str_cpy(ti + str_len(ti), " ", 4);
         str_cpy(ti + str_len(ti), ct, 8);
     }
 }
+/* ---------------------------------------------- 0.2.25 layout round: the pictures of the EQ, the filters, the compressor and the arp ---
+ * (owner: a natural picture wherever there is one, in place of the scope). All static (drawn when a value changes; graph_signature), in the UI loop only,
+ * from the audio's own formulas (fx.c eq_design, cmp_gr, cmp_mk; voice.c uf_run's weights and dampings; seq.c's note order), at a low resolution:
+ * the frequency pictures are 56 points 4 px apart over 20 Hz .. 20 kHz (a log axis, PANEL_W wide). Integer only (the device has no FPU) */
+#define GF_N 56u                                     /* the points of a frequency curve, 4 px apart */
+#define GF_STEP 74307u                               /* their ratio, 1000^(1/55) in Q16 (20 Hz .. 20 kHz) */
+#define GF_F0 (20u << 8)                             /* the first point, 20 Hz in Q8 */
+/* 256 x log2 of a power (a 64-bit value >= 1) */
+static int32_t gr_lg64(uint64_t a)
+{
+    int32_t sh = 0;
+    while (a >> 32) {
+        a >>= 1;
+        sh += 256;
+    }
+    return cmp_lg((uint32_t)a | 1u) + sh;
+}
+/* a power ratio num / den (as 256 log2 of each) in tenths of a dB */
+static int32_t gr_db10(int32_t lgn, int32_t lgd) { return ((lgn - lgd) * 7706) >> 16; }   /* (10 log10 2 / 256 x 10, Q16) */
+/* x of a frequency (Hz Q8) on the 20 Hz .. 20 kHz axis (0 .. PANEL_W - 4) */
+static int32_t gf_x(uint32_t f_q8)
+{
+    int32_t x = (cmp_lg(f_q8 | 1u) - cmp_lg(GF_F0)) * (int32_t)(4u * (GF_N - 1u)) / 2551;   /* (256 log2 1000 = 2551) */
+    return clamp(x, 0, (int32_t)(4u * (GF_N - 1u)));
+}
+
+/* EQ 1/2, 2/2: the curve of the three bands together (fx.c eq_design: the same coefficients the audio runs, a band at 0 dB is flat and left out), +-12 dB over
+ * the panel's height, the 0 dB line RAISE; a dot at each band's frequency on the curve (the band of the knob just turned: the accent; a band at 0 dB: DIM).
+ * |H|^2 of a biquad at w (phi = sin^2(w / 2), the form that keeps its precision at low frequencies):
+ *   ((b0 + b1 + b2)^2 - 4 (b0 b1 + 4 b0 b2 + b1 b2) phi + 16 b0 b2 phi^2) / ((1 + a1 + a2)^2 - 4 (a1 + 4 a2 + a1 a2) phi + 16 a2 phi^2) */
+typedef struct { int64_t s, p, q; } gq_t;            /* a quadratic in phi: s (Q28, squared Q56), p, q (Q28) */
+static void eq_quad(gq_t *n, gq_t *d, const eqc_t *c)
+{
+    int64_t b0 = c->b0, b1 = c->b1, b2 = c->b2, a1 = c->a1, a2 = c->a2, one = EQ_ONE;
+    n->s = b0 + b1 + b2;
+    n->p = (b0 * b1 + 4 * b0 * b2 + b1 * b2) >> 28;
+    n->q = (b0 * b2) >> 28;
+    d->s = one + a1 + a2;
+    d->p = (a1 + 4 * a2 + ((a1 * a2) >> 28));
+    d->q = a2;
+}
+static uint64_t gq_at(const gq_t *g, int64_t ph30)   /* the quadratic at phi (Q30): Q52, >= 1 (phi^2 kept to its bits: a low shelf's terms are tiny there) */
+{
+    int64_t v = ((g->s * g->s) >> 4) - 4 * g->p * (ph30 >> 6) + 16 * ((((g->q * ph30) >> 30) * ph30) >> 6);
+    return v > 0 ? (uint64_t)v : 1u;
+}
+/* phi = sin^2(pi f / FS) in Q30 for f in Hz Q8 (the sine as fx.c eq_design makes it: Taylor to h^9) */
+static int64_t gr_phi30(uint32_t f_q8)
+{
+    int64_t h = ((int64_t)f_q8 * EQ_HK) >> 10, h2, t;
+    if (h > 413000000ll)                             /* (0.49 FS at most: the top of the axis, 20 kHz, is under it) */
+        h = 413000000ll;
+    h2 = (h * h) >> 28;
+    t = EQ_ONE - h2 / 72;
+    t = EQ_ONE - (h2 * t >> 28) / 42;
+    t = EQ_ONE - (h2 * t >> 28) / 20;
+    t = EQ_ONE - (h2 * t >> 28) / 6;
+    t = h * t >> 28;                                 /* sin, Q28 */
+    return (t * t) >> 26;
+}
+static int32_t eq_curve_db10(const gq_t *n, const gq_t *d, uint32_t on, uint32_t f_q8)
+{
+    int64_t ph = gr_phi30(f_q8);
+    int32_t db = 0;
+    uint32_t k;
+    for (k = 0; k < 3u; k++)
+        if ((on >> k) & 1u)
+            db += gr_db10(gr_lg64(gq_at(&n[k], ph)), gr_lg64(gq_at(&d[k], ph)));
+    return db;
+}
+static void graph_eq(const track_t *t, uint16_t c)
+{
+    static const uint8_t GK[3] = {P_EQLG, P_EQMG, P_EQHG}, FK[3] = {P_EQLF, P_EQMF, P_EQHF};
+    static const int8_t FMAX[3] = {24, 24, 12};
+    gq_t n[3], d[3];
+    eqc_t cf;
+    uint32_t k, i, on = 0, f = GF_F0, hot = 3u;
+    int32_t cy = graph_ht / 2, a = 40, px = 0, py = cy;
+    const page_t *pg = cur_page();
+    if (ui.hot_t)                                    /* the band of the knob just turned: EQ 1/2 K1 K2 LOW, K3 K4 MID; EQ 2/2 K1 MID (Q), K2 K3 HIGH */
+        hot = knob_slot(pg, ui.hot_col) > 3u ? 3u : pg->id[0] == P_EQLF ? knob_slot(pg, ui.hot_col) / 2u : knob_slot(pg, ui.hot_col) ? 2u : 1u;   /* (T0227: the card's slot) */
+    for (k = 0; k < 3u; k++) {
+        int32_t g = clamp(t->p[GK[k]], -12, 12);
+        if (!g)
+            continue;
+        eq_design(&cf, k, g, clamp(t->p[FK[k]], -24, FMAX[k]), k == 1u ? clamp(t->p[P_EQMQ], -12, 12) : 0);
+        eq_quad(&n[k], &d[k], &cf);
+        on |= 1u << k;
+    }
+    cv_rect(PANEL_X0, cy, PANEL_W, 1, T_RAISE);      /* 0 dB */
+    for (i = 0; i < GF_N; i++, f = (uint32_t)(((uint64_t)f * GF_STEP) >> 16)) {
+        int32_t x = PANEL_X0 + 4 * (int32_t)i, y = cy - clamp(eq_curve_db10(n, d, on, f), -120, 120) * a / 120;
+        if (i)
+            cv_line_t(px, py, x, y, c, 2);
+        px = x;
+        py = y;
+    }
+    for (k = 0; k < 3u; k++) {                       /* the bands' dots, on the curve at their frequency */
+        uint32_t fk = eq_hz_q8(k, clamp(t->p[FK[k]], -24, FMAX[k]));
+        int32_t x = PANEL_X0 + gf_x(fk), y = cy - clamp(eq_curve_db10(n, d, on, fk), -120, 120) * a / 120;
+        cv_rect(x - 2, y - 2, 5, 5, k == hot ? T_ACCENT : ((on >> k) & 1u) ? c : T_DIM);
+    }
+}
+
+/* MULTI FILTER 1/2, 2/2 and ANALOG's VCF: the response of the state-variable filter (voice.c uf_run, eng_analog.c analog_tap) at its CUT and RES, from the
+ * analog prototype the trapezoidal SVF follows: H(s) = (wl + wb kb s + wh s^2) / (s^2 + k s + 1), s = j f / fc; the MULTI FILTER's MODE as uf_run's weights (LP .. BP .. HP),
+ * its band-pass normalised (kb = k), SLOPE 24 dB a second stage of the same MODE with the Butterworth pair's dampings; ANALOG's BP is the SVF's plain band output (kb = 1:
+ * its peak rises with RES). +18 .. -42 dB over the panel (0 dB RAISE), a tick at the cutoff. The MULTI FILTER at its open end with MODE LP is not run: a flat line */
+static int32_t svf_db10(uint32_t f_q8, uint32_t fc, int32_t wl, int32_t wb, int32_t wh, int32_t k, int32_t kb)
+{
+    uint64_t r = ((uint64_t)f_q8 << 8) / (fc ? fc : 1u), u;   /* f / fc, Q16 */
+    int64_t u2, A, B, Dr, Di, W_l = (int64_t)wl << 6, W_b = (int64_t)wb << 6, W_h = (int64_t)wh << 6, K = (int64_t)k << 4, KB = (int64_t)kb << 4;
+    u = r <= 65536u ? r : ((uint64_t)1 << 32) / (r ? r : 1u);   /* (above the cutoff: the same in 1 / r, every term divided by r^4) */
+    u2 = (int64_t)((u * u) >> 16);
+    A = r <= 65536u ? W_l - ((W_h * u2) >> 16) : ((W_l * u2) >> 16) - W_h;
+    B = (((W_b * KB) >> 16) * (int64_t)u) >> 16;
+    Dr = r <= 65536u ? 65536 - u2 : u2 - 65536;
+    Di = (K * (int64_t)u) >> 16;
+    return gr_db10(gr_lg64((uint64_t)(A * A + B * B) + 1u), gr_lg64((uint64_t)(Dr * Dr + Di * Di) + 1u));
+}
+static uint32_t gf_cut_hz(int32_t idx_q8)            /* CUTOFF_HZ between its entries (the filters' index, Q8) */
+{
+    int32_t i = clamp(idx_q8, 0, 127 << 8) >> 8, fr = idx_q8 & 255;
+    return CUTOFF_HZ[i] + (i < 127 ? (uint32_t)(((int32_t)(CUTOFF_HZ[i + 1] - CUTOFF_HZ[i]) * fr) >> 8) : 0u);
+}
+static void graph_twin(const track_t *t, uint16_t c, uint32_t kind);
+static void graph_filt(const track_t *t, uint16_t c)
+{
+    const page_t *pg = cur_page();
+    int s24 = 0, flat = 0;
+    {   /* cloud job H: the TWIN FILTER's three pages, and MULTI FILTER 1/2, 2/2 while filter 2 runs, draw both filters (graph_twin); with filter 2 OFF the MULTI FILTER pages are drawn as ever */
+        uint32_t id0 = pg->id[0], kind = id0 == P_TWTYPE ? 1u : id0 == XW_BASE + X_KTRK2 ? 2u : id0 == XW_BASE + X_ROUTE ? 3u : (id0 == P_FREEA || id0 == P_KTRK) && twin_on(t) ? 4u : 0u;
+        if (kind) {
+            graph_twin(t, c, kind);
+            return;
+        }
+    }
+    int32_t wl, wb, wh, k1, k2 = 0, kb, z = 30, px = 0, py = 0;
+    uint32_t fc, i, f = GF_F0;
+    {                                                /* the MULTI FILTER (voice.c uf_run, UF_K / UF_K24A / UF_K24B) */
+        int32_t md = clamp(t->p[P_FREEC], 0, UF_HP), res = clamp(t->p[P_FREEB], 0, 127), cut = clamp(t->p[P_FREEA], 0, UF_STEPS);
+        wb = md <= 64 ? md << 4 : ((UF_HP - md) * 65) >> 2, wl = md < 64 ? 1024 - wb : 0, wh = md > 64 ? 1024 - wb : 0;
+        s24 = t->p[P_FREED] == 2;
+        k1 = s24 ? UF_K24A : UF_K(res);
+        k2 = UF_K24B(res);
+        kb = -1;
+        fc = gf_cut_hz(40 + 396 * cut);
+        flat = cut >= UF_STEPS && md <= 0;           /* (the bypass: the filter is not run) */
+    }
+    cv_rect(PANEL_X0, z, PANEL_W, 1, T_RAISE);       /* 0 dB */
+    if (!flat)
+        cv_rect(PANEL_X0 + gf_x(fc << 8), 4, 1, 92, T_RAISE);   /* the cutoff */
+    for (i = 0; i < GF_N; i++, f = (uint32_t)(((uint64_t)f * GF_STEP) >> 16)) {
+        int32_t db = 0, x = PANEL_X0 + 4 * (int32_t)i, y;
+        if (!flat) {
+            db = svf_db10(f, fc, wl, wb, wh, k1, kb < 0 ? k1 : kb);
+            if (s24)
+                db += svf_db10(f, fc, wl, wb, wh, k2, k2);
+        }
+        y = z - clamp(db, -420, 180) * 3 / 20;       /* 1.5 px a dB */
+        if (i)
+            cv_line_t(px, py, x, y, c, 2);
+        px = x;
+        py = y;
+    }
+}
+
+/* The TWIN FILTER's pictures (cloud job H, FILTER_PAGES_PROPOSAL 2.3): ONE graph for both filters, the same axes as graph_filt. kind 1 TWIN FILTER, 2 TWIN MOD (filter 2's curve bright, filter 1's dim; filter 2 OFF: filter 1 bright
+ * alone), 4 MULTI FILTER 1/2, 2/2 with filter 2 on (filter 1 bright, filter 2 dim), 3 TWIN CHAIN (the whole chain bright, both single curves dim, no ticks, the flow strip under it). A tick for each cutoff (the numeral 1 or 2
+ * beside it while both run), the caption row under the curves. The curves are twin_graph_db's (twin_graph.c, 1/16 dB: DRIVE is in none of them). COMB has no cutoff: no tick 2 */
+static void graph_twin(const track_t *t, uint16_t c, uint32_t kind)
+{
+    const int on = twin_on(t), comb = t->p[P_TWTYPE] == TT_COMB, link = XV(t, X_LINK) != 0;
+    const int bright = kind == 3u ? 2 : (kind == 1u || kind == 2u) && on ? 1 : 0;
+    int32_t z = 30, cut1 = clamp(t->p[P_FREEA], 0, UF_STEPS), cut2 = link ? clamp(cut1 * 256 + TW_OFF_Q8(clamp(t->p[P_CUT2], -TW_OFF_MAX, TW_OFF_MAX)), 0, UF_STEPS * 256) : clamp(t->p[P_CUT2], 0, UF_STEPS) * 256;   /* (cut2 in Q8 dial steps) */
+    int32_t flat1 = cut1 >= UF_STEPS && clamp(t->p[P_FREEC], 0, UF_HP) <= 0, x1 = PANEL_X0 + gf_x(gf_cut_hz(40 + 396 * cut1) << 8), x2 = PANEL_X0 + gf_x(gf_cut_hz(40 + ((396 * cut2) >> 8)) << 8);
+    char cap[40];
+    uint32_t pass;
+    const int branches = kind == 3u && XV(t, X_ROUTE) != 0;   /* PARALLEL on the chain page: the curves are drawn smaller (0 dB line at 18, 2/20 px a 1/10 dB) over the two branches of the flow strip */
+    const int32_t zc = branches ? 18 : z, zs = branches ? 2 : 3;
+    cv_rect(PANEL_X0, zc, PANEL_W, 1, T_RAISE);      /* 0 dB */
+    if (kind != 3u) {                                /* the ticks: the filter being edited stronger */
+        if (!flat1)
+            cv_rect(x1, 4, 1, 92, bright == 0 ? T_MID : T_RAISE);
+        if (on && !comb)
+            cv_rect(x2, 4, 1, 92, bright == 1 ? T_MID : T_RAISE);
+        if (on && !flat1 && !comb) {                 /* .. and which is which: the name outside, away from the other tick (MULTI left of the left one, TWIN right of the right one; equal: MULTI left, TWIN right; 1.0, owner: the filters' names, not 1 and 2).
+                                                      * Where a word would leave the panel it goes to the other side of its tick */
+            const int32_t w1 = text_w(&AF_S, "MULTI"), w2 = text_w(&AF_S, "TWIN");
+            int32_t a1 = x2 < x1 ? x1 + 3 : x1 - 2 - w1, a2 = x2 < x1 ? x2 - 2 - w2 : x2 + 3;
+            if (a1 < PANEL_X0)
+                a1 = x1 + 3;
+            else if (a1 + w1 > PANEL_X0 + PANEL_W)
+                a1 = x1 - 2 - w1;
+            if (a2 < PANEL_X0)
+                a2 = x2 + 3;
+            else if (a2 + w2 > PANEL_X0 + PANEL_W)
+                a2 = x2 - 2 - w2;
+            cv_text_on(a1, 2, &AF_S, "MULTI", bright == 0 ? T_TEXT : T_MID, T_SURF);
+            cv_text_on(a2, a2 < a1 + w1 + 2 && a2 + w2 + 2 > a1 ? 14 : 2, &AF_S, "TWIN", bright == 1 ? T_TEXT : T_MID, T_SURF);   /* (the two words would touch: TWIN goes one line down) */
+        }
+    }
+    for (pass = 0; pass < 2u; pass++) {              /* the dim curves first, the bright one over them */
+        uint32_t w;
+        for (w = 0; w < 3u; w++) {
+            int dim = (int)w != bright;
+            uint32_t i, f = GF_F0;
+            int32_t px = 0, py = 0;
+            if ((pass == 0u) != dim)
+                continue;
+            if (kind != 3u && (w == 2u || (w != (uint32_t)bright && !on)))   /* (the chain page: all three; the others: filters 1 and 2, the one not edited only while filter 2 runs) */
+                continue;
+            for (i = 0; i < GF_N; i++, f = (uint32_t)(((uint64_t)f * GF_STEP) >> 16)) {
+                int32_t db = twin_graph_db(t, (int)w, f >> 8) * 10 / 16, x = PANEL_X0 + 4 * (int32_t)i, y = zc - clamp(db, -420, 180) * zs / 20;
+                if (i)
+                    cv_line_t(px, py, x, y, dim ? T_DIM : c, dim ? 1 : 2);
+                px = x;
+                py = y;
+            }
+        }
+    }
+    cap[0] = 0;
+    if (kind == 3u) {                                /* the flow strip (1.0, owner): the filters by name. SERIES one line, as chain_f2 runs it: the engine, MULTI, DRIVE (before TWIN's input), TWIN, AMP.
+                                                      * PARALLEL two branches: DRIVE acts on the signal that enters both (chain_f2_pre), then MULTI on one line and TWIN on the other, merging into AMP, caption MULTI + TWIN */
+        const uint16_t wc = T_MID, ac = T_DIM, lcol = T_MID, dc = t->p[P_DRV2] > 0 ? T_TEXT : T_DIM;   /* (DRIVE dim while it is OFF: not run) */
+        int32_t x = PANEL_X0 + 2;
+        if (!XV(t, X_ROUTE)) {
+            x = cv_text_on(x, 98, &AF_S, "ENGINE", wc, T_SURF) + 3;
+            x = cv_text_on(x, 98, &AF_S, ">", ac, T_SURF) + 3;
+            x = cv_text_on(x, 98, &AF_S, "MULTI", T_TEXT, T_SURF) + 3;
+            x = cv_text_on(x, 98, &AF_S, ">", ac, T_SURF) + 3;
+            x = cv_text_on(x, 98, &AF_S, "DRIVE", dc, T_SURF) + 3;
+            x = cv_text_on(x, 98, &AF_S, ">", ac, T_SURF) + 3;
+            x = cv_text_on(x, 98, &AF_S, "TWIN", T_TEXT, T_SURF) + 3;
+            x = cv_text_on(x, 98, &AF_S, ">", ac, T_SURF) + 3;
+            cv_text_on(x, 98, &AF_S, "AMP", wc, T_SURF);
+        } else {
+            const int32_t y1 = 64, y2 = 82, ym = 73, h = 6;   /* the text tops of the two branches and of the trunk; h: from a text top to its middle line */
+            int32_t xf, xb, xm;
+            x = cv_text_on(x, ym, &AF_S, "ENGINE", wc, T_SURF) + 3;
+            x = cv_text_on(x, ym, &AF_S, ">", ac, T_SURF) + 3;
+            x = cv_text_on(x, ym, &AF_S, "DRIVE", dc, T_SURF) + 4;
+            xf = x + 2;                                   /* the fork */
+            cv_rect(x, ym + h, xf - x, 1, lcol);
+            cv_rect(xf, y1 + h, 1, y2 - y1 + 1, lcol);
+            xb = xf + 8;
+            cv_rect(xf, y1 + h, xb - xf, 1, lcol);
+            cv_rect(xf, y2 + h, xb - xf, 1, lcol);
+            xm = cv_text_on(xb + 2, y1, &AF_S, "MULTI", T_TEXT, T_SURF);
+            x = cv_text_on(xb + 2, y2, &AF_S, "TWIN", T_TEXT, T_SURF);
+            xm = (xm > x ? xm : x) + 4;                   /* the merge, right of the longer word */
+            cv_rect(xb + 2 + text_w(&AF_S, "MULTI") + 1, y1 + h, xm - (xb + 2 + text_w(&AF_S, "MULTI") + 1), 1, lcol);
+            cv_rect(xb + 2 + text_w(&AF_S, "TWIN") + 1, y2 + h, xm - (xb + 2 + text_w(&AF_S, "TWIN") + 1), 1, lcol);
+            cv_rect(xm, y1 + h, 1, y2 - y1 + 1, lcol);
+            cv_rect(xm, ym + h, 5, 1, lcol);
+            x = cv_text_on(xm + 7, ym, &AF_S, ">", ac, T_SURF) + 3;
+            cv_text_on(x, ym, &AF_S, "AMP", wc, T_SURF);
+            str_cpy(cap, "MULTI + TWIN", sizeof cap);
+        }
+    } else if (kind == 4u) {
+        if (link && !comb)
+            str_cpy(cap, "TWIN FOLLOWS MULTI", sizeof cap);
+    } else if (!on) {
+        str_cpy(cap, "TWIN FILTER OFF", sizeof cap);
+    } else if (kind == 1u) {
+        str_cpy(cap, comb ? "SHOWN AT C3" : link ? "TWIN = MULTI + OFFSET" : "TWIN FILTER ON ITS OWN", sizeof cap);
+    } else {
+        str_cpy(cap, link && !comb ? "ADDED TO WHAT MULTI SENDS" : "TWIN FILTER ONLY", sizeof cap);
+    }
+    if (cap[0])
+        cv_text_on(PANEL_X0 + 2, 98, &AF_S, cap, T_MID, T_SURF);
+}
+
+/* SUB OSC (cloud job H, SUB_AND_CYCLE_DESIGN A4): the sub's wave small across four cycles of the note, its octave copies when HARM is up. OCTAVE -2, -1, 0 (stored 0..2) makes the sub one cycle, two or four
+ * cycles over those four of the note; HARM adds the same wave an octave above the sub (HARM 0 .. 64: up to half the sub's level) and then two octaves above it (64 .. 127, up to half). LEVEL sets the height; at 0 the sub
+ * is not run and the picture says so. The sum bright, the copies dim */
+static int32_t sub_wave(uint32_t wave, uint32_t ph)    /* one cycle at phase ph (32 bit): -32767 .. +32767; PULSE is a width of 1/4 */
+{
+    int32_t x = (int32_t)(ph >> 17);                   /* 0 .. 32767 a cycle */
+    switch (wave & 3u) {
+    case 0:
+        return sine_i(ph);
+    case 1:
+        return clamp(x < 8192 ? 4 * x : x < 24576 ? 65536 - 4 * x : 4 * x - 131072, -32767, 32767);   /* triangle: up through zero to +1 at 1/4, down to -1 at 3/4 (the engine's osc_tri starts where the sine does) */
+    case 2:
+        return x < 16384 ? 32767 : -32767;
+    default:
+        return x < 8192 ? 32767 : -32767;
+    }
+}
+static void graph_sub(const track_t *t, uint16_t c)
+{
+    int32_t cy = graph_ht / 2, lv = clamp(XV(t, X_SUBLVL), 0, 127), h = 0 /* SUB HARMONICS disabled (owner, 2026-10-21) */, oct = clamp(XV(t, X_SUBOCT), 0, 2), amp = 4 + lv * 36 / 127;
+    uint32_t wave = (uint32_t)XV(t, X_SUBWAVE), cyc = 1u << (uint32_t)oct, i, k;      /* cycles of the sub over four of the note: 1, 2, 4 */
+    int32_t a1 = lv ? amp * (h < 64 ? h : 64) / 128 : 0, a2 = lv && h > 64 ? amp * (h - 64) / 126 : 0, px[3] = {0, 0, 0}, py[3] = {0, 0, 0};
+    cv_rect(PANEL_X0, cy, PANEL_W, 1, T_RAISE);
+    for (i = 0; i <= 110u; i++) {
+        int32_t x = PANEL_X0 + 2 * (int32_t)i, y[3], sum;
+        uint32_t ph = (uint32_t)(((uint64_t)i * cyc << 32) / 110u);
+        y[0] = lv ? sub_wave(wave, ph) * amp / 32767 : 0;
+        y[1] = a1 ? sub_wave(wave, ph * 2u) * a1 / 32767 : 0;
+        y[2] = a2 ? sub_wave(wave, ph * 4u) * a2 / 32767 : 0;
+        sum = y[0] + y[1] + y[2];
+        if (i) {
+            if (a1)
+                cv_line_t(px[1], py[1], x, cy - y[1], T_DIM, 1);
+            if (a2)
+                cv_line_t(px[2], py[2], x, cy - y[2], T_DIM, 1);
+            cv_line_t(px[0], py[0], x, cy - clamp(sum, -46, 46), lv ? c : T_DIM, 2);
+        }
+        for (k = 0; k < 3u; k++) {
+            px[k] = x;
+            py[k] = cy - (k == 0u ? clamp(sum, -46, 46) : y[k]);
+        }
+    }
+    if (!lv)
+        cv_text_on(PANEL_X0 + 2, 98, &AF_S, "NOT RUN AT LEVEL 0", T_MID, T_SURF);
+}
+
+/* CYCLE ENV 1/2 and 2/2 (cloud job H, SUB_AND_CYCLE_DESIGN B4): the cycle's shape as cycle.c makes it (y = x + c (x^2 - x), c = CURVE / 64, on the rise; the fall is 1 - that of the progress), RISE and FALL in the
+ * proportion of their times (ENV_LIN's steps; with SYNC the note values' share of a bar), three rise-fall shapes for LOOP, one then rest for ONCE. 2/2 draws the one cycle large, rise and fall the same width, with the straight line behind it
+ * (CURVE 0) so the bend shows. The times themselves are on the cards: the picture is the shape, not a time scale */
+static void graph_cycle(const track_t *t, uint16_t c)
+{
+    const int big = cur_page()->id[0] == XW_BASE + X_CYCURVE;
+    int32_t top = 8, base = 92, cv = clamp(XV(t, X_CYCURVE), -64, 63) * 512, w = PANEL_W - 4, n = big || XV(t, X_CYMODE) ? 1 : 3, x0 = PANEL_X0 + 2, px = 0, py = 0, cw, rw, fw, i;
+    uint32_t pass;
+    uint64_t dr, df;
+    uint32_t r = (uint32_t)XV(t, X_CYRISE) & 127u, f = (uint32_t)XV(t, X_CYFALL) & 127u;
+    if (XV(t, X_CYSYNC)) {                            /* note values: ESYNC_UNITS (1/384 of a bar), 0 the shortest step */
+        dr = (uint64_t)ESYNC_UNITS[esync_idx((int32_t)r)] + 2u;
+        df = (uint64_t)ESYNC_UNITS[esync_idx((int32_t)f)] + 2u;
+    } else {                                          /* the table's step a block (Q24): the time is 1 / step */
+        dr = (uint64_t)((1ull << 40) / (ENV_LIN[r] ? ENV_LIN[r] : 1u));
+        df = (uint64_t)((1ull << 40) / (ENV_LIN[f] ? ENV_LIN[f] : 1u));
+    }
+    cw = XV(t, X_CYMODE) && !big ? w * 2 / 3 : w / n;  /* ONCE: the one shape in two thirds, then rest */
+    rw = big ? cw / 2 : (int32_t)((uint64_t)cw * dr / (dr + df));   /* (2/2: both segments the same width, so the bend of each shows; 1/2: the proportion of the times) */
+    rw = clamp(rw, 3, cw - 3);
+    fw = cw - rw;
+    cv_rect(PANEL_X0, base, PANEL_W, 1, T_RAISE);
+    for (pass = 0; pass < (big && cv ? 2u : 1u); pass++) {   /* 2/2: the straight line first, dim */
+        int32_t cc = pass == 0u && big && cv ? 0 : cv, k;
+        for (k = 0; k < (n); k++) {
+            int32_t xs = x0 + k * cw;
+            for (i = 0; i <= cw; i++) {
+                int32_t y01, x, y;
+                if (i <= rw) {
+                    int32_t u = i * 32768 / rw;
+                    y01 = u + ((cc * ((u * u >> 15) - u)) >> 15);
+                } else {
+                    int32_t u = (i - rw) * 32768 / fw;
+                    y01 = 32768 - (u + ((cc * ((u * u >> 15) - u)) >> 15));
+                }
+                x = xs + i;
+                y = base - clamp(y01, 0, 32768) * (base - top) / 32768;
+                if (i || k)
+                    cv_line_t(px, py, x, y, pass == 0u && big && cv ? T_DIM : c, pass == 0u && big && cv ? 1 : 2);
+                px = x;
+                py = y;
+            }
+        }
+        if (XV(t, X_CYMODE) && !big)                  /* ONCE: it rests at 0 */
+            cv_line_t(px, py, PANEL_X0 + PANEL_W - 2, base, c, 2);
+    }
+}
+
+/* STEREO MASTER (WIDTH and BASS MONO, fx.c width_stage then bass_mono): frequency across (20 Hz .. 20 kHz), the width of the stereo picture up and down from the middle:
+ * below the BASS MONO corner one line (mono), above it a band as wide as WIDTH (100 %: the normal width, 0 %: a line, 200 %: twice; wider only above the width stage's
+ * 125 Hz crossover, narrower everywhere). Captions MONO and STEREO only (the numbers are on the cards). In DUEL the stages do not run: the note says why */
+static void graph_mstg(uint16_t c)
+{
+    int32_t cy = 50, base = 18, wd = clamp(song.ms[0], 0, 200), xb = 0, x, i, w, pw = -1, px = 0;
+    uint32_t bm = (uint32_t)song.bm, f = GF_F0;
+    if (duell_mode == DM_SPLIT) {
+        cv_text_on(12, 30, &AF_M, "NOT IN DUEL MODE", T_TEXT, T_SURF);
+        cv_text_on(12, 52, &AF_S, "PART 1 LEFT, PART 2 RIGHT", T_MID, T_SURF);
+        cv_text_on(12, 66, &AF_S, "NO STEREO MIX TO PROCESS", T_MID, T_SURF);
+        return;
+    }
+    if (bm >= 1u && bm <= BM_N)
+        xb = PANEL_X0 + gf_x((uint32_t)BM_HZ[bm - 1u] << 8);
+    cv_rect(PANEL_X0, cy, PANEL_W, 1, T_RAISE);
+    for (i = 0; i < (int32_t)GF_N; i++, f = (uint32_t)(((uint64_t)f * GF_STEP) >> 16)) {
+        x = PANEL_X0 + 4 * i;
+        w = x < xb ? 0 : wd <= 100 || f >= (125u << 8) ? base * wd / 100 : base;   /* the side's width there */
+        if (i && pw >= 0) {
+            cv_line_t(px, cy - pw, x, cy - w, c, 2);
+            cv_line_t(px, cy + pw, x, cy + w, c, 2);
+        }
+        px = x;
+        pw = w;
+    }
+    if (xb) {                                        /* the mono region: its corner, the caption under the line */
+        cv_rect(xb, cy - 44, 1, 88, T_RAISE);
+        if (xb - PANEL_X0 >= 34)
+            cv_text_on(PANEL_X0 + 2, cy + 8, &AF_S, "MONO", T_MID, T_SURF);
+    }
+    if (PANEL_X0 + PANEL_W - (xb > PANEL_X0 ? xb : PANEL_X0) >= 60)
+        cv_text_on(PANEL_X0 + PANEL_W - 2 - text_w(&AF_S, "STEREO"), cy + (base * wd / 100 > 30 ? 40 : base * wd / 100 + 8), &AF_S, "STEREO", T_MID, T_SURF);
+}
+
+/* COMPRESSOR (fx.c comp_stage): the transfer curve, input -48 .. 0 dB across, output up on the same scale, with the soft knee and the automatic makeup (cmp_gr, cmp_mk: the
+ * stage's own gain computer); the 1:1 line RAISE. RATIO OFF: the 1:1 line alone, DIM. At the right a bar of the gain reduction now (0 .. 12 dB down, live: comp_meter,
+ * its own strip, redrawn only when it moved). In DUEL the stage does not run: the note says why */
+#define CMP_GX1 196                                  /* the curve's box: x PANEL_X0 .. CMP_GX1, y 6 .. 106 */
+#define CMP_GY0 6
+#define CMP_GH 100
+#define CMPM_X 210                                   /* the bar: x 210 .. 222 */
+#define CMPM_W 12
+static uint32_t cmpm_sig;
+static int32_t comp_y(int32_t q8)                    /* a level (Q8 octaves, 4096 = 0 dB) -> y on the -48 .. 0 dB scale */
+{
+    return CMP_GY0 + clamp((4096 - q8) * CMP_GH / (48 * 10886 / 256), 0, CMP_GH);
+}
+static void graph_comp(uint16_t c)
+{
+    uint32_t r = (uint32_t)clamp(song.cp[1], 0, 8), i;
+    int32_t thr = cmp_thr_q8((uint32_t)clamp(song.cp[0], 0, 40)), sl = (int32_t)CMP_SLOPE[r], mk = cmp_mk(thr, sl), w = CMP_GX1 - PANEL_X0, x, px = 0, py = 0;
+    if (duell_mode == DM_SPLIT) {
+        cv_text_on(12, 30, &AF_M, "NOT IN DUEL MODE", T_TEXT, T_SURF);
+        cv_text_on(12, 52, &AF_S, "PART 1 LEFT, PART 2 RIGHT", T_MID, T_SURF);
+        cv_text_on(12, 66, &AF_S, "NO STEREO MIX TO PROCESS", T_MID, T_SURF);
+        return;
+    }
+    cv_line(PANEL_X0, CMP_GY0 + CMP_GH, CMP_GX1, CMP_GY0, r ? T_RAISE : T_DIM);   /* 1:1 */
+    if (!r)
+        return;
+    for (i = 0; i <= 46u; i++) {
+        int32_t in = 4096 - (46 - (int32_t)i) * (48 * 10886 / 256) / 46, y;
+        x = PANEL_X0 + (int32_t)i * w / 46;
+        y = comp_y(in - cmp_gr(in - thr, sl) + mk);
+        if (i)
+            cv_line_t(px, py, x, y, c, 2);
+        px = x;
+        py = y;
+    }
+    cv_rect(PANEL_X0 + (int32_t)((thr - (4096 - 48 * 10886 / 256)) * w / (48 * 10886 / 256)), comp_y(thr - cmp_gr(0, sl) + mk) - 2, 1, 5, T_MID);   /* THRESH's place on the curve */
+}
+static void comp_meter(void)
+{
+    int32_t gr = 0, px;
+    uint32_t sig;
+    if (duell_mode == DM_SPLIT || !song.cp[1])
+        return;
+    if (cmp.a > 0) {                                 /* (the stage runs: what its gain computer takes now, the detector's level as comp_stage reads it, PERFORM idle) */
+        int32_t pk = cmp.pk;
+        gr = cmp_gr(cmp_lg((uint32_t)(pk >> 12) + 1u) - cmp.thr, cmp.slope) * (cmp.a >> 7) >> 8;
+    }
+    px = clamp(gr * 64 / 511, 0, 64);                /* 0 .. 12 dB (511 Q8 octaves) over 64 px */
+    sig = (uint32_t)px * 31u + ux.gen * 4099u + (uint32_t)T_SURF * 131u + 1u;
+    if (!ui.force && sig == cmpm_sig)
+        return;
+    cmpm_sig = sig;
+    cv_begin(CMPM_W, 66, T_SURF);
+    cv_rect(0, 0, CMPM_W, 66, T_RAISE);
+    if (px > 0)
+        cv_rect(0, 1, CMPM_W, px, T_ACCENT);         /* from the top down: the reduction */
+    cv_blit(CMPM_X, Y_GRAPH + CMP_GY0);
+}
+
+/* ARP 1/3, 2/3: the MODE's pattern, 16 steps as dots in a small piano roll: the keys held (else a C major chord, C E G from C4, said so) over OCT octaves in the MODE's
+ * order (seq.c arp_list, arp_pick: the same list and order; RANDOM and WALK as an example, a fixed seed), CHORD every step all the notes an octave up a step;
+ * GATE the dots' length, SWING the off-steps later, CHANCE under 100 % the dots DIM. OFF and SEQ: the scope as before (no pattern of their own) */
+static int arp_drawn(const track_t *t) { uint32_t m = (uint32_t)t->p[P_AMODE]; return m != AM_OFF && m != AM_SEQ && m < 16u; }
+static uint32_t arp_view_list(const track_t *t, uint32_t *list, uint32_t *cnt)
+{
+    uint32_t i, n, o, len = 0;
+    if (t->nheld)
+        return arp_list(t, list, cnt);
+    n = 3u;
+    for (o = 0; o < (uint32_t)clamp(t->p[P_AOCT], 1, 4); o++)
+        for (i = 0; i < n; i++)
+            list[len++] = 60u + (uint32_t)(i == 0u ? 0 : i == 1u ? 4 : 7) + 12u * o;
+    *cnt = n;
+    if (t->p[P_AMODE] == AM_REPEAT)
+        list[0] = 67u, len = 1u;
+    return len;
+}
+static uint32_t arp_view_sig(const track_t *t)
+{
+    uint32_t h = t->nheld * 977u, i;
+    for (i = 0; i < t->nheld && i < 16u; i++)
+        h = (h ^ t->held[i]) * 16777619u;
+    return h;
+}
+static uint32_t arp_view_pick(uint32_t m, uint32_t i, uint32_t len, uint32_t *walk)   /* seq.c arp_pick, step i (from 1), RANDOM / WALK from a fixed seed */
+{
+    uint32_t cyc = len > 1u ? 2u * len - 2u : 1u, k = i % cyc, h = (i * 2654435761u) >> 16, w = *walk;
+    switch (m) {
+    case AM_DN: return len - 1u - i % len;
+    case AM_UPDN: return k < len ? k : cyc - k;
+    case AM_DNUP: return k < len ? len - 1u - k : k - (len - 1u);
+    case AM_RND: return h % len;
+    case AM_CONV:
+    case AM_DIVG:
+        k = i % len;
+        if (m == AM_DIVG)
+            k = len - 1u - k;
+        return (k & 1u) ? len - 1u - k / 2u : k / 2u;
+    case AM_PINKY: return len < 2u ? 0u : (k & 1u) ? len - 1u : k / 2u;
+    case AM_THUMB: return len < 2u ? 0u : (k & 1u) ? 1u + k / 2u : 0u;
+    case AM_WALK:
+        if (i == 1u)
+            w = 0;
+        else if (w >= len)
+            w = len - 1u;
+        else if (len > 1u)
+            w = !w ? 1u : w == len - 1u ? w - 1u : (h >> 7) & 1u ? w + 1u : w - 1u;
+        *walk = w;
+        return w;
+    default: return i % len;
+    }
+}
+static void graph_arp(const track_t *t, uint16_t c)
+{
+    uint32_t list[66], cnt = 0, len = arp_view_list(t, list, &cnt), m = (uint32_t)t->p[P_AMODE], i, j, walk = 0, lo = 127, hi = 0;
+    int32_t gw = 2 + clamp(t->p[P_AGATE], 1, 127) * 8 / 127, sw = clamp(t->p[P_ASWING], 0, 100) * 6 / 100, rows, rh;
+    uint16_t dc = t->p[P_APROB] < 127 ? T_MID : c;
+    uint8_t nt[16][4], nn[16];
+    if (!len)
+        return;
+    if (m == AM_UP8 && len < 64u)                    /* UP+8: the first note again over the top (arp_pick) */
+        list[len++] = (uint32_t)clamp((int32_t)list[0] + 12 * t->p[P_AOCT], 0, 127);
+    for (i = 0; i < 16u; i++) {
+        nn[i] = 0;
+        if (m == AM_CHORD) {                         /* CHORD: the first 4 notes, an octave up each step through OCT */
+            uint32_t o = (i + 1u) % (uint32_t)clamp(t->p[P_AOCT], 1, 4);
+            for (j = 0; j < cnt && j < 4u; j++)
+                nt[i][nn[i]++] = (uint8_t)clamp((int32_t)list[j] + 12 * (int32_t)o, 0, 127);
+        } else {
+            nt[i][nn[i]++] = (uint8_t)list[arp_view_pick(m, i + 1u, len, &walk) % len];
+        }
+        for (j = 0; j < nn[i]; j++) {
+            lo = nt[i][j] < lo ? nt[i][j] : lo;
+            hi = nt[i][j] > hi ? nt[i][j] : hi;
+        }
+    }
+    rows = (int32_t)(hi - lo) + 1;
+    rh = rows <= 1 ? 4 : clamp(72 / rows, 2, 8);
+    for (i = 0; i < 16u; i++) {
+        int32_t x = bar_x(i) + ((i & 1u) ? sw : 0);
+        cv_rect(bar_x(i), 92, 9, 1, T_RAISE);        /* the step's place */
+        for (j = 0; j < nn[i]; j++) {
+            int32_t y = 86 - ((int32_t)nt[i][j] - (int32_t)lo) * rh - (rows <= 1 ? 36 : (86 - 8 - rows * rh) / 2);
+            cv_rrect(x, y - 2, gw, rh < 4 ? 3 : rh - 1, 1, dc, T_SURF);
+        }
+    }
+    if (!t->nheld)
+        cv_text_r(PANEL_X0 + PANEL_W - 2, 100, &AF_S, "EXAMPLE: C E G", T_MID, T_SURF);
+}
+
 static uint32_t mv_tick(void);                       /* (the MORPH page's animation step, below) */
 static uint32_t graph_signature(void)
 {
@@ -729,9 +1317,18 @@ static uint32_t graph_signature(void)
     const track_t *t = TSEL;
     uint32_t h = 2166136261u, i;
     h ^= (uint32_t)pg->graph * 131u + TSEL->eng_req + song.sel * 7777u + ui.page * 1291u;
-    if (pg->graph == GR_NONE || pg->graph == GR_ARP || pg->graph == GR_TEMPO) h ^= ui.frame / 2u;
+    if (pg->graph == GR_NONE || pg->graph == GR_TEMPO || (pg->graph == GR_ARP && !arp_drawn(t))) h ^= ui.frame / 2u;   /* (the scope; 0.2.25: ARP's pattern and STEREO MASTER's picture are static) */
+    if (pg->graph == GR_MSTG || pg->graph == GR_COMP)   /* (0.2.23: DUEL's note; 0.2.25 layout round: STEREO MASTER's picture, COMPRESSOR's curve: the settings, the mode) */
+        h = (h ^ ((duell_mode == DM_SPLIT) * 0x2545F491u + (uint32_t)song.bm * 977u + (uint32_t)song.ms[0] * 7919u + (uint32_t)song.cp[0] * 31u + (uint32_t)song.cp[1] * 104729u)) * 16777619u;
+    if (pg->graph == GR_EQ)                          /* (0.2.25: the band of the knob just turned is drawn in the accent) */
+        h = (h ^ (ui.hot_t ? ui.hot_col + 1u : 0u) * 2654435761u) * 16777619u;
+    if (pg->graph == GR_ARP)                         /* (0.2.25: the pattern of the keys held) */
+        h = (h ^ arp_view_sig(t)) * 16777619u;
     for (i = 0; i < P_COUNT; i++)
         h = (h ^ (uint32_t)t->p[i]) * 16777619u;
+    if (pg->graph == GR_FILT || pg->graph == GR_SUB || pg->graph == GR_CYCLE)   /* (cloud job H: the extension slots too: TWIN LINK and ROUTE, the SUB's and CYCLE's values; the engine decides COMB on WAVE / PHYS) */
+        for (i = 0; i < NX; i++)
+            h = (h ^ (uint32_t)XV(t, i)) * 16777619u;
     h = (h ^ ((uint32_t)scale_g | (uint32_t)root_g << 4 | (uint32_t)offscale_g << 8)) * 16777619u;   /* (the global scale, core.h) */
     h ^= (uint32_t)TSEL->preset * 7u + (uint32_t)song.g[G_SLOT] * 13u + TSEL->user * 257u + up_gen * 7919u + list_mode() * 15485863u +
          ui.ppick * 1299709u;
@@ -744,8 +1341,12 @@ static uint32_t graph_signature(void)
     if (pg->graph == GR_MOD)                         /* (the slot; DUEL or not: PAN's reason, the bus a bus value moves) */
         h ^= (mod_ui_slot + 1u) * 40503u + (duell_mode_req == DM_SPLIT) * 0x01000193u;
     if (pg->scope == SC_MIDI)                        /* step 6: the channels, the route, the mode, MIDI LEARN's state */
-        h = (h ^ ((uint32_t)midi_pch[0] | (uint32_t)midi_pch[1] << 4 | (uint32_t)(song.g[G_ROUTE] == 1) << 8 | (uint32_t)duell_mode_req << 9 |
+        h = (h ^ ((uint32_t)sc_midi[0] * 31u + sc_midi[1] * 977u + sc_midi[2] * 15485863u + sc_midi[3] * 7919u) * 0x85EBCA6Bu ^ ((uint32_t)midi_pch[0] | (uint32_t)midi_pch[1] << 4 | (uint32_t)(song.g[G_ROUTE] == 1) << 8 | (uint32_t)duell_mode_req << 9 |
                   (uint32_t)ui.ml.on << 11 | (uint32_t)ui.ml.pick << 12 | ml_count() << 13 | (uint32_t)ui.ml.id << 19 | (uint32_t)ui.ml.trk << 27) * 0x9E3779B1u) * 16777619u;
+    if (pg->graph == GR_SCHAIN)                      /* (0.2.22: both parts' DUCK SRC are in the panel's words) */
+        h = (h ^ ((uint32_t)trk[0].p[P_DKSRC] + 1u + 7u * ((uint32_t)trk[1].p[P_DKSRC] + 1u)) * 2654435761u) * 16777619u;
+    if (pg->graph == GR_FXSUM)                       /* (0.2.24: which sends of the selected part are 0) */
+        h = (h ^ ((uint32_t)(TSEL->p[P_CHOR] <= 0) | (uint32_t)(TSEL->p[P_DLY] <= 0) << 1 | (uint32_t)(TSEL->p[P_REV] <= 0) << 2 | 8u) * 2654435761u) * 16777619u;
     h = (h ^ (clock_state() + 1u + clock_src() * 4u) * 3266489917u) * 16777619u;   /* (CLK: EXT / NO CLOCK, AUTO's source, on the TEMPO and MIDI pages) */
     if (pg->graph == GR_TEMPO)                       /* TEMPO's TAP card: the taps counted, over for good after 2 s */
         h = (h ^ (tempo_tapping() + 1u + (uint32_t)song.g[G_BPM] * 7u) * 2246822519u) * 16777619u;
@@ -945,8 +1546,7 @@ static void graph_engine(void)
     }
     engine_sound_row(LIST_Y(4));
 }
-/* SAVE > PATTERNS: the sixteen slots around the one picked ("P03  MELODY" factory default, "P03  SAVED", an empty
- * slot "P14  --" dim) */
+/* SAVE > PATTERNS: the 32 slots around the one picked ("P03  OFFBEAT"; one list, every slot holds a pattern) */
 static void graph_pats(void)
 {
     uint32_t n = pat_count(), cur = pat_pick();
@@ -955,7 +1555,7 @@ static void graph_pats(void)
         uint32_t k = (uint32_t)(first + row);
         char tag[4], nm[13];
         pat_label(k, tag, nm);
-        list_row(LIST_Y(row), k == cur, tag, T_MID, nm, pat_has(k) ? T_TEXT : T_DIM, 232);
+        list_row(LIST_Y(row), k == cur, tag, T_MID, nm, T_TEXT, 232);
     }
 }
 /* SAVE > TOOLS: the panel names the three actions in full, with the knob that does each and a line on what it does (the cards say
@@ -1084,7 +1684,7 @@ static void graph_events(void)
         {
             const motion_event_t *e = &motion.event[c & 0xFFu];
             uint32_t id = MOTION_ID(e), lock = (e->param & MOTION_LOCK) != 0u;
-            char b[16], nm[12];
+            char b[16], nm[20];
             const char *unit;
             const param_desc_t *d = track_desc(t, id);
             int32_t x;
@@ -1199,9 +1799,6 @@ static void trk_short_name(uint32_t c, char *b)      /* the track's sound, b hol
         str_cpy(b, e->name, 13);
 }
 
-/* HOME > MIXER: both parts side by side (DUELL 0.2.14; up to 0.2.13 two wide strips here, 5b.3): ui_layer.c mixer_panel, next to
- * GLO's cells and level meters, which it shares */
-static void mixer_panel(void);
 /* oscilloscope of the output, triggered on a rising zero crossing: a RAISE centre line, the trace 2 px (in silence
  * a flat line on it; MENU > SCREEN OFF keeps it from staying on the panel for hours) */
 static void graph_scope(uint16_t c)
@@ -1490,64 +2087,86 @@ static void graph_mode(void)
         str_cpy(v, "OFF", sizeof v);
     mode_line(86, "SPLIT (LAYER)", v, "BELOW = PART 1, ABOVE = 2", lay);
 }
-/* GLO > MIDI: the parts' channels with where each is heard, and MIDI IN (OWN CH / SELECTED) with a line in words under it */
+/* a GLO page's line in M (0.2.24, owner: less tiny text, bigger labels): the name left, the value right, in the primary text colour; dim: both dim */
+static void big_line(int32_t y, const char *name, const char *val, uint32_t on)
+{
+    cv_text_on(12, y, &AF_M, name, on ? T_TEXT : T_DIM, T_SURF);
+    if (val)
+        cv_text_r(228, y, &AF_M, val, on ? vt(T_THEME, T_SURF) : T_DIM, T_SURF);
+}
+/* GLO > MIDI (0.2.24, owner: the repeated lines at the bottom are gone, the labels bigger): each part's channel (M) with where it is heard (S) under it, MIDI IN (OWN CH / SELECTED)
+ * with one line of what that means; a warning when both parts share a channel */
 static void graph_midi(void)
 {
     uint32_t m = duell_mode_req < DM_N ? duell_mode_req : DM_SPLIT, sel = song.g[G_ROUTE] == 1, same = midi_pch[0] == midi_pch[1], k;
-    char v[12], w[40];
+    char v[12];
     static const char *const WHERE[3][2] = {{"DUEL: LEFT OUTPUT", "DUEL: RIGHT OUTPUT"}, {"STEREO OUTPUT", "STEREO OUTPUT"},
                                              {"LAYER: PLAYS BOTH PARTS", "LAYER: NOT HEARD, USE P1 CH"}};
     for (k = 0; k < 2u; k++) {
+        uint32_t on = !sel && !(m == DM_LAYER && k);
         str_cpy(v, "CH ", sizeof v);
         fmt_int(v + 3, (int32_t)midi_ch_get(k) + 1);
-        str_cpy(w, k ? "PART 2" : "PART 1", sizeof w);
-        mode_line(4 + 26 * (int32_t)k, w, v, WHERE[m][k], !sel && !(m == DM_LAYER && k));
+        big_line(6 + 34 * (int32_t)k, k ? "PART 2" : "PART 1", v, on);
+        cv_text_on(12, 24 + 34 * (int32_t)k, &AF_S, WHERE[m][k], on ? T_MID : T_DIM, T_SURF);
     }
-    mode_line(56, "MIDI IN", sel ? "SELECTED" : "OWN CH", sel ? "EVERY CHANNEL PLAYS ONE PART" : "EACH PART ON ITS OWN CHANNEL", 1);
-    if (sel)
-        cv_text_on(12, 86, &AF_S, "THE ONE CHOSEN WITH ALGORITHM", T_ACCENT, T_SURF);
-    else if (same)
-        cv_text_on(12, 86, &AF_S, "SAME CHANNEL: ONLY PART 1 PLAYS", T_ACCENT, T_SURF);
-    else
-        cv_text_on(12, 86, &AF_S, "SET THE CHANNELS WITH P1 CH, P2 CH", T_MID, T_SURF);
-    cv_text_on(12, 104, &AF_S, "CLOCK", T_TEXT, T_SURF);   /* CLK: the clock source, its line (INT: the tempo is this unit's) */
-    if (song.g[G_CLOCK] == CLK_AUTO)                        /* (0.2.14: AUTO and the clock it plays on) */
-        cv_text_r(228, 104, &AF_S, !clock_src() ? "AUTO: INT (OWN TEMPO)" : clock_src() == 1u ? "AUTO: USB (MIDI CLOCK)" : "AUTO: TRS (MIDI CLOCK)", T_MID, T_SURF);
-    else
-        cv_text_r(228, 104, &AF_S, !song.g[G_CLOCK] ? "INT (OWN TEMPO)" : clock_state() == 2u ? (song.g[G_CLOCK] == 1 ? "USB: NO CLOCK" : "TRS: NO CLOCK") :
-                                                        song.g[G_CLOCK] == 1 ? "USB (MIDI CLOCK)" : "TRS (MIDI CLOCK)", clock_state() == 2u ? T_DIM : T_MID, T_SURF);
+    big_line(74, "MIDI IN", sel ? "SELECTED" : "OWN CH", 1);
+    cv_text_on(12, 92, &AF_S, sel ? "ANY CHANNEL: THE SELECTED PART" : same ? "SAME CHANNEL: ONLY PART 1 PLAYS" : "EACH PART ON ITS OWN CHANNEL", same && !sel ? T_ACCENT : T_MID, T_SURF);
 }
-/* DUELL 0.2.14 GLO > MODULES: a line each, its name and ON / OFF, and what that means (OFF dim, as its card; SAVES CPU where it does) */
+/* DUELL 0.2.14 GLO > MODULES; 0.2.24 (owner: far too much text): one line a module, M, "ARP: KEYS PLAY DIRECTLY" style: the name, then what the state means now, no ON / OFF word
+ * (the cards say that), not dimmed */
 static void graph_mods(void)
 {
-    static const char *const ON_W[4] = {"THE ARPS PLAY AS SET", "PLAY PLAYS THE STORED STEPS", "CHORUS, DELAY, REVERB, SPACE",
-                                        "SAT, INSERT, EQ, DUCK"};
-    static const char *const OFF_W[4] = {"KEYS PLAY DIRECTLY, NO ARP", "NO STEPS PLAY, EDITING STAYS", "DRY MIX, SAVES CPU",
-                                         "BYPASSED, SAVES CPU"};
+    static const char *const ON_W[4] = {"ARP: PLAYS AS SET", "SEQ: PLAY RUNS THE STEPS", "SENDS: CHORUS DELAY REVERB", "PART FX: SAT INSERT EQ DUCK"};
+    static const char *const OFF_W[4] = {"ARP: KEYS PLAY DIRECTLY", "SEQ: NO STEPS PLAY", "SENDS: DRY MIX, SAVES CPU", "PART FX: BYPASSED, SAVES CPU"};
     uint32_t m = mods_get(), k;
     for (k = 0; k < 4u; k++) {
-        uint32_t off = (m >> k) & 1u;
-        mode_line(4 + 29 * (int32_t)k, MODS_NAME[k], off ? "OFF" : "ON", off ? OFF_W[k] : ON_W[k], !off);
+        const char *w = ((m >> k) & 1u) ? OFF_W[k] : ON_W[k];
+        cv_text_on(12, 8 + 28 * (int32_t)k, text_w(&AF_M, w) <= 216 ? &AF_M : &AF_S, w, T_TEXT, T_SURF);
     }
 }
-/* GLO > SIDECHAIN: the selected part's DUCK SRC and NOTE (the same two values as its DUCK 1 page) in words */
+/* FX > SEND FX (0.2.24, owner: the page never said it is a shortcut): under the cards, for each effect this part sends nothing to (its send 0, or MODULES SENDS OFF) a line that
+ * says so, then the hint that a twist of K1 / K2 / K3 jumps to that effect's GLO page (ui_input.c fxsum_knob) */
+static void graph_fxsum(void)
+{
+    static const char *const NM[3] = {"CHORUS", "DELAY", "REVERB"};
+    uint32_t c, n = 0;
+    int32_t y = 8;
+    char w[32];
+    if (mods_off & MODS_SENDS) {
+        cv_text_on(12, y, &AF_M, "SENDS OFF (MODULES)", T_DIM, T_SURF);
+        y += 24;
+        n = 1;
+    } else {
+        for (c = 0; c < 3u; c++)
+            if (TSEL->p[FXSUM_ID[c]] <= 0) {
+                str_cpy(w, NM[c], sizeof w);
+                str_cpy(w + str_len(w), ": INACTIVE (SEND 0)", sizeof w - str_len(w));
+                cv_text_on(12, y, &AF_M, w, T_DIM, T_SURF);
+                y += 24;
+                n++;
+            }
+    }
+    if (!n)
+        cv_text_on(12, y, &AF_M, "ALL THREE ACTIVE", T_MID, T_SURF), y += 24;
+    GFX_HOOK_ALIGN(0, 0, 240, 0, AL_H, "send fx hint centred");
+    cv_text_in(0, 92, 240, &AF_M, "TURN = JUMP TO SETTINGS", vt(T_THEME, T_SURF), T_SURF);
+}
+/* GLO > SIDECHAIN (0.2.22; 0.2.24, owner: far too much text, it repeated the cards): the note on top (when the setup counts), then each part's DUCK SRC as it is now
+ * ("PART 1  PUMP", "PART 2  MIDI", "PART 2  OFF": the part the setup applies to is the one on MIDI); the cards above hold the channels and notes themselves */
 static void graph_schain(void)
 {
-    const track_t *t = TSEL;
-    char v[12], w[40];
-    const char *un;
-    str_cpy(w, "SIDECHAIN PART ", sizeof w);
-    str_cpy(w + str_len(w), song.sel ? "2" : "1", 2);
-    param_format(&TP[P_DKSRC], t->p[P_DKSRC], v, &un);
-    mode_line(4, w, v, t->p[P_DKSRC] >= 2 ? "DUCKS WHEN THE NOTE ARRIVES" : t->p[P_DKSRC] == 1 ? "KEYED BY THE OTHER PART" : "PUMP: NO MIDI KEY", 1);
-    param_format(&TP[P_DKNOTE], t->p[P_DKNOTE], v, &un);
-    mode_line(34, "SC NOTE", v, "THE KEY THAT TRIGGERS THE DUCK", t->p[P_DKSRC] >= 2);
-    cv_text_on(12, 66, &AF_S, "CHANGE THE PART WITH ALGORITHM", T_MID, T_SURF);
+    uint32_t k, on = (mods_off & MODS_PFX) ? 0u : 1u;
+    cv_text_on(12, 4, &AF_M, "MIDI SETTINGS", on ? T_TEXT : T_DIM, T_SURF);
+    cv_text_on(12, 22, &AF_S, "USED ONLY WHEN A PATCH USES MIDI", on ? T_MID : T_DIM, T_SURF);
+    for (k = 0; k < NSHOWN; k++)
+        big_line(46 + 26 * (int32_t)k, k ? "PART 2" : "PART 1", N_DKSRC[(uint32_t)clamp(trk[k].p[P_DKSRC], 0, 3)], on && trk[k].p[P_DKSRC] == 2);
+    if (!on)
+        cv_text_on(12, 102, &AF_S, "PART FX OFF (MODULES): NO DUCK", T_DIM, T_SURF);
 }
 /* MIDI LEARN (step 6, midi_learn.c): its state in words: OFF, ON (turn a knob), a parameter picked (move a CC) */
 static void graph_mlearn(void)
 {
-    char a[32], b[32];
+    char a[40], b[32];
     if (!ui.ml.on) {
         fmt_int(b, (int32_t)ml_count());
         str_cpy(b + str_len(b), ml_count() == 1u ? " CC LEARNED" : " CCS LEARNED", 14);
@@ -1589,13 +2208,12 @@ static void draw_graph(void)
     const track_t *t = TSEL;
     uint16_t c = ACC;
     uint32_t sig;
-    if (pg->graph == GR_TRK) {
-        mixer_panel();
+    sig = graph_signature();
+    if (!ui.force && sig == ui.graph_sig) {
+        if (pg->graph == GR_COMP)                    /* (0.2.25: the gain reduction bar, its own strip, each frame) */
+            comp_meter();
         return;
     }
-    sig = graph_signature();
-    if (!ui.force && sig == ui.graph_sig)
-        return;
     ui.graph_sig = sig;
     cv_begin(240, H_GRAPH, T_BG);
     cv_rrect(3, 0, 234, H_GRAPH, 5, T_SURF, T_BG);   /* the panel */
@@ -1633,7 +2251,9 @@ static void draw_graph(void)
         cv_oy = 0;
         graph_browse();
         break;
-    case GR_ENGINE:
+    case GR_ENGINE:                                  /* T0227: WHEEL's drawbars and FM6's chart on the page that edits their first controls; the engines' list while K1 turns */
+        if (!(ui.hot_t && ui.hot_col == 0u) && ENGINES[t->eng_req % NENGINES] == &ENG_WHEEL) { graph_wheel(t, c); break; }
+        if (!(ui.hot_t && ui.hot_col == 0u) && t->eng_req % NENGINES == ENGI_FM6) { graph_fm6(t, c, 6u); break; }
         cv_oy = 0;
         graph_engine();
         break;
@@ -1685,6 +2305,39 @@ static void draw_graph(void)
         cv_oy = 0;
         graph_mods();
         break;
+    case GR_MSTG:
+        cv_oy = 0;
+        graph_mstg(c);
+        break;
+    case GR_EQ:
+        graph_eq(t, c);
+        break;
+    case GR_COMP:
+        cv_oy = 0;
+        graph_comp(c);
+        break;
+    case GR_FILT:
+        graph_filt(t, c);
+        break;
+    case GR_SUB:
+        graph_sub(t, c);
+        break;
+    case GR_CYCLE:
+        graph_cycle(t, c);
+        break;
+    case GR_ARP:
+        if (arp_drawn(t)) {
+            cv_oy = 0;
+            graph_arp(t, c);
+        } else {
+            cv_oy = 0;
+            graph_scope(c);
+        }
+        break;
+    case GR_FXSUM:
+        cv_oy = 0;
+        graph_fxsum();
+        break;
 #if DUELL_TEST_MODE
     case GR_TEST:
         cv_oy = 0;
@@ -1706,4 +2359,8 @@ static void draw_graph(void)
     }
     cv_oy = 0;
     cv_blit(0, Y_GRAPH);
+    if (pg->graph == GR_COMP) {                      /* (the bar over the panel just drawn) */
+        cmpm_sig = 0;
+        comp_meter();
+    }
 }

@@ -145,7 +145,7 @@ static void test_room_identical(void)
             d[i] = on ? noise(60000) : 0;
             r[i] = on ? noise(b % 2000u < 1000u ? 90000 : 4000) : 0;
         }
-        fx_buses(c, d, r, w0, CTL);
+        fx_buses_m(DLY_LEN - 1u, delay_samples(), c, d, r, w0, CTL, 0u, 0);   /* (0.2.21: the chorus of a bus without a side, DUEL's: the one tap, as it was; STEREO's is stereochorus_test.c) */
         ref_buses(c, d, r, w1, CTL);
         for (i = 0; i < CTL; i++)
             diff += w0[i] != w1[i];
@@ -421,6 +421,24 @@ static void model_run(int m, const int32_t *x, uint32_t len, uint32_t n)
     }
 }
 
+/* DUELL 0.2.29: model m run on (no reset, no input) until the last second of a 12 s run is exactly 0 (left and side), at most 'more' runs;
+ * returns the seconds after the input's end at which it was silent (a long HALL at a loud level now decays to its own end: fx.c hall_end), -1 never */
+static double model_silent_after(int m, uint32_t more)
+{
+    static int32_t z[1];
+    uint32_t k, i;
+    for (k = 0; k <= more; k++) {
+        int32_t tail = 0;
+        if (k)
+            model_run(m, z, 0, IRN);
+        for (i = IRN - FS; i < IRN; i++)
+            tail = abs(ir[i]) + abs(irs[i]) > tail ? abs(ir[i]) + abs(irs[i]) : tail;
+        if (!tail)
+            return 12.0 * (k + 1u);
+    }
+    return -1;
+}
+
 /* the normalised echo density (Abel and Huang): the share of samples beyond one standard deviation in a 20 ms
  * window, over a Gaussian's (0.3173): 1 = as dense as noise. Its mean over [t0, t1) ms, and the first ms at
  * which it reaches 0.9 */
@@ -595,7 +613,8 @@ static void test_hall(void)
     snprintf(what, sizeof what, "HALL decay rises with SIZE: RT60 %.2f s (SIZE 0), %.2f (64), %.2f (90), %.2f (127)",
              r[0], r[1], r[2], r[3]);
     check(what, r[0] < r[1] && r[1] < r[2] && r[2] < r[3] && r[0] >= 0.25 && r[0] <= 0.9 && r[2] >= 1.8 &&
-          r[2] <= 3.5 && r[3] >= 3.5 && r[3] <= 8.0);
+          r[2] <= 4.0 && r[3] >= 3.5 && r[3] <= 8.0);   /* (0.2.29: SIZE 90 up to 4.0 s, was 3.5: the quiet lines' rounding towards zero shortened the
+                                                         * measured decay, 3.25 -> 3.53 s now; the design's figure is 4 s, fx.c HALL) */
     {   /* DAMP: the decay at 500 Hz and at 3 kHz (DAMP 0, 60, 127): the highs die sooner the higher DAMP */
         static const int32_t DP[3] = {0, 60, 127};
         double lo[3], hi[3];
@@ -623,15 +642,19 @@ static void test_hall(void)
                 tails = abs(irs[i]) > tails ? abs(irs[i]) : tails;
             }
         }
-        snprintf(what, sizeof what, "HALL at SIZE 127 DAMP %d: 2 s of %s: peak %d, the last second %d (side %d)",
-                 k & 1u ? 127 : 0, k < 2u ? "full-scale noise" : k == 2u ? "a full-scale 3.2 kHz square" : "a 416 Hz square",
-                 pk, tail, tails);
-        check(what, pk <= 12 * 32768 && tail <= 4 && tails <= 4);   /* (the sum of 4 lines x HL_OUT, twice) */
+        {   /* 0.2.29: the last second of 12 may still ring (RT60 ~7 s from +24 dBFS: the tail is no longer gated near -50 dBFS); it must end in exact silence */
+            double sa = model_silent_after(M_HALL, 3u);
+            snprintf(what, sizeof what, "HALL at SIZE 127 DAMP %d: 2 s of %s: peak %d, the last second of 12 %d (side %d), silent within %.0f s",
+                     k & 1u ? 127 : 0, k < 2u ? "full-scale noise" : k == 2u ? "a full-scale 3.2 kHz square" : "a 416 Hz square",
+                     pk, tail, tails, sa);
+            check(what, pk <= 12 * 32768 && tail <= 400 && tails <= 400 && sa > 0);   /* (the sum of 4 lines x HL_OUT, twice) */
+        }
     }
     {   /* no limit cycle anywhere: SIZE 0 / 64 / 127 x DAMP 0 / 60 / 127, 1 s of a chord, quiet, middling or
          * loud (the quiet one keeps the lines near where their rounding changes), then silence: the last
          * second of 12 exactly 0 (left and side) */
-        uint32_t s0, d0, lv, worst = 0, held = 0;
+        uint32_t s0, d0, lv, worst = 0, held = 0, late = 0;
+        double longest = 12;
         static const int32_t SS[3] = {0, 64, 127}, DD[3] = {0, 60, 127}, LV[3] = {600, 20000, 200000};
         for (s0 = 0; s0 < 3u; s0++)
             for (d0 = 0; d0 < 3u; d0++)
@@ -644,11 +667,17 @@ static void test_hall(void)
                     model_run(M_HALL, burst, FS, IRN);
                     for (i = IRN - FS; i < IRN; i++)
                         tail = abs(ir[i]) + abs(irs[i]) > tail ? abs(ir[i]) + abs(irs[i]) : tail;
-                    held += tail != 0;
                     worst = (uint32_t)tail > worst ? (uint32_t)tail : worst;
+                    if (tail) {                         /* (0.2.29: SIZE 127 from +16 dBFS rings past 12 s now: it must still end) */
+                        double sa = model_silent_after(M_HALL, 3u);
+                        held += sa < 0;
+                        late += 1u;
+                        if (sa > longest)
+                            longest = sa;
+                    }
                 }
-        snprintf(what, sizeof what, "HALL: silent after its tail at every SIZE x DAMP x level (27 runs): %u not silent, worst %u",
-                 held, worst);
+        snprintf(what, sizeof what, "HALL: silent after its tail at every SIZE x DAMP x level (27 runs): %u not silent within 48 s (%u past 12 s, the largest there %u, silent by %.0f s)",
+                 held, late, worst, longest);
         check(what, !held);
     }
     {   /* the defaults after a loud burst: exact silence once the tail is gone, no offset on the way */
@@ -889,11 +918,12 @@ static void demo_block(int32_t *out, uint32_t n, int comb8_on)
 {
     uint32_t i;
     int32_t mg = (int32_t)song.master_q12;
-    for (i = 0; i < n; i++)
-        send_c[i] = send_d[i] = send_r[i] = mix_l[i] = mix_r[i] = 0;
+    blockstate_t bs;
     events_block(n);
-    for (i = 0; i < NPART; i++)
-        mix_part(&trk[i], n);
+    blk_snap(&bs, sp_tap);
+    for (i = 0; i < NLIVE; i++)
+        mix_part(&trk[i], n, &bs);
+    mix_gather(n, &bs);
     if (comb8_on) {
         for (i = 0; i < n; i++)
             wet[i] = 0;                                 /* (no chorus or delay in the demos) */

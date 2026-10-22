@@ -1,0 +1,82 @@
+# TWOCORE-3: the BENCHT4 suite (release_drafts/BENCH_TWOCORE4.md). About 8 minutes: the three scenes once each with the BENCHT4 defaults, and the heavy scene once more with BENCHT3's
+# run and window pause rules switched on, for contrast.
+# BENCHT4's rule ("pause only for real faults"): the jobs pause for a fault (a wrong answer, a refused job, no answer, a crash), for a job that did not finish by its wait limit
+# (a silent block), and for a run of 4 late blocks (core 1 not picking up jobs). A very late block whose job finished by the wait limit NEVER pauses, however many in a row or in a
+# window; it is counted ("very late without a pause"). The deadline floor is off by default. The defaults are what the first three tests run; the 4th puts BENCHT3's two rules back
+# (`tune vrun 4`, `tune vwin 8 2000`: 4 very late in a row, or 8 within 2 s, pause for 10 s).
+# Verdicts (the runner): very late blocks without a pause = WARN with the count; any pause = FAIL, except in the contrast test (its own `diag`: a pause is WARN there, counted);
+# a silent block, a refused job, a missed half, a core 1 that stops = FAIL.
+# `ref A P`: the CPU average and peak BENCHT3 gave with the pauses off (its best case); the summary prints them beside this run's. One core played the heavy scene at 66.3 %.
+suite TWOCORE-3
+
+cycle M07-CYCLE period 20
+at 0.0  chord C3 E3 G3 B3 vel 90
+at 4.0  release
+at 4.0  chord A2 C3 E3 G3 vel 90
+at 8.0  release
+at 8.0  chord F2 A2 C3 E3 vel 90
+at 12.0 release
+at 12.0 chord G2 B2 D3 F3 vel 90
+at 14.0 morph 0 127 over 2
+at 16.0 release
+at 16.0 chord C3 E3 G3 B3 vel 90
+at 16.0 aftertouch 0 127 over 2
+at 18.0 morph 127 0 over 1
+at 19.0 aftertouch 127 0 over 0.9
+at 19.9 release
+end
+
+cycle STRESS-HOLD period 600
+at 0.0  chord C3 E3 G3 B3 D4 F4 A4 C5 vel 64 ch 1
+at 0.0  chord G3 B3 D4 F#4 A4 C5 E5 G5 vel 64 ch 2
+end
+
+# ---- CHORDS
+
+test CHORDS-DEF  M07 FINAL REEL, four chords; the BENCHT4 defaults (only faults pause, floor off)
+load multi 7 "FINAL REEL"
+mode LAYER
+ref 34.0 55.5
+at 0.0  chord C3 E3 G3 B3 vel 90
+at 3.0  release
+at 3.0  chord A2 C3 E3 G3 vel 90
+at 6.0  release
+at 6.0  chord F2 A2 C3 E3 vel 90
+at 9.0  release
+at 9.0  chord G2 B2 D3 F3 vel 90
+at 12.0 release
+tail 5
+measure 1.0 12.0
+expect report
+
+# ---- M07
+
+test M07-DEF  M07 FINAL REEL cycle, 180 s; the BENCHT4 defaults
+load multi 7 "FINAL REEL"
+mode LAYER
+ref 34.2 55.2
+soak 180 repeat M07-CYCLE
+check 60
+tail 3
+expect report
+
+# ---- STRESS
+
+test STRESS-DEF  heavy 8 + 8 DUEL scene, 120 s; the BENCHT4 defaults
+scene "HVY DUEL 8+8"
+ref 58.8 78.3
+soak 120 repeat STRESS-HOLD
+check 30
+tail 3
+expect report
+
+test STRESS-RUNWIN  heavy 8 + 8 DUEL scene, 120 s; BENCHT3's run and window rules switched on (vrun 4, vwin 8 in 2000 ms): the contrast
+diag
+scene "HVY DUEL 8+8"
+tune vrun 4
+tune vwin 8 2000
+ref 58.8 78.3
+soak 120 repeat STRESS-HOLD
+check 30
+tail 3
+expect report

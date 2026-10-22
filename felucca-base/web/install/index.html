@@ -1,6 +1,6 @@
 <!doctype html>
 <!-- SPDX-License-Identifier: GPL-3.0-only
-     DUELL installer page (beta). Adapted from Felucca's installer (web/index_pkg.html):
+     DUELL installer page. Adapted from Felucca's installer (web/index_pkg.html):
      Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments.
      It keeps Felucca's install method (fm1ota.js: the running firmware stages an update loader, the loader
      writes the package; fm1pkg.js: package checks; fm1backup.js: the complete backup).
@@ -55,45 +55,24 @@
 <main>
   <h1>DUELL</h1>
   <p class="tag">MultiMorphing Bitimbral Synthesizer<br>by OSCILL/R</p>
-  <p><b><span class="ver">DUELL beta</span> installer</b> for the M-VAVE FM-1.</p>
+  <p><b><span class="ver">DUELL</span> installer</b> for the M-VAVE FM-1.</p>
 
   <div class="box" id="notreleased">
-    <p><b>DUELL firmware is not yet released. Use the browser emulator while the hardware tests finish.</b></p>
-    <p><a href="../emu/">Open the emulator</a> · <a href="https://github.com/oscillr/DUELL">Source code</a></p>
+    <p><b>DUELL firmware is not yet released.</b></p>
+    <p>Web emulator: coming soon · <a href="https://github.com/oscillr/DUELL">Source code</a></p>
   </div>
 
-  <div class="box">
-    <p><b>This is a beta.</b> DUELL was developed in a browser emulator and has been run on one real FM-1 by its author; the way back to the official firmware worked about three times, on the author's unit, and has not been tried on others.
-    Installing is at your own risk. If something goes wrong there is no known way to roll back, and the only
-    sure way back is the official firmware (the last card below, "Go back to the official firmware"). Read the <a href="https://github.com/oscillr/DUELL/blob/main/docs/RECOVERY.md">recovery notes</a> first.
-    DUELL is not affiliated with M-VAVE.</p>
-  </div>
-
-  <div class="box" id="savewarn">
-    <p><b>Saves may change before the alpha.</b> Until the alpha release, the way patches, multis, settings and everything else are saved may change. Saves may stop loading between versions, and a backup made with one version may not restore in the next. Do not rely on them yet.</p>
-  </div>
+  <p class="small" id="risknote">Installing is at your own risk. If something goes wrong, the way back is the official firmware (the last card below, "Go back to the official firmware"); the <a href="https://github.com/oscillr/DUELL/blob/main/docs/RECOVERY.md">recovery notes</a> explain it. DUELL is not affiliated with M-VAVE.</p>
 
   <p class="small" id="browser"></p>
 
-  <div class="needpkg" hidden>
   <section>
-    <h2><span class="n">1</span>Flash checklist</h2>
-    <p>Tick each box. The Install button stays off until all four are ticked.</p>
-    <label><input type="checkbox" class="chk"> I use a <b>data</b> USB cable (some cables only charge), plugged <b>straight into the computer</b>, no hub or dock.</label>
-    <label><input type="checkbox" class="chk"> I know I must <b>not unplug, close this tab or let the computer sleep</b> while it writes.</label>
-    <label><input type="checkbox" class="chk"> I have <b>backed up</b> what I care about (step 2), or I accept losing it.</label>
-    <label><input type="checkbox" class="chk"> I understand this is a <b>beta that has been tried on only one unit</b>, that the way back has been tried on only one unit, and I install it at my own risk.</label>
-    <p class="small">Afterwards: unplug the FM-1 and plug it in again before you use it.</p>
-  </section>
-  </div>
-
-  <section>
-    <h2><span class="n">2</span>Back up (recommended)</h2>
+    <details id="backup-details">
+    <summary><b>Back up (recommended)</b></summary>
     <div class="card backup" id="card-backup">
       <h2>BACK UP</h2>
       <p>Reads the unit and saves a file with your current sounds and settings to this computer. Nothing is written to the FM-1. It needs a firmware that supports
       backups (Felucca or DUELL). The official M-VAVE firmware cannot be backed up from this page.</p>
-      <p class="small"><b>A backup made with one version may not restore in the next</b> (see the warning at the top: until the alpha release the way things are saved may change).</p>
       <p class="small">The file holds every patch, the settings and the music of both parts; from DUELL 0.2.14 on also the MULTIs and the PATTERN slots, and the user wavetables. An older firmware cannot save the MULTIs and PATTERN slots: the message after the backup says so. A backup is restored in the editor (its Backup page).</p>
       <p><button id="backup" disabled>Save a backup file</button></p>
       <p class="lock" id="lock-backup"></p>
@@ -101,36 +80,38 @@
       <p class="status" id="status-backup"></p>
       <p class="result" id="result-backup"></p>
     </div>
+    </details>
   </section>
 
   <div class="needpkg" hidden>
   <section>
-    <h2><span class="n">3</span>The DUELL build</h2>
+    <h2>The DUELL build</h2>
     <p id="pkgstate">Looking for the build ...</p>
     <p class="small" id="pkginfo"></p>
   </section>
 
   <section>
-    <h2><span class="n">4</span>Connect</h2>
+    <h2>Connect</h2>
     <p>Connect the FM-1 by USB and switch it on. Close other programs that use MIDI (a DAW, another browser tab). Chrome will ask to allow MIDI with SysEx: allow it.</p>
   </section>
 
   <section>
-    <h2><span class="n">5</span>Install</h2>
+    <h2>Install</h2>
     <div class="card install" id="card-install">
       <h2>INSTALL DUELL</h2>
       <p class="small">The page checks what your FM-1 runs now and sets the box below for you. You can always tick or untick it yourself.</p>
       <p class="small"><b id="erase-detect"></b> <button id="detect" type="button" disabled>Check the unit</button></p>
       <label><input type="checkbox" id="erase-after"> <b id="erase-label">Erase my saved data after installing (start from scratch)</b></label>
       <p class="small" id="erase-smart"></p>
-      <p class="small" id="erase-help">Erases your settings (theme, scale, MIDI channels, favourites), the autosave, your patches, your multis and your patterns. The factory sounds, multis and patterns come back. This cannot be undone: back up first (step 2). Left off, your saved data stays and the unit comes back as you left it.</p>
+      <p class="small" id="erase-help">Erases your settings (theme, scale, MIDI channels, favourites), the autosave, your patches, your multis and your patterns. The factory sounds, multis and patterns come back. This cannot be undone: back up first. Left off, your saved data stays and the unit comes back as you left it.</p>
       <p class="small" id="erase-lock"></p>
-      <p><button id="go" disabled>Install <span class="ver">DUELL beta</span></button></p>
+      <p><b>Do not switch off or unplug the unit while it installs.</b> <a href="../editor/backup.html">Back up first (recommended)</a></p>
+      <p><button id="go" disabled>Install <span class="ver">DUELL</span></button></p>
       <p class="lock" id="lock-install"></p>
       <progress class="bar" id="bar-install" max="100" value="0" hidden></progress>
       <p class="status" id="status-install"></p>
       <p class="result" id="result-install"></p>
-      <p class="small">If it stops: replug the cable and press Install again. The FM-1 stays in update mode until the write is finished, and the page resumes it. When it says Done, unplug the FM-1, plug it in again, and check the version under HOME (hold) &gt; ABOUT.</p>
+      <p class="small">If it stops: replug the cable and press Install again. The FM-1 stays in update mode until the write is finished, and the page resumes it.</p>
     </div>
   </section>
   </div>
@@ -157,7 +138,7 @@
 
   <p class="small" style="margin-top:32px"><a href="https://github.com/oscillr/DUELL/blob/main/docs/RECOVERY.md">Recovery</a> · <a href="https://github.com/oscillr/DUELL/blob/main/docs/TROUBLESHOOTING.md">Troubleshooting</a> · <a href="https://github.com/oscillr/DUELL/blob/main/docs/INSTALL.md">Install guide</a> · <a href="https://github.com/oscillr/DUELL/blob/main/docs/KNOWN_ISSUES.md">Known issues</a></p>
   <pre id="log"></pre>
-  <p class="small"><span class="ver">DUELL beta</span> installer. DUELL is free software under the GPL-3.0, with <b>no warranty</b>. It is a fork of Felucca by Leo Kuroshita (@kurogedelic), Hügelton Instruments, with the SHIM and RESO reverbs from JIANT.
+  <p class="small"><span class="ver">DUELL</span> installer. DUELL is free software under the GPL-3.0, with <b>no warranty</b>. It is a fork of Felucca by Leo Kuroshita (@kurogedelic), Hügelton Instruments, with the SHIM and RESO reverbs from JIANT.
     The package also holds three JieLi AC79 SDK files (uboot.boot, cfg_tool.bin, eq_cfg_hw.bin; JieLi Technology, Apache-2.0).
     <a href="./LICENSES/">Licence texts</a> · <a href="https://github.com/oscillr/DUELL/blob/main/felucca-base/LICENSING.md">LICENSING.md</a> · <a href="https://github.com/oscillr/DUELL/blob/main/LICENSE">GPL-3.0</a> · <a href="https://github.com/oscillr/DUELL">Source code</a>.<br>
     M-VAVE and FM-1 are trademarks of their respective owners. DUELL is independent and not affiliated with, endorsed by or supported by them.</p>
@@ -166,18 +147,19 @@
 import { productOf, logicalImage, sha256hex, validateStockPackage } from "../fm1pkg.js";
 import { Updater } from "../fm1ota.js";
 import { BackupConnection, captureBackup, eraseAllData, parseInfo } from "../fm1backup.js";
-import { uiState, TEXT, ERASE, eraseOutcome, SMART, detectUnit, eraseDecision } from "../installer_state.js";
+import { uiState, TEXT, SWITCH_OFF_ON, ERASE, eraseOutcome, SMART, detectUnit, eraseDecision } from "../installer_state.js";
 
 const $ = (id) => document.getElementById(id);
 // the version comes from duell-version.json next to this page (make_site.py / tools/build.py write it from the VERSION file)
 const PKG_URLS = ["./duell-latest.fwsc", "./duell-0.1-beta.fwsc", "./felucca-0.1-beta.fwsc"];   // newest first; the versioned name is added when the version is known
-let VERSION = "DUELL beta";                                                                       // fallback text when duell-version.json is missing
+let VERSION = "DUELL";                                                                            // fallback text when duell-version.json is missing
 const showVersion = (v) => {
-  VERSION = `DUELL ${v} beta`;
+  const beta = /^0\./.test(v) ? " beta" : "";               // 0.x.y builds are test betas; 1.0 and later are not
+  VERSION = `DUELL ${v}${beta}`;
   document.querySelectorAll(".ver").forEach((e) => { e.textContent = VERSION; });
   document.querySelectorAll(".verfile").forEach((e) => { e.textContent = v; });
   document.title = `${VERSION} installer`;
-  PKG_URLS.splice(1, 0, `./duell-${v}-beta.fwsc`);
+  PKG_URLS.splice(1, 0, `./duell-${v}${beta ? "-beta" : ""}.fwsc`);
 };
 const versionReady = (async () => {
   try {
@@ -195,7 +177,6 @@ const result = (card, t, bad = false) => { const e = $("result-" + card); e.text
 let image = null, product = null, stock = null, busy = null, ready = false;
 // what the unit runs (installer_state.js detectUnit), null until the page really talked to it; touched: the user clicked the erase box
 let detected = null, touched = false, probing = false, midiAccess = null;
-const checks = [...document.querySelectorAll(".chk")];
 const BTN = { backup: "backup", install: "go", return: "stock-go" };
 
 function showErase() {
@@ -205,7 +186,7 @@ function showErase() {
   $("erase-smart").textContent = d.help;
 }
 function refresh() {
-  const u = uiState({ busy, ready, hasImage: !!image, checksOk: checks.every((c) => c.checked), hasStock: !!stock });
+  const u = uiState({ busy, ready, hasImage: !!image, hasStock: !!stock });
   for (const a of Object.keys(BTN)) {
     $(BTN[a]).disabled = !u.buttons[a].enabled;
     $("lock-" + a).textContent = u.buttons[a].note;
@@ -221,7 +202,6 @@ function refresh() {
   if (probing) for (const a of Object.keys(BTN)) $(BTN[a]).disabled = true;      // the check uses the unit's MIDI ports: nothing else starts meanwhile
   $("detect").disabled = !ready || !!busy || probing;
   showErase();
-  checks.forEach((c) => { c.disabled = u.inputsLocked; });
 }
 // start an action: clears every card's status and result (so the other cards show nothing while this one runs), locks the rest
 function begin(card) {
@@ -229,7 +209,6 @@ function begin(card) {
   busy = card; refresh();
 }
 function end(card) { say(card, ""); busy = null; refresh(); }
-checks.forEach((c) => c.addEventListener("change", refresh));
 window.addEventListener("beforeunload", (e) => { if (busy) { e.preventDefault(); e.returnValue = "Writing. Do not close the page."; } });
 
 if (!navigator.requestMIDIAccess) {
@@ -386,7 +365,7 @@ $("go").addEventListener("click", async () => {
       if (await up.resume(image, step, product)) installed = true; else result("install", ERR.stopped, true);
     } else { await up.install(image, product, step); installed = true; }
     if (installed && !wantErase) result("install", TEXT.done.install);
-    else if (installed) { const o = await eraseAfterInstall(midi); result("install", o.text, o.bad); }
+    else if (installed) { const o = await eraseAfterInstall(midi); result("install", o.text + " " + SWITCH_OFF_ON, o.bad); }
   } catch (e) { fail("install", e); }
   finally { end("install"); }
 });

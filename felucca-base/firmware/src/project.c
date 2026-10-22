@@ -5,15 +5,13 @@
  * and the editor's backup / restore of the music (editor_backup.c id 0); project_capture and project_restore_runtime
  * are shared with the multis.
  *
- * Format 11 ("FUNB", FUN11): 3840 bytes (a whole storage object, storage.c ST_PAYLOAD_MAX), little endian, parts A and B only
- * (the NSHOWN shown parts, tracks 1..2). From byte 0: the magic, the size, the 27 globals (int16), the selected part (62), NPART (63),
+ * Format 11 ("FUNB", FUN11), revision 6 (memory trim 1's two parts + cloud job A's extension slots and hand-set B lists): 3840 bytes (a whole storage object, storage.c ST_PAYLOAD_MAX), little endian, parts A and B
+ * only (NPART = 2: the hidden parts 3 and 4 and the song chain block of the older revisions are gone). From byte 0: the magic, the size, the 27 globals (int16), the selected part (62), NPART (63),
  * PROJ_PHYS (64), BASS MONO (65: 0 OFF, 1..11 the corner; 0.2.19, was reserved), P_COUNT (66), the revision PROJ_REV (67); from byte 68 per part its P_COUNT values (+64, a byte
- * each), engine, preset and 64 steps of 9 bytes (notes with the NUDGE in bit 7, time / count / flags, velocity with RATCH bit 0, two
- * reserved bytes written 0 and ignored, chance with RATCH bit 1); then the song chain (84 bytes, an empty one: DUELL has no song
- * mode, it is checked and ignored), the motion (388 bytes: 128 records, parts A and B only), the parts' FM6 patches (PROJ_FM6_OFF,
- * NSHOWN x 128 just before the name), the 12-byte name and the FNV-1a hash. 68 + 2 x (127 + 2 + 576) + 84 + 388 = 1950 of the 3568
- * bytes before the patches (the _Static_assert at proj_pack keeps it inside). Tracks 3..4 (no screen, voice or channel in DUELL)
- * load with their power-on sound (proj_trk_default).
+ * each), then nx and nx extension slots (+64) and ne and ne hand-set B edits (wide id, value + 64; revision 6), engine, preset and 64 steps of 9 bytes (notes with the NUDGE in bit 7, time / count / flags, velocity with RATCH bit 0, two
+ * reserved bytes written 0 and ignored, chance with RATCH bit 1); then the motion (388 bytes: 128 records), the parts' FM6 patches
+ * (PROJ_FM6_OFF, NPART x 128 just before the name), the 12-byte name and the FNV-1a hash. 68 + 2 x (127 + 2 + 576) + 388 = 1866 of the 3568
+ * bytes before the patches (the _Static_assert at proj_pack keeps it inside).
  *
  * DUELL 0.2.14: a project loads only if it is exactly this format: the magic, the hash, P_COUNT (127) at byte 66 and PROJ_REV 3 at
  * byte 67 (CRUSH's BITS in INS A on the curve of ins_bits.h; the delay MODE of 0.2.16; 0.2.19's MIXER LEVEL and PATCH TRIM) must all match, NPART and PROJ_PHYS at bytes 63 / 64. Anything else, in
@@ -26,10 +24,12 @@
  * PROJ_HOST needs core.h, params.c (TP) and engines.c. */
 #define PROJ_MAGIC 0x46554E42u                 /* "FUNB" (FUN11, DUELL): parts A and B only */
 #define PROJ_PHYS 2u                           /* project_t.phys, byte 64: always written 2, a project that says otherwise is not one */
-#define PROJ_REV 3u                            /* byte 67: 3 = DUELL 0.2.19's level split (P_LEVEL is the MIXER level, default 112 = unity; P_TRIM, the patch's loudness, is on the id of the legacy DUCK HOLD: a project of revision 2 would read its 0 as a silent trim); 2 = DUELL 0.2.16's delay MODE (G_DMODE 0 DIGITAL, 1 PING-PONG, 2 RANDOM, 3 OCT UP; no ping-pong switch); 1 = 0.2.14's layout and CRUSH curve, 0 = before 0.2.14: both refused */
+#define PROJ_REV 7u                            /* byte 67: 7 = editable B (cloud job G): per part, after the hand-set edit list, End B's 7-byte block (morph.c MB_N: seed, AMOUNT, roll bits, check byte; all 0 = none); 6 = memory trim 1 (two parts, byte 63 = 2, no song chain block) AND the cloud plan's job A (per part, after its P_COUNT values, the NX extension slots, dense: a count byte nx, nx bytes value + 64, and the hand-set B edit list: a count byte ne <= 32, ne x (wide id, value + 64); the bytes after them move); revisions 0..6 are refused (5 was either of the two formats alone); 4 = DUELL 0.2.22's DUCK SRC (2 is MIDI; the old 2..17 CH1..16 and the NOTE are gone, the sidechain's channel and note are the device's settings); 3 = DUELL 0.2.19's level split (P_LEVEL is the MIXER level, default 112 = unity; P_TRIM, the patch's loudness, is on the id of the legacy DUCK HOLD: a project of revision 2 would read its 0 as a silent trim); 2 = DUELL 0.2.16's delay MODE (G_DMODE 0 DIGITAL, 1 PING-PONG, 2 RANDOM, 3 OCT UP; no ping-pong switch); 1 = 0.2.14's layout and CRUSH curve, 0 = before 0.2.14: both refused */
+#define PROJ_MB_N 7u                           /* End B's block: morph.c MB_N (the _Static_assert at project_capture) */
 #define PROJ_NAME_LEN 12u                      /* the name: the reserved tail's end */
 typedef struct {                               /* one track */
     int16_t p[P_COUNT];
+    int16_t x[NX];                             /* the extension slots (ext.h XV), -64 .. +127 */
     uint8_t engine, preset;
     step_t step[NSTEP];
 } proj_trk_t;
@@ -41,43 +41,22 @@ typedef struct {
     uint8_t phys;                              /* PROJ_PHYS (always) */
     uint8_t bm;                                /* byte 65 (was reserved, written 0): BASS MONO, 0 OFF .. BM_N (0.2.19; core.h G_BM); a larger byte reads OFF */
     proj_trk_t t[NTRK];
-    chain_config_t chain;
+    uint8_t xe_n[NSHOWN];                      /* each shown part's hand-set B edits (up_xb.h): their number .. */
+    xb_edit_t xe[NSHOWN][XB_MAX];              /* .. and the edits (project_capture fills them from the morph; project_restore_runtime hands them back) */
+    uint8_t mb[NSHOWN][PROJ_MB_N];             /* each shown part's End B block (PROJ_REV 7; all 0: none) */
     motion_store_t motion;
     uint8_t fm6[NTRK][FM6_PACKED];             /* each track's FM6 patch, packed (eng_fm6.c) */
     char name[PROJ_NAME_LEN];                  /* the project's name: upper-case ASCII 32..126, 0-padded; "" = none */
     uint32_t sum;
 } project_t;
-/* The song chain (Felucca 1.2's SONG: sections of PROJECT slots) is gone from DUELL (a jam instrument: no song mode). Its
- * block stays in the format (its size does not move): a save writes an empty one (chain_defaults: no section, so
- * any firmware that still has SONG finds nothing to play), a load checks it and ignores it */
-static void chain_defaults(chain_config_t *c)
-{
-    uint32_t i;
-    memset(c, 0, sizeof *c);
-    for (i = 0; i < CHAIN_ROWS; i++)
-        c->row[i].repeat = 1;
-}
-static int chain_valid(const chain_config_t *c)
-{
-    uint32_t i, k;
-    if (c->count > CHAIN_ROWS)
-        return 0;
-    for (i = 0; i < c->count; i++) {
-        for (k = 0; k < NTRK; k++)
-            if (c->row[i].slot[k] > CHAIN_SILENT)
-                return 0;
-        if (!c->row[i].repeat || c->row[i].repeat > 16u)
-            return 0;
-    }
-    return 1;
-}
+/* Format 11 from PROJ_REV 7, per part: P_COUNT values, nx (= NX when written), nx extension values (+64; a reader takes min(nx, NX) and gives the rest their defaults, and
+ * skips the extra bytes of a newer firmware's longer list), ne (<= XB_MAX, else the project is refused), ne x (wide id, value + 64), End B's block (PROJ_MB_N bytes), then engine, preset and the steps. */
 /* Serialized: params are biased bytes, steps pack n/time/flags. The reserved tail is zero and covered by the hash. The tail's last
  * 12 bytes (PROJ_NAME_OFF, just before the hash) are the project's name: ASCII 32..126 (upper case), 0-padded, all 0 = no name. */
 #define PROJ_STORE_SIZE 3840u                  /* a whole storage object (storage.c ST_PAYLOAD_MAX) */
 #define PROJ_NAME_OFF (PROJ_STORE_SIZE - 4u - PROJ_NAME_LEN)
-#define PROJ_NTRK NSHOWN                       /* the tracks it stores (parts A and B) */
+#define PROJ_NTRK NTRK                         /* the tracks it stores (parts A and B) */
 #define PROJ_FM6_OFF (PROJ_NAME_OFF - PROJ_NTRK * FM6_PACKED)   /* the patches */
-#define PROJ_DEF_SOUND 0xFFu                   /* preset byte: the track's power-on sound, no steps (tracks 3..4) */
 typedef union { uint32_t align; uint8_t raw[PROJ_STORE_SIZE]; } project_store_t;
 _Static_assert(G_COUNT == 27u, "FUN11 globals: 27");
 _Static_assert(sizeof(project_store_t) == 3840u, "FUN11 size");
@@ -92,21 +71,7 @@ static uint32_t proj_hash(const void *p, uint32_t n)   /* FNV-1a over n bytes */
 }
 static uint32_t proj_sum(const project_t *p) { return proj_hash(p, sizeof *p - 4u); }
 static int proj_ok(const project_t *q) { return q->magic == PROJ_MAGIC && q->size == sizeof *q &&
-    q->sum == proj_sum(q) && chain_valid(&q->chain) && motion_valid(&q->motion); }
-
-/* track i of q: its power-on sound (loaded as one: PROJ_DEF_SOUND), no steps, the init FM6 patch */
-static void proj_trk_default(project_t *q, uint32_t i)
-{
-    uint32_t k;
-    memset(&q->t[i], 0, sizeof q->t[i]);
-    for (k = 0; k < P_COUNT; k++)
-        q->t[i].p[k] = param_desc_of(trk_def_engine(i), k)->def;
-    q->t[i].engine = (uint8_t)trk_def_engine(i);
-    q->t[i].preset = PROJ_DEF_SOUND;
-    for (k = 0; k < NSTEP; k++)
-        q->t[i].step[k].time = ST_REST;
-    memcpy(q->fm6[i], FM6_INIT, FM6_PACKED);
-}
+    q->sum == proj_sum(q) && motion_valid(&q->motion); }
 
 /* every track's engine a number this firmware has (a retired one is: it plays silent): a project of another number
  * is not one (it never was: no engine number past the last was ever stored) */
@@ -139,9 +104,9 @@ static uint32_t proj_name_get(char *d, const uint8_t *s)   /* its length */
 }
 
 /* A stable serialized schema (see the top). Parts A and B only */
-_Static_assert(68u + PROJ_NTRK * (P_COUNT + 2u + NSTEP * 9u) + sizeof(chain_config_t) + sizeof(motion_store_t) <= PROJ_FM6_OFF &&
-               P_COUNT <= 127u && PROJ_FM6_OFF + PROJ_NTRK * FM6_PACKED + PROJ_NAME_LEN + 4u == PROJ_STORE_SIZE,
-               "FUN11: the parts' values, steps, chain and motion fit before the FM6 patches (else a save fails)");
+_Static_assert(68u + PROJ_NTRK * (P_COUNT + 2u + NSTEP * 9u + 1u + 255u + 1u + 2u * XB_MAX + PROJ_MB_N) + sizeof(motion_store_t) <= PROJ_FM6_OFF &&
+               NX <= 255u && PROJ_NTRK == NSHOWN && P_COUNT <= 127u && PROJ_FM6_OFF + PROJ_NTRK * FM6_PACKED + PROJ_NAME_LEN + 4u == PROJ_STORE_SIZE,
+               "FUN11: the parts' values, extension slots, edit lists, steps and motion fit before the FM6 patches (else a save fails)");
 static int proj_pack(project_store_t *out, const project_t *q)
 {
     uint8_t *b = out->raw; uint32_t pos = 68u, t, i; uint32_t magic = PROJ_MAGIC, size = PROJ_STORE_SIZE, sum;
@@ -149,8 +114,8 @@ static int proj_pack(project_store_t *out, const project_t *q)
     for (t = 0; t < PROJ_NTRK; t++)
         for (i = 0; i < FM6_PACKED; i++)
             if (q->fm6[t][i] > 127u) return 0;
-    if (!chain_valid(&q->chain) || !motion_valid(&q->motion) || P_COUNT > 127u) return 0;
-    memset(&mo, 0, sizeof mo);                          /* the motion of parts A and B (tracks 3..4 are not stored) */
+    if (!motion_valid(&q->motion) || P_COUNT > 127u) return 0;
+    memset(&mo, 0, sizeof mo);                          /* the motion of parts A and B  */
     mo.on = (uint8_t)(q->motion.on & ((1u << PROJ_NTRK) - 1u));
     for (i = 0; i < q->motion.count && i < MOTION_MAX; i++)
         if ((q->motion.event[i].place >> 6) < PROJ_NTRK)
@@ -164,6 +129,17 @@ static int proj_pack(project_store_t *out, const project_t *q)
             if (q->t[t].p[i] < -64 || q->t[t].p[i] > 127) return 0;
             b[pos++] = (uint8_t)(q->t[t].p[i] + 64);
         }
+        b[pos++] = NX;                                  /* PROJ_REV 6: the extension slots, dense, then the hand-set B edits */
+        for (i = 0; i < NX; i++) {
+            if (q->t[t].x[i] < -64 || q->t[t].x[i] > 127) return 0;
+            b[pos++] = (uint8_t)(q->t[t].x[i] + 64);
+        }
+        if (q->xe_n[t] > XB_MAX) return 0;
+        b[pos++] = q->xe_n[t];
+        if (xb_pack(q->xe[t], q->xe_n[t], b + pos) != 2u * q->xe_n[t]) return 0;   /* (a wide id 127, or a value out of range, is no edit) */
+        pos += 2u * q->xe_n[t];
+        memcpy(b + pos, q->mb[t], PROJ_MB_N);            /* PROJ_REV 7: End B's block */
+        pos += PROJ_MB_N;
         b[pos++] = q->t[t].engine; b[pos++] = q->t[t].preset;
         for (i = 0; i < NSTEP; i++) {
             const step_t *s = &q->t[t].step[i];
@@ -180,8 +156,7 @@ static int proj_pack(project_store_t *out, const project_t *q)
             b[pos++] = (uint8_t)(s->probability | (r >> 1) << 7);
         }
     }
-    if (pos + sizeof q->chain + sizeof mo > PROJ_FM6_OFF) return 0;
-    memcpy(b + pos, &q->chain, sizeof q->chain); pos += sizeof q->chain;
+    if (pos + sizeof mo > PROJ_FM6_OFF) return 0;
     memcpy(b + pos, &mo, sizeof mo);
     memcpy(b + PROJ_FM6_OFF, q->fm6, PROJ_NTRK * sizeof q->fm6[0]);
     {   /* the name (0-padded; stops at the first 0) */
@@ -192,7 +167,7 @@ static int proj_pack(project_store_t *out, const project_t *q)
     return 1;
 }
 /* a stored FUN11 (st = PROJ_STORE_SIZE; PROJ_NTRK parts) -> q. 0: not exactly this firmware's format (see the top) or damaged.
- * Tracks 3..4: their power-on sound (proj_trk_default) */
+ */
 static int proj_unpack(project_t *q, const uint8_t *b, uint32_t st)
 {
     uint32_t pos = 68u, t, i, magic, size, sum;
@@ -204,10 +179,20 @@ static int proj_unpack(project_t *q, const uint8_t *b, uint32_t st)
     memcpy(q->g, b + 8, sizeof q->g); q->sel = b[62]; q->parts = b[63]; q->phys = b[64]; q->bm = b[65] <= BM_N ? b[65] : 0u;
     if (q->sel >= PROJ_NTRK)
         q->sel = 0;
-    for (t = PROJ_NTRK; t < NTRK; t++)
-        proj_trk_default(q, t);
     for (t = 0; t < PROJ_NTRK; t++) {
         for (i = 0; i < P_COUNT; i++) { if (b[pos] > 191u) return 0; q->t[t].p[i] = (int16_t)b[pos++] - 64; }
+        {   /* the extension slots: min(nx, NX) of them, the rest their defaults; a longer list's extra bytes are skipped (they cannot run past the buffer: the _Static_assert at proj_pack) */
+            uint32_t nx = b[pos++], ne;
+            for (i = 0; i < nx; i++) if (b[pos + i] > 191u) return 0;
+            for (i = 0; i < NX; i++) q->t[t].x[i] = (int16_t)(i < nx ? b[pos + i] : xb_def(i)) - 64;
+            pos += nx;
+            ne = b[pos++];
+            if (ne > XB_MAX || xb_unpack(b + pos, 2u * ne, q->xe[t]) == XB_ERR) return 0;
+            q->xe_n[t] = (uint8_t)ne;
+            pos += 2u * ne;
+            memcpy(q->mb[t], b + pos, PROJ_MB_N);        /* PROJ_REV 7: End B's block (checked by the morph when it is used) */
+            pos += PROJ_MB_N;
+        }
         q->t[t].engine = b[pos++]; q->t[t].preset = b[pos++];
         if (q->t[t].engine >= NENGINES) return 0;
         for (i = 0; i < NSTEP; i++) {
@@ -226,9 +211,8 @@ static int proj_unpack(project_t *q, const uint8_t *b, uint32_t st)
             step_set_nudge(s, (int32_t)(nd ^ 8u) - 8);
         }
     }
-    memcpy(&q->chain, b + pos, sizeof q->chain); pos += sizeof q->chain;
     memcpy(&q->motion, b + pos, sizeof q->motion);
-    if (!chain_valid(&q->chain) || !motion_valid(&q->motion) || (q->motion.on >> PROJ_NTRK)) return 0;
+    if (!motion_valid(&q->motion) || (q->motion.on >> PROJ_NTRK)) return 0;
     for (i = 0; i < q->motion.count; i++)
         if ((q->motion.event[i].place >> 6) >= PROJ_NTRK) return 0;
     for (t = 0; t < PROJ_NTRK; t++)
@@ -244,7 +228,7 @@ static int proj_unpack(project_t *q, const uint8_t *b, uint32_t st)
 
 #ifndef PROJ_HOST
 static project_t proj_scratch               /* decoded main-loop work, never audio ISR */
-    __attribute__((section(".pool")));
+    SCRATCH_BSS;                             /* (ordinary RAM since memory trim 1, item 5) */
 static char proj_name[PROJ_NAME_LEN + 1u]    /* the name of the music as it is now (loaded, saved, the editor's */
     __attribute__((section(".pool")));       /* runtime restore); "" = none. A save takes it unless one is given */
 #define PROJ_NO_SLOT 0xFFu
@@ -257,6 +241,7 @@ static union {                               /* serialized main-loop work; no re
 #define proj_wire (proj_wire_u.s)
 static uint8_t proj_wire_gen;                /* +1 whenever proj_wire is rewritten (a backup's runtime copy lives there) */
 static uint8_t proj_keep_play;               /* project_restore_runtime: 1 = the transport keeps running (a MULTI load) */
+static uint8_t proj_morph_skip;              /* project_restore_runtime: 1 = the caller sets End B itself (a MULTI load: multi.c project_load) */
 
 static void proj_steps(step_t *s)            /* a loaded sequence stays inside its fixed fields */
 {
@@ -284,6 +269,8 @@ static void proj_bound(project_t *q)
             const param_desc_t *d = param_desc_of(q->t[t].engine % NENGINES, i);
             q->t[t].p[i] = (int16_t)param_fit(d, q->t[t].p[i]);   /* (a retired KIT: the kit it plays) */
         }
+        for (i = 0; i < NX; i++)                        /* (the extension slots: the byte range only, until the descriptors of job B fit them) */
+            q->t[t].x[i] = (int16_t)(q->t[t].x[i] < -64 ? -64 : q->t[t].x[i] > 127 ? 127 : q->t[t].x[i]);
     }
     q->sum = proj_sum(q);
 }
@@ -300,14 +287,19 @@ static void project_capture(project_t *p)
     p->sel = song.sel;
     p->parts = NPART;
     p->phys = PROJ_PHYS;
-    p->bm = (uint8_t)(song.bm > 0 && song.bm <= (int16_t)BM_N ? song.bm : 0);
-    chain_defaults(&p->chain);                          /* (no song mode: an empty chain, see chain_defaults) */
+    p->bm = 0;                                          /* (byte 65: BASS MONO up to 0.2.23; a unit setting since 0.2.24 (ui.c ms_sync): written 0, not read) */
     for (i = 0; i < NTRK; i++) {
         for (uint32_t j = 0; j < P_COUNT; j++) p->t[i].p[j] = motion_base_value(&trk[i], j);
+        for (uint32_t j = 0; j < NX; j++) p->t[i].x[j] = (int16_t)(XV(&trk[i], j) < -64 ? -64 : XV(&trk[i], j) > 127 ? 127 : XV(&trk[i], j));   /* (the hand-set B edits, p->xe: none live yet, job G) */
         p->t[i].engine = trk[i].eng_req;
         p->t[i].preset = trk[i].preset;
         memcpy(p->t[i].step, trk[i].step, sizeof trk[i].step);
         fm6_pack(fm6_patch[i], p->fm6[i]);
+        if (i < NSHOWN) {                               /* PROJ_REV 7: the part's End B (its roll's block, as it is: no re-roll) and the values set by hand */
+            if (!morph_blk_peek(i, p->mb[i]))
+                memset(p->mb[i], 0, PROJ_MB_N);
+            p->xe_n[i] = (uint8_t)morph_edits(i, p->xe[i]);
+        }
     }
     p->motion = motion;
     motion_unguard(f);
@@ -353,18 +345,20 @@ static int project_restore_runtime(const project_t *input)
     motion_base_valid = 0;
     for (i = 0; i < G_COUNT; i++)
         if (i != G_SLOT && i != G_LOAD && i != G_SAVE)
-            song.g[i] = (int16_t)clamp(p->g[i], GP[i].min, GP[i].max);
-    song.bm = p->bm <= BM_N ? p->bm : 0;
+            song.g[i] = (int16_t)(i == G_TUNE && (p->g[i] < TUNE_MIN || p->g[i] > TUNE_MAX) ? TUNE_DEF :
+                                  i == G_SHPITCH && p->g[i] != SHP_DOWN ? SHP_UP :   /* (0.2.25: SHIM's PITCH BOTH is gone: a stored BOTH, or any value but DOWN, reads UP) */   /* (0.2.22: MASTER TUNE is A4 in 0.1 Hz: an older project's cents, or any value out of range, read 440.0, not the nearest end) */
+                                  clamp(p->g[i], GP[i].min, GP[i].max));
+    /* (0.2.24: BASS MONO is a device setting, ui.c ms_sync: a project's byte 65 is written but not read) */
     for (k = 0; k < NTRK; k++) {
         track_t *t = &trk[k];
         const proj_trk_t *s = &p->t[k];
         uint32_t e = s->engine;
         t->eng_req = (uint8_t)e;
         t->user = 0;                                    /* (no user preset slot is saved) */
-        memcpy(t->p, fit[k], sizeof t->p);
-        t->p[P_SCALE] = TP[P_SCALE].def;                /* a stored per-part SCALE / QNT is ignored: the scale is the instrument's (core.h) */
-        t->p[P_QUANT] = TP[P_QUANT].def;
-        t->preset = (uint8_t)(ds_count(e) ? (s->preset >= PROJ_DEF_SOUND ? 0u : s->preset) % ds_count(e) : 0u);   /* (sounds.c) */
+        memcpy(t->p, fit[k], sizeof fit[k]);
+        for (i = 0; i < NX; i++)                        /* the extension slots (already inside -64 .. 127: proj_bound) */
+            XV(t, i) = s->x[i];
+        t->preset = (uint8_t)(ds_count(e) ? s->preset % ds_count(e) : 0u);   /* (sounds.c) */
         memcpy(t->step, s->step, sizeof t->step);
         fm6_set_patch(k, fv[k]);                        /* the project's own FM6 patch, never reloaded from SLOT: F n if it is that */
         fm6_own_ok &= (uint8_t)~(1u << k);              /* factory patch, else OWN (fm6_adopt, done above) */
@@ -379,15 +373,13 @@ static int project_restore_runtime(const project_t *input)
     pat_from_set(0);                                    /* (project_load: its slot; the header's letter) */
     undo.trk = 0;                                       /* (ui.c) the undo copy belongs to the old project */
     undo_depth++;                                       /* and these loads take none */
-    for (k = 0; k < NTRK; k++) {                        /* the power-on sounds: format 1 (tracks 2..4) */
-        track_t *t = &trk[k];
-        if (p->t[k].preset == PROJ_DEF_SOUND) {
-            apply_preset_to(t, TRK_DEF[k][1]);
-            track_defaults_steps(t);
-        }
-        pat_sig[k] = ~steps_sig(t);                     /* a project's steps are the user's */
-    }
+    for (k = 0; k < NTRK; k++)
+        pat_sig[k] = ~steps_sig(&trk[k]);               /* a project's steps are the user's */
     undo_depth--;
+    if (!proj_morph_skip)                               /* PROJ_REV 7: each part's End B as saved (the autosave, a backup): its block and the values set by hand; a project with neither leaves the morph as it was (the next action re-bases it) */
+        for (k = 0; k < NSHOWN; k++)
+            if (morph_blk_ok(p->mb[k]) || p->xe_n[k])
+                morph_load_part(k, p->mb[k], morph_blk_ok(p->mb[k]) && p->mb[k][5] ? (uint32_t)p->mb[k][5] - 1u : morph_amount_of(k), p->xe[k], p->xe_n[k]);
     sync_reload = 1;
     ui.force = 1;
     ui_message("LOADED");
@@ -398,10 +390,71 @@ static int project_restore_runtime(const project_t *input)
  * boot (the .noinit copies are garbage after a power-off). */
 #include "settings_persist.c"
 #if FELUCCA_FLASH
-static persist_t persist_saved __attribute__((section(".pool")));
+static persist_head_t persist_saved __attribute__((section(".pool")));   /* the last saved record BEFORE the map, and a CRC-32 of its map (not a second copy of the 320 bytes: repair R1) */
+static uint32_t persist_saved_map;
+static uint32_t persist_map_crc(const uint16_t *map) { return st_crc32(map, 2u * MAP_N); }
+static void persist_note(const persist_t *p)       /* p is the record now in the flash */
+{
+    memcpy(&persist_saved, p, sizeof persist_saved);
+    persist_saved_map = persist_map_crc(p->map);
+}
+static void persist_base(persist_t *p)             /* p := the saved record's head (fields this build does not export survive); the map is the caller's export */
+{
+    memset(p, 0, sizeof *p);
+    memcpy(p, &persist_saved, sizeof persist_saved);
+}
+static int persist_is_saved(const persist_t *p)    /* the exported p equals what is in the flash */
+{
+    return !memcmp(p, &persist_saved, sizeof persist_saved) && persist_map_crc(p->map) == persist_saved_map;
+}
 static uint8_t persist_pending;                 /* 1 requested, 2 waiting after a flash error */
 static uint32_t persist_retry_ms;
 #endif
+
+/* The velocity calibration (the cloud plan's job A for job D, docs/design/VELO_STUDY.md): up to VELO_CAL_MAX bytes of the owner's key calibration in their own
+ * storage object (OBJ_VELO, an A/B pair, 0xC6000 / 0xC7000, commit record last: a power cut leaves the old record). The bytes are job D's: the store keeps
+ * them whole and checks only the length. Without flash (host tests, the browser build) a RAM copy stands in, gone at power-off. Main loop only, and the transport
+ * must be stopped for a save (the same flash erase as every store: the caller checks transport_busy).
+ *   velo_cal_load(buf, n): the record into buf (n bytes of room); its length (1..VELO_CAL_MAX), or -1 when there is none, it is damaged or longer than n.
+ *   velo_cal_save(buf, n): n bytes (1..VELO_CAL_MAX) as the record; 0 saved, -1 the length is wrong, else the flash driver's error (a write that failed leaves the old record). */
+#define VELO_CAL_MAX 128u
+#if !FELUCCA_FLASH
+static uint8_t velo_ram[VELO_CAL_MAX];
+static int velo_ram_n = -1;
+#endif
+#if DUELL_VELO
+int velo_cal_load(uint8_t *buf, uint32_t n)       /* (sense.h declares it: external with KEY SENSE built in; static otherwise, so a build without it is byte for byte as before) */
+#else
+static int velo_cal_load(uint8_t *buf, uint32_t n)
+#endif
+{
+    if (!buf || !n)
+        return -1;
+#if FELUCCA_FLASH
+    return flash_ok ? st_load(OBJ_VELO, buf, n < VELO_CAL_MAX ? n : VELO_CAL_MAX) : -1;
+#else
+    if (velo_ram_n < 0 || (uint32_t)velo_ram_n > n)
+        return -1;
+    memcpy(buf, velo_ram, (uint32_t)velo_ram_n);
+    return velo_ram_n;
+#endif
+}
+#if DUELL_VELO
+int velo_cal_save(const uint8_t *buf, uint32_t n)
+#else
+static int velo_cal_save(const uint8_t *buf, uint32_t n)
+#endif
+{
+    if (!buf || !n || n > VELO_CAL_MAX)
+        return -1;
+#if FELUCCA_FLASH
+    return flash_ok ? st_save(OBJ_VELO, buf, n) : -1;
+#else
+    memcpy(velo_ram, buf, n);
+    velo_ram_n = (int)n;
+    return 0;
+#endif
+}
 
 static void persist_boot(void)                    /* before settings_init / panel_init */
 {
@@ -418,7 +471,7 @@ static void persist_boot(void)                    /* before settings_init / pane
     {
         int n = st_load(OBJ_SETTINGS, &p, sizeof p);
         if (settings_import(&p, n))
-            persist_saved = p;
+            persist_note(&p);
         else {
             first_boot_pending = 1;                    /* no valid settings: a new unit (ui_input.c first_boot_poll) */
             settings_defaults(favorites.factory[15]);  /* DUELL 0.2.14: KNOB ACCEL ON, CLICK REC, USB SERIAL OFF (before usb_serial_apply) */
@@ -446,14 +499,14 @@ static void settings_poll(void)
     if (!persist_pending || !flash_ok || !autosave_quiet() ||
         (persist_pending == 2u && (uint32_t)(fm1_ms - persist_retry_ms) < 1000u))
         return;
-    p = persist_saved;
+    persist_base(&p);
     settings_export(&p);
-    if (!memcmp(&p, &persist_saved, sizeof p)) {
+    if (persist_is_saved(&p)) {
         persist_pending = 0;
         return;                                    /* unchanged: no erase cycle */
     }
     if (st_save(OBJ_SETTINGS, &p, sizeof p) == 0) {
-        persist_saved = p;
+        persist_note(&p);
         persist_pending = 0;
     } else {
         persist_pending = 2;
@@ -516,6 +569,8 @@ static uint32_t autosave_sig(void)
             int16_t v = motion_base_value(t, j);
             h = as_mix(h, &v, sizeof v);
         }
+        for (j = 0; j < NX; j++)                    /* (cloud plan, job A: the extension slots are part of the music) */
+            h = as_mix(h, &XV(t, j), 2u);
         h = as_mix(h, &t->eng_req, 1);
         h = as_mix(h, &t->preset, 1);
         h = as_mix(h, t->step, sizeof t->step);
@@ -524,8 +579,8 @@ static uint32_t autosave_sig(void)
     for (i = 0; i < G_COUNT; i++)
         if (i != G_SLOT && i != G_LOAD && i != G_SAVE)       /* (0.2.19: G_NAME is SHIM's MOD now) */
             h = as_mix(h, &song.g[i], sizeof song.g[i]);
-    h = as_mix(h, &song.bm, sizeof song.bm);
     h = as_mix(h, &motion, sizeof motion);
+    h = as_mix(h, &(uint32_t){morph_sig()}, 4u);        /* (cloud job G: End B's roll and the values set by hand are part of the music) */
     return as_mix(h, proj_name, sizeof proj_name);
 }
 

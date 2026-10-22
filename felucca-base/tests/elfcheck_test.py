@@ -112,6 +112,70 @@ def ram(label, data, hot, want_fail, needle=None):
     return ok
 
 
+def ramplace_tests(fake_obj, obj_names):
+    """DUELL_RAMPLACE (check_ramplace, tools/ram_place.py): a layout as the RAM1 build links it passes; each broken rule fails"""
+    import ram_fns_x
+    import ram_fns_z
+    import ram_place
+    good = True
+    X0, Z0, XIP = 0x01C00000, 0x01C6CE6C, 0x02000120
+    fx, fz = ram_fns_x.NAMES, ram_fns_z.NAMES
+
+    def layout(xcode=None, zhi=None, img_ok=True, cst=None, pc=True, xat=X0, extra_x=(), extra=()):
+        xsz, zsz = 4 * len(fx), 4 * len(fz)
+        xbody, zbody = bytes(range(256)) * (xsz // 256 + 1), bytes(range(255, -1, -1)) * (zsz // 256 + 1)
+        xbody, zbody = xbody[:xsz], zbody[:zsz]
+        img = bytearray(0x400)
+        img[0x100:0x100 + xsz], img[0x200:0x200 + zsz] = xbody, (zbody if img_ok else bytes(zsz))
+        syms = [(f, xat + 4 * i, 4, ".ramx") for i, f in enumerate([*fx, *extra_x])] + [(f, Z0 + 4 * i, 4, ".ramz") for i, f in enumerate(fz)]
+        syms += [("_rx_start", xat, 0, ".ramx"), ("_rx_end", xat + xsz, 0, ".ramx"), ("_rx_load", XIP + 0x100, 0, ""),
+                 ("_rz_start", Z0, 0, ".ramz"), ("_rz_end", Z0 + zsz, 0, ".ramz"), ("_rz_load", XIP + 0x200, 0, ""),
+                 ("_pc_ram_lo", X0, 0, ""), ("_rt_end", 0x01C7FC68, 0, ".ram_text"), ("ramplace_copy", 0x02000300, 8, ".text")]
+        elf = {"sections": {".ramx": (xat, xsz), ".ramz": (Z0, zhi - Z0 if zhi else zsz), ".pool": (0x01C1A000, Z0 - 0x01C1A000),
+                            ".ram_text": (0x01C7C100, 0x3B68), ".data": (0x01C08000, 0x200), ".bss": (0x01C08200, 0xD000)},
+               "symbols": syms, "contents": {".ramx": xbody, ".ramz": zbody}}
+        cs = cst if cst is not None else [f"   2000400:    be ea c5 a0       \tcall -1030 <ramplace_copy : 2000300 >",
+                                            f"   2000404:    c1 ff 00 00 c0 01 \tr1 = {X0 if pc else 1} <_pc_ram_lo : 1c00000 >"]
+        dis = "\n".join(["ramplace_copy:", f"   2000300:    c1 ff 00 00 c0 01 \tr1 = {XIP + 0x100} <_rx_load : 2000220 >",
+                          f"   2000306:    c1 ff 00 00 c0 01 \tr2 = {XIP + 0x200} <_rz_load : 2000320 >", "fm1_cstart:", *cs,
+                          fx[0] + ":", f"   {xat:x}:    bf ea 00 00       \t" + (xcode or f"call 60 <{fz[0]} : {Z0:x} >"), *extra])
+        return elf, bytes(img), dis
+
+    def rp(label, args, want_fail, needle=None):
+        elf, img, dis = layout(**args)
+        errs, notes = elfcheck.check_ramplace(elf, img, dis, XIP)
+        ok = bool(errs) == want_fail and (needle is None or any(needle in e for e in errs))
+        print(f"{'PASS' if ok else 'FAIL'}  ramplace: {label}: " + ("; ".join(errs[:2]) if errs else notes[0][:90]))
+        return ok
+    good &= rp("the RAM1 layout", {}, False)
+    good &= rp("range X calls the flash", {"xcode": "call 99 <memset : 2001000 >"}, True, "calls the flash")
+    good &= rp("range X calls through a pointer", {"xcode": "call r3"}, True, "pointer")
+    good &= rp("an unannotated call from X to the flash", {"xcode": "call 4000000"}, True, "calls the flash")
+    good &= rp("range Z into the stack guard", {"zhi": 0x01C74010}, True, "stack guard")
+    good &= rp("range X off 0x01C00000..0x01C07F00", {"xat": 0x01C07EC0}, True, "leaves")
+    good &= rp("a load image not in the app image", {"img_ok": False}, True, "load image")
+    copy = ["   2000404:    be ea c5 a0       \tcall -1030 <ramplace_copy : 2000300 >",
+            f"   2000408:    c1 ff 00 00 c0 01 \tr1 = {X0} <_pc_ram_lo : 1c00000 >"]
+    good &= rp("a flash-only call before the copy (the boot guard)", {"cst": ["   2000400:    be ea c5 a0       \tcall 99 <fm1_p33_read : 2000900 >",
+                                                                            *copy], "extra": ["fm1_p33_read:", "   2000900:    00 00 \trts"]}, False)
+    good &= rp("memset (range Z) called before the copy", {"cst": [f"   2000400:    be ea c5 a0       \tcall 99 <memset : {Z0:x} >", *copy]},
+               True, "before it copies")
+    good &= rp("a flash function that calls Z, before the copy", {"cst": ["   2000400:    be ea c5 a0       \tcall 99 <fm1_irq_init : 2000900 >",
+                                                                         *copy], "extra": ["fm1_irq_init:",
+                                                                         f"   2000900:    be ea 00 00       \tcall 99 <memset : {Z0:x} >"]},
+               True, "runs X / Z code")
+    good &= rp("no copy at all", {"cst": copy[1:]}, True, "does not copy")
+    good &= rp("the PC window not set from range X", {"pc": False}, True, "PC limit")
+    good &= rp("a function in X not on the list", {"extra_x": ["usb_poll"]}, True, "not listed")
+    obj, _ = fake_obj([".text.lcd_spin", "@.text.analog_render", ".rela.text.analog_render", ".text.memset", ".text.part_voice2"])
+    out, done, missing = ram_place.place(obj)
+    got = obj_names(out)
+    ok = (got == [".text.lcd_spin", ".ramx.analog_render", ".rela.ramx.analog_render", ".ramz.memset", ".text.part_voice2"]
+          and done == {"X": ["analog_render"], "Z": ["memset"]} and len(out) == len(obj) and "part_voice" in missing)
+    print(f"{'PASS' if ok else 'FAIL'}  ram_place: .text.f -> .ramx.f / .ramz.f in place: {got}")
+    return good and ok
+
+
 def main():
     good = True
     rel = elfcheck.read_elf(fake_elf(RELEASE))
@@ -163,6 +227,7 @@ def main():
           and sum(a != b for a, b in zip(obj, out)) == 4)    # (only ".text." -> ".hotx.": 4 bytes of one string)
     print(f"{'PASS' if ok else 'FAIL'}  hot_fns: {names} -> {got}; renamed {done}")
     good &= ok
+    good &= ramplace_tests(fake_obj, obj_names)
     src = elfcheck.source_noinit(Path(__file__).resolve().parents[1] / "firmware")   # the sources' list, all in the table
     miss = sorted(set(src) - set(elfcheck.NOINIT_OBJECTS))
     print(f"{'FAIL' if miss or not set(DECLARED) <= set(src) else 'PASS'}  sources declare {sorted(src)}")

@@ -2,7 +2,7 @@
 
 > **DUELL note.** This is Felucca's README, kept as it was; parts of it no longer describe DUELL. DUELL differs: two parts instead of four tracks; ten engines (ANALOG, PHASE, LOFI, VOICE, TRIO, WHEEL, PHYS, NOISE, FM6, WAVE), as SAMPLE, GRAIN and SLICE are removed with their samples and the user sample slots (0.2.9); hold FX opens PERFORM instead of the FX layer; MOMENTARY is gone; the quick edit layers are hold EDIT, LFO, ENV, ARP and GLO (SCL held: the scale layer); REC arms recording on the sequencer pages and is the HOLD switch on the others; PLAY/STOP is green when stopped and red when playing; GLO's pages are GLO (mutes and levels), TEMPO, SIDECHAIN, BASS MONO, MIDI, MODULES and MIDI LEARN. For DUELL see [../docs/QUICKSTART.md](../docs/QUICKSTART.md) and [../SPEC.md](../SPEC.md).
 >
-> **Saves may change before the alpha.** Until the alpha release, the way patches, multis, settings and everything else are saved may change. Saves may stop loading between versions, and a backup made with one version may not restore in the next. Do not rely on them yet.
+> **Saves may change before version 1.0.** Until the 1.0 release, the way patches, multis, settings and everything else are saved may change. Saves may stop loading between versions, and a backup made with one version may not restore in the next. Do not rely on them yet.
 
 [![License: GPL-3.0-only](https://img.shields.io/badge/license-GPL--3.0--only-blue.svg)](LICENSE)
 [![Sponsor](https://img.shields.io/badge/Sponsor-ea4aaa?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/hugelton)
@@ -101,7 +101,7 @@ Multi-engine synthesizer firmware for the M-VAVE FM-1. Please report what you fi
   the drum grid marks the beats (steps 1, 5, 9, 13); with a scale other than CHROMATIC the keys show it by themselves (MENU > SCALE LEDS: AUTO or OFF);
   a soft light sweeps over the keys at power-on, and with MENU > ANIM IDLE drifts over them while the FM-1 waits
 - **USB:** class-compliant MIDI in and out, and a stereo audio input ("Felucca") at 44.1 or 48 kHz
-  (the computer picks) that records the master output on the computer, no driver needed (at a fixed level, that of the default MASTER position, with MENU > USB LEVEL FIXED;
+  (the computer picks) that records the master output on the computer, no driver needed (always at a fixed level, that of the default MASTER position: MASTER sets only the speaker and headphones;
   on macOS 13–15, set MENU > USB SERIAL to OFF so the audio input appears)
 - **MIDI:** USB and TRS MIDI in; MENU > MIDI > MIDI IN: CH1-4 (channels 1–4 play tracks 1–4), CH5-8, CH9-12 or
   CH13-16 (another block of four, e.g. for two FM-1s on one cable), or SEL (every channel plays the selected track);
@@ -220,7 +220,7 @@ The pages by button:
 
 Hold **HOME** for the menu, in four tabs: **DISPLAY** (COLOR, ANIM, LEDS, SCREEN OFF, SCOPE, HOME),
 **CONTROL** (HOLD, KNOB ACCEL, FX LATCH, SCALE LEDS, STEP PREVIEW, CHORD ENTRY), **AUDIO** (SPEAKER EQ,
-USB LEVEL, CLICK, CLICK LEVEL, COUNT-IN, TUNE) and **SYSTEM** (USB SERIAL,
+CLICK, CLICK LEVEL, COUNT-IN, TUNE) and **SYSTEM** (USB SERIAL,
 RESTORE LAST, HARDWARE CALIBRATION, TEST, ABOUT, ERASE DATA).
 ALGORITHM moves between the tabs and PRESETS through the rows of one; any of KNOB 1–4, or OCT+ / OCT−,
 changes the value (OCT+ opens HARDWARE CALIBRATION, TEST and ABOUT); press HOME to close the menu. Every new
@@ -260,16 +260,14 @@ way as from the menu, in the same tabs.
 - **SPEAKER EQ:** FLAT, LOWCUT or BASS+, a tone setting for the built-in speaker (not a switch). It also
   shapes the headphone out and USB audio, so keep it on FLAT when recording. The firmware cannot turn
   the speaker off, but headphones in the jack do
-- **USB LEVEL:** MASTER (the MASTER knob sets the USB audio level too) or FIXED (USB always at the level
-  of the default MASTER position, MASTER sets only the speaker and headphones)
 - **CLICK:** OFF (default), REC (while a track is armed) or ON: a click on every beat while playing, the
   bar's first beat higher. **CLICK LEVEL:** LOW, MID (default) or HIGH; MASTER sets it too
 - **COUNT-IN:** OFF (default), 1 BAR or 2 BARS: with a track armed, PLAY counts in first (clicking even with
   CLICK OFF), and a note played in the last half beat lands on step 1. Not with an external clock
-- **TUNE:** the global tuning, −50 to +50 cents. It is the project's, saved and loaded with it
+- **TUNE:** the master tuning as the frequency of A4 in Hz, 415.3 to 466.2 Hz in steps of 0.1 Hz (440.0 Hz at first; DUELL 0.2.22: up to 0.2.21 it was −50 to +50 cents). It is the project's, saved and loaded with it
 - **MIDI IN:** CH1-4 (default), SEL, CH5-8, CH9-12 or CH13-16 (see MIDI above). The project's too
 - **LEARN CLEAR:** how many CCs MIDI LEARN has set (NONE, 1 CC … 16 CC); OCT+ clears them all
-- **USB SERIAL:** ON or OFF, applied when the menu closes (the FM-1 reconnects). OFF leaves out the
+- **USB SERIAL** (developer builds only since memory trim 1; the product has no serial console and no such row): ON or OFF, applied when the menu closes (the FM-1 reconnects). OFF leaves out the
   serial console, a developer tool, so the FM-1 is a plain audio + MIDI device; this lets macOS 13–15
   see its USB audio input. MIDI, the editor and the installer work either way
 - **RESTORE LAST:** ON (default) or OFF. ON, the FM-1 starts with the music you left (the header says
@@ -321,7 +319,7 @@ PIANO HD); 1.5 brings the full piano back.
 
 **SLICER** (FX page, every track): a tempo-synced 16-step gate or stutter, with 16 patterns.
 
-**Reverb** (FX > REVERB, TYPE): **HALL** (since 1.4, the default on a fresh start: eight delay lines feeding each
+**Reverb** (GLO > REVERB, TYPE): **HALL** (since 1.4, the default on a fresh start: eight delay lines feeding each
 other with slowly drifting taps, stereo, SIZE the decay up to about 4.5 s, DAMP how fast the highs die), **ROOM** (the
 default up to 1.1.5), **SPRING**, **SHIM** (ROOM with an octave-up shimmer fed back into it) and **RESO** (four combs tuned to the part's scale; both ported from JIANT, see LICENSING.md). **PLATE** (DUELL 0.2.14: a plate reverb, stereo, smooth and dense; based on the reverb of the CHOMPI firmware, MIT, see LICENSING.md). A project plays the TYPE it was saved with.
 

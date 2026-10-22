@@ -38,7 +38,8 @@ static int motion_param(uint32_t id)
     return id < P_COUNT && (id <= P_REL || (id >= P_ED_FLT && id <= P_LD_AMP && id != P_EQLG) ||
         (id >= P_DIST && id <= P_REV) || id == P_GLIDE || id == P_PAN ||
         id == P_DETUNE || id == P_SPRD || (id >= P_ITYPE && id <= P_IMIX) || (id >= P_E2ATK && id <= P_L2FADE) ||
-        (id >= P_E2FLT && id <= P_L2SHP) || id == P_FREEA || id == P_FREEB || id >= P_E0);   /* (DUELL: ENV 2 and LFO 2's RATE WAVE PHS FADE and DEST depths as their twins; not their SYNC TRIG POL) */   /* (not the chord keys, nor
+        (id >= P_E2FLT && id <= P_L2SHP) || id == P_FREEA || id == P_FREEB || id == P_KTRK || id >= P_E0 ||
+        id == P_CUT2 || id == P_RES2 || id == P_DRV2 || id == P_BLEND);   /* (the TWIN FILTER's continuous values: ext.h; its TYPE is a switch, as the INSERT's is not: left out) */   /* (DUELL: ENV 2 and LFO 2's RATE WAVE PHS FADE and DEST depths as their twins; not their SYNC TRIG POL) */   /* (not the chord keys, nor
                                         * 1.2's LFO SYNC TRIG POL and QUANTIZE, nor 1.5's filter TYPE and ENV SYNC:
                                         * settings; not the matrix; SPREAD (#148: continuous, as PAN), 1.5's INSERT (TYPE
                                         * too: a lock switches it for a step, fx.c track_insert fades over), E0..E7.
@@ -129,7 +130,7 @@ static void motion_rebase(track_t *t)
     if (k >= NLIVE) return;
     f = motion_guard();
     motion_restore(t);
-    memcpy(motion_base[k], t->p, sizeof t->p);
+    memcpy(motion_base[k], t->p, sizeof motion_base[k]);
     motion_base_valid = (uint8_t)((motion_base_valid & ~(1u << k)) | (song.playing ? 1u << k : 0u));
     motion_unguard(f);
 }
@@ -138,7 +139,7 @@ static void motion_begin(void)
     uint32_t k;
     for (k = 0; k < NLIVE; k++) {
         motion_restore(&trk[k]);
-        memcpy(motion_base[k], trk[k].p, sizeof trk[k].p);
+        memcpy(motion_base[k], trk[k].p, sizeof motion_base[k]);
     }
     motion_base_valid = (1u << NLIVE) - 1u;
 }
@@ -276,7 +277,7 @@ static __attribute__((noinline)) void motion_step(track_t *t, uint32_t step, con
     uint32_t k = trk_index(t), i, w, any = 0;
     if (k >= NLIVE || !((m->on >> k) & 1u)) return;
     if (!((motion_base_valid >> k) & 1u)) {
-        memcpy(motion_base[k], t->p, sizeof t->p);
+        memcpy(motion_base[k], t->p, sizeof motion_base[k]);
         motion_base_valid |= (uint8_t)(1u << k);
     }
     for (w = 0; w < (P_COUNT + 31u) / 32u; w++)

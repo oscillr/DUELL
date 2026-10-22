@@ -1,7 +1,8 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
-/* TRIO: three oscillators with ring modulation and hard sync into a 12 dB/oct multimode
- * filter, in the style of the sound chips of early 8-bit home computers. Felucca's own design.
+/* TRIO: three oscillators with ring modulation and hard sync, in the style of the sound chips of early 8-bit home computers. Felucca's own design.
+ * No filter of its own since the engine filters left (TWIN_FILTER_DESIGN_2, cloud job J): its filter lives on as filter 2's LP, BP, HP and NOTCH (chain_f2.c f2_svf: the same SVF, the
+ * same knees and damping, the slow drift from a generator of its own); filter 1 is the MULTI FILTER (voice.c uf_run).
  *
  * Oscillators: triangle, saw, pulse (PW), pitched noise (a new random value 16 times a cycle)
  * and two combined waves (saw AND triangle, pulse AND saw: the bitwise AND of the 16-bit
@@ -10,20 +11,15 @@
  *   RING  osc 1's output flips sign with osc 3's top phase bit (the XOR ring of the triangle;
  *         osc 3 may be silent and only modulate),
  *   SYNC  osc 2 restarts whenever osc 1 starts a cycle.
- * EDIT: OSC = WAVE, INT2 / INT3 (osc 2 / osc 3 intervals, semitones), DTN (osc 2 up, osc 3
- * down, cents); TONE = MODE (LP / BP / HP / notch), CUT, RES, PW. The track's ENV / LFO -> FLT
- * move CUT, -> SHP move PW.
+ * EDIT: WAVE, INT2 / INT3 (osc 2 / osc 3 intervals, semitones), DTN (osc 2 up, osc 3
+ * down, cents), PW. The track's ENV / LFO -> SHP move PW.
  *
  * Band limiting: every step of a saw or a pulse, the sync restarts of osc 2 and the ring
  * flips of osc 1 get a polyBLEP correction. The naive waves are computed and each step adds
  * its residual to the sample before it and the one after it (the voice runs one sample late
  * for that). Triangle and noise have no step correction; the combined waves alias like the
  * originals.
- *
- * Filter: the trapezoidal SVF of dsp.c with LP / BP / HP / notch outputs, a resonance that
- * stops short of self-oscillation, an input that saturates above half scale, a compressed
- * band-pass state (loud resonance gets gritty instead of ringing) and a slow random drift of
- * the cutoff. */
+ */
 enum { TW_OFF, TW_TRI, TW_SAW, TW_PLS, TW_NOI, TW_ST, TW_PS };
 #define TRIO_RING 1u
 #define TRIO_SYNC 2u
@@ -57,8 +53,8 @@ static const trio_set_t TRIO_SETS[16] = {
     {{TW_TRI, TW_SAW, TW_OFF}, TRIO_RING | TRIO_SYNC, {TRIO_G2 + 2000, TRIO_G2, 0}},   /* R+S */
     {{TW_TRI, TW_PLS, TW_OFF}, TRIO_RING | TRIO_SYNC, {TRIO_G2 + 2000, TRIO_G2, 0}},   /* R+SP */
 };
-static const char *const N_TRIO_MODE[] = {"LP", "BP", "HP", "NOT"};
-/* filter output = (in * a + bp * b + lp * c) >> 10; HP and notch take k * bp off (k: per block) */
+static const char *const N_TRIO_MODE[] = {"LP", "BP", "HP", "NOT"};   /* (the names of filter 2's LP BP HP NOTCH: icons.c, params.c) */
+/* filter 2's output = (in * a + bp * b + lp * c) >> 10 (chain_f2.c f2_svf); HP and notch take k * bp off (k: per block) */
 static const int16_t TRIO_MIX[4][3] = {{0, 0, 1024}, {0, 1400, 0}, {1024, 0, -1024}, {1024, 0, 0}};
 
 /* polyBLEP of a step j (the value after it minus the one before, at level g Q15) that lies a
@@ -256,12 +252,10 @@ static void trio_note_on(track_t *t, voice_t *v)
     v->ph[1] = 0x1C000000u;      /* start phases a little apart (a third apart would cancel all but
                                   * every third harmonic of equal-pitched saws until DTN drifts them) */
     v->ph[2] = 0x38000000u;
-    v->s[0] = v->s[1] = 0;       /* filter */
     if (!v->s[2])
         v->s[2] = 0x2468ACE + (int32_t)v->age;   /* noise state */
     v->s[3] = 0;                 /* held noise value */
     v->s[4] = 0;                 /* the sample waiting for its step corrections */
-    v->s[5] = 0;                 /* cutoff drift */
 }
 
 static void trio_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const vmod_t *m)
@@ -278,15 +272,11 @@ static void trio_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const 
     uint32_t inc3 = trio_inc(m->pitch16, p[P_E2], -p[P_E3], fine);
     int32_t duty = clamp((p[P_E7] << 8) + m->shape - (64 << 8), 768, 32000);   /* Q15 */
     trio_pw_t q;
-    uint32_t mode = (uint32_t)p[P_E4] & 3u;
-    int32_t reso = p[P_E6], k = 8192 - reso * 7168 / 127; /* damping 2.0 .. 0.25 (Q12): no self-oscillation */
-    int32_t ma = TRIO_MIX[mode][0], mb = TRIO_MIX[mode][1], mc = TRIO_MIX[mode][2];
-    int32_t a1, a2, a3, cut, cur;
-    tsvf_t flt;
+    int32_t cur;
     int32_t mix[CTL], cr[CTL + 1];                      /* blocks are CTL long (dsp.c amp_at) */
     int16_t wx[CTL];
     uint32_t ph0 = v->ph[0], ph1 = v->ph[1], ph2 = v->ph[2], ph3s = ph2;   /* state in locals: out[] may alias v->s[] */
-    int32_t ic1 = v->s[0], ic2 = v->s[1], nst = v->s[2], nz = v->s[3], prev = v->s[4], drift = v->s[5];
+    int32_t nst = v->s[2], nz = v->s[3], prev = v->s[4];
     if (n > CTL)
         n = CTL;
     if (m->amask) {                                     /* ARP TARGET (SPEC 2.3): OSC k on the arp's pitch (bit k - 1), */
@@ -306,22 +296,6 @@ static void trio_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const 
     q.pw = (uint32_t)duty << 17;
     q.pdc = 2 * duty - 32768;
     q.psm = 32768 - ((duty * duty) >> 15);
-    if (mode >= 2u)
-        mb = -(k >> 2);                                 /* HP / notch: in - k bp (- lp) */
-    if (mxf.on && mxf.w[MX_E0 + 4u]) {                  /* DUELL MORPH: the other end's MODE, its taps cross-faded */
-        uint32_t mo = mxf.b[MX_E0 + 4u] & 3u;
-        int32_t w = mxf.w[MX_E0 + 4u], mbo = mo >= 2u ? -(k >> 2) : TRIO_MIX[mo][1];
-        ma += ((TRIO_MIX[mo][0] - ma) * w) >> 15;
-        mb += ((mbo - mb) * w) >> 15;
-        mc += ((TRIO_MIX[mo][2] - mc) * w) >> 15;
-    }
-    /* the cutoff wanders a little, once per block (the slightly unstable filter of the chips) */
-    drift += (((int32_t)(noise32(&nst) >> 22) - 512) - drift) >> 3;
-    cut = clamp((p[P_E5] << 8) + m->cutoff + drift, 0, 127 << 8);
-    tsvf_coef_k(&flt, cut, k);
-    a1 = flt.a1;
-    a2 = flt.a2;
-    a3 = flt.a3;
     for (i = 0; i < n; i++) {
         mix[i] = cr[i] = 0;
         wx[i] = -1;
@@ -338,40 +312,29 @@ static void trio_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const 
         trio_pass(w2, &ph1, inc2, g2, &q, &nz, &nst, mix, cr, 0, n);
     cur = prev;
     for (i = 0; i < n; i++) {
-        int32_t x = cur + cr[i], y, v1, v2, v3, a;     /* one sample late: its corrections are complete */
+        int32_t x = cur + cr[i];                        /* one sample late: its corrections are complete */
         cur = mix[i];
-        x = soft_knee(x, 16000) >> 1;                   /* the input saturates above 16000 */
-        /* SVF (dsp.c tsvf_lp, with the band-pass out); the band-pass state is compressed */
-        v3 = x - ic2;
-        v1 = (a1 * ic1 + a2 * v3) >> 13;
-        v2 = ic2 + ((a2 * ic1 + a3 * v3) >> 13);
-        ic1 = 2 * v1 - ic1;
-        ic2 = clamp(2 * v2 - ic2, -150000, 150000);
-        a = clamp(ic1, -49152, 49152);                  /* beyond +-49152 a quarter of the excess */
-        ic1 = a + ((ic1 - a) >> 2);
-        y = soft_knee((x * ma + v1 * mb + v2 * mc) >> 10, 16000);   /* linear up to half scale */
-        out[i] += voice_amp(y << 1, m, i) << 1;
+        out[i] += voice_amp(x, m, i) << 1;
     }
     prev = cur + cr[n];
     v->ph[0] = ph0;
     v->ph[1] = ph1;
     v->ph[2] = ph2;
-    v->s[0] = ic1;
-    v->s[1] = ic2;
     v->s[2] = nst;
     v->s[3] = nz;
     v->s[4] = prev;
-    v->s[5] = drift;
 }
 
 static const preset_t TRIO_PRESETS[] = {
-    /* name, {WAVE, INT2, INT3, DTN, MODE, CUT, RES, PW}, {A D S R}, fenv, mono */
-    {"FAT BASS", {0, 0, -12, 9, 0, 62, 45, 64}, {0, 62, 60, 25}, 40, 1, FX(10, 0, 10, 10), PAT(2)},
-    {"ARP LEAD", {2, 12, 0, 4, 0, 88, 25, 32}, {0, 60, 90, 30}, 8, 0, FX(0, 0, 35, 20), PAT(13)},
-    {"SYNC LEAD", {9, 9, 0, 0, 0, 82, 30, 64}, {2, 70, 100, 40}, 18, 1, FX(0, 10, 40, 25), PAT(4)},
-    {"RING BELL", {13, 0, 18, 6, 1, 96, 30, 64}, {0, 92, 0, 80}, 0, 0, FX(0, 20, 35, 55), PAT(7)},
-    {"CHIP CHOIR", {1, 0, 12, 7, 1, 62, 95, 40}, {70, 90, 110, 85}, 30, 0, FX(0, 50, 20, 65), PAT(5)},
+    /* name, {WAVE, INT2, INT3, DTN, -, -, -, PW} (MODE CUT RES are filter 2's since cloud job J), {A D S R}, fenv, mono */
+    {"FAT BASS", {0, 0, -12, 9, 0, 0, 0, 64}, {0, 62, 60, 25}, 40, 1, FX(10, 0, 10, 10), PAT(2)},
+    {"ARP LEAD", {2, 12, 0, 4, 0, 0, 0, 32}, {0, 60, 90, 30}, 8, 0, FX(0, 0, 35, 20), PAT(13)},
+    {"SYNC LEAD", {9, 9, 0, 0, 0, 0, 0, 64}, {2, 70, 100, 40}, 18, 1, FX(0, 10, 40, 25), PAT(4)},
+    {"RING BELL", {13, 0, 18, 6, 0, 0, 0, 64}, {0, 92, 0, 80}, 0, 0, FX(0, 20, 35, 55), PAT(7)},
+    {"CHIP CHOIR", {1, 0, 12, 7, 0, 0, 0, 40}, {70, 90, 110, 85}, 30, 0, FX(0, 50, 20, 65), PAT(5)},
 };
+
+static const uint8_t TRIO_UIORD[8] = {0, 1, 2, 3, 7, 4, 5, 6};   /* card position -> E index: ENGINE WAVE INT2 INT3; EDIT 1 DTN PW (MODE CUT RES are unused slots, hidden); the stored ids never move */
 
 static const engine_t ENG_TRIO = {
     .name = "TRIO",
@@ -381,16 +344,17 @@ static const engine_t ENG_TRIO = {
         {"INT2", F_SEMI, -24, 24, 0, 0, 0},
         {"INT3", F_SEMI, -24, 24, -12, 0, 0},
         {"DTN", F_INT, 0, 50, 6, 0, "ct"},
-        {"MODE", F_ENUM, 0, 3, 0, N_TRIO_MODE, 0},
-        {"CUT", F_CUTOFF, 0, 127, 80, 0, 0},
-        {"RES", F_PCT, 0, 127, 40, 0, 0},
+        {"-", F_INT, 0, 0, 0, 0, 0},                 /* was MODE: filter 2's TYPE */
+        {"-", F_INT, 0, 0, 0, 0, 0},                 /* was CUT: filter 2's CUTOFF */
+        {"-", F_INT, 0, 0, 0, 0, 0},                 /* was RES: filter 2's RES */
         {"PW", F_PCT, 0, 127, 64, 0, 0},
     },
     .presets = TRIO_PRESETS,
     .npresets = NELEM(TRIO_PRESETS),
     .note_on = trio_note_on,
     .render = trio_render,
-    .knob = {P_E5, P_E6, P_E7, P_E1},
+    .knob = {P_FREEA, P_FREEB, P_E7, P_E1},   /* filter 1's CUT and RES (the engine's own CUT and RES were here) */
+    .uiord = TRIO_UIORD,
     .atgt = ATG_TRIO,            /* ARP TARGET: OSC1..OSC3 (SPEC 2.3) */
-    .ufilt = 2,                  /* its own filter stays; the multimode filter (the FILTER page, ids 45..48) runs in series after it (DUELL 0.2.9, voice.c) */
+    .ufilt = 1,                  /* no filter of its own since cloud job J: the multimode filter (voice.c uf_run), and filter 2 (TWIN) */
 };

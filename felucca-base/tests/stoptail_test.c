@@ -5,6 +5,7 @@
 #define FELUCCA_FLASH 1
 #define UI_TEST_NO_MAIN 1
 #include "ui_test.c"
+#include "scenes.h"                                   /* (0.2.23: 0.2.22's M02 WHISPER TIDE as a test scene; M05 among the factory multis) */
 static uint8_t nor[0x100000];
 static int st_read(uint32_t off, void *dst, uint32_t n) { memcpy(dst, nor + off, n); return 0; }
 static int st_erase(uint32_t off) { memset(nor + off, 0xFF, 4096); return 0; }
@@ -51,6 +52,7 @@ static void run(const char *name, uint32_t mode, int perf)
         if (kb_map(&trk[0], k) == 60u || kb_map(&trk[0], k) == 64u || kb_map(&trk[0], k) == 67u)
             chord |= 1u << k;
     duell_mode_req = DM_LAYER;
+    scene_put(1, "M02_WHISPER_TIDE");
     project_load(1);
     for (b = 0; b < 8u; b++) { mix_block(out, CTL); while (wave_service()) ; }
     for (k = 0; k < NTRK; k++) {

@@ -8,6 +8,7 @@
  *   DUEL     part 1 alone: the other channel is digital silence (mode_test's leak map has the same case); the modulation changes the sound
  *   COST     instructions per sample of the buses with DEPTH 0 and 60 (STEREO, PING-PONG, DUEL: two buses), the kernel's counter */
 #define MODE_TEST_NO_MAIN 1
+#define CHO_NOSKIP 1   /* 0.2.21: the plain bus leaves the chorus out of silent blocks (fx_bus.c cho_zrun); this test compares the delay paths' costs, so all of them run the chorus as they did (chorusskip_test.c proves the skip invisible) */
 #include "mode_test.c"
 
 #ifdef DLYMOD_BASE

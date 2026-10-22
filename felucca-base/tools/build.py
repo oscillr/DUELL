@@ -21,11 +21,18 @@ the update loader always keeps -Os), FELUCCA_LLVM adds -mllvm options (e.g. "-pi
 link's LLVM plugin instead). -flto: felucca.o is LLVM bitcode, linked through the toolchain's LLVMgold.so with the same -O level and
 -mcpu. BENCH_TAG (with DUELL_BENCH=1, DUELL_TEST_MODE=1): the device shows "DUELL <VERSION> bench <TAG>" and the package is
 duell-<VERSION>-bench-<TAG>.fwsc (no duell-latest.fwsc / duell-version.json then: a bench package is never the latest).
-DUELL_CORE1_PROBE=1 (with a BENCH_TAG): the bench's second-core probe (hal/fm1_core1.h; never in a release).
+DUELL_BENCH=1 builds MENU > SYSTEM > BENCH (src/bench.c, docs/BENCH_GUIDE.md; bench suite stage 0: e.g. BENCH_TAG=BENCHC0 with
+DUELL_RAMPLACE=1). DUELL_CORE1_PROBE=1 (BENCH-B's core 1 probe) is not in this line (core.h stops such a build).
+DUELL_TWOCORE (default 1 in every non-bench build since 1.0, with DUELL_RAMPLACE=1; 0 = one core; not with DUELL_CORE1_PROBE): the second core plays part 2, started at every power-on and left alone for the session after a fault (docs/TWOCORE_STAGE1.md, CPU_PLAN.md).
 DUELL_HOTRAM (default 3 in every build since 0.2.14; 0 = all in flash; 1, 2, 4..8 need a BENCH_TAG: the experiment builds R1..R8; 4..6 are R3 without some functions, 7 = group 1 only padded to R3's size, 8 = R3 without group 1): the functions of tools/hot_fns.py's groups 1..n run from RAM:
 felucca.c is compiled as always, their sections .text.<name> are renamed .hotx.<name> in felucca_hot.o, and the link uses
 firmware/app_hot.ld instead of app.ld (the RAM code block at the top of RAM, in call reach of the flash); the no-calls rule of
 .ram_text then covers the flash driver only (below _hot_start), and tools/elfcheck.py checks the block.
+
+DUELL_RAMPLACE=1 (two-core stage 1a; needs a BENCH_TAG and DUELL_HOTRAM 3): part 2's voice code in two unused RAM ranges, link-time only
+(tools/ram_place.py): the functions of tools/ram_fns_x.py go to range X (0x01C00000, .ramx.*), those of tools/ram_fns_z.py to range Z
+(after the pool, .ramz.*); the link uses firmware/app_ram.ld; -DDUELL_RAMPLACE=1 builds in the start-up copy and check (src/ramplace.c),
+the wider PC window (hal/fm1_guard.h) and ABOUT's RAM CODE line. tools/elfcheck.py check_ramplace checks the result. Unset: nothing of it.
 
 Every build (device, test, bench, release) ends with the start-up layout check (tools/elfcheck.py: the .noinit objects
 whole and of their C size, no LTO-split "bootguard.0", the .noinit size, the entry point, the app slot); it only
@@ -44,6 +51,11 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+if os.environ.get("DUELL_BENCH") != "1":        # DUELL 1.0: a release (or any non-bench) build runs part 2 on core 1 by default (the automatic one-core fallback is in twocore.c);
+    os.environ.setdefault("DUELL_TWOCORE", "1")  # DUELL_TWOCORE=0 / DUELL_RAMPLACE=0 in the environment give the one-core build (the reference of the tests); set before the
+    os.environ.setdefault("DUELL_RAMPLACE", "1") # tools imported below read the environment at import (tools/ram_place.py, hot_fns.py)
+    os.environ.setdefault("DUELL_HOTRAM", "3")
+
 SRC = Path(__file__).resolve().parents[1]
 FW = SRC / "firmware"
 OUT = SRC / "build"
@@ -52,6 +64,7 @@ LDR = OUT / "loader"
 sys.path.insert(0, str(SRC / "tools"))
 import elfcheck  # noqa: E402
 import hot_fns  # noqa: E402
+import ram_place  # noqa: E402
 import fm1pkg_make  # noqa: E402
 import lz4blk  # noqa: E402
 
@@ -77,8 +90,8 @@ VERSION = None                      # unused: the version string comes from buil
 def read_version():
     """the single source of truth: DUELL/VERSION (0.MINOR.BUILD)"""
     v = (SRC.parent / "VERSION").read_text().strip()
-    if not re.fullmatch(r"0\.\d+\.\d+", v):
-        raise SystemExit(f"build: {SRC.parent / 'VERSION'} must hold 0.MINOR.BUILD, found {v!r}")
+    if not re.fullmatch(r"0\.\d+\.\d+|[1-9]\d*\.\d+", v):
+        raise SystemExit(f"build: {SRC.parent / 'VERSION'} must hold 0.MINOR.BUILD or MAJOR.MINOR (1.0), found {v!r}")
     return v
 
 
@@ -134,6 +147,7 @@ def generate():
             [tools / "gen_tables.py", GEN / "felucca_tables.h"],
             [tools / "gen_fm6_patches.py", GEN / "felucca_fm6.h"],
             [tools / "gen_duell_sounds.py", GEN / "duell_sounds.h"],   # DUELL factory sounds (tools/duell_sounds.py)
+            [tools / "gen_midi_map.py", GEN / "midi_map_defaults.h"],   # the shipped MIDI map (docs/MIDI_MAP_DEFAULTS.csv; cloud job C: gen_only.py had it, this list did not)
             [tools / "gen_duell_multis.py", GEN / "duell_multis.h"]]  # DUELL factory multis M01..M04 (tools/factory_multis); M13..M16 too with DUELL_TEST_MODE=1 (env, as the -D below)
     procs = [subprocess.Popen([sys.executable, *map(str, c)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                               text=True) for c in cmds]
@@ -177,10 +191,15 @@ def ldr_wrap(image):
     return ldr_head(crc16(body), 0x20, len(body), 0x41, LOADER_NAME) + body
 
 
+def ldr_screen():
+    """DUELL_LOADER_SCREEN=0: the loader without its screen (firmware/loader/ldr_screen.c compiles to nothing), the package named -noscreen"""
+    return os.environ.get("DUELL_LOADER_SCREEN", "1") != "0"
+
+
 def build_loader():
     LDR.mkdir(parents=True, exist_ok=True)
     src = FW / "loader"
-    flags = [*CFLAGS, "-Ifirmware/hal", "-Ifirmware/src"]
+    flags = [*CFLAGS, "-Ifirmware/hal", "-Ifirmware/src", f"-DLDR_SCREEN={1 if ldr_screen() else 0}"]
     tc_all(("cc", "-c", src / "crt0_ldr.S", "-o", LDR / "crt0_ldr.o"),
            ("cc", *flags, "-c", src / "loader.c", "-o", LDR / "loader.o"))
     elf = LDR / "loader.elf"
@@ -217,8 +236,18 @@ def hotram():
     return int(v)
 
 
+def ramplace():
+    """DUELL_RAMPLACE: 1 = the two-core stage 1a RAM placement (tools/ram_place.py, firmware/app_ram.ld); unset or 0: none"""
+    v = os.environ.get("DUELL_RAMPLACE", "0")
+    if v not in ("0", "1"):
+        raise SystemExit(f"build: DUELL_RAMPLACE {v!r}: 0 or 1")
+    return v == "1"
+
+
 def app_ld():
-    """the app's linker script: app.ld, or app_hot.ld for a DUELL_HOTRAM build"""
+    """the app's linker script: app.ld, or app_hot.ld for a DUELL_HOTRAM build, app_ram.ld for DUELL_RAMPLACE=1"""
+    if ramplace():
+        return FW / "app_ram.ld"
     return FW / ("app_hot.ld" if hotram() else "app.ld")
 
 
@@ -251,8 +280,12 @@ def bench_tag():
         raise SystemExit("build: BENCH_TAG needs DUELL_BENCH=1 (and DUELL_TEST_MODE=1)")
     if os.environ.get("DUELL_CORE1_PROBE") == "1" and not t:
         raise SystemExit("build: DUELL_CORE1_PROBE=1 is a bench build: set BENCH_TAG (and DUELL_BENCH=1, DUELL_TEST_MODE=1)")
+    if os.environ.get("DUELL_TWOCORE") == "1" and os.environ.get("DUELL_CORE1_PROBE") == "1":
+        raise SystemExit("build: DUELL_TWOCORE=1 and DUELL_CORE1_PROBE=1 both drive core 1: one at a time")
     if hotram() not in (0, 3) and not t:
         raise SystemExit("build: DUELL_HOTRAM 1, 2, 4..8 are bench builds: set BENCH_TAG (and DUELL_BENCH=1, DUELL_TEST_MODE=1)")
+    if ramplace() and hotram() != 3:
+        raise SystemExit("build: DUELL_RAMPLACE=1 needs the hot layout: DUELL_HOTRAM 3")
     return t
 
 
@@ -267,10 +300,13 @@ def build_app():
                   f'-DFELUCCA_VERSION="DUELL {read_version()} bench {tag}"']
     for flag in ("FELUCCA_FLASH", "FELUCCA_OTA", "FELUCCA_OTA_DRYRUN", "FELUCCA_OTA_RAMONLY", "FELUCCA_CDC",
                  "FELUCCA_UART", "FELUCCA_UAC", "FELUCCA_UAC_TONE", "FELUCCA_UAC_48K", "FELUCCA_ICONS",
-                 "FELUCCA_CDC_DEFAULT", "DUELL_TEST_MODE", "DUELL_BENCH", "DUELL_CORE1_PROBE"):
+                 "FELUCCA_CDC_DEFAULT", "DUELL_TEST_MODE", "DUELL_BENCH", "DUELL_CORE1_PROBE", "DUELL_TWOCORE", "DUELL_RAMPLACE"):
         v = os.environ.get(flag)    # unset: the default in firmware/src/felucca.c (DUELL_TEST_MODE: core.h, 0 = release: no TEST screen, no M13..M16)
         if v in ("0", "1"):
             flags.append(f"-D{flag}={v}")
+    v = os.environ.get("DUELL_VELO", "1")   # KEY SENSE (key velocity and aftertouch, sense.c): ON in every build since 0.2.30 (owner, 2026-10-21; before: developer builds only, build.py passed nothing and felucca.c's default 0 held).
+    if v in ("0", "1"):                     # DUELL_VELO=0 in the environment builds the old velocity-free shape (host tests compile without the switch: felucca.c's default stays 0)
+        flags.append(f"-DDUELL_VELO={v}")
     v = os.environ.get("FELUCCA_USB_LAYOUT")   # firmware/src/usb.c: how the USB composite presents itself (#67), 0..3
     if v in ("0", "1", "2", "3"):
         flags.append(f"-DFELUCCA_USB_LAYOUT={v}")
@@ -297,6 +333,18 @@ def build_app():
         obj.write_bytes(data)
         print(f"hotram:  level {hotram()}: {len(done)} functions to RAM" +
               (f"; inlined on the device (no section, they go with their callers): {', '.join(missing)}" if missing else ""))
+    if ramplace():                  # DUELL_RAMPLACE: ranges X and Z (tools/ram_place.py), after the hot set
+        data, done, missing = ram_place.place(obj.read_bytes())
+        if missing:
+            raise SystemExit(f"ramplace: no section of their own (inlined on the device; take them off the lists): {', '.join(missing)}")
+        perr, pnotes = ram_place.check_object(data, hot_fns.names(hotram()))
+        for n in pnotes:
+            print(f"ramplace: {n}")
+        if perr:
+            raise SystemExit("ramplace: " + "; ".join(perr))
+        obj = OUT / "felucca_ram.o"
+        obj.write_bytes(data)
+        print(f"ramplace: {len(done['X'])} functions to range X, {len(done['Z'])} to range Z")
     elf = OUT / "felucca.elf"
     plugin = []
     if lto:                         # felucca.o is bitcode: the LLVM plugin optimises and generates it at the link
@@ -309,12 +357,15 @@ def build_app():
     pad = [f"--defsym=_hot_pad={hot_fns.PAD[hotram()]}"] if hotram() in hot_fns.PAD else []   # R7: the hot block padded to R3's size
     tc("pi32v2/bin/ld", *plugin, *pad, "-T", app_ld(), OUT / "crt0.o", OUT / "fm1_vec.o", OUT / "fm1_isr.o",
        obj, "-o", elf)
-    for sect in ("text.bin", "data.bin", "ramtext.bin"):
+    for sect in ("text.bin", "data.bin", "ramtext.bin", "ramx.bin", "ramz.bin"):
         (OUT / sect).unlink(missing_ok=True)
     dcpu = [f"-mcpu={opt_cpu(opt)}"] if opt_cpu(opt) else []   # (the disassembler knows that core's instructions only when told)
+    rp = [("common/bin/objcopy", "-O", "binary", "-j", s, elf, OUT / b) for s, b in ((".ramx", "ramx.bin"), (".ramz", "ramz.bin"))
+          ] if ramplace() else []
     *_, syms, dis, rt = tc_all(("common/bin/objcopy", "-O", "binary", "-j", ".text", elf, OUT / "text.bin"),
                                ("common/bin/objcopy", "-O", "binary", "-j", ".data", elf, OUT / "data.bin"),
                                ("common/bin/objcopy", "-O", "binary", "-j", ".ram_text", elf, OUT / "ramtext.bin"),
+                               *rp,
                                ("common/bin/objdump", "-t", elf),
                                ("common/bin/objdump", "-d", *dcpu, elf),
                                ("common/bin/objdump", "-d", *dcpu, "-j", ".ram_text", elf))
@@ -323,8 +374,11 @@ def build_app():
     def symv(name):
         return int(re.search(r"^([0-9a-f]+) .*\s" + name + r"$", syms, re.M).group(1), 16)
     img = bytearray((OUT / "text.bin").read_bytes())
-    # .ram_text and .data follow .text at their load addresses; crt0 copies them by words
-    for sect, lname in (("ramtext.bin", "_rt_load"), ("data.bin", "_data_load")):
+    # .ram_text and .data follow .text at their load addresses; crt0 copies them by words (DUELL_RAMPLACE: then .ramz and .ramx, main.c)
+    loads = [("ramtext.bin", "_rt_load"), ("data.bin", "_data_load")]
+    if ramplace():
+        loads = sorted(loads + [("ramz.bin", "_rz_load"), ("ramx.bin", "_rx_load")], key=lambda sl: symv(sl[1]))
+    for sect, lname in loads:
         load = symv(lname)
         if load % 4:
             raise SystemExit(f"{lname} {load:#x} is not word aligned")
@@ -337,6 +391,16 @@ def build_app():
     img += b"\xff" * (-len(img) % 4)
     (OUT / "felucca.bin").write_bytes(img)
     return bytes(img), syms, dis, rt
+
+
+POOL_TAIL_MIN = 8192        # the pool-tail rule: pool end (or range Z's end) to the stack guard keeps this much spare
+POOL_TAIL_MIN_BENCH = 4096  # 4,096 B again (owner, 2026-10-19; it was 2,816 B for BENCHM1 until the T0229 ramp code was shrunk and mix_ramp moved to range X, join0234) ... in a DUELL_BENCH developer build ONLY (owner's decision 2026-10-19: the bench's 4.4 KB session copy and the
+                            # two-core RAM code share the pool; BENCHT1 keeps 4,788 B). A normal or non-bench build keeps POOL_TAIL_MIN.
+
+
+def pool_tail_min(env=None):
+    env = os.environ if env is None else env
+    return POOL_TAIL_MIN_BENCH if env.get("DUELL_BENCH") == "1" and env.get("BENCH_TAG") else POOL_TAIL_MIN
 
 
 def check(img, syms, dis, rt):
@@ -379,8 +443,14 @@ def check(img, syms, dis, rt):
         errors.append("app.ld: POOL does not start where RAM ends")
     if ram_len - bss < 4096:                      # keep >= 4 KiB of .bss spare (state the audio side touches)
         errors.append(f"RAM headroom {ram_len - bss} B < 4096 B")
-    if pool_len - pool < 8192:                    # keep >= 8 KiB of the pool spare
-        errors.append(f"pool headroom {pool_len - pool} B < 8192 B")
+    if sym("_rz_end"):                            # DUELL_RAMPLACE: range Z takes the pool's spare end
+        notes.append(f"pool + range Z {sym('_rz_end') - sym('_pool_start')} B of {pool_len} (range Z {sym('_rz_end') - sym('_rz_start')} B)")
+        pool = sym("_rz_end") - sym("_pool_start")
+    need = pool_tail_min()
+    if pool_len - pool < need:                    # keep >= 8 KiB of the pool spare (4 KiB in a DUELL_BENCH developer build)
+        errors.append(f"pool headroom {pool_len - pool} B < {need} B")
+    elif need != POOL_TAIL_MIN:
+        notes.append(f"pool tail rule lowered to {need} B for this DUELL_BENCH developer build (normal builds keep {POOL_TAIL_MIN} B)")
     return errors, notes
 
 
@@ -435,13 +505,15 @@ def main():
     ap.add_argument("--sdk", type=Path, help="JieLi AC79 SDK checkout (default: $AC79_SDK)")
     a = ap.parse_args()
     ver = read_version()
-    tag = f"{ver}-beta"
+    tag = f"{ver}-beta" if ver.startswith("0.") else ver    # 1.0 and later: duell-1.0.fwsc, no -beta
     if a.release:
         print(f"note: --release {a.release} ignored; the version is {ver} (the VERSION file)")
     btag = bench_tag()
     if btag and a.release:
         raise SystemExit("build: a bench build (BENCH_TAG) is never a release")
     name = f"duell-{ver}-bench-{btag}.fwsc" if btag else f"duell-{tag}.fwsc"   # the package of the VERSION file, release or not
+    if not ldr_screen():
+        name = name.replace(".fwsc", "-noscreen.fwsc")
     PRODUCT = "FM-1_901"                        # package identity (one digit each: the identity has room for two)
     fm1pkg_make.SDK = a.sdk
     for rel, sha in SDK_SHA256.items():          # fail early without the SDK
@@ -455,11 +527,16 @@ def main():
     img, syms, dis, rt = build_app()
     errors, notes = check(img, syms, dis, rt)
     elf = elfcheck.read_elf((OUT / "felucca.elf").read_bytes())     # the start-up layout (tools/elfcheck.py)
-    lay_err = elfcheck.check(elf, elfcheck.source_noinit(FW), os.environ.get("DUELL_CORE1_PROBE") == "1", len(img),
+    lay_err = elfcheck.check(elf, elfcheck.source_noinit(FW), "1" in (os.environ.get("DUELL_CORE1_PROBE"), os.environ.get("DUELL_TWOCORE")), len(img),
                              ld_regions()["NOINIT"])
-    ram_err, ram_notes = elfcheck.check_ramcode(elf, bool(hotram()))
+    ram_err, ram_notes = elfcheck.check_ramcode(elf, bool(hotram()), ramplace())
     lay_err += ram_err
     notes += ram_notes
+    if ramplace():                  # the RAM ranges X and Z (tools/elfcheck.py check_ramplace; the reach of every call: tools/ram_place.py)
+        rp_err, rp_notes = elfcheck.check_ramplace(elf, img, dis, APP_XIP)
+        r_err, r_note = ram_place.reach_check((OUT / "felucca_ram.o").read_bytes(), elf)
+        lay_err += rp_err + r_err
+        notes += rp_notes + [r_note]
     errors += lay_err
     if not lay_err:
         nsect = elf["sections"][".noinit"]

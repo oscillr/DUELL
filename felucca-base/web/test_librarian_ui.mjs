@@ -101,17 +101,17 @@ try {
   await waitFor(`document.querySelectorAll(".plist li[data-slot]").length === 128`, "128 slot rows");
   await shot("01-patches-compact");
   ok(await ev(`document.querySelectorAll(".plist li[data-slot]").length === 128 && !/\\d+ of 128|free/i.test(document.querySelector(".patches").textContent)`), "list: 128 slots, no count of free places anywhere on the tab");
-  ok(await ev(`!!__t.btn("Import file...", ".patches") && !!__t.btn("Export bank...", ".patches") && !!__t.btn("Wide view", ".patches")`), "tab: the library buttons are there (Import file, Export bank, Wide view)");
-  ok(await ev(`document.querySelector(".pdetail").textContent.includes("Pick a slot")`), "tab: nothing selected: the detail pane asks for a slot");
+  ok(await ev(`!!__t.btn("Import file...", ".patches") && !!__t.btn("Download all...", ".patches") && !!__t.btn("Wide view", ".patches")`), "tab: the library buttons are there (Import file, Export bank, Wide view)");
+  ok(await ev(`document.querySelector(".pdetail").textContent.trim() === ""`), "tab: nothing selected: the detail pane is empty (T0229: no notes; the list's tooltip says what to do)");
   ok(await ev(`(() => { const g = document.querySelector(".col.glob").getBoundingClientRect(); const l = document.querySelector(".plist").getBoundingClientRect(); return l.width > 200 && l.right <= g.right + 1 && document.querySelector(".plist").scrollWidth <= document.querySelector(".plist").clientWidth + 1; })()`), "tab: the compact list fits the width of the GLOBAL column (no sideways scroll)");
 
   // ---- select, hide rule, export one patch
   await ev(`document.querySelector('.plist li[data-slot="0"]').click()`);
-  ok(await ev(`!!__t.btn("Restore...", ".pdetail") && !!__t.btn("Move to...", ".pdetail") && !!__t.btn("Export this patch", ".pdetail")`), "detail: a saved slot offers Restore, Move to and Export");
+  ok(await ev(`!!__t.btn("Restore factory sound...", ".pdetail") && !!__t.btn("Move to...", ".pdetail") && !!__t.btn("Download file", ".pdetail")`), "detail: a saved slot offers Restore, Move to and Export");
   await ev(`document.querySelector('.plist li[data-slot="9"]').click()`);
-  ok(await ev(`!__t.btn("Restore...", ".pdetail") && !__t.btn("Move to...", ".pdetail") && !!__t.btn("Copy to...", ".pdetail")`), "detail: a slot on its factory sound shows no Restore and no Move (they do not apply), Copy to is still there");
+  ok(await ev(`!__t.btn("Restore factory sound...", ".pdetail") && !__t.btn("Move to...", ".pdetail") && !!__t.btn("Copy to...", ".pdetail")`), "detail: a slot on its factory sound shows no Restore and no Move (they do not apply), Copy to is still there");
   await ev(`document.querySelector('.plist li[data-slot="0"]').click()`);
-  await ev(`__t.click("Export this patch", ".pdetail")`);
+  await ev(`__t.click("Download file", ".pdetail")`);
   await waitFor(`window.__app.downloads?.length === 1`, "a download");
   const one = JSON.parse(await ev(`window.__app.downloads[0].text`));
   ok(one.format === "duell-patches" && one.patches.length === 1 && one.patches[0].name === "WARM PAD" && one.patches[0].record && one.patches[0].number === 1, "export one patch: a duell-patches file with the record of #1 WARM PAD");
@@ -120,20 +120,20 @@ try {
   // ---- select several with shift, export the selection
   await ev(`document.querySelector('.plist li[data-slot="5"]').dispatchEvent(new MouseEvent("click", { bubbles: true, shiftKey: true }))`);
   ok(await ev(`document.querySelectorAll(".plist li.sel").length === 6 && document.querySelector(".pdetail h3").textContent === "6 slots selected"`), "selection: shift-click selects the range (slots 1..6)");
-  await ev(`__t.click("Export selection", ".pdetail")`);
+  await ev(`__t.click("Download selection", ".pdetail")`);
   await waitFor(`window.__app.downloads?.length === 2`, "the selection download");
   const sel = JSON.parse(await ev(`window.__app.downloads[1].text`));
   ok(sel.patches.length === 6 && sel.patches.filter((p) => p.saved).length === 3 && sel.patches.filter((p) => p.approximate).length === 3, "export selection: 6 patches, the saved ones whole, the factory ones as approximate copies");
   // ---- bank
-  await ev(`__t.click("Export bank...", ".patches")`);
+  await ev(`__t.click("Download all...", ".patches")`);
   await waitFor(`!!document.querySelector("dialog[open]")`, "bank dialog");
-  await clickBtn("Export");
+  await clickBtn("Download");
   await waitFor(`window.__app.downloads?.length === 3`, "the bank download");
   const bk = JSON.parse(await ev(`window.__app.downloads[2].text`));
   ok(bk.patches.length === 4 && bk.patches.every((p) => p.saved && p.record && Number.isInteger(p.number)) && bk.patches.map((p) => p.number).join() === "1,2,6,65", "export bank: every saved patch, each with its slot number (#1, #2, #6, #65)");
-  await ev(`__t.click("Export bank...", ".patches")`);
+  await ev(`__t.click("Download all...", ".patches")`);
   await ev(`document.querySelector("dialog[open] input[type=checkbox]").click()`);
-  await clickBtn("Export");
+  await clickBtn("Download");
   await waitFor(`window.__app.downloads?.length === 4`, "the full bank download");
   const full = JSON.parse(await ev(`window.__app.downloads[3].text`));
   ok(full.patches.length === 128 && full.patches.filter((p) => p.saved).length === 4, "export bank with the factory sounds ticked: 128 patches (4 whole, the rest copies of the values)");
@@ -240,7 +240,7 @@ try {
   await clickBtn("Copy");
   await waitFor(`window.__app.mock.patches.get(69)?.name === "WAVE LEAD"`, "the copy to #70"); await waitFor(`/Copied to #70/.test(document.getElementById("msg").textContent)`, "the copy message"); await rows();
   ok(true, "Copy to...: #65 copied to #70 without the mouse");
-  await ev(`document.querySelector('.plist li[data-slot="69"]').click()`);
+  // (the copy left #70 selected: a second click on it would deselect, so the test goes straight on)
   await ev(`__t.click("Move to...", ".pdetail")`);
   await waitFor(`!!document.querySelector("dialog[open] input[type=number]")`, "the Move to dialog");
   await ev(`(() => { const i = document.querySelector("dialog[open] input[type=number]"); i.value = "90"; i.dispatchEvent(new Event("input", { bubbles: true })); })()`);
@@ -281,17 +281,17 @@ try {
   await waitFor(`/19 frames x 64 harmonics/.test(document.querySelector(".col.glob .card").textContent)`, "the WAV conversion");
   await shot("07-wavetable-drop");
   ok(await ev(`document.querySelector(".col.glob .card input[type=text]").value.length > 0 && !document.querySelector(".col.glob .card button").disabled`), "wavetables: a WAV dropped on a slot is converted and can be sent");
-  await ev(`__t.click("Send to USR1", ".col.glob .card:nth-of-type(1)")`);
+  await ev(`__t.click("Save to unit", ".col.glob .card:nth-of-type(1)")`);
   await waitFor(`window.__app.mock.tables[0]`, "the table on the unit");
   await waitFor(`!document.querySelector(".col.glob .card button[disabled]") || true`, "ok");
   await sleep(150);
-  await ev(`__t.click("Export file", ".col.glob .card:nth-of-type(1)")`);
+  await ev(`__t.click("Download file", ".col.glob .card:nth-of-type(1)")`);
   await waitFor(`window.__app.downloads.some((d) => /duell-wavetable/.test(d.name))`, "the table export");
   const tf = JSON.parse(await ev(`window.__app.downloads.find((d) => /duell-wavetable/.test(d.name)).text`));
-  ok(tf.format === "duell-wavetable" && tf.version === 1 && tf.frames === 19 && tf.harmonics === 64 && tf.data.length > 1000 && tf.data.length < 2000, "wavetables: Export file saves a small duell-wavetable file (about 1.6 KB)");
+  ok(tf.format === "duell-wavetable" && tf.version === 1 && tf.frames === 19 && tf.harmonics === 64 && tf.data.length > 1000 && tf.data.length < 2000, "wavetables: Download file saves a small duell-wavetable file (about 1.6 KB)");
   await ev(`__t.dropFiles(".col.glob .card:nth-of-type(3)", [["t.json", null, ${JSON.stringify(JSON.stringify(tf))}]])`);
   await waitFor(`/a wavetable file/.test(document.querySelector(".col.glob .card:nth-of-type(3)").textContent)`, "the table file read");
-  await ev(`__t.click("Send to USR3", ".col.glob .card:nth-of-type(3)")`);
+  await ev(`__t.click("Save to unit", ".col.glob .card:nth-of-type(3)")`);
   await waitFor(`window.__app.mock.tables[2]`, "USR3 written");
   ok(await ev(`window.__app.mock.tables[2].data.length === 1216 && window.__app.mock.tables[2].data.every((b, i) => b === window.__app.mock.tables[0].data[i])`), "  the exported file dropped on USR3 gives the same 1216 bytes (the tables are shared by file)");
   await ev(`__t.dropFiles(".col.glob .gbody", [["t2.json", null, ${JSON.stringify(JSON.stringify({ ...tf, data: "AAAA" + tf.data.slice(4) }))}]])`);
@@ -301,6 +301,55 @@ try {
   // ============================================================================ a file dropped on the page outside the library does not leave the editor
   const stay = await ev(`(() => { const dt = new DataTransfer(); dt.items.add(new File(["x"], "x.txt")); const e = new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: dt }); document.getElementById("top").dispatchEvent(e); return e.defaultPrevented; })()`);
   ok(stay === true && /Drop a patch file/.test(await msg()), "a file dropped on the header is not opened by the browser; the footer says where files go");
+
+  // ============================================================================ the save form follows the patch that was clicked (owner's bug: it said LADDER BASS, slot 1)
+  await open("?mock=1");
+  await ev(`document.querySelector('.col.glob [data-key="patches"]').click()`);
+  await rows();
+  await ev(`window.__app.unit.loadSlot(0, 64)`);                  // PART 1 now plays WAVE LEAD: the form must not take its name, or its sound
+  const Q = {
+    name: `document.querySelector('.pdetail input[aria-label="Patch name"]')`, cat: `document.querySelector('.pdetail select[aria-label="Category for the stored patch"]')`,
+    slot: `document.querySelector('.pdetail select[aria-label="Slot to save into"]')`, save: `__t.btn("Save to unit", ".pdetail") || __t.btn("Replace", ".pdetail")`,
+  };
+  const pick = (v) => ev(`(() => { const s = ${Q.slot}; s.value = ${JSON.stringify(String(v))}; s.dispatchEvent(new Event("change", { bubbles: true })); return s.value; })()`);
+  const mockSlot = (n) => ev(`(() => { const v = window.__app.mock.patches.get(${n}); return v ? JSON.stringify({ name: v.name, eng: v.eng, cat: v.cat, p: [...window.__app.mock.recordOf(v).slice(4, 6), ...window.__app.mock.recordOf(v).slice(19)] }) : null; })()`);
+  await ev(`document.querySelector('.plist li[data-slot="1"]').click()`);
+  ok(await ev(`${Q.name}.value`) === "SUB BASS", "save form: a click on #2 SUB BASS puts its own name in the name field (not the part's sound)");
+  ok(await ev(`${Q.cat}.value`) === "1", "save form: its category is the patch's own (BASS)");
+  ok(await ev(`${Q.slot}.value`) === "" && await ev(`${Q.slot}.selectedOptions[0].text`) !== "" , "save form: no slot is pre-selected");
+  ok(await ev(`(${Q.save}).disabled === true`), "save form: 'Save to unit' is disabled until a slot is chosen");
+  await ev(`document.querySelector('.plist li[data-slot="5"]').click()`);
+  ok(await ev(`${Q.name}.value`) === (await ev(`document.querySelector('.plist li[data-slot="5"] .n').textContent`)) && await ev(`${Q.slot}.value`) === "", "save form: a click on #6 (a factory sound) follows it too, and still no slot");
+  await ev(`document.querySelector('.plist li[data-slot="1"]').click()`);
+  const slot1Before = await mockSlot(0), subBass = await mockSlot(1);
+  await pick(0);
+  ok(await ev(`(${Q.save}).textContent.trim()`) === "Replace #1 WARM PAD" && await ev(`(${Q.save}).disabled === false`), "save form: with a slot chosen the button reads 'Replace #1 WARM PAD'");
+  ok(await ev(`!/overwrit|lost|warning/i.test(document.querySelector(".pdetail").textContent)`), "save form: no extra warning text");
+  await ev(`(${Q.save}).click()`);
+  await waitFor(`window.__app.mock.patches.get(0)?.name === "SUB BASS"`, "slot 1 holds the clicked patch");
+  const after = JSON.parse(await mockSlot(0)), sb = JSON.parse(subBass);
+  ok(after.name === "SUB BASS" && after.eng === sb.eng && JSON.stringify(after.p) === JSON.stringify(sb.p) && JSON.stringify(after) !== before, "save to #1: the SELECTED patch's data and name are stored there (not PART 1's WAVE LEAD)");
+  // own slot, own name: the stored patch stays what it is (the part still plays WAVE LEAD)
+  await waitFor(`/Saved "SUB BASS" to the unit.s slot #1/.test(document.getElementById("msg").textContent)`, "the save message");
+  ok(await ev(`${Q.name}.value`) === "SUB BASS" && await ev(`${Q.slot}.value`) === "", "save form: after a save the form is fresh again (no slot kept)");
+  await pick(1);
+  ok(await ev(`(${Q.save}).textContent.trim()`) === "Replace #2 SUB BASS", "save form: its own slot reads 'Replace #2 SUB BASS'");
+  await ev(`(${Q.save}).click()`);
+  await waitFor(`/Saved/.test(document.getElementById("msg").textContent)`, "saved message");
+  ok(await mockSlot(1) === subBass, "save into its own slot with its own name: the patch is unchanged (it is not replaced by the part's sound)");
+  // a new name and category into another slot
+  await ev(`(() => { const n = ${Q.name}; n.value = "MY BASS 2"; n.dispatchEvent(new Event("input", { bubbles: true })); const c = ${Q.cat}; c.value = "2"; c.dispatchEvent(new Event("change", { bubbles: true })); })()`);
+  await pick(20);
+  await ev(`(${Q.save}).click()`);
+  await waitFor(`window.__app.mock.patches.get(20)?.name === "MY BASS 2"`, "slot 21 holds the renamed copy");
+  const cp = JSON.parse(await mockSlot(20));
+  ok(cp.cat === 2 && cp.eng === sb.eng && JSON.stringify(cp.p) === JSON.stringify(sb.p), "save under a new name and category: slot #21 holds the patch's data with the typed name and category");
+  ok(JSON.parse(await ev(`JSON.stringify(window.__app.mock.parts[0].name ?? "")`)) !== "MY BASS 2", "  and PART 1's sound was not touched");
+  // deselect: a second click on the selected row
+  await ev(`document.querySelector('.plist li[data-slot="3"]').click()`);
+  ok(await ev(`document.querySelector('.plist li[data-slot="3"]').classList.contains("sel") && document.querySelector(".pdetail").textContent.trim() !== ""`), "select: one click selects the row and shows its detail");
+  await ev(`document.querySelector('.plist li[data-slot="3"]').click()`);
+  ok(await ev(`!document.querySelector('.plist li[data-slot="3"]').classList.contains("sel") && document.querySelectorAll(".plist li.sel").length === 0 && document.querySelector(".pdetail").textContent.trim() === ""`), "select: a second click on the selected row deselects it (detail empties)");
 
   // ============================================================================ a unit that is playing, and a unit with older firmware
   await open("?mock=playing");
@@ -316,7 +365,7 @@ try {
   await open("?mock=old");
   await ev(`document.querySelector('.col.glob [data-key="patches"]').click()`);
   await waitFor(`document.querySelectorAll(".plist li[data-slot]").length === 128`, "rows (old unit)");
-  ok(await ev(`!__t.btn("Import file...", ".patches") && !__t.btn("Export bank...", ".patches") && /need firmware 0.2.19/.test(document.querySelector(".patches").textContent)`), "older firmware: the library buttons are not drawn, one line says why");
+  ok(await ev(`!__t.btn("Import file...", ".patches") && !__t.btn("Download all...", ".patches") && /need firmware 0.2.19/.test(document.querySelector(".patches").textContent)`), "older firmware: the library buttons are not drawn, one line says why");
   // ============================================================================ a smaller window (1280 x 720): the GLOBAL view, the list and the wide view still fit
   await cdp("Emulation.setDeviceMetricsOverride", { width: 1280, height: 720, deviceScaleFactor: 1, mobile: false });
   await open("?mock=1");

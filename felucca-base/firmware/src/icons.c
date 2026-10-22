@@ -155,9 +155,9 @@ static const icon_map_t ICON_MAP[] = {
     {"DTN", ICON_DETUNE}, {"NOIS", ICON_NOISE}, {"CUT", ICON_CUTOFF}, {"RES", ICON_RESO},
     {"DRV", ICON_DRIVE}, {"KTR", ICON_KEYTRACK}, {"ALG", ICON_ALGORITHM}, {"R2", ICON_RATIO},
     {"R3", ICON_RATIO}, {"R4", ICON_RATIO}, {"IDX", ICON_MOD}, {"MDEC", ICON_DECAY},
-    {"FB", ICON_FEEDBACK}, {"CHIP", ICON_CHIP}, {"DUTY", ICON_PULSE}, {"CRSH", ICON_BITS},
+    {"FB", ICON_FEEDBACK}, {"DUTY", ICON_PULSE}, {"CRSH", ICON_BITS},
     {"SWP", ICON_SWEEP}, {"VIB", ICON_VIBRATO}, {"ARP", ICON_ARP}, {"TONE", ICON_TONE},
-    {"BITS", ICON_BITS}, {"WAVE2", ICON_WAVE},
+    {"BITS", ICON_BITS}, {"WAVE 2", ICON_WAVE}, {"WAVE2", ICON_WAVE},
     {"DCW", ICON_SHAPE}, {"ENV", ICON_ENV}, {"LINE", ICON_MIX}, {"SUB", ICON_SUB},
     {"FOLD", ICON_FOLD}, {"WAV#", ICON_WAVE}, {"DCY", ICON_DECAY}, {"INT2", ICON_TRANSPOSE},
     {"INT3", ICON_TRANSPOSE}, {"PW", ICON_PULSE},
@@ -167,7 +167,7 @@ static const icon_map_t ICON_MAP[] = {
     {"MODEL", ICON_PHYS}, {"STRC", ICON_SHAPE}, {"BRIT", ICON_TONE}, {"BOW", ICON_SUSTAIN}, {"EXC", ICON_MIX},   /* PHYS */
     {"HARM", ICON_RATIO}, {"BEND", ICON_SWEEP}, {"CHRD", ICON_SCALE}, {"SYMP", ICON_MIX}, {"DECY", ICON_DECAY},
     {"SNAP", ICON_NOISE},                                                    /* PHYS: MEMB, SYMP */
-    {"VOWL", ICON_VOICE}, {"VOWL2", ICON_VOICE}, {"TALK", ICON_SWEEP}, {"SHIFT", ICON_TRANSPOSE},
+    {"VOWL 1", ICON_VOICE}, {"VOWL 2", ICON_VOICE}, {"TALK", ICON_SWEEP}, {"SHIFT", ICON_TRANSPOSE},
     {"BUZZ", ICON_PULSE}, {"BRTH", ICON_NOISE}, {"Q", ICON_RESO}, {"RAND", ICON_PROB},
     {"FREQ", ICON_CUTOFF}, {"TRK", ICON_KEYTRACK}, {"DRFT", ICON_SWEEP},   /* NOISE (COLR, DENS, CRSH: above) */
     {"MLVL", ICON_MOD}, {"MRAT", ICON_RATIO}, {"MEG", ICON_DECAY}, {"VMOD", ICON_ACCENT}, {"DTUN", ICON_DETUNE},
@@ -176,6 +176,7 @@ static const icon_map_t ICON_MAP[] = {
     {"NOTE", ICON_PITCH}, {"STEP", ICON_STEPS}, {"FLAG", ICON_ACCENT}, {"ACC", ICON_ACCENT}, {"SLD", ICON_SLIDE},
     {"TRACK", ICON_MIX},                  /* TRACKS page (LEVEL, LEN, PAN: above) */
     {"RLS", ICON_RELEASE}, {"DEPTH", ICON_MIX},                            /* (DUCK, INSERT's DEPTH) */
+    {"KTRK", ICON_KEYTRACK}, {"ENV 2", ICON_ENV}, {"LFO 1", ICON_LFO_WAVE},   /* MULTI FILTER 2/2 (0.2.21) */
 };
 
 static uint32_t icon_for_label(const char *l)
@@ -203,7 +204,7 @@ static uint32_t param_icon(const param_desc_t *d, int32_t v)
     if (!d)
         return ICON_NONE;
     if (d->fmt == F_ENUM && d->names && v >= d->min && v <= d->max &&
-        (str_eq(d->label, "WAVE") || str_eq(d->label, "WAVE2")))
+        (str_eq(d->label, "WAVE") || str_eq(d->label, "WAVE 1") || str_eq(d->label, "WAVE 2") || str_eq(d->label, "WAVE2")))
         for (i = 0; i < sizeof(WAVE_ICON) / sizeof(WAVE_ICON[0]); i++)
             if (str_eq(d->names[v], WAVE_ICON[i].label))
                 return WAVE_ICON[i].icon;
@@ -213,7 +214,7 @@ static uint32_t param_icon(const param_desc_t *d, int32_t v)
         return ICON_DIVISION;                 /* the arp's RATE is a note division, not Hz */
     if (d->names == N_TRIO_MODE)
         return ICON_CUTOFF;                   /* TRIO's MODE is the filter type, not the arp mode */
-    if (d == &TP[P_FTYPE] || d == &TP[P_FREEC] || d == &TP[P_FREED])
+    if (d == &TP[P_TWTYPE] || d == &TP[P_FREEC] || d == &TP[P_FREED])
         return ICON_CUTOFF;                   /* ANALOG's filter TYPE (1.5): "TYPE" is also the reverb's; the multimode filter's MODE, SLOPE (0.2.9) */
     if (d == &TP[P_DKRATE])
         return ICON_DIVISION;                 /* DUCK 1: PUMP's RATE, a note division */
@@ -235,7 +236,7 @@ static uint32_t mod_src_icon(int32_t s)
 {
     static const uint8_t I[MS_N] = {ICON_MOD, ICON_LFO_WAVE, ICON_ENV, ICON_ACCENT, ICON_KEYTRACK, ICON_PROB,
                                     ICON_MOD, ICON_MIDI, ICON_LEVEL, ICON_W_SH, ICON_GLIDE, [MS_ENV2] = ICON_ENV, [MS_LFO2] = ICON_LFO_WAVE,
-                                    [MS_MORPH] = ICON_MIX, [MS_DUCK] = ICON_LEVEL};
+                                    [MS_MORPH] = ICON_MIX, [MS_DUCK] = ICON_LEVEL, [MS_CYCLE] = ICON_ENV};
     return I[clamp(s, 0, MS_N - 1)];
 }
 static uint32_t mod_dst_icon(const track_t *t, int32_t d)
@@ -248,9 +249,13 @@ static uint32_t mod_dst_icon(const track_t *t, int32_t d)
         return ICON_LFO_WAVE;
     if (d == MD_RATE2)
         return ICON_RATE;
+    if (d >= MD_CUT2 && d <= MD_BLEND)                  /* (cloud job B) filter 2's values; the SUB LEVEL below */
+        return ICON_CUTOFF;
+    if (d == MD_SUBLVL)
+        return ICON_LEVEL;
     if (d < MD_E1)
         return I[d];
-    if (d >= MD_BUS)                                    /* (0.2.7) a bus value: its effect's */
+    if (MD_IS_BUS(d))                                   /* (0.2.7) a bus value: its effect's (0.2.25: FMODE after them is a part value) */
         return d <= MD_CDEP ? ICON_CHORUS : d <= MD_DMRATE ? ICON_DELAY : ICON_REVERB;
     id = mod_param((uint32_t)d);                        /* an engine parameter, (0.2.7) a part's: its own */
     return param_icon(track_desc(t, id), t->p[id]);
@@ -281,7 +286,7 @@ static uint32_t motion_icon(void) { return rec_on(TSEL) ? ICON_X_MOTION_REC : IC
 static uint32_t page_icon(const page_t *pg)
 {
     switch (pg->graph) {
-    case GR_TRK: return ICON_X_MIXER;         /* MIXER (HOME): vertical faders */
+    case GR_GLO: return ICON_X_MIXER;         /* MIXER (GLO's first page, 0.2.25; HOME's before): vertical faders */
     case GR_PATS: return ICON_X_PATTERN;      /* SAVE > PATTERNS: the pattern loader */
     case GR_EVENTS: return motion_icon();     /* AUTOMATION */
     default: return ICON_NONE;

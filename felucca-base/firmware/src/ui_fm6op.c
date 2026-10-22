@@ -80,6 +80,8 @@ static void fop_knob(uint32_t slot, int32_t steps)
     }
     b = fop_byte(f);
     max = (int32_t)fm6_max(b);
+    if (morph_b_mode(song.sel, P_E0) && morph_b_say(2u, 0xFEu))   /* EDITABLE B (cloud job G): FM6's operator bytes are not in the hand-set list of version 1: at the B end they move both ends */
+        ui_message("OPS: SAME ON A AND B");
     fop_write(b, (uint32_t)clamp((int32_t)fm6_patch[song.sel % NTRK][b] + accel(EN_K1 + slot, steps, max), 0, max));
 }
 

@@ -29,6 +29,10 @@
 #undef memcmp
 static struct { volatile uint32_t notes, buttons; } fm1_in;
 #include "../firmware/src/core.h"
+#if DUELL_TWOCORE                                       /* (only tests/twocore_sim.c builds the firmware with the second core's code) */
+#include "twocore_hal_host.h"
+#include "../firmware/src/twocore.c"
+#endif
 #include "../firmware/src/engines.c"
 #include "../firmware/src/params.c"
 #include "../firmware/src/mod.c"
@@ -36,10 +40,12 @@ static struct { volatile uint32_t notes, buttons; } fm1_in;
 #include "../firmware/src/voice.c"
 #include "../firmware/src/slicer.c"
 #include "../firmware/src/fx.c"
+#include "../firmware/src/budget.c"
 static void fm1_delay_ms(uint32_t ms) { (void)ms; }
 #include "../firmware/src/usb.c"
 #include "../firmware/src/midi_uart.c"                /* TRS MIDI IN: its parser (um_byte) feeds midi_in_q */
 #include "../firmware/src/seq.c"
+#define MIDI_NOTE_AT(ch, note) midi_note_get(ch, note)   /* a key's MIDI owner (track + 1, MIDI_PEDAL_NOTE): midi_control.c keeps 4 bits a key */
 #define inst (trk[0])                   /* the single-part renders below: part 1 */
 
 static void wav_hdr(FILE *f, uint32_t frames)
@@ -78,6 +84,7 @@ static void host_tracks_init(void)                /* as felucca_init: defaults, 
     for (k = 0; k < NTRK; k++) {
         for (i = 0; i < P_E0; i++)
             trk[k].p[i] = TP[i].def;
+        ext_defaults(&trk[k]);                    /* (cloud job B: the extension slots at their defaults too) */
         for (i = 0; i < NSTEP; i++)
             trk[k].step[i].time = ST_REST;
     }
@@ -100,6 +107,7 @@ static void host_preset_values(track_t *t, uint32_t e, uint32_t pi, const preset
     t->p[P_SUS] = p->env[2];
     t->p[P_REL] = p->env[3];
     t->p[P_ED_FLT] = p->fenv;
+    t->p[P_KTRK] = 0;                             /* (0.2.22: a factory preset keeps KEY TRK off; TP's default is for a new sound) */
     t->p[P_VOICE] = p->mono ? V_LEGATO : V_POLY;
     for (i = 0; i < 4u; i++)
         t->p[P_DIST + i] = (int16_t)(p->fx[i] ? p->fx[i] - 1 : FX_DEF[i]);
@@ -137,6 +145,7 @@ static void host_ds_load(track_t *t, uint32_t e, uint32_t k)
     t->preset = (uint8_t)k;
     for (i = 0; i < P_E0; i++)
         t->p[i] = TP[i].def;
+    ext_defaults(t);
     for (i = 0; i < 8u; i++)
         t->p[P_E0 + i] = ENGINES[e]->edit[i].def;
     if (s) {
@@ -173,6 +182,9 @@ static void put_step(track_t *t, uint32_t i, uint32_t n, const uint8_t *notes, u
     s->vel = n ? 100 : 0;
 }
 
+/* (memory trim 1: NPART is 2; this standalone demo / test program (run_tests.sh, not DUELL's host_tests.sh) still names parts 3 and 4: they map onto the existing two,
+ * so nothing indexes past trk[]. Built with -DNPART=4 they are the parts they were.) */
+#define HS_TRK(i) (&trk[(i) % NTRK])
 static uint32_t busy_now(void)                   /* sounding voices of the parts (none fading after a block) */
 {
     uint32_t p, i, n = 0;
@@ -189,8 +201,8 @@ static void drum_hit(uint32_t k)
     static uint8_t last;
     uint32_t n = k % 4u == 0u ? 36u : k % 8u == 4u ? 38u : 42u;
     if (last)
-        trk_note_off(&trk[3], last);
-    trk_note_on(&trk[3], n, 100);
+        trk_note_off(HS_TRK(3), last);
+    trk_note_on(HS_TRK(3), n, 100);
     last = (uint8_t)n;
 }
 
@@ -220,7 +232,7 @@ static int tracks_demo(const char *dir, const char *name, uint32_t solo)
     FILE *w;
     uint32_t f, i, bmax = 0, clips = 0, fail = 0, clap_done = 0, lead_done = 0, keys_t = 0, keys_on = 0;
     uint32_t clap_age = 0, clap_hits = 0xFFFFu, clap_pass = 0, kills0;
-    track_t *t1 = &trk[0], *t2 = &trk[1], *t3 = &trk[2], *td = &trk[3];
+    track_t *t1 = &trk[0], *t2 = &trk[1], *t3 = HS_TRK(2), *td = HS_TRK(3);
     snprintf(path, sizeof path, "%s/%s", dir, name);
     if (!(w = fopen(path, "wb"))) {
         fprintf(stderr, "tracks: cannot write %s\n", path);
@@ -578,7 +590,7 @@ static int rec_step_is(const track_t *t, uint32_t i, uint32_t time, uint32_t n, 
 }
 static int rec_test(void)
 {
-    track_t *t1 = &trk[0], *t2 = &trk[1], *t3 = &trk[2];
+    track_t *t1 = &trk[0], *t2 = &trk[1], *t3 = HS_TRK(2);
     uint32_t i;
     int ok_len, ok_short, ok_half, ok_cap, ok_swing, ok_mono, ok_chord, fail;
     host_tracks_init();
@@ -700,18 +712,18 @@ static int trs_test(void)
     song.sel = 1;
     trs_bytes((const uint8_t[]){0x90, 60, 100, 65, 0xF8, 100, 0x91, 62, 100, 0x92, 64, 100, 0x93, 48, 100, 0x99, 36, 110,
                                 0x94, 67, 90}, 21);
-    ok_parts = trs_held(&trk[0], 60) && trs_held(&trk[0], 65) && trs_held(&trk[1], 62) && trs_held(&trk[2], 64) &&
-               trs_held(&trk[3], 48) && !trs_held(&trk[0], 62);
+    ok_parts = trs_held(&trk[0], 60) && trs_held(&trk[0], 65) && trs_held(&trk[1], 62) && trs_held(HS_TRK(2), 64) &&
+               trs_held(HS_TRK(3), 48) && !trs_held(&trk[0], 62);
     /* ROUT CH1-4 (the default): ch 10 and ch 5 are not heard at all (kept free for other instruments) */
-    ok_ch10 = !trs_held(&trk[1], 36) && !trs_held(&trk[3], 36);  /* ch 10: no drum channel any more */
+    ok_ch10 = !trs_held(&trk[1], 36) && !trs_held(HS_TRK(3), 36);  /* ch 10: no drum channel any more */
     ok_sel = !trs_held(&trk[1], 67) && !trs_held(&trk[0], 67);
     song.g[G_ROUTE] = 1;                            /* ROUT SEL: every channel -> the selected track */
     trs_bytes((const uint8_t[]){0x99, 36, 110, 0x94, 67, 90}, 6);
-    ok_ch10 &= trs_held(&trk[1], 36) && !trs_held(&trk[3], 36);
+    ok_ch10 &= trs_held(&trk[1], 36) && !trs_held(HS_TRK(3), 36);
     ok_sel &= trs_held(&trk[1], 67) && !trs_held(&trk[0], 67);
     trs_bytes((const uint8_t[]){0x90, 60, 0, 65, 0, 0x81, 62, 0, 0x82, 64, 64, 0x83, 48, 0, 0x89, 36, 0}, 17);   /* vel 0 = off, 0x8n */
-    ok_off = !trs_held(&trk[0], 60) && !trs_held(&trk[0], 65) && !trs_held(&trk[1], 62) && !trs_held(&trk[2], 64) &&
-             !trs_held(&trk[3], 48) && !trs_held(&trk[1], 36);
+    ok_off = !trs_held(&trk[0], 60) && !trs_held(&trk[0], 65) && !trs_held(&trk[1], 62) && !trs_held(HS_TRK(2), 64) &&
+             !trs_held(HS_TRK(3), 48) && !trs_held(&trk[1], 36);
     song.sel = 2;                                   /* another track selected while ch 5's note is down */
     trs_bytes((const uint8_t[]){0x84, 67, 0}, 3);
     ok_hang = !trs_held(&trk[1], 67);
@@ -720,7 +732,7 @@ static int trs_test(void)
     trs_bytes((const uint8_t[]){0xF8}, 1);
     trs_bytes((const uint8_t[]){0x92, 72, 100}, 3);
     trs_bytes((const uint8_t[]){0x92, 72, 0}, 3);
-    ok_rec = trk[2].step[0].n == 1u && trk[2].step[0].note[0] == 72u && trk[2].step[0].time == ST_NOTE && trk[1].step[0].n == 0u;
+    ok_rec = HS_TRK(2)->step[0].n == 1u && HS_TRK(2)->step[0].note[0] == 72u && HS_TRK(2)->step[0].time == ST_NOTE && trk[1].step[0].n == 0u;
     printf("tracks: TRS MIDI IN: ch 1..4 -> parts %s, ch 10 and ch 5 ignored on CH1-4, the selected track on SEL %s %s; note-offs "
            "(running status, vel 0) %s\n", ok_parts ? "ok" : "FAIL", ok_ch10 ? "ok" : "FAIL", ok_sel ? "ok" : "FAIL",
            ok_off ? "ok" : "FAIL");
@@ -925,7 +937,7 @@ int main(int argc, char **argv)
         }
         if (getenv("DRUMS") && fp % (FS / 8u) < CTL) {   /* part 4 HAND DRUM: drum_hit on 16ths */
             if (!f)
-                host_drums(&trk[3]);
+                host_drums(HS_TRK(3));
             drum_hit(f / (FS / 8u));
         }
         if (getenv("DIST"))

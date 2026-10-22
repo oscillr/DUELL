@@ -2,10 +2,9 @@
 // DUELL installer: the pure state -> UI mapping (no DOM). The page (install/index.html) applies the result;
 // test_installer_state.mjs checks it with node.
 //
-// state = { busy: null | "backup" | "install" | "return", ready, hasImage, checksOk, hasStock }
+// state = { busy: null | "backup" | "install" | "return", ready, hasImage, hasStock }
 //   ready     WebMIDI is available
 //   hasImage  a DUELL package was accepted
-//   checksOk  all four flash-checklist boxes are ticked
 //   hasStock  the official V15 file was chosen and verified
 export const ACTIONS = ["backup", "install", "return"];
 
@@ -21,7 +20,7 @@ const NAMES = { backup: "the backup", install: "the DUELL install", return: "the
 export const ERASE = {
   label: "Erase my saved data after installing (start from scratch)",
   help: "Erases your settings (theme, scale, MIDI channels, favourites), the autosave, your patches, your multis and your patterns. " +
-        "The factory sounds, multis and patterns come back. This cannot be undone: back up first (step 2). " +
+        "The factory sounds, multis and patterns come back. This cannot be undone: back up first. " +
         "Left off, your saved data stays and the unit comes back as you left it.",
   status: "Erasing your data ...",
   done: "Done. Your saved data was erased. The unit starts as new.",
@@ -72,7 +71,7 @@ export function uiState(s) {
   const busy = s.busy || null;
   const wants = {
     backup: s.ready,
-    install: s.ready && s.hasImage && s.checksOk,
+    install: s.ready && s.hasImage,
     return: s.ready && s.hasStock,
   };
   const buttons = {};
@@ -93,10 +92,11 @@ export function uiState(s) {
 }
 
 // texts per card
+export const SWITCH_OFF_ON = "Switch the unit off and on once.";
 export const TEXT = {
   writing: { install: "Writing DUELL. Do not unplug", return: "Writing official firmware. Do not unplug" },
   done: {
-    install: "Done. Unplug, plug in again, and check the version",
+    install: "Done. Switch the unit off and on once.",   // (owner 2026-10-21, item 31: the boot guard step; the one line after a successful install)
     return: "Done. The official firmware is back. Switch the unit off and on.",
   },
 };

@@ -18,11 +18,12 @@
  * the other 127 hold. A chunk takes a NEW record only under PT_K records, which keeps that guarantee. There is no 'full': a slot is never
  * refused for room. PT_FULL (no chunk has room) cannot happen below that; it stays as a guard and reads as a plain SAVE ERROR.
  *
- * Chunk: u16 'PT' magic, u8 version 1, u8 0, then records back to back. Record (little endian):
+ * Chunk: u16 'PT' magic, u8 version PT_VER, u8 0, then records back to back. Record (little endian):
  *   0 u16 length of the whole record     2 u8 slot (0..127)       3 u8 revision (+1 at every rewrite; a record that moved to
  *   4 u8 flags PTF_*                      5 u8 engine              another chunk exists twice for a moment: the newer wins)
  *   6 u8 category (raw, 0 none)           7 12 bytes name, 0-padded                19 u8 npairs (nvalues with PTF_BM)
- *   20 [PTF_SH] 2 bytes, RETIRED (0.2.17: the old shadow marker; never written, read and ignored)     [PTF_MB] 7 bytes End B (morph block)
+ *   20 [PTF_XB] the EXTENSION BLOCK (PT_VER 3; up_xb.h: [L][XV][section]...: the 16 extension slots' values off their defaults and the hand-set B edits;
+ *      it replaces the retired 2-byte shadow marker, same place)     [PTF_MB] 7 bytes End B (morph block)
  *      npairs x (u8 parameter id, u8 value + 64)  SPARSE: only what differs from the engine's INIT (the defaults of
  *      params.c, as the factory sounds' format, sounds.c). PTF_BM (a sound that differs in more than 16 values, the encoder
  *      takes whichever is shorter): a 16-byte bitmap (bit id) instead, then nvalues x (u8 value + 64) in id order
@@ -55,8 +56,11 @@ typedef struct {
     char name[12];                               /* ASCII 32..126, 0-padded (no 0 when 12 long) */
     uint8_t packed[UP_PMAX * 2u];                /* the values, +64 a byte each; past np: the category, the morph block, the shadow marker */
     uint8_t note[16], flags[16];                 /* note 0 = rest; flags 1 accent, 2 slide, 4 tie, SF_RATCH */
+    uint8_t xz[NX];                              /* the extension slots (ext.h XV), value + 64 XOR the slot's default (up_xb.h XB_DEFS): ZERO IS THE DEFAULT, so a record that was zeroed means defaults */
+    uint8_t xb_n;                                /* the hand-set B edits (up_xb.h; EDITABLE_B_DESIGN section 3): their number (0: none) .. */
+    xb_edit_t xb[XB_MAX];                        /* .. and the edits (absolute End B values). Nothing in this job reads or writes them but the store and the tests; job G does */
 } up_rec_t;
-_Static_assert(sizeof(up_rec_t) == 192, "user preset record layout");
+_Static_assert(sizeof(up_rec_t) == 192u + NX + 2u + 4u * XB_MAX, "user preset record layout");
 _Static_assert(P_COUNT <= UP_PMAX * 2u && P_COUNT < 128, "user preset record: P_COUNT");
 /* 1.2 (Discussion #90): the sound's category (category.c CAT_*) in the record's last byte, packed[UP_CAT_AT]: the values take
  * np = P_COUNT (< 128) of its 144 bytes and nothing reads the others (up_valid neither); 0 there is CAT_NONE: listed by its engine,
@@ -70,8 +74,8 @@ _Static_assert(P_COUNT <= UP_PMAX * 2u && P_COUNT < 128, "user preset record: P_
 #define UP_MB_AT (UP_CAT_AT - UP_MB_N)
 _Static_assert(P_COUNT <= UP_MB_AT, "user preset record: P_COUNT leaves the morph block its room");
 /* The two bytes before the morph block, packed[134..135], were the SHADOW marker of the 2026-10-11 save flow (a copy of a factory sound
- * named its engine + 1 and preset + 1). 0.2.17 has one list of slots and no shadows: nothing writes the marker, a record that carries
- * one (PTF_SH) is read and the marker ignored. The bytes stay reserved (the record is 192 bytes, up_rec_t) */
+ * named its engine + 1 and preset + 1). 0.2.17 has one list of slots and no shadows; since PT_VER 3 the record flag of the marker (16) is PTF_XB, the
+ * EXTENSION BLOCK. The bytes stay reserved in up_rec_t */
 #define UP_SH_AT (UP_MB_AT - 2u)
 _Static_assert(P_COUNT <= UP_SH_AT, "user preset record: P_COUNT leaves the shadow marker its room");
 #include "category.c"
@@ -88,18 +92,20 @@ static void up_set_cat(up_rec_t *r, uint32_t c)  /* c CAT_BASS..CAT_OTHER */
 
 static int up_valid(const up_rec_t *r)
 {
-    if (!(r->used == UP_USED && r->ver == UP_VER && r->engine < NENGINES &&
+    if (!(r->used == UP_USED && r->ver == UP_VER && r->engine < NENGINES && r->xb_n <= XB_MAX &&
           r->np >= 8u && r->np <= UP_PMAX * 2u && r->name[0])) return 0;
     for (uint32_t i = 0; i < r->np; i++) if (r->packed[i] > 191u) return 0;
     return 1;
 }
 
 static int16_t up_value(const up_rec_t *r, uint32_t k) { return (int16_t)r->packed[k] - 64; }
+static int16_t up_xval(const up_rec_t *r, uint32_t k) { return (int16_t)(r->xz[k] ^ xb_def(k)) - 64; }              /* extension slot k of the record */
+static void up_set_xval(up_rec_t *r, uint32_t k, int16_t v) { r->xz[k] = (uint8_t)(((v < -64 ? -64 : v > 127 ? 127 : v) + 64) ^ xb_def(k)); }
 static void up_set_value(up_rec_t *r, uint32_t k, int16_t v) { r->packed[k] = (uint8_t)(v + 64); }
 static void up_pat_norm(uint8_t *note, uint8_t *flags);
 
 /* the sparse store's default of parameter id for engine eng: params.c's, except the two LFO TRIGs, the DUCK's CURVE and the multimode
- * filter's CUT and SLOPE, and the old LEVEL (id 0, 0.2.19). The record format leaves out what equals this default, so it is part of the stored format and must not change
+ * filter's CUT and SLOPE, KEY TRK (0.2.22: params.c made 32 the default, the store keeps 0) and the old LEVEL (id 0, 0.2.19). The record format leaves out what equals this default, so it is part of the stored format and must not change
  * with params.c's: NOTE (0) for the TRIGs, LIN (0) for the CURVE (params.c made FREE and EXP the defaults), 0 for CUT and SLOPE (params.c: the
  * open end and 12 dB); a FREE one, an EXP one, an open CUT and a 12 dB SLOPE store their pair (2 bytes each; PT_WORST counts every
  * parameter off its default anyway) */
@@ -108,7 +114,7 @@ static int32_t up_def(uint32_t eng, uint32_t id)
     if (id == P_LEVEL)                           /* 0.2.19: the stored default of id 0 is the old LEVEL's 104 (params.c: the mixer level is 112 now): a record before PTF_TR left it out at 104 and
                                                   * means a trim of 104 by it; a record now never writes the mixer level (pt_encode), so it reads as this */
         return 104;
-    return id == P_LTRIG || id == P_L2TRIG || id == P_DKCRV || id == P_FREEA || id == P_FREED ? 0 : param_desc_of(eng, id)->def;
+    return id == P_LTRIG || id == P_L2TRIG || id == P_DKCRV || id == P_FREEA || id == P_FREED || id == P_KTRK || id == P_DKSRC ? 0 : param_desc_of(eng, id)->def;   /* (0.2.24: DUCK SRC's stored default stays PUMP (0): a record that left it out still reads PUMP; a new sound's default is OFF, params.c) */
 }
 
 static int up_name_ok(const uint8_t *s, uint32_t n)   /* 1..12 printable ASCII */
@@ -175,7 +181,7 @@ static int up_parse(const uint8_t *a, uint32_t na, up_rec_t *r, uint32_t *slot)
     r->used = UP_USED;
     r->ver = UP_VER;
     r->engine = a[1];
-    r->np = P_COUNT;
+    r->np = P_COUNT;                             /* (the extension slots: xz 0 = their defaults; no hand-set B edits: UP_PUT carries none) */
     for (i = 0; i < n; i++)
         r->name[i] = (char)a[2 + i];
     for (i = 0; i < P_COUNT; i++, k += 2u)
@@ -205,11 +211,12 @@ static void up_values(const up_rec_t *r, int16_t *v)   /* the record's values cl
 
 
 /* ---------------------------------------------------------------- the store --- */
-#define PT_NCH 16u                               /* chunks = storage.c objects: 0..5 OBJ_PATCH0.., 6..15 OBJ_PATCHX0.. (pt_obj) */
+#define PT_NCH 22u                               /* chunks = storage.c objects: 0..5 OBJ_PATCH0.., 6..21 OBJ_PATCHX0.. (pt_obj); 16..21 = objects 43..48 at 0xBA000..0xC5FFF (the cloud plan's job A) */
 #define PT_CAP 3584u                             /* a chunk's most bytes: the payload (at sector offset 256) ends at 0xF00 (ST_PAYLOAD_END) */
 #define PT_HDR 4u
 #define PT_MAGIC 0x5450u                         /* "PT" */
 #define PT_FIX 20u                               /* a record's fixed part */
+#define PT_VER 3u                                /* the chunk image's version (byte 2 after "PT"): 3 = the extension block (PTF_XB: replaces the retired shadow marker), 6 records a chunk, 22 chunks; 2 = DUELL 0.2.22's DUCK SRC (2 is MIDI, the channel and the note are the device's: the sidechain setup); 2 and 1 are refused (no backward compatibility before the alpha) */
 #define PT_NONE 0xFFFFu
 #define PT_NOCH 0xFFu                            /* a directory entry with no record */
 #define PT_FULL 4                                /* up_put: no chunk has room (a guard only: PT_MAX records always fit; reads as SAVE ERROR) */
@@ -219,7 +226,7 @@ static void up_values(const up_rec_t *r, int16_t *v)   /* the record's values cl
                                                   * WITHOUT it (0.2.14 .. 0.2.18) stored the loudness as P_LEVEL: up_rec reads that as the trim. Always set in a record written now */
 #define PTF_FM6 4u
 #define PTF_MB 8u
-#define PTF_SH 16u                               /* RETIRED (0.2.17): 2 bytes of the old shadow marker, skipped; never written */
+#define PTF_XB 16u                               /* PT_VER 3: the EXTENSION BLOCK (up_xb.h) sits after the fixed part, where the 2-byte shadow marker was (retired 0.2.17, never written since) */
 #define PTF_AK 32u                               /* DUELL: the ARP / KEYS / SEQUENCER block (ak_* below), the record's last part */
 #define PTF_BM 64u                               /* the record's values as a bitmap + values, not (id, value) pairs (shorter above 16) */
 #define PTF_CB 128u                              /* 0.2.14: always set in a record written now (its CRUSH BITS, INS A, is the curve of ins_bits.h); a record without it is
@@ -234,17 +241,17 @@ static void up_values(const up_rec_t *r, int16_t *v)   /* the record's values cl
  * (and no pattern of its own: the block's steps are it); PT_W_PLAIN one with no block but the pattern and the patch. PT_K of the
  * worst fit a chunk (its 4-byte header included), PT_MAX = PT_NCH x PT_K always fit: the limit of the store (test: patch_test) */
 #define AK_WORST (2u + 1u + 2u + 16u + 2u + PS_STEP_N * AK_NS)
-#define PT_W_SEQ (PT_FIX + 2u + UP_MB_N + PT_BMB + (P_COUNT - 17u) + UPF_PK + AK_WORST)       /* (0.2.19: one value fewer, the MIXER LEVEL is never written) */
-#define PT_W_PLAIN (PT_FIX + 2u + UP_MB_N + PT_BMB + (P_COUNT - 1u) + 32u + UPF_PK)
+#define PT_W_SEQ (PT_FIX + XB_BLOCK_MAX + UP_MB_N + PT_BMB + (P_COUNT - 17u) + UPF_PK + AK_WORST)       /* (0.2.19: one value fewer, the MIXER LEVEL is never written; PT_VER 3: the extension block at its biggest, every slot off its default and XB_MAX edits, up_xb.h, was the 2-byte shadow marker) */
+#define PT_W_PLAIN (PT_FIX + XB_BLOCK_MAX + UP_MB_N + PT_BMB + (P_COUNT - 1u) + 32u + UPF_PK)
 #define PT_WORST (PT_W_SEQ > PT_W_PLAIN ? PT_W_SEQ : PT_W_PLAIN)
 #define PT_K ((PT_CAP - PT_HDR) / PT_WORST)
-#define PT_MAX (PT_NCH * PT_K)
+#define PT_MAX (PT_NCH * PT_K)                   /* 132 records of the worst size: at least the 128 slots (a chunk takes a NEW record only under PT_K) */
 #if FELUCCA_FLASH
 _Static_assert(PT_CAP + ST_PAYLOAD_OFF == ST_PAYLOAD_END && PT_CAP <= ST_PAYLOAD_MAX, "a patch chunk is one storage object whose payload ends at 0xF00");
 #endif
-_Static_assert(PT_K >= 1u && PT_MAX == UP_SLOTS && AK_WORST <= AK_MAX, "the store's limit: PT_MAX records of the worst size fit, and PT_MAX is the slot count (all 128 always fit)");
-_Static_assert(PT_NCH == 16u, "pt_obj, the backup ids (editor_backup.c), the erase list (erase_data.c)");
-_Static_assert(PT_FIX + 2u + UP_MB_N + 2u * P_COUNT + 32u + UPF_PK + AK_MAX <= 640u, "pt_enc holds a record");
+_Static_assert(PT_K == 6u && PT_WORST * PT_K + PT_HDR <= PT_CAP && PT_MAX >= UP_SLOTS && AK_WORST <= AK_MAX, "the store's limit: 6 records of the worst size fit a chunk, and PT_MAX is at least the slot count (all 128 always fit)");
+_Static_assert(PT_NCH == 22u, "pt_obj, the erase list (erase_data.c), the backup (editor_backup.c)");
+_Static_assert(PT_FIX + XB_BLOCK_MAX + UP_MB_N + 2u * P_COUNT + 32u + UPF_PK + AK_MAX <= 768u, "pt_enc holds a record");
 _Static_assert(P_COUNT <= PT_BMB * 8u, "PTF_BM's bitmap holds every parameter id");
 /* the directory: slot -> its record and what the lists need without reading flash */
 typedef struct {
@@ -262,7 +269,7 @@ static uint8_t pt_work[PT_CAP] __attribute__((aligned(4), section(".pool")));   
 static uint8_t pt_ram[PT_NCH][PT_CAP];           /* no flash (host tests, the browser build): the chunks as flash would hold them */
 static uint16_t pt_ramlen[PT_NCH];
 #endif
-static uint8_t pt_enc[640] __attribute__((section(".pool")));
+static uint8_t pt_enc[768] SCRATCH_BSS;   /* (memory trim 1: ordinary RAM, main loop only; cloud job A: 768 B for the extension block's worst record) */
 static const uint8_t *up_ak_in;                  /* the AK block (u16 length, content) the record up_put writes carries (0: none) */
 static const uint8_t *up_pk_in;                  /* the FM6 patch (FM6_PACKED bytes) the record up_put writes carries (0: none) */
 
@@ -296,13 +303,17 @@ static void upf_pk_put(const uint8_t *pk, uint8_t *d)
 }
 
 static uint32_t pt_rd16(const uint8_t *p) { return (uint32_t)p[0] | (uint32_t)p[1] << 8; }
-/* where a record's optional parts start: *sh, *mb, *pairs, *pat, *fm, *ak (offsets); the total length. The AK block (u16 length,
+/* where a record's optional parts start: *xb (the extension block), *mb, *pairs, *pat, *fm, *ak (offsets); the total length. The AK block (u16 length,
  * content) is last; one that does not fit the record's own length makes the total wrong (pt_rec_ok refuses it) */
-static uint32_t pt_layout_x(const uint8_t *p, uint32_t *sh, uint32_t *mb, uint32_t *pr, uint32_t *pat, uint32_t *fm, uint32_t *ak)
+static uint32_t pt_layout_x(const uint8_t *p, uint32_t *xbo, uint32_t *mb, uint32_t *pr, uint32_t *pat, uint32_t *fm, uint32_t *ak)
 {
     uint32_t f = p[4], o = PT_FIX;
-    *sh = o;
-    o += f & PTF_SH ? 2u : 0u;
+    *xbo = o;
+    if (f & PTF_XB) {
+        if (o + 1u > pt_rd16(p))                 /* no byte for the block's length */
+            return o + (1u << 16);
+        o += 1u + p[o];
+    }
     *mb = o;
     o += f & PTF_MB ? UP_MB_N : 0u;
     *pr = o;
@@ -319,10 +330,10 @@ static uint32_t pt_layout_x(const uint8_t *p, uint32_t *sh, uint32_t *mb, uint32
     }
     return o;
 }
-static uint32_t pt_layout(const uint8_t *p, uint32_t *sh, uint32_t *mb, uint32_t *pr, uint32_t *pat, uint32_t *fm)
+static uint32_t pt_layout(const uint8_t *p, uint32_t *xbo, uint32_t *mb, uint32_t *pr, uint32_t *pat, uint32_t *fm)
 {
     uint32_t ak;
-    return pt_layout_x(p, sh, mb, pr, pat, fm, &ak);
+    return pt_layout_x(p, xbo, mb, pr, pat, fm, &ak);
 }
 static int pt_rec_ok(const uint8_t *p, uint32_t rl)   /* a well-formed record of rl bytes */
 {
@@ -330,6 +341,8 @@ static int pt_rec_ok(const uint8_t *p, uint32_t rl)   /* a well-formed record of
     if (rl < PT_FIX || rl > PT_WORST || pt_rd16(p) != rl || p[2] >= UP_SLOTS || p[5] >= NENGINES || (p[4] & ~PTF_ALL) || !(p[4] & PTF_CB) || !p[7])
         return 0;
     if (pt_layout(p, &a, &b, &c, &d, &e) != rl)
+        return 0;
+    if ((p[4] & PTF_XB) && xb_block_ok(p + a, rl - a) != 1u + p[a])   /* the block: lengths that add up, the right version, values and ids that make sense */
         return 0;
     if (p[4] & PTF_BM) {                         /* the bitmap: as many bits as values, none past P_COUNT */
         for (i = 0; i < PT_BMB * 8u; i++)
@@ -428,7 +441,7 @@ static void pt_tally(void)                       /* each chunk's live records an
 static void pt_scan_img(uint32_t c, const uint8_t *img, uint32_t len)
 {
     uint32_t off;
-    if (len < PT_HDR || pt_rd16(img) != PT_MAGIC || img[2] != 1u)
+    if (len < PT_HDR || pt_rd16(img) != PT_MAGIC || img[2] != PT_VER)
         return;
     for (off = PT_HDR; off + PT_FIX <= len;) {
         const uint8_t *p = img + off;
@@ -465,9 +478,9 @@ static void pt_scan_all(void)                    /* the directory again from all
 }
 static int up_used(uint32_t k) { return k < UP_SLOTS && pt_dir[k].ch != PT_NOCH; }
 /* slot k's record read from its chunk (a ring of four: the pointer stays good through three more slots; a write ends it); 0: unused */
-static uint8_t pt_rbuf[4][(PT_WORST + 3u) & ~3u] __attribute__((aligned(4), section(".pool")));
-static uint8_t pt_rslot[4] __attribute__((section(".pool")));
-static uint32_t pt_rver[4] __attribute__((section(".pool"))), pt_rn __attribute__((section(".pool")));
+static uint8_t pt_rbuf[4][(PT_WORST + 3u) & ~3u] __attribute__((aligned(4), section(".bss.scr")));   /* (wave 5: ordinary RAM, main loop only: the pool tail) */
+static uint8_t pt_rslot[4] SCRATCH_BSS;
+static uint32_t pt_rver[4] SCRATCH_BSS, pt_rn SCRATCH_BSS;
 static const uint8_t *pt_raw(uint32_t k)
 {
     const pt_ent_t *e;
@@ -488,13 +501,14 @@ static const uint8_t *pt_raw(uint32_t k)
 }
 
 /* ---------------------------------------------------------------- the AK block (DUELL: arp, keys, sequencer) ---
- * A patch (a user patch, or the shadow copy of a factory sound) carries the part's ARP, its chord / voicing / scale keys and its
- * SEQUENCER pattern, so loading it brings them back (up_load: the lend rule of the factory sounds, ui.c ds_arp). The record's last
+ * A patch carries the part's ARP, its chord / voicing keys and its SEQUENCER pattern, so loading it brings them back (up_load, ui.c ds_arp).
+ * DUELL 1.0 (owner, 2026-10-21): EVERY patch restores its own arp state, ON and OFF; there are no factory and user kinds. The block is therefore ALWAYS written:
+ * the arp group and the keys group are always present (an arp that is off is the group with all eight values at their defaults, 4 bytes), the SEQ group when the
+ * arp mode is SEQ. A record without the block (written by firmware before 1.0, or by the editor's UP_PUT) reads as arp OFF, keys at their defaults, no pattern
+ * of its own: the same as a block of defaults. PT_VER stays 3: such a record still reads, with the new rule. The record's last
  * part, flag PTF_AK: u16 content length, then
- *   u8 g       groups present: AK_ARP 1 (the arp's eight values P_AMODE .. P_AORDER: stored when the arp is ON, or for a shadow
- *              of a factory sound that sets an arp, so that an arp the player switched off stays off), AK_KEYS 2 (P_CHRD
- *              P_VOIC; stored when any is not its default, likewise for a shadow of a sound that sets keys; the SCALE slot, ordinal 8,
- *              is retired: read and discarded, never written), AK_SEQ 4 (the sequencer pattern; stored when the arp mode is SEQ, as the pattern is then the arp's)
+ *   u8 g       groups present: AK_ARP 1 (the arp's eight values P_AMODE .. P_AORDER), AK_KEYS 2 (P_CHRD P_VOIC; the SCALE slot, ordinal 8,
+ *              is retired: read and discarded, never written), AK_SEQ 4 (the sequencer pattern; written when the arp mode is SEQ, as the pattern is then the arp's)
  *   u8 np      then np x (u8 parameter id, u8 value + 64): the values of the present groups that differ from the defaults
  *              (the groups' other values are the defaults); AK_SEQ's ids are LEN DIV SWING GATE QUANTIZE (LEN at most 16).
  *              With g bit 8 (AK_BM, from 3 values on: shorter) there is no np: a u16 bitmap (bit = the value's ordinal: the arp's
@@ -502,19 +516,19 @@ static const uint8_t *pt_raw(uint32_t k)
  *   AK_SEQ:    u16 map (bit i: step i of 16 is stored; a step not stored is empty), then 9 bytes per stored step in the
  *              multi's / pattern slots' packing (patslot.c ps_pack_step: notes, time, accent, slide, RATCH, NUDGE, velocity,
  *              CHANCE, the hits)
- * The ids of the present groups are not stored in the record's own pairs (up_rec puts them back). A record without PTF_AK
- * (every older one, and a patch with the arp off, no keys and no SEQ arp) leaves the part's arp, keys and steps as they are. ARP TARGET
+ * The ids of the present groups are not stored in the record's own pairs (up_rec puts them back). ARP TARGET
  * (P_ATGT) is not in it: it is the sound's own, a pair of the record as ever. The pattern is 16 steps (the record's old pattern,
- * PTF_PAT, is these steps' notes and flags: not stored twice). */
+ * PTF_PAT, is these steps' notes and flags: not stored twice). A MULTI holds all of it already: every part's arp values and its 64 steps (multi.c). */
 #define AK_ARP 1u
 #define AK_KEYS 2u
 #define AK_SEQ 4u
 #define AK_BM 8u                                 /* (g's bit 8: the values as a bitmap, see above) */
 static void ps_pack_step(const step_t *s, uint8_t *b);   /* (patslot.c) */
 static int ps_unpack_step(const uint8_t *b, step_t *s);
-/* the keys' three ordinals 8..10. P_SCALE (ordinal 8) is RETIRED (owner 2026-10-12: the scale is the instrument's, core.h): a record that holds one
+/* the keys' three ordinals 8..10. The SCALE (ordinal 8, once the id P_SCALE) is RETIRED (owner 2026-10-12: the scale is the instrument's, core.h): a record that holds one
  * still reads (the parse stays as it was) and the value is DISCARDED; ak_build never writes it */
-static const uint8_t AK_KEYID[3] = {P_SCALE, P_CHRD, P_VOIC};
+#define AK_NOSCALE P_COUNT                       /* the retired ordinal's id: not an id (P_COUNT is the reserved 127; param_desc_of gives it the free descriptor). The ids 25 and 26 are the TWIN FILTER's RES 2 and DRIVE now (cloud job B) */
+static const uint8_t AK_KEYID[3] = {AK_NOSCALE, P_CHRD, P_VOIC};
 static const uint8_t AK_SEQID[5] = {P_SLEN, P_SDIV, P_SSWING, P_SGATE, P_SQNT};
 static uint32_t ak_id(uint32_t o)                /* the ordinal o (0..15) -> its parameter id */
 {
@@ -631,29 +645,19 @@ seq:
     }
     return at == n;
 }
-/* the part's AK block -> o (AK_MAX bytes): u16 length + content; the length of all (0: nothing to store). fs: the factory sound
- * the record shadows (0: none) */
-static uint32_t ak_build(const track_t *t, uint8_t *o, const ds_sound_t *fs)
+/* the part's AK block -> o (AK_MAX bytes): u16 length + content; the length of all. Always a block (DUELL 1.0): the arp and keys groups, SEQ with the SEQ arp */
+static uint32_t ak_build(const track_t *t, uint8_t *o)
 {
-    uint32_t eng = t->eng_req, g = 0, i, at = 4u, np = 0, map = 0;
+    uint32_t eng = t->eng_req, g = AK_ARP | AK_KEYS, i, at = 4u, np = 0, map = 0;
     int32_t v;
-    if (motion_base_value(t, P_AMODE) || (fs && (fs->flags & DSF_ARP)))
-        g |= AK_ARP;
-    for (i = 1; i < 3u; i++)                     /* (CHRD, VOIC: never the scale) */
-        if (motion_base_value(t, AK_KEYID[i]) != param_desc_of(eng, AK_KEYID[i])->def)
-            g |= AK_KEYS;
-    if (fs && (fs->flags & DSF_KEYS))
-        g |= AK_KEYS;
     if (motion_base_value(t, P_AMODE) == AM_SEQ)
         g |= AK_SEQ;
-    if (!g)
-        return 0;
     {   /* the values of the present groups that differ from the defaults, in ordinal order (ak_id) */
         uint8_t oid[16], ov[16];
         uint32_t bm = 0, j;
         for (j = 0; j < 16u; j++) {
             i = ak_id(j);
-            if (!(ak_grp(i) & g) || i == P_SCALE)
+            if (!(ak_grp(i) & g) || i == AK_NOSCALE)
                 continue;
             v = motion_base_value(t, i);
             if (i == P_SLEN && v > 16)
@@ -700,10 +704,10 @@ static uint32_t ak_build(const track_t *t, uint8_t *o, const ds_sound_t *fs)
 static const uint8_t *pt_ak_raw(uint32_t k)
 {
     const uint8_t *p = pt_raw(k);
-    uint32_t sh, mb, pr, pat, fm, ak;
+    uint32_t xbo, mb, pr, pat, fm, ak;
     if (!p || !(p[4] & PTF_AK))
         return 0;
-    pt_layout_x(p, &sh, &mb, &pr, &pat, &fm, &ak);
+    pt_layout_x(p, &xbo, &mb, &pr, &pat, &fm, &ak);
     return p + ak;
 }
 static int ak_get(uint32_t k, ak_t *a)
@@ -719,11 +723,11 @@ static up_rec_t *up_rec(uint32_t k)
 {
     up_rec_t *r = &up_ring[up_ring_n++ & 3u];
     const uint8_t *p = pt_raw(k);
-    uint32_t sh, mb, pr, pat, fm, i;
+    uint32_t xbo, mb, pr, pat, fm, i;
     memset(r, 0, sizeof *r);
     if (!p)
         return r;
-    pt_layout(p, &sh, &mb, &pr, &pat, &fm);
+    pt_layout(p, &xbo, &mb, &pr, &pat, &fm);
     r->used = UP_USED;
     r->ver = UP_VER;
     r->engine = p[5];
@@ -748,6 +752,13 @@ static up_rec_t *up_rec(uint32_t k)
         up_set_value(r, P_LEVEL, (int16_t)up_def(r->engine, P_LEVEL));
     }
     r->packed[UP_CAT_AT] = p[6];
+    if (p[4] & PTF_XB) {                             /* the extension block: the slots it names (the others stay at their default: xz 0), the hand-set B edits */
+        uint8_t xv[NX];
+        xb_defaults(xv);
+        r->xb_n = (uint8_t)xb_block_read(p + xbo, xv, r->xb);
+        for (i = 0; i < NX; i++)
+            r->xz[i] = (uint8_t)(xv[i] ^ xb_def(i));
+    }
     if (p[4] & PTF_MB)
         memcpy(r->packed + UP_MB_AT, p + mb, UP_MB_N);
     if (p[4] & PTF_PAT) {
@@ -775,8 +786,13 @@ static up_rec_t *up_rec(uint32_t k)
 /* r (+ the FM6 patch pk, FM6_PACKED bytes, 0 none) -> pt_enc as slot k's record, revision rev; its length */
 static uint32_t pt_encode(uint32_t k, uint32_t rev, const up_rec_t *r, const uint8_t *pk)
 {
-    uint8_t *o = pt_enc, n = 0, f = 0, did[P_COUNT], dv[P_COUNT];
-    uint32_t i, at, mb = 0, gm;
+    uint8_t *o = pt_enc, n = 0, f = 0, did[P_COUNT], dv[P_COUNT], xv[NX];
+    uint32_t i, at, mb = 0, gm, xn;
+    for (i = 0; i < NX; i++)                         /* the extension block first, built in place after the fixed part (the memset below clears only the fixed part) */
+        xv[i] = (uint8_t)(r->xz[i] ^ xb_def(i));
+    xn = xb_block_build(xv, r->xb, r->xb_n <= XB_MAX ? r->xb_n : XB_MAX, o + PT_FIX);
+    if (xn)
+        f |= PTF_XB;
     if (r->np <= UP_MB_AT)
         for (i = 0; i < UP_MB_N; i++)
             mb |= r->packed[UP_MB_AT + i];
@@ -807,7 +823,7 @@ static uint32_t pt_encode(uint32_t k, uint32_t rev, const up_rec_t *r, const uin
     o[5] = r->engine;
     o[6] = r->np <= UP_CAT_AT ? r->packed[UP_CAT_AT] : 0u;
     memcpy(o + 7, r->name, 12);
-    at = PT_FIX;
+    at = PT_FIX + xn;
     if (f & PTF_MB) {
         memcpy(o + at, r->packed + UP_MB_AT, UP_MB_N);
         at += UP_MB_N;
@@ -880,7 +896,7 @@ static int pt_build(uint32_t c, uint32_t skip, uint32_t n)
     }
     pt_work[0] = (uint8_t)PT_MAGIC;
     pt_work[1] = (uint8_t)(PT_MAGIC >> 8);
-    pt_work[2] = 1;
+    pt_work[2] = PT_VER;
     pt_work[3] = 0;
     if (w + n > PT_CAP)
         return -1;
@@ -942,7 +958,7 @@ static int pt_put(uint32_t k, const up_rec_t *r, const uint8_t *pk)
 static int up_put_raw(uint32_t k, const uint8_t *rec, uint32_t n)
 {
     uint8_t *o = pt_enc;
-    uint32_t i, sh, mb, pr, pat, fm;
+    uint32_t i, xbo, mb, pr, pat, fm;
     int rc;
     if (k >= UP_SLOTS || n < PT_FIX || n > PT_WORST || n > sizeof pt_enc)
         return 1;
@@ -958,7 +974,7 @@ static int up_put_raw(uint32_t k, const uint8_t *rec, uint32_t n)
     for (; i < 12u; i++)                          /* (the name is 0-padded: nothing but 0 after its end) */
         if (o[7u + i])
             return 1;
-    pt_layout(o, &sh, &mb, &pr, &pat, &fm);       /* every stored value inside what up_rec reads (a byte, +64) */
+    pt_layout(o, &xbo, &mb, &pr, &pat, &fm);      /* every stored value inside what up_rec reads (a byte, +64) */
     if (o[4] & PTF_BM) {
         for (i = 0; i < o[19]; i++)
             if (o[pr + PT_BMB + i] > 191u)
@@ -1003,7 +1019,7 @@ static int pt_wipe(uint32_t c)
         return pt_idle();
     pt_work[0] = (uint8_t)PT_MAGIC;
     pt_work[1] = (uint8_t)(PT_MAGIC >> 8);
-    pt_work[2] = 1;
+    pt_work[2] = PT_VER;
     pt_work[3] = 0;
     if ((rc = pt_sv(c, pt_work, PT_HDR)) == 2) {
         pt_scan_all();
@@ -1130,6 +1146,8 @@ static uint32_t track_cat(const track_t *t);     /* (ui.c: the category of the s
 /* the selected part's sound -> slot k; name 0 or "": the automatic name (up_auto_name); cat its category (CAT_*), 0:
  * the one of the sound it came from (track_cat); up_put's result */
 static const uint8_t *up_mblk;                   /* DUELL: the morph block up_store_trk writes into the record (0: none) */
+static const xb_edit_t *up_xb_in;                /* the hand-set B edit list (up_xb.h) up_store_trk writes into the record, up_xb_nin of them (0: none); set by job G, the tests */
+static uint32_t up_xb_nin;
 static int up_store_trk(track_t *t, uint32_t k, const char *name, uint32_t cat)
 {
     up_rec_t r;
@@ -1142,19 +1160,21 @@ static int up_store_trk(track_t *t, uint32_t k, const char *name, uint32_t cat)
     up_set_name(&r, k, name);
     for (i = 0; i < P_COUNT; i++)
         up_set_value(&r, i, motion_base_value(t, i));
-    up_set_value(&r, P_SCALE, param_desc_of(t->eng_req, P_SCALE)->def);   /* no patch holds a scale or a QNT (core.h: the scale is the */
-    up_set_value(&r, P_ROOT, param_desc_of(t->eng_req, P_ROOT)->def);     /* instrument's); their ids stay reserved at their defaults */
-    up_set_value(&r, P_QUANT, param_desc_of(t->eng_req, P_QUANT)->def);
     up_pat_from(&r, t->step);
     up_set_cat(&r, cat ? cat : track_cat(t));
+    for (i = 0; i < NX; i++)                            /* the extension slots (ext.h XV), through the accessor only */
+        up_set_xval(&r, i, XV(t, i));
+    if (up_xb_in && up_xb_nin) {                        /* the hand-set B edits of the part (job G: it sets up_xb_in / up_xb_nin before the save, as up_mblk) */
+        r.xb_n = (uint8_t)(up_xb_nin < XB_MAX ? up_xb_nin : XB_MAX);
+        memcpy(r.xb, up_xb_in, r.xb_n * sizeof r.xb[0]);
+    }
     if (up_mblk)
         memcpy(r.packed + UP_MB_AT, up_mblk, UP_MB_N);
     {
         uint8_t pk[FM6_PACKED], akb[AK_MAX];
         int rc;
-        /* the part's arp, keys and SEQ pattern (ak_*): a part that plays a factory sound (no slot record loaded): the factory sound's flags say
-         * whether an arp that is off is stored (so that a load does not bring the factory sound's arp back) */
-        up_ak_in = ak_build(t, akb, t->user ? 0 : ds_get(t->eng_req % NENGINES, t->preset)) ? akb : 0;
+        /* the part's arp, keys and SEQ pattern (ak_*): written for every patch, the arp OFF as well, so a load brings each patch's own back */
+        up_ak_in = ak_build(t, akb) ? akb : 0;      /* (DUELL 1.0: always a block, the arp OFF too) */
         if (r.engine == ENGI_FM6) {                     /* an FM6 sound carries its track's patch in the record */
             fm6_pack(fm6_patch[(uint32_t)(t - trk) % NTRK], pk);
             up_pk_in = pk;
@@ -1255,25 +1275,37 @@ static int up_load(uint32_t k)
         for (i = 0; i < P_COUNT; i++)
             if (!param_kept_on(t, i))                   /* (0.2.19: P_TRIM comes with the patch, as a factory sound's does; the MIXER LEVEL stays, with the rest of the mix) */
                 t->p[i] = v[i];
+        for (i = 0; i < NX; i++)                        /* the extension slots: the record's, the defaults for what it does not name (up_rec) */
+            XV(t, i) = up_xval(r, i);
+        duck_set_part(trk_index(t));                    /* (DUCK SRC PART on one part only: the other part's ducker goes OFF, params.c) */
         t->preset = 0;
         fm1_irq_on();
         upf_track_load(t, k);                           /* FM6: the preset's own patch (up_fm6.c) */
     }
     {   /* the patch's own arp / keys / SEQ pattern (its AK block) is lent as the factory sounds' are: the part's own go aside and
-         * come back with the next load (ui.c ds_arp / ds_keys, ds_seq_back below). A patch without the block (an older one, or
-         * arp off) leaves them as they are */
+         * come back with the next load (ui.c ds_arp / ds_keys, ds_seq_back below). DUELL 1.0: every patch sets them, a patch without the block
+         * (an older one, or the editor's UP_PUT copy) as the defaults: arp OFF, no chord keys */
         ak_t a;
         int has = ak_get(k, &a);
-        ds_arp(t, 0, has && (a.g & AK_ARP) ? a.arp : 0);   /* (a lent arp back: ui.c) */
-        ds_keys(t, 0, has && (a.g & AK_KEYS) ? a.key + 1 : 0); /* (and the chord keys: ui.c; an old record's SCALE, key[0], is dropped) */
+        int16_t darp[8], dkey[2];
+        for (i = 0; i < 8u; i++)
+            darp[i] = TP[P_AMODE + i].def;
+        dkey[0] = TP[P_CHRD].def;
+        dkey[1] = TP[P_VOIC].def;
+        ds_arp(t, 0, has && (a.g & AK_ARP) ? a.arp : darp);        /* (a lent arp back: ui.c) */
+        ds_keys(t, 0, has && (a.g & AK_KEYS) ? a.key + 1 : dkey);  /* (and the chord keys: ui.c; an old record's SCALE, key[0], is dropped) */
         ds_seq_back(t);
         if (has && (a.g & AK_SEQ))
             ds_seq_lend(t, &a);
     }
     t->user = (uint8_t)(k + 1u);
     morph_ld = r->np <= UP_MB_AT ? r->packed + UP_MB_AT : 0;   /* DUELL: End B saved with it (morph.c) */
+    morph_ld_e = r->xb_n ? r->xb : 0;                   /* .. and the values set by hand on it */
+    morph_ld_n = r->xb_n;
     load_end(t);
     morph_ld = 0;
+    morph_ld_e = 0;
+    morph_ld_n = 0;
     sync_reload = 1;
     ui.force = 1;
     return 0;
@@ -1511,6 +1543,7 @@ static void up_adopt(uint32_t pi, uint32_t k)    /* part pi's sound was written 
 /* part pi's sound -> slot k, overwriting what is there. Its name: the sound's own (a factory sound's, the slot it came from's); a sound that
  * has none (INIT) gets the engine's automatic name. Its category: the sound's. The record carries End B (morph block), the arp / keys /
  * SEQ pattern (AK block) and an FM6 sound's patch. 0 saved, else up_put's result */
+static uint8_t both_names;                       /* 1 while both parts are saved at once: the dialog's RENAME does not apply */
 static int up_patch_save_part(uint32_t pi, uint32_t k)
 {
     track_t *t = &trk[pi];
@@ -1519,14 +1552,23 @@ static int up_patch_save_part(uint32_t pi, uint32_t k)
     int rc;
     if (k >= UP_SLOTS)
         return 1;
-    if (t->user)                                        /* its slot's name; else the factory sound it plays */
+    if (save_nm[0] && !both_names)                      /* 0.2.21: RENAME in the SAVE dialog (one part only) */
+        str_cpy(nm, save_nm, sizeof nm);
+    else if (t->user)                                   /* its slot's name; else the factory sound it plays */
         sl_name((uint32_t)t->user - 1u, nm);
     else
         str_cpy(nm, ds_name(t->eng_req % NENGINES, t->preset), 13);
     if (!nm[0] || str_eq(nm, "INIT"))
         up_auto_name(nm, t->eng_req, k);
     up_mblk = morph_blk_make(pi, blk) ? blk : 0;
-    rc = up_store_trk(t, k, nm, 0);
+    {   /* EDITABLE B: the values set by hand go into the record's extension block (after the re-roll above, which keeps them) */
+        xb_edit_t ed[XB_MAX];
+        up_xb_nin = morph_edits(pi, ed);
+        up_xb_in = up_xb_nin ? ed : 0;
+        rc = up_store_trk(t, k, nm, 0);
+        up_xb_in = 0;
+        up_xb_nin = 0;
+    }
     up_mblk = 0;
     if (rc == 0 || rc == 3)
         up_adopt(pi, k);
@@ -1542,8 +1584,11 @@ static void patch_save_do(uint32_t both)
         ui_message("STOP TO SAVE");
         return;
     }
+    both_names = (uint8_t)both;
     for (pi = first; pi < end && !rc; pi++, n++)
         rc = up_patch_save_part(pi, both ? slot_home(&trk[pi]) : ui.svs % UP_SLOTS);
+    both_names = 0;
+    save_nm[0] = 0;
     up_slot_label(l, ui.svs % UP_SLOTS);
     if (rc)
         ui_message("SAVE ERROR");

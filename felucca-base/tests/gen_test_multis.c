@@ -1,13 +1,16 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
-/* DUELL: builds the four CPU TEST multis (tools/factory_multis/M13.bin..M16.bin) with the real firmware code: each part's sound loaded
+/* DUELL: builds the four CPU TEST multis with the real firmware code (until 0.2.22 tools/factory_multis/M13.bin..M16.bin; since 0.2.23 the
+ * test scenes tests/scenes/M13_TEST_1_BASE.bin .. M16_TEST_4_MIX.bin, tests/scenes.h, kept byte for byte: rebuilding them changes them only if the
+ * sounds or the packer changed): each part's sound loaded
  * by the sound loader (set_engine_of + apply_preset_to), the arp, chords, VOICE, REL, effects, EQ, ducker, MODE and tempo set through
  * the parameters, saved by multi.c's packer (project_save_as), the record read back from the store. Then every record is loaded again
  * in a fresh power-on and printed (engines, patch names, mode, tempo, arp / chord / voice / effect settings) and played (a key held
  * with the chord on: the voices busy must reach 8).
  *   cc -O1 -DDUELL_TEST_MODE=1 -Ibuild/gen_test -Ibuild/gen -Ifirmware/src -Itests -DFELUCCA_VERSION='"x"' -o build/host/gen_test_multis tests/gen_test_multis.c -lm
- *   build/host/gen_test_multis tools/factory_multis        (writes M13.bin..M16.bin; without an argument only prints) */
+ *   build/host/gen_test_multis tests/scenes                 (writes M13_TEST_1_BASE.bin ..; without an argument only prints) */
 #define UI_TEST_NO_MAIN 1
 #include "ui_test.c"
+#include "scenes.h"
 
 enum { E_ANALOG = 0, E_PHASE = 2, E_LOFI = 3, E_WHEEL = 7, E_PHYS = 9, E_NOISE = 11, E_FM6 = 12 };
 typedef struct {
@@ -141,17 +144,22 @@ int main(int argc, char **argv)
         if (argc > 1) {
             char path[256];
             FILE *f;
-            snprintf(path, sizeof path, "%s/M%02u.bin", argv[1], 13u + i);
+            char nm[16];
+            uint32_t j;
+            for (j = 0; SC[i].name[j] && j < sizeof nm - 1u; j++)
+                nm[j] = SC[i].name[j] == ' ' ? '_' : SC[i].name[j];
+            nm[j] = 0;
+            snprintf(path, sizeof path, "%s/M%02u_%s.bin", argv[1], 13u + i, nm);
             f = fopen(path, "wb");
             fwrite(rec, 1, len, f);
             fclose(f);
         }
     }
-    /* verify: a fresh power-on, each factory record loaded back (from ROM when the generated header has it) and played */
+    /* verify: a fresh power-on, each scene (tests/scenes) loaded back with its MODE and played */
     for (i = 0; i < 4u; i++) {
+        static const char *const SN[4] = {"M13_TEST_1_BASE", "M14_TEST_2_PHASE", "M15_TEST_3_HEAVY", "M16_TEST_4_MIX"};
         ui_power_on();
-        if (!project_factory(12u + i)) { printf("M%u is not a factory multi in this build (generate, rebuild, run again)\n", 13u + i); continue; }
-        project_load(12u + i);
+        scene_load(12u + i, SN[i]);
         printf("M%u (%s):\n", 13u + i, mu_names[12u + i]);
         show();
     }

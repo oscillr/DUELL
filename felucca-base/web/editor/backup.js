@@ -4,7 +4,7 @@
 import { BackupConnection } from "../fm1backup.js";
 import { detectUnit } from "../installer_state.js";
 import { sysexGranted, watchUnit, HINT } from "./autoconnect.js";
-import { GROUPS, CAPS_MULTI_PATTERN, parseInfo, readArchive, captureBackup, listUnit, planRestore, runRestore, verifyRestore, describe, fileName } from "./duellbackup.js";
+import { GROUPS, CAPS_MULTI_PATTERN, CAPS_PATCH_RECORDS, isPatchKey, objectLabel, parseInfo, readArchive, captureBackup, listUnit, planRestore, runRestore, verifyRestore, describe, fileName, rawLines } from "./duellbackup.js";
 
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -16,6 +16,8 @@ const say = (id, t, cls = "") => { const e = $(id); e.textContent = t; e.classNa
 const bar = (id, v) => { const b = $(id); b.hidden = v == null; if (v != null) b.value = v; };
 const isDuell = () => !!info && detectUnit(info.version).kind === "duell";
 const hasCaps = () => !!info && ((info.caps ?? 0) & CAPS_MULTI_PATTERN) === CAPS_MULTI_PATTERN;
+const hasPatchRecords = () => !!info && ((info.caps ?? 0) & CAPS_PATCH_RECORDS) !== 0;
+const objName = (id) => (isPatchKey(id) ? objectLabel(id) : String(id));
 const unitName = () => info.version.replace(/^FELUCCA /, "");
 
 function refresh() {
@@ -47,7 +49,7 @@ async function connect() {
   try {
     if (MOCK) {
       const { MockUnit } = await import("./mockunit.js");
-      const unit = new MockUnit({ caps: MOCK === "old" ? 3 : 31, playing: MOCK === "playing", version: MOCK === "old" ? "FELUCCA DUELL 0.2.13 bet" : undefined });
+      const unit = new MockUnit({ caps: MOCK === "old" ? 3 : MOCK === "nopatch" ? 31 : 63, playing: MOCK === "playing", version: MOCK === "old" ? "FELUCCA DUELL 0.2.13 bet" : undefined });
       request = (r, o) => unit.request(r, o);
     } else {
       try { midi = await navigator.requestMIDIAccess({ sysex: true }); } catch { say("unit", "MIDI access with SysEx was refused. Allow it and press Connect again.", "warn"); return; }
@@ -67,10 +69,12 @@ async function connect() {
     if (!isDuell()) { const v = info.version; info = null; link?.close?.(); link = null; request = null; say("unit", `This unit does not run DUELL (it reports "${v}"). Nothing was changed.`, "warn"); return; }
     link = link || {};    // (mock: a placeholder so the buttons know a unit is there)
     say("unit", `Connected: ${unitName()}`, "good");
-    say("unitnote", hasCaps()
-      ? "This firmware backs up and restores patches, multis, pattern slots, settings and the current music."
-      : "This firmware (DUELL 0.2.13 or older) cannot back up or restore multis and pattern slots. A backup from it holds patches, settings and the current music. Update the firmware with the installer for a complete backup.");
-    if (!hasCaps()) $("unitnote").className = "small warn";
+    say("unitnote", hasCaps() && hasPatchRecords()
+      ? "This firmware backs up and restores patches (one at a time), multis, pattern slots, settings and the current music."
+      : hasCaps()
+        ? "This firmware cannot back up or restore patches in this editor's form (it needs a newer DUELL firmware). A backup from it holds multis, pattern slots, settings and the current music. Update the firmware with the installer for a complete backup."
+        : "This firmware (DUELL 0.2.13 or older) cannot back up or restore patches, multis and pattern slots. A backup from it holds settings and the current music. Update the firmware with the installer for a complete backup.");
+    if (!hasCaps() || !hasPatchRecords()) $("unitnote").className = "small warn";
     else $("unitnote").className = "small";
   } catch (e) {
     link?.close?.();
@@ -95,14 +99,14 @@ function fill(el, list, none) {
   for (const t of list) { const li = document.createElement("li"); li.textContent = t; u.append(li); }
   el.append(u);
 }
-function showContents(rootId, objects, engines, hasMulti) {
-  const d = describe(objects, engines), root = $(rootId); root.replaceChildren();
+function showContents(rootId, objects, engines, hasMulti, oldPatchChunks = 0, hasPatches = true) {
+  const d = describe(objects, engines, oldPatchChunks), root = $(rootId); root.replaceChildren();
   const add = (title, list, none) => {
     const h = document.createElement("p"), holder = document.createElement("div");
     h.textContent = title; h.style.margin = "8px 0 0"; h.style.fontWeight = "700";
     root.append(h, holder); fill(holder, list, none);
   };
-  add("Saved patches", d.patches.map((p) => `${p.name || "(no name)"}  ${p.engineName}`), "No saved patches (every slot holds its factory sound).");
+  add("Saved patches", d.patches.map((p) => `${p.name || "(no name)"}  ${p.engineName}`), d.notes.length ? d.notes[0] : hasPatches ? "No saved patches (every slot holds its factory sound)." : "Not in this file (made by firmware that cannot back up patches one at a time).");
   add(hasMulti ? `Multis (${d.multis.length})` : "Multis (not in this file)", d.multis.map((m) => `${m.label}  ${m.name || "(no name)"}`),
       hasMulti ? "No stored multis (the factory multis show)." : "Made by firmware that cannot back up multis.");
   add(hasMulti ? `Pattern slots (${d.patterns.length})` : "Pattern slots (not in this file)", d.patterns.map((p) => `${p.label}  ${p.name || "(no name)"}  ${p.length} steps`),
@@ -119,10 +123,11 @@ async function backup() {
     const file = await captureBackup(request, info, (d, t) => { const pc = d / Math.max(1, t) * 100; say("status-backup", `Saving backup ${Math.round(pc)}%`); bar("bar-backup", pc); });
     const name = fileName("DUELL-backup");
     download(name, file);
-    const a = readArchive(file), d = showContents("saved-list", new Map([...a.objects].map(([id, o]) => [id, o.bytes])), a.engines, a.objects.has(13));
+    const a = readArchive(file), d = showContents("saved-list", new Map([...a.objects].map(([id, o]) => [id, o.bytes])), a.engines, a.objects.has(13), 0, a.hasPatches);
     $("saved").hidden = false;
-    say("status-backup", "Done.", "good");
-    say("result-backup", `Saved ${name} to your downloads: ${plural(d.patches.length, "saved patch", "saved patches")}${a.objects.has(13) ? `, ${plural(d.multis.length, "multi")}, ${plural(d.patterns.length, "pattern slot")}` : " (this firmware cannot back up multis and pattern slots)"}, settings and the current music.`);
+    const raw = rawLines(a.problems, a.objects), warn = raw.length || a.notes.length;
+    say("status-backup", warn ? "Done, with a warning." : "Done.", warn ? "warn" : "good");
+    say("result-backup", `Saved ${name} to your downloads: ${a.hasPatches ? plural(d.patches.length, "saved patch", "saved patches") : "no patches"}${a.objects.has(13) ? `, ${plural(d.multis.length, "multi")}, ${plural(d.patterns.length, "pattern slot")}` : " (this firmware cannot back up multis and pattern slots)"}, settings and the current music.${raw.length ? "\n" + raw.join("\n") : ""}${a.notes.length ? "\n" + a.notes.join("\n") : ""}`);
   } catch (e) { say("status-backup", "The backup failed. Nothing was saved.", "warn"); say("result-backup", e.message); }
   finally { bar("bar-backup", null); busy = false; refresh(); }
 }
@@ -131,10 +136,10 @@ $("backup").addEventListener("click", backup);
 // ---- restore: choose a file
 function groupRows() {   // what each group would do, from the file and (when connected) the unit
   return GROUPS.map((g) => {
-    const inFile = archive && (g.key === "patches" ? archive.objects.has(6) : g.ids.every((id) => archive.objects.has(id)));
+    const inFile = archive && (g.dynamic ? archive.hasPatches : g.ids.every((id) => archive.objects.has(id)));
     let off = null;
-    if (!inFile) off = "not in this file";
-    else if (info && g.caps && !hasCaps()) off = "this unit's firmware cannot restore them (update it first)";
+    if (!inFile) off = g.dynamic && archive?.oldPatchChunks ? "patches saved by an older firmware (physical chunks) are in this file but cannot be restored" : "not in this file";
+    else if (info && g.caps && ((info.caps ?? 0) & g.caps) !== g.caps) off = g.dynamic ? "this unit's firmware cannot restore patches one at a time (update it first)" : "this unit's firmware cannot restore them (update it first)";
     return { g, off };
   });
 }
@@ -142,7 +147,7 @@ function renderGroups() {
   const holder = $("group-rows"); holder.replaceChildren();
   $("groups").hidden = !archive;
   if (!archive) return;
-  const d = describe(new Map([...archive.objects].map(([id, o]) => [id, o.bytes])), archive.engines);
+  const d = describe(new Map([...archive.objects].map(([id, o]) => [id, o.bytes])), archive.engines, archive.oldPatchChunks);
   const counts = { patches: plural(d.patches.length, "saved patch", "saved patches"), multis: plural(d.multis.length, "multi"), patterns: plural(d.patterns.length, "pattern slot"), settings: "", music: "" };
   for (const { g, off } of groupRows()) {
     if (off) sel.delete(g.key); else if (!touched.has(g.key)) sel.add(g.key);
@@ -162,11 +167,14 @@ $("file").addEventListener("change", async () => {
       if (f.size > 200000) throw new Error("This file is too large to be a DUELL backup.");
       archive = readArchive(await f.text());
       const when = Date.parse(archive.created) ? new Date(archive.created).toLocaleString() : "an unknown date";
-      say("filestate", `OK: a backup of ${archive.firmware.replace(/^FELUCCA /, "") || "a DUELL unit"}, made ${when}. It passed every check.`, "good");
-      showContents("contents-list", new Map([...archive.objects].map(([id, o]) => [id, o.bytes])), archive.engines, archive.objects.has(13));
+      const raw = rawLines(archive.problems, archive.objects);
+      say("filestate", `OK: a backup of ${archive.firmware.replace(/^FELUCCA /, "") || "a DUELL unit"}, made ${when}. ${raw.length ? `It passed every check except ${raw.length === 1 ? "one object" : raw.length + " objects"} (below).` : "It passed every check."}${archive.notes.length ? " " + archive.notes.join(" ") : ""}`, raw.length || archive.notes.length ? "warn" : "good");
+      showContents("contents-list", new Map([...archive.objects].map(([id, o]) => [id, o.bytes])), archive.engines, archive.objects.has(13), archive.oldPatchChunks, archive.hasPatches);
       $("contents").hidden = false;
     } catch (e) { say("filestate", `Cannot use this file: ${e.message}`, "warn"); }
   } else say("filestate", "");
+  const raw = archive ? rawLines(archive.problems, archive.objects) : [];
+  $("rawbox").hidden = !raw.length; $("rawlines").textContent = raw.join("\n"); $("includeraw").checked = false;
   renderGroups(); refresh();
 });
 
@@ -176,11 +184,13 @@ async function restore() {
   busy = true; refresh(); say("result-restore", ""); say("status-restore", "Checking the unit ..");
   let safetyName = null;
   try {
-    unitList = await listUnit(request);
-    const plan = planRestore(archive, unitList, info.caps, sel);
+    unitList = await listUnit(request, info.caps);
+    const plan = planRestore(archive, unitList, info.caps, sel, { includeRaw: $("includeraw").checked });
     if (!plan.steps.length) { say("status-restore", "Nothing to restore.", "warn"); say("result-restore", plan.excluded.map((x) => `${x.label}: ${x.reason}`).join("\n")); return; }
     const kinds = [...new Set(plan.steps.map((s) => s.group))].map((k) => GROUPS.find((g) => g.key === k).label.toLowerCase());
+    const pw = plan.steps.filter((s) => s.key !== undefined), put = pw.filter((s) => s.size).length, gone = pw.length - put;
     const text = `Replace on ${unitName()}: ${kinds.join(", ")}.\n\n` +
+      (pw.length || plan.skipped.length ? `Patches: ${plural(put, "patch", "patches")} written, ${plural(gone, "saved patch", "saved patches")} on the unit that the file does not have removed, ${plural(plan.skipped.length, "patch", "patches")} already identical.\n\n` : "") +
       (plan.excluded.length ? `Not restored: ${plan.excluded.map((x) => `${x.label.toLowerCase()} (${x.reason})`).join("; ")}.\n\n` : "") +
       "What the unit holds of these kinds is overwritten, empty slots in the file included. Playback on the unit is stopped. " +
       "A safety backup of the unit is saved to your downloads first; the restore does not start without it.\n\nRestore now?";
@@ -194,7 +204,7 @@ async function restore() {
     const names = (ids) => ids.length ? ids.join(", ") : "none";
     if (r.failed) {
       say("status-restore", "The restore stopped. Do not power off; restore again.", "warn");
-      say("result-restore", `${r.failed.message} (object ${r.failed.id}).\nWritten before it stopped: objects ${names(r.written)}. Not written: object ${r.failed.id} and everything after it.\n` +
+      say("result-restore", `${r.failed.message} (${isPatchKey(r.failed.id) ? "" : "object "}${objName(r.failed.id)}).\nWritten before it stopped: ${names(r.written.map(objName))}. Not written: ${isPatchKey(r.failed.id) ? "" : "object "}${objName(r.failed.id)} and everything after it.\n` +
         `The unit holds a mix of its old data and the file's. Fix the cause, then restore the same file again. The safety backup ${safetyName} holds what was on the unit before.`);
       return;
     }
@@ -202,7 +212,7 @@ async function restore() {
     const v = await verifyRestore(request, plan);
     if (v.differ.length) {
       say("status-restore", "The restore ran but the check found a difference.", "warn");
-      say("result-restore", `Objects that do not match the file: ${names(v.differ)}. Restore again; if it stays, keep ${safetyName} and the file and report it.`);
+      say("result-restore", `Objects that do not match the file: ${names(v.differ.map(objName))}. Restore again; if it stays, keep ${safetyName} and the file and report it.`);
     } else {
       say("status-restore", "Done.", "good");
       say("result-restore", `Restored ${kinds.join(", ")}. ${v.same.length} stored objects were read back and match the file exactly` +

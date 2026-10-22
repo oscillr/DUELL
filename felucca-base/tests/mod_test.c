@@ -21,7 +21,7 @@
 #include <sys/resource.h>
 #endif
 
-#define MOD_COST_MAX 8.0          /* % more instructions per sample with every slot active, at most (was 7.0: the optimised PHASE engine made the base cheaper, the same +59 instructions is now 7.1 %; was 5.0 earlier: the hidden parts 3 and 4 no longer render, so the idle mix is smaller and the same absolute cost is a larger percentage; DUELL: 8 slots, ENV2, LFO2, MORPH) */
+#define MOD_COST_MAX 9.2          /* % more instructions per sample with every slot active, at most (0.2.25: was 8.0; the source slew, mod.c mx_slew, adds about 1 instruction a sample for 8 active slots, the 4-part case read 8.1 %; was 7.0: the optimised PHASE engine made the base cheaper, the same +59 instructions is now 7.1 %; was 5.0 earlier: the hidden parts 3 and 4 no longer render, so the idle mix is smaller and the same absolute cost is a larger percentage; DUELL: 8 slots, ENV2, LFO2, MORPH) */
 
 static int bad;
 static void check(const char *what, int ok)
@@ -51,6 +51,9 @@ static void slot(track_t *t, uint32_t k, int32_t s, int32_t d, int32_t a)
     t->p[P_M1DST + 3u * k] = (int16_t)d;
     t->p[P_M1AMT + 3u * k] = (int16_t)a;
 }
+
+/* 0.2.25: the matrix's source slew (mod.c mx_slew) forgets the values of the block before: the next mod_begin takes every source at once */
+static void unslew(void) { uint32_t i; for (i = 0; i < NLIVE; i++) mx_sl[i].ok = 0; }
 
 static uint32_t eng_by_name(const char *n)
 {
@@ -87,9 +90,10 @@ static void fresh(uint32_t e, uint32_t pi)        /* the boot state (no FX tails
     memset(&fx, 0, sizeof fx);
     lim_env = LIM_T;
     memset(trk, 0, sizeof trk);
-    memset(&mod, 0, sizeof mod);
+    memset(&trk[0].mdw, 0, sizeof trk[0].mdw);
     memset(mod_goff, 0, sizeof mod_goff);           /* (0.2.7: no bus offset, DUCK flag or written bus value left over) */
-    mod_gon = mod_dk = mod_gw = 0;
+    trk[0].mgon = trk[1].mgon = trk[0].mdk = trk[1].mdk = 0, mod_gw = 0;
+    unslew();
     host_tracks_init();
     for (k = 0; k < NPART; k++)
         host_preset(&trk[k], k ? 0u : e, k ? 0u : pi);
@@ -142,7 +146,7 @@ static uint64_t phrase_child(uint32_t k)
         }
         memcpy(keep, trk[0].p, sizeof keep);
         h = phrase();
-        if (memcmp(keep, trk[0].p, sizeof keep) || mod.on)
+        if (memcmp(keep, trk[0].p, sizeof keep) || trk[0].mdw.on)
             h = 0;
         if (write(fd[1], &h, sizeof h) != sizeof h)
             _exit(1);
@@ -183,44 +187,53 @@ static void test_math(void)
     lfo_at(t, 32767);
     lfo = mulq15(32767, 32767);
     slot(t, 0, MS_LFO, MD_CUT, 63);
+    unslew();                                      /* (0.2.25: a mapping probe: the value at once, not the source slew) */
     mod_begin(t);
-    check("LFO -> CUT +63: +63 steps at the top of the LFO (as ENV DEST)", mod.on && mod.cut == (lfo * 63) >> 7 && mod.cut / 256 == 62);
+    check("LFO -> CUT +63: +64 steps at the top of the LFO (63 acts as 64, 1.0)", trk[0].mdw.on && trk[0].mdw.cut == (lfo * 64) >> 7 && trk[0].mdw.cut / 256 == 63);   /* (1.0: AMT +63 acts as 64, a true 100 %: mod.c MX_AMT) */
     mod_end(t);
     slot(t, 0, MS_LFO, MD_PITCH, 63);
+    unslew();                                      /* (0.2.25: a mapping probe: the value at once, not the source slew) */
     mod_begin(t);
-    check("LFO -> PITCH +63: +11.8 semitones (as LFO DEST PIT)", mod.pit == (lfo * 63 * 3) >> 15 && mod.pit == 188);
+    check("LFO -> PITCH +63: +12 semitones (63 acts as 64, 1.0)", trk[0].mdw.pit == (lfo * 64 * 3) >> 15 && trk[0].mdw.pit == 191);
     mod_end(t);
     lfo_at(t, -32768);
     slot(t, 0, MS_LFO, MD_SHP, 63);
+    unslew();                                      /* (0.2.25: a mapping probe: the value at once, not the source slew) */
     mod_begin(t);
-    check("LFO bipolar: the bottom of the LFO pulls SHP down", mod.shp < -16000);
+    check("LFO bipolar: the bottom of the LFO pulls SHP down", trk[0].mdw.shp < -16000);
     mod_end(t);
     slot(t, 0, MS_LFO, MD_SHP, -64);
+    unslew();                                      /* (0.2.25: a mapping probe: the value at once, not the source slew) */
     mod_begin(t);
-    check("a negative AMT inverts it", mod.shp > 16000);
+    check("a negative AMT inverts it", trk[0].mdw.shp > 16000);
     mod_end(t);
     lfo_at(t, 0);
     slot(t, 0, MS_MODW, MD_AMP, 64 - 1);
     t->mw = 0;
+    unslew();                                      /* (0.2.25: a mapping probe: the value at once, not the source slew) */
     mod_begin(t);
-    check("MODW -> AMP +63: the wheel down closes the amp (gain 1.6 %)", mod.amp && mod.gain >= 500 && mod.gain <= 512);
+    check("MODW -> AMP +63: the wheel down closes the amp (gain 0, 1.0: it was 1.6 % open)", trk[0].mdw.amp && trk[0].mdw.gain == 0);
     mod_end(t);
     t->mw = 127;
+    unslew();                                      /* (0.2.25: a mapping probe: the value at once, not the source slew) */
     mod_begin(t);
-    check("MODW -> AMP +63: the wheel up opens it fully", mod.gain >= 32760);
+    check("MODW -> AMP +63: the wheel up opens it fully", trk[0].mdw.gain >= 32760);
     mod_end(t);
     slot(t, 0, MS_AT, MD_AMP, -64);
     t->at = 127;
+    unslew();                                      /* (0.2.25: a mapping probe: the value at once, not the source slew) */
     mod_begin(t);
-    check("AT -> AMP -64: full pressure closes it", mod.gain < 200);
+    check("AT -> AMP -64: full pressure closes it", trk[0].mdw.gain < 200);
     mod_end(t);
     slot(t, 0, MS_EXPR, MD_AMP, 63);
+    unslew();                                      /* (0.2.25: a mapping probe: the value at once, not the source slew) */
     mod_begin(t);
-    check("EXPR before any CC11 is full (the MIDI default): AMP open", mod.gain >= 32760);
+    check("EXPR before any CC11 is full (the MIDI default): AMP open", trk[0].mdw.gain >= 32760);
     mod_end(t);
     slot(t, 0, MS_LFO, MD_AMP, 64 - 1);
+    unslew();                                      /* (0.2.25: a mapping probe: the value at once, not the source slew) */
     mod_begin(t);
-    check("LFO -> AMP: bipolar as 0..1 (half way at an LFO of 0)", mod.gain > 16000 && mod.gain < 17000);
+    check("LFO -> AMP: bipolar as 0..1 (half way at an LFO of 0)", trk[0].mdw.gain > 16000 && trk[0].mdw.gain < 17000);
     mod_end(t);
 
     /* per-voice sources on per-voice destinations (mod_voice) */
@@ -236,6 +249,7 @@ static void test_math(void)
         trk_note_on(t, 48, 1);
         check("RAND per note-on: its own generator (the shared rng untouched)", rng_state == rs && t->v[0].mrnd != t->v[1].mrnd);
     }
+    unslew();                                      /* (0.2.25: a mapping probe: the value at once, not the source slew) */
     mod_begin(t);
     memset(&m, 0, sizeof m);
     m.envq15 = 16384;
@@ -245,14 +259,14 @@ static void test_math(void)
     m.amp1 = 20000;
     v = &t->v[0];
     mod_voice(t, v, &m, 0);
-    check("KEY -> CUT +63: an octave above C4 = +12 steps (key tracking 1:1)", m.cutoff == (12 * 512 * 63) >> 7 && m.cutoff / 256 == 11);
-    check("VEL -> AMP +63: velocity 127 keeps the amplitude", m.amp1 == mulq15(20000, mulq15(32767, mod_gain(MS_VEL, 127 * 258, 63))) && m.amp1 > 19900 && v->env_out == m.amp1);
-    check("ENV -> SHP +40: half the envelope = +20 steps", m.shape == (64 << 8) + ((16384 * 40) >> 7));
+    check("KEY -> CUT +63: an octave above C4 = +12 steps (key tracking 1:1; 63 acts as 64, 1.0)", m.cutoff == (12 * 512 * 64) >> 7 && m.cutoff / 256 == 12);
+    check("VEL -> AMP +63: velocity 127 keeps the amplitude", m.amp1 == mulq15(20000, mulq15(32767, mod_gain(MS_VEL, 127 * 258, 64))) && m.amp1 > 19900 && v->env_out == m.amp1);
+    check("ENV -> SHP +40: half the envelope = +20 steps", m.shape == (64 << 8) + ((16384 * 41) >> 7));   /* (+40 acts as 41, 1.0) */
     check("RAND -> PITCH: the voice's own random offset", m.pitch16 == 1000 + ((v->mrnd * 20 * 3) >> 15) && m.inc == pitch_inc(m.pitch16));
     memset(&m, 0, sizeof m);
     m.amp1 = 20000;
     mod_voice(t, &t->v[1], &m, 0);
-    check("KEY below C4 negative, VEL 1 -> AMP almost closed", m.cutoff == -((12 * 512 * 63) >> 7) && m.amp1 < 600);
+    check("KEY below C4 negative, VEL 1 -> AMP almost closed", m.cutoff == -((12 * 512 * 64) >> 7) && m.amp1 < 600);
     mod_end(t);
 
     /* clamping of the per-voice sums */
@@ -262,6 +276,7 @@ static void test_math(void)
         slot(t, k_pw, MS_LFO, k_pw < 2u ? MD_CUT : MD_PITCH, 63);
     trk_note_on(t, 120, 100);
     lfo_at(t, 32767);                              /* (a note-on restarts the LFO and its FADE) */
+    unslew();                                      /* (0.2.25: a mapping probe: the value at once, not the source slew) */
     mod_begin(t);
     memset(&m, 0, sizeof m);
     m.cutoff = 100 << 8;
@@ -275,15 +290,18 @@ static void test_math(void)
     t->p[P_PAN] = 0;
     t->mw = 127;
     slot(t, 0, MS_MODW, MD_PAN, 16);
+    unslew();                                      /* (0.2.25: a mapping probe: the value at once, not the source slew) */
     mod_begin(t);
     check("MODW -> PAN +16: a quarter of the range (+31)", t->p[P_PAN] == ((((127 * 258) * 16) >> 6) * 127 >> 15) && t->p[P_PAN] == 31);
     mod_end(t);
     check("PAN restored after the block", t->p[P_PAN] == 0);
     slot(t, 1, MS_MODW, MD_PAN, 16);
+    unslew();                                      /* (0.2.25: a mapping probe: the value at once, not the source slew) */
     mod_begin(t);
     check("two slots on PAN add up (+62)", t->p[P_PAN] == 62);
     mod_end(t);
     slot(t, 1, MS_MODW, MD_PAN, 63);
+    unslew();                                      /* (0.2.25: a mapping probe: the value at once, not the source slew) */
     mod_begin(t);
     check("PAN clamps to +63", t->p[P_PAN] == 63);
     mod_end(t);
@@ -291,6 +309,7 @@ static void test_math(void)
     slot(t, 0, MS_AT, MD_REV, -64);
     t->at = 127;
     t->p[P_REV] = 50;
+    unslew();                                      /* (0.2.25: a mapping probe: the value at once, not the source slew) */
     mod_begin(t);
     check("AT -> REV -64: the send down to 0 (clamped)", t->p[P_REV] == 0);
     mod_end(t);
@@ -303,9 +322,10 @@ static void test_math(void)
     t->p[P_LRATE] = 100;
     t->p[P_LD_PIT] = 0;
     lfo = mulq15(-32768, 32767);
+    unslew();                                      /* (0.2.25: a mapping probe: the value at once, not the source slew) */
     mod_begin(t);
     {
-        int32_t up = (((lfo * 32) >> 7) * 127) >> 15, dn = (((lfo * -32) >> 7) * 127) >> 15;
+        int32_t up = (((lfo * 33) >> 7) * 127) >> 15, dn = (((lfo * -32) >> 7) * 127) >> 15;
         check("LFO -> DIST / CHO (+-32), RATE, VIB: bipolar, a quarter of the range each way",
               up < -15 && dn > 15 && t->p[P_DIST] == 64 + up && t->p[P_CHOR] == 64 + dn && t->p[P_LRATE] == 100 + up &&
               t->p[P_LD_PIT] == up);
@@ -320,12 +340,14 @@ static void test_math(void)
     lfo_at(t, 32767);
     t->p[P_E0 + k_pw] = 100;
     slot(t, 0, MS_LFO, MD_E1 + (int32_t)k_pw, 40);
+    unslew();                                      /* (0.2.25: a mapping probe: the value at once, not the source slew) */
     mod_begin(t);
     check("LFO -> TRIO PW: clamped to its range (0..127)", t->p[P_E0 + k_pw] == 127);
     mod_end(t);
     t->p[P_E0 + 1] = 0;                            /* INT2: -24..24 */
     slot(t, 0, MS_MODW, MD_E1 + 1, -32);
     t->mw = 127;
+    unslew();                                      /* (0.2.25: a mapping probe: the value at once, not the source slew) */
     mod_begin(t);
     check("MODW -> E2 -32: half its range down (TRIO INT2 -24..24: -24)",
           t->p[P_E0 + 1] == (((((127 * 258) * -32) >> 6) * (ENGINES[e_trio]->edit[1].max - ENGINES[e_trio]->edit[1].min)) >> 15) &&
@@ -333,17 +355,19 @@ static void test_math(void)
     mod_end(t);
     check("the engine parameters restored", t->p[P_E0 + k_pw] == 100 && t->p[P_E0 + 1] == 0);
     check("DST names: E1..E8 by the engine's labels", str_eq(mod_dst_name(t, MD_E1 + (int32_t)k_pw), "PW") &&
-                                                          str_eq(mod_dst_name(t, MD_CUT), "CUT"));
+                                                          str_eq(mod_dst_name(t, MD_CUT), "MULTI\nCUTOFF"));
 
     /* per-voice sources on a per-block destination: the latest note-on */
     fresh(0, 0);
     slot(t, 0, MS_VEL, MD_PAN, 63);
     trk_note_on(t, 60, 20);
+    unslew();                                      /* (0.2.25: a mapping probe: the value at once, not the source slew) */
     mod_begin(t);
     {
         int32_t p1 = t->p[P_PAN];
         mod_end(t);
         trk_note_on(t, 64, 127);
+        unslew();                                      /* (0.2.25: a mapping probe: the value at once, not the source slew) */
         mod_begin(t);
         check("VEL -> PAN: the latest note-on's velocity", p1 == ((((20 * 258) * 63) >> 6) * 127 >> 15) && t->p[P_PAN] == 63);
         mod_end(t);
@@ -410,13 +434,13 @@ static void test_midi(void)
     pkt(0xB0, 7, 10);                            /* other CCs: ignored */
     blocks(1);
     check("USB: CC1 ch 1 -> part 1, CC11 ch 2 -> part 2, ch 3 CC11 and ch 4 AT ignored (two parts)",
-          trk[0].mw == 100 && trk[1].ex_off == 127 - 40 && trk[2].ex_off == 0 && trk[3].at == 0 && trk[2].at == 0 &&
+          trk[0].mw == 100 && trk[1].ex_off == 127 - 40 &&
           trk[0].at == 0 && trk[0].ex_off == 0);
-    check("USB: ROUT CH1-4: CC1 on ch 7 reaches no track", trk[1].mw == 0 && trk[2].mw == 0);
+    check("USB: ROUT CH1-4: CC1 on ch 7 reaches no track", trk[1].mw == 0);
     song.g[G_ROUTE] = 1;
     pkt(0xB6, 1, 55);                            /* ROUT SEL: ch 7 -> the selected track (2) */
     blocks(1);
-    check("USB: ROUT SEL: CC1 on ch 7 -> the selected track (2)", trk[1].mw == 55 && trk[2].mw == 0);
+    check("USB: ROUT SEL: CC1 on ch 7 -> the selected track (2)", trk[1].mw == 55);
     song.g[G_ROUTE] = 0;
     pkt(0xB0, 121, 0);                           /* reset all controllers */
     blocks(1);
@@ -427,7 +451,7 @@ static void test_midi(void)
         um_byte(TRS[i]);
     blocks(1);
     check("TRS: CC1, running status, realtime between, CC11, AT (1 data byte, running status) -> parts",
-          trk[0].mw == 0x7F && trk[0].ex_off == 127 - 0x20 && trk[1].at == 0x34 && trk[2].at == 0 && trk[0].at == 0);
+          trk[0].mw == 0x7F && trk[0].ex_off == 127 - 0x20 && trk[1].at == 0x34 && trk[0].at == 0);
     check("TRS: ROUT CH1-4: ch 5 is ignored", trk[1].mw == 0);
     song.g[G_ROUTE] = 1;
     for (i = 14; i < sizeof TRS; i++)           /* the ch 5 CC1 again with ROUT SEL */
@@ -665,10 +689,12 @@ static void test_pan_lfo(void)
     slot(t, 0, MS_LFO, MD_PAN, 63);
     t->p[P_PAN] = 0;
     lfo_at(t, 32767);
+    unslew();                                      /* (0.2.25: a mapping probe: the value at once, not the source slew) */
     mod_begin(t);
     a = t->p[P_PAN];
     mod_end(t);
     lfo_at(t, -32768);
+    unslew();                                      /* (0.2.25: a mapping probe: the value at once, not the source slew) */
     mod_begin(t);
     b = t->p[P_PAN];
     mod_end(t);
@@ -676,6 +702,7 @@ static void test_pan_lfo(void)
     slot(t, 0, MS_LFO, MD_PAN, -64);
     t->p[P_PAN] = 20;                              /* a base off the centre: the swing follows it */
     lfo_at(t, 16384);
+    unslew();                                      /* (0.2.25: a mapping probe: the value at once, not the source slew) */
     mod_begin(t);
     c = t->p[P_PAN];
     mod_end(t);
@@ -766,6 +793,8 @@ static void test_part2_modes(void)
 /* DUELL 0.2.7: the destinations added (owner: "the matrix does not have enough destinations") */
 static int32_t want_off(uint32_t s, int32_t x, int32_t a, int32_t range)   /* mod_begin's per-block offset */
 {
+    if (a > 0)
+        a += (a + 32) >> 6;                              /* (1.0: mod.c MX_AMT, +63 acts as 64) */
     return (((x * a) >> (MS_BIPOLAR(s) ? 7 : 6)) * range) >> 15;
 }
 /* fork()ed: SPLIT / STEREO, both parts a held note into all three sends, part p's slot 0 SRC -> DST AMT (routes: n of
@@ -860,9 +889,9 @@ static void test_dest027(void)
     int16_t keep[P_COUNT];
     uint64_t l0, r0, l1, r1;
 
-    for (k = 0, ok = MD_N == 46 && MD_N_026 == 23 && MD_DEPTH == 20 && MD_DEPTH2 == 22; k < MD_N_026; k++)
+    for (k = 0, ok = MD_N == 56 && MD_FMODE == 46 && MD_AATK == 47 && MD_N_026 == 23 && MD_DEPTH == 20 && MD_DEPTH2 == 22; k < MD_N_026; k++)
         ok &= str_eq(N_MDST[k], OLD[k]);
-    check("0.2.7: DST 0..22 are 0.2.6's (a stored matrix means what it meant); 23 new ones appended (46)", ok);
+    check("0.2.7: DST 0..22 are 0.2.6's (a stored matrix means what it meant); 23 new ones appended (46), 0.2.25 FMODE the 47th, T0229 the AMP ENV times 48th .. 51st", ok);
     check("  the editor's DESC lists every DST name (the limit is 64 now)", MD_N <= 64);
     {   /* no new DST name is an engine's EDIT label: gen_duell_sounds.py reads a sound's MOD route "RES" (ANALOG's E6) by N_MDST
          * first, so a DST called RES moved ANALOG SQUELCH's route to the universal filter's RES (its golden changed) */
@@ -885,12 +914,12 @@ static void test_dest027(void)
         duell_mode_req = DM_STEREO;
         for (v = 0, ok = 1; v < MD_N; v++) {
             mod_dst_line(&trk[0], v, b, &more);
-            ok &= str_len(b) > 6u && (v < MD_BUS || more);   /* (a bus value: always which bus; a faded one: why) */
+            ok &= str_len(b) > 6u && (!MD_IS_BUS(v) || more);   /* (a bus value: always which bus; a faded one: why; 0.2.25: FMODE, after the bus values, is a part value) */
         }
         mod_dst_line(&trk[0], MD_RDAMP, b, &more);
         ok &= str_eq(b, "DEST: REVERB DAMP") && str_eq(more, "SHARED BUS: BOTH PARTS ADD");
         mod_dst_line(&trk[0], MD_LEVEL, b, &more);
-        ok &= str_eq(b, "DEST: PART LEVEL");
+        ok &= str_eq(b, "DEST: PATCH LEVEL");   /* (0.2.25 layout round: TRIM is shown PATCH LEVEL) */
         mod_dst_line(&trk[0], MD_DEPTH, b, &more);
         ok &= str_eq(b, "DEST: LFO 1 DEPTH");
         mod_dst_line(&trk[0], MD_E1 + 2, b, &more);
@@ -900,6 +929,24 @@ static void test_dest027(void)
         ok &= str_eq(b, "DEST: CHORUS RATE") && str_eq(more, "MOVES BUS B ONLY (PART 2)");
         duell_mode_req = DM_STEREO;
         check("  the MATRIX page's DEST line names every destination in words (\"DEST: REVERB DAMP\", which bus it moves)", ok);
+    {   /* 0.2.25: FILTER MODE (MD_FMODE 46): the multimode filter's MODE per block, put back after; named FMODE, "DEST: FILTER 1 MODE" */
+        char b2[32];
+        const char *more2;
+        int16_t fm;
+        fresh(0, 0);
+        trk[0].p[P_FREEC] = 0;
+        trk[0].mw = 127;
+        slot(&trk[0], 0, MS_MODW, MD_FMODE, 63);
+        unslew();
+        mod_begin(&trk[0]);
+        fm = trk[0].p[P_FREEC];
+        mod_end(&trk[0]);
+        mod_dst_line(&trk[0], MD_FMODE, b2, &more2);
+        check("0.2.25 FILTER MODE: MODW -> FMODE +63 moves the filter's MODE (LP 0 -> 125, near HP), the stored MODE back after; DEST: MULTI FILTER MODE",
+              fm == ((((127 * 258) * 64) >> 6) * 127 >> 15) && trk[0].p[P_FREEC] == 0 && str_eq(mod_dst_name(&trk[0], MD_FMODE), "FMODE") &&
+              str_eq(b2, "DEST: MULTI FILTER MODE") && !mod_dst_why(&trk[0], MD_FMODE));
+        slot(&trk[0], 0, 0, 0, 0);
+    }
     }
 
     /* every per-block part destination moves its own parameter by the rule (MODW 127 at AMT +40), in the block only */
@@ -923,7 +970,7 @@ static void test_dest027(void)
     }
     check("LEVEL, INSERT A B C MIX, EQ LOW MID HIGH, DUCK DEPTH, ENV 2 ATK..REL FLT SHP, RES: each moves its own value, by the rule", ok);
 
-    /* the engine slots: WAVE's POS moves, its TABLE never (no rebuild), an unused slot, FM6's SLOT: skipped */
+    /* the engine slots: WAVE's POS moves, its TABLE never (no rebuild), E7 (STEPS, cloud job F) moves, an unused slot, FM6's SLOT: skipped */
     fresh(ENGI_WAVE, 0);
     wave_build_now(t);
     t->mw = 127;
@@ -936,28 +983,30 @@ static void test_dest027(void)
         uint32_t want = w->h.want, b;
         mod_begin(t);
         ok = t->p[P_E1] == clamp(pos + want_off(MS_MODW, 127 * 258, 40, 127), 0, 127) && t->p[P_E1] != pos && t->p[P_E0] == tab &&
-             t->p[P_E6] == 0;
+             t->p[P_E6] > 10;                           /* (E7 is STEPS: the route moves the count; was an unused slot) */
         mod_end(t);
         trk_note_on(t, 60, 100);
         for (b = 0; b < 200u; b++)
             mix_block(out_buf, CTL);
         ok &= w->h.want == want && w->h.have == want && !w->h.fade && t->p[P_E0] == tab;
-        check("WAVE: MODW -> POS moves POS; -> TABLE (REBUILD) and -> E7 (UNUSED) do nothing: no table change, no rebuild", ok);
-        check("  the MATRIX page: TABLE faded REBUILD, E7 faded UNUSED, POS live; its line \"DEST: WAVE POS\"",
-              str_eq(mod_dst_why(t, MD_E1), "REBUILD") && str_eq(mod_dst_why(t, MD_E1 + 6), "UNUSED") && !mod_dst_why(t, MD_E1 + 1));
+        check("WAVE: MODW -> POS and -> E7 (STEPS) move them; -> TABLE (REBUILD) does nothing: no table change, no rebuild", ok);
+        check("  the MATRIX page: TABLE faded REBUILD, E7 (STEPS) and POS live (E8 faded UNUSED); its line \"DEST: WAVE POS\"",
+              str_eq(mod_dst_why(t, MD_E1), "REBUILD") && !mod_dst_why(t, MD_E1 + 6) && str_eq(mod_dst_why(t, MD_E1 + 7), "UNUSED") && !mod_dst_why(t, MD_E1 + 1));
         {
             char b2[32];
             const char *more;
             mod_dst_line(t, MD_E1 + 1, b2, &more);
             ok = str_eq(b2, "DEST: WAVE POS") && !more;
+            mod_dst_line(t, MD_E1 + 7, b2, &more);
+            check("  .. \"DEST: WAVE POS\"; the unused slot \"DEST: WAVE EDIT 2 KNOB 4\" + NOT USED BY THIS ENGINE",
+                  ok && str_eq(b2, "DEST: WAVE EDIT 2 KNOB 4") && more && str_eq(more, "NOT USED BY THIS ENGINE"));
             mod_dst_line(t, MD_E1 + 6, b2, &more);
-            check("  .. \"DEST: WAVE POS\"; the unused slot \"DEST: WAVE EDIT 2 KNOB 3\" + NOT USED BY THIS ENGINE",
-                  ok && str_eq(b2, "DEST: WAVE EDIT 2 KNOB 3") && more && str_eq(more, "NOT USED BY THIS ENGINE"));
+            check("  .. E7: \"DEST: WAVE STEPS\", nothing against it", str_eq(b2, "DEST: WAVE STEPS") && !more);
         }
     }
     {   /* a faded slot does nothing: the phrase bit for bit as with no route (FM6 SLOT, a retired engine's slot (SAMPLE, GRAIN, SLICE:
-         * DUELL 0.2.9, silent, every slot "-"), WAVE TABLE and E7) */
-        static const uint8_t EK[6][2] = {{ENGI_FM6, 7}, {13, 0}, {4, 0}, {8, 3}, {ENGI_WAVE, 0}, {ENGI_WAVE, 6}};
+         * DUELL 0.2.9, silent, every slot "-"), WAVE TABLE and E8; E7 is STEPS since cloud job F) */
+        static const uint8_t EK[6][2] = {{ENGI_FM6, 7}, {13, 0}, {4, 0}, {8, 3}, {ENGI_WAVE, 0}, {ENGI_WAVE, 7}};
         static const char *const WHY[6] = {"LOADS", "UNUSED", "UNUSED", "UNUSED", "REBUILD", "UNUSED"};
         for (k = 0, ok = 1; k < 6u; k++) {
             uint64_t h0 = route_child(EK[k][0], 0, 0), h1 = route_child(EK[k][0], MD_E1 + EK[k][1], 63);
@@ -966,7 +1015,7 @@ static void test_dest027(void)
             if (h0 != h1)
                 printf("mod:   engine %u slot %u: the route changes the sound\n", EK[k][0], EK[k][1]);
         }
-        check("faded engine slots do nothing (FM6 SLOT, a retired engine's (SAMPLE GRAIN SLICE: UNUSED), WAVE TABLE, WAVE E7: bit for bit)", ok);
+        check("faded engine slots do nothing (FM6 SLOT, a retired engine's (SAMPLE GRAIN SLICE: UNUSED), WAVE TABLE, WAVE E8: bit for bit)", ok);
     }
 
     /* a slot keeps its destination over an engine change: then it is the new engine's slot of that index (named, or faded) */
@@ -982,8 +1031,8 @@ static void test_dest027(void)
             ok &= !memcmp(keep, t->p, sizeof keep);  /* (no value left modulated after any block, across the switch) */
         }
     }
-    ok &= t->engine == ENGI_WAVE && t->p[MSLOT_ID(0) + 1u] == MD_E1 + 6 && str_eq(mod_dst_why(t, MD_E1 + 6), "UNUSED");
-    check("an engine change: the slot keeps E7 (ANALOG's, live) and shows it faded UNUSED on WAVE; no value left modulated", ok);
+    ok &= t->engine == ENGI_WAVE && t->p[MSLOT_ID(0) + 1u] == MD_E1 + 6 && !mod_dst_why(t, MD_E1 + 6);
+    check("an engine change: the slot keeps E7 (ANALOG's, live) and shows it live on WAVE (STEPS since cloud job F); no value left modulated", ok);
 
     /* the bus values: per part offsets; STEREO / LAYER add them, DUEL keeps them on the part's own bus */
     fresh(0, 0);
@@ -1013,7 +1062,7 @@ static void test_dest027(void)
         slot(&trk[1], 1, 0, 0, 0);
         mix_block(out_buf, CTL);
         check("  a route taken away: no offset left after one block (mod_gon 0), song.g never left written",
-              !mod_gon && !mod_gw && song.g[G_RSIZE] == rs);
+              !mod_gon_any() && !mod_gw && song.g[G_RSIZE] == rs);
     }
     {
         static const int16_t NONE[1][4] = {{0, 0, 0, 0}};

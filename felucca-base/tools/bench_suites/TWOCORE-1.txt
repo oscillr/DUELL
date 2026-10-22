@@ -1,0 +1,171 @@
+# TWOCORE-1: the core 1 diagnosis suite (BENCHT2, release_drafts/BENCH_TWOCORE2.md). About 10 minutes as it stands; `--soak 180` makes the two soaks 3 minutes each (about 26 minutes).
+# The same three scenes, each under four settings of the runner's margin (the bench console words of BENCHT2, set after each test's `bench reset`; reset puts them back):
+#   S1   the build's own values (slack 3,481 ticks = 145 us = 5 % of a half)        S3  slack three times that (10,443)     S6  six times (20,886)
+#   POFF pause off: the late / very late runs set huge, so no block ever pauses the jobs (slack as the build's own). Core 1 then works in every block of the test.
+# Scenes: M07-CHORDS (the OWNER-1 test, 17 s), a 60 s stretch of the SOAK-M07 cycle (chord changes, MORPH, aftertouch), a 60 s stretch of the heavy 8 + 8 DUEL scene (SOAK-STRESS).
+# `diag` : very late blocks are WARN here (the point of the run is to count them), silent blocks and all other faults stay FAIL.
+suite TWOCORE-1
+diag
+
+cycle M07-CYCLE period 20
+at 0.0  chord C3 E3 G3 B3 vel 90
+at 4.0  release
+at 4.0  chord A2 C3 E3 G3 vel 90
+at 8.0  release
+at 8.0  chord F2 A2 C3 E3 vel 90
+at 12.0 release
+at 12.0 chord G2 B2 D3 F3 vel 90
+at 14.0 morph 0 127 over 2
+at 16.0 release
+at 16.0 chord C3 E3 G3 B3 vel 90
+at 16.0 aftertouch 0 127 over 2
+at 18.0 morph 127 0 over 1
+at 19.0 aftertouch 127 0 over 0.9
+at 19.9 release
+end
+
+cycle STRESS-HOLD period 600
+at 0.0  chord C3 E3 G3 B3 D4 F4 A4 C5 vel 64 ch 1
+at 0.0  chord G3 B3 D4 F#4 A4 C5 E5 G5 vel 64 ch 2
+end
+
+# ---- CHORDS
+
+test CHORDS-S1  M07 FINAL REEL, four chords; slack, current (3,481 ticks)
+load multi 7 "FINAL REEL"
+mode LAYER
+tune slack 3481
+at 0.0  chord C3 E3 G3 B3 vel 90
+at 3.0  release
+at 3.0  chord A2 C3 E3 G3 vel 90
+at 6.0  release
+at 6.0  chord F2 A2 C3 E3 vel 90
+at 9.0  release
+at 9.0  chord G2 B2 D3 F3 vel 90
+at 12.0 release
+tail 5
+measure 1.0 12.0
+expect report
+
+test CHORDS-S3  M07 FINAL REEL, four chords; slack x3 (10,443 ticks)
+load multi 7 "FINAL REEL"
+mode LAYER
+tune slack 10443
+at 0.0  chord C3 E3 G3 B3 vel 90
+at 3.0  release
+at 3.0  chord A2 C3 E3 G3 vel 90
+at 6.0  release
+at 6.0  chord F2 A2 C3 E3 vel 90
+at 9.0  release
+at 9.0  chord G2 B2 D3 F3 vel 90
+at 12.0 release
+tail 5
+measure 1.0 12.0
+expect report
+
+test CHORDS-S6  M07 FINAL REEL, four chords; slack x6 (20,886 ticks)
+load multi 7 "FINAL REEL"
+mode LAYER
+tune slack 20886
+at 0.0  chord C3 E3 G3 B3 vel 90
+at 3.0  release
+at 3.0  chord A2 C3 E3 G3 vel 90
+at 6.0  release
+at 6.0  chord F2 A2 C3 E3 vel 90
+at 9.0  release
+at 9.0  chord G2 B2 D3 F3 vel 90
+at 12.0 release
+tail 5
+measure 1.0 12.0
+expect report
+
+test CHORDS-POFF  M07 FINAL REEL, four chords; pause off (slack as the build's own)
+load multi 7 "FINAL REEL"
+mode LAYER
+tune slack 3481
+tune pause off
+at 0.0  chord C3 E3 G3 B3 vel 90
+at 3.0  release
+at 3.0  chord A2 C3 E3 G3 vel 90
+at 6.0  release
+at 6.0  chord F2 A2 C3 E3 vel 90
+at 9.0  release
+at 9.0  chord G2 B2 D3 F3 vel 90
+at 12.0 release
+tail 5
+measure 1.0 12.0
+expect report
+
+# ---- M07
+
+test M07-S1  M07 FINAL REEL cycle, 60 s; slack, current (3,481 ticks)
+load multi 7 "FINAL REEL"
+mode LAYER
+tune slack 3481
+soak 60 repeat M07-CYCLE
+check 30
+tail 3
+expect report
+
+test M07-S3  M07 FINAL REEL cycle, 60 s; slack x3 (10,443 ticks)
+load multi 7 "FINAL REEL"
+mode LAYER
+tune slack 10443
+soak 60 repeat M07-CYCLE
+check 30
+tail 3
+expect report
+
+test M07-S6  M07 FINAL REEL cycle, 60 s; slack x6 (20,886 ticks)
+load multi 7 "FINAL REEL"
+mode LAYER
+tune slack 20886
+soak 60 repeat M07-CYCLE
+check 30
+tail 3
+expect report
+
+test M07-POFF  M07 FINAL REEL cycle, 60 s; pause off (slack as the build's own)
+load multi 7 "FINAL REEL"
+mode LAYER
+tune slack 3481
+tune pause off
+soak 60 repeat M07-CYCLE
+check 30
+tail 3
+expect report
+
+# ---- STRESS
+
+test STRESS-S1  heavy 8 + 8 DUEL scene, 60 s; slack, current (3,481 ticks)
+scene "HVY DUEL 8+8"
+tune slack 3481
+soak 60 repeat STRESS-HOLD
+check 30
+tail 3
+expect report
+
+test STRESS-S3  heavy 8 + 8 DUEL scene, 60 s; slack x3 (10,443 ticks)
+scene "HVY DUEL 8+8"
+tune slack 10443
+soak 60 repeat STRESS-HOLD
+check 30
+tail 3
+expect report
+
+test STRESS-S6  heavy 8 + 8 DUEL scene, 60 s; slack x6 (20,886 ticks)
+scene "HVY DUEL 8+8"
+tune slack 20886
+soak 60 repeat STRESS-HOLD
+check 30
+tail 3
+expect report
+
+test STRESS-POFF  heavy 8 + 8 DUEL scene, 60 s; pause off (slack as the build's own)
+scene "HVY DUEL 8+8"
+tune slack 3481
+tune pause off
+soak 60 repeat STRESS-HOLD
+check 30
+tail 3
+expect report

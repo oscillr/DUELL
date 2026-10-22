@@ -3,11 +3,12 @@
  * UART parser, ownership model, sequencer, voice renderer and UI source. */
 #define UI_TEST_NO_MAIN 1
 #include "ui_test.c"
+#include "scenes.h"                                   /* (0.2.23: 0.2.22's M03 EERIE SIGNAL as a test scene) */
 
 static void midi_test_reset(void)
 {
     ui_power_on();
-    memset(midi_ch, 0, sizeof midi_ch); memset(midi_notes, 0, sizeof midi_notes);
+    memset(midi_ch, 0, sizeof midi_ch); memset(midi_sel_on, 0, sizeof midi_sel_on);
     memset(midi_owners, 0, sizeof midi_owners); memset(midi_bend_q8, 0, sizeof midi_bend_q8);
     memset(midi_bend_target, 0, sizeof midi_bend_target); memset(&midi_clock, 0, sizeof midi_clock);
     memset(&um, 0, sizeof um); memset(midi_in_source, 0, sizeof midi_in_source);
@@ -49,24 +50,24 @@ static int controls_test(void)
     queued(0xB0, 1, 87, 1); queued(0xB0, 11, 23, 1); queued(0xD0, 90, 0, 1);
     bad += check("existing modwheel/expression/aftertouch stay routed to the track", t->mw == 87 && t->ex_off == 104 && t->at == 90);
     queued(0xE3, 127, 127, 1);
-    bad += check("drum track ignores pitch bend", !midi_bend_target[3]);
+    bad += check("a channel that is no part's (4) ignores pitch bend", !midi_ch[3].bend && !midi_bend_target[0] && !midi_bend_target[1]);
     return bad;
 }
 static int sustain_test(void)
 {
     int bad = 0; midi_test_reset(); track_t *t = &trk[0];
     queued(0x90, 60, 100, 1); queued(0xB0, 64, 127, 1); queued(0x80, 60, 0, 1);
-    bad += check("pedal holds a released synth note and its owner", gate_note(t, 60) && midi_notes[0][60] == (1u | MIDI_PEDAL_NOTE));
+    bad += check("pedal holds a released synth note and its owner", gate_note(t, 60) && MIDI_NOTE_AT(0, 60) == (1u | MIDI_PEDAL_NOTE));
     queued(0xB0, 64, 0, 1);
-    bad += check("pedal release releases its held note", !gate_note(t, 60) && !midi_notes[0][60] && !midi_owners[0]);
+    bad += check("pedal release releases its held note", !gate_note(t, 60) && !MIDI_NOTE_AT(0, 60) && !midi_owners[0]);
     queued(0x90, 62, 100, 1); queued(0xB0, 64, 127, 1); queued(0xB0, 123, 0, 1);
-    bad += check("All Notes Off honours sustain rather than hard-killing", gate_note(t, 62) && (midi_notes[0][62] & MIDI_PEDAL_NOTE));
+    bad += check("All Notes Off honours sustain rather than hard-killing", gate_note(t, 62) && (MIDI_NOTE_AT(0, 62) & MIDI_PEDAL_NOTE));
     queued(0xB0, 121, 0, 1);
-    bad += check("Reset Controllers releases pedal-held notes", !gate_note(t, 62) && !midi_notes[0][62]);
+    bad += check("Reset Controllers releases pedal-held notes", !gate_note(t, 62) && !MIDI_NOTE_AT(0, 62));
     queued(0x93, 36, 100, 1); queued(0xB3, 64, 127, 1); queued(0x83, 36, 0, 1);
-    bad += check("drum note-offs do not accumulate pedal-held owners", !midi_notes[3][36] && !midi_owners[3]);
+    bad += check("note-offs of a channel that is no part's do not accumulate pedal-held owners", !MIDI_NOTE_AT(3, 36) && !midi_owners[1]);
     queued(0x90, 67, 100, 1); queued(0xB0, 64, 127, 1); queued(0x80, 67, 0, 1); queued(0xB0, 120, 0, 1);
-    bad += check("All Sound Off ignores pedal and discards all track ownership", !midi_notes[0][67] && !midi_owners[0] && !t->nheld && !gate_note(t, 67));
+    bad += check("All Sound Off ignores pedal and discards all track ownership", !MIDI_NOTE_AT(0, 67) && !midi_owners[0] && !t->nheld && !gate_note(t, 67));
     return bad;
 }
 static int ownership_test(void)
@@ -84,11 +85,11 @@ static int ownership_test(void)
     fm1_in.notes = 0; events_block(CTL);
     bad += check("local release after MIDI release ends the shared note", !gate_note(t, local));
     queued(0x94, 65, 100, 1); song.sel = 1; queued(0x84, 65, 0, 1);
-    bad += check("note-off follows its note-on across selected-track changes", !gate_note(&trk[0], 65) && !midi_notes[4][65]);
+    bad += check("note-off follows its note-on across selected-track changes", !gate_note(&trk[0], 65) && !MIDI_NOTE_AT(4, 65));
     song.sel = 0; queued(0x94, 67, 100, 1); queued(0xB4, 64, 127, 1); queued(0x84, 67, 0, 1);
     panic_req |= 1u; events_block(CTL);
     queued(0x90, 67, 100, 1); queued(0xB4, 64, 0, 1);
-    bad += check("preset panic forgets old pedal owners so later pedal-up preserves new notes", !midi_notes[4][67] && gate_note(&trk[0], 67));
+    bad += check("preset panic forgets old pedal owners so later pedal-up preserves new notes", !MIDI_NOTE_AT(4, 67) && gate_note(&trk[0], 67));
     for (uint32_t i = 0; i <= MQ; i++) midi_enqueue(0x09u | 0x90u << 8 | 70u << 16 | 100u << 24, 1);
     events_block(CTL);
     bad += check("queue overflow recovers ownership and releases stuck notes", !midi_in_overflow && mi_r == mi_w && !midi_owners[0] && !gate_note(&trk[0], 67));
@@ -338,7 +339,7 @@ static int arp_ext_clock_test(void)
     /* the stored steps of a multi are the user's content: an external Start plays them (INT PLAY does the same); the ARP itself stays silent */
     {
         uint32_t ms = 100, i, started = 0, arp_on = 0; uint8_t last = 0;
-        midi_test_reset(); project_load(2); events_block(CTL);   /* (M03 EERIE SIGNAL since 0.2.13, M01 before: part 2 holds steps) */
+        midi_test_reset(); scene_put(2, "M03_EERIE_SIGNAL"); project_load(2); events_block(CTL);   /* (0.2.22's M03 EERIE SIGNAL, a test scene since 0.2.23: part 2 holds steps) */
         song.g[G_CLOCK] = 1; events_block(CTL);
         clock_packet(1, 0xFA, ms);
         for (i = 0; i < 96u; i++) {
@@ -621,27 +622,27 @@ static int any_gate(void)
 static int route_test(void)
 {
     int bad = 0; uint32_t ch, src, owned = 0;
-    midi_test_reset(); song.sel = 2;
+    midi_test_reset(); song.sel = 1;
     bad += check("ROUT defaults to CH1-4", song.g[G_ROUTE] == 0);
     for (src = 1; src <= 2u; src++)
         for (ch = 4; ch < 16u; ch++) queued(0x90 | ch, 60 + ch, 100, src);
-    for (ch = 4; ch < 16u; ch++) owned |= midi_notes[ch][60 + ch];
-    bad += check("CH1-4: note-ons on channels 5..16 (USB and TRS) play nothing", !any_gate() && !owned && !midi_owners[2] && !midi_hint);
+    for (ch = 4; ch < 16u; ch++) owned |= MIDI_NOTE_AT(ch, 60 + ch);
+    bad += check("CH1-4: note-ons on channels 5..16 (USB and TRS) play nothing", !any_gate() && !owned && !midi_owners[1] && !midi_hint);
     queued(0x91, 62, 100, 1); queued(0x93, 40, 100, 2);
-    bad += check("PARTS: channel 2 still plays part 2; channel 4 (no part's) plays nothing", gate_note(&trk[1], 62) && midi_notes[1][62] == 2u && !midi_notes[3][40] && !gate_note(&trk[3], 40));
+    bad += check("PARTS: channel 2 still plays part 2; channel 4 (no part's) plays nothing", gate_note(&trk[1], 62) && MIDI_NOTE_AT(1, 62) == 2u && !MIDI_NOTE_AT(3, 40));
     queued(0xE4, 127, 127, 1); queued(0xEF, 0, 0, 2); queued(0xE9, 127, 127, 1);
-    bad += check("CH1-4: pitch bend on channels 5, 10, 16 bends no part", !midi_bend_target[0] && !midi_bend_target[1] && !midi_bend_target[2] && !midi_ch[4].bend && !midi_ch[15].bend);
+    bad += check("CH1-4: pitch bend on channels 5, 10, 16 bends no part", !midi_bend_target[0] && !midi_bend_target[1] && !midi_ch[4].bend && !midi_ch[15].bend);
     queued(0xB4, 1, 99, 1); queued(0xB9, 11, 10, 2); queued(0xDF, 77, 0, 1);
-    bad += check("CH1-4: CC1 / CC11 and aftertouch on channels 5..16 reach no MOD source", !trk[2].mw && !trk[2].ex_off && !trk[2].at && !trk[0].mw && !trk[0].at);
+    bad += check("CH1-4: CC1 / CC11 and aftertouch on channels 5..16 reach no MOD source", !trk[1].mw && !trk[1].ex_off && !trk[1].at && !trk[0].mw && !trk[0].at);
     queued(0xB4, 101, 0, 1); queued(0xB4, 100, 0, 1); queued(0xB4, 6, 24, 1);
     bad += check("CH1-4: RPN on channel 5 changes nothing", midi_ch[4].semis != 24u);
     queued(0xB4, 64, 127, 1); queued(0x81, 62, 0, 1);
-    bad += check("CH1-4: a channel 5 sustain pedal does not hold channel 2's note", !gate_note(&trk[1], 62) && !midi_notes[1][62]);
+    bad += check("CH1-4: a channel 5 sustain pedal does not hold channel 2's note", !gate_note(&trk[1], 62) && !MIDI_NOTE_AT(1, 62));
     queued(0x91, 62, 100, 1); queued(0xB1, 1, 50, 1);
     queued(0xB4, 120, 0, 1); queued(0xB9, 123, 0, 2); queued(0xBF, 121, 0, 1);
     bad += check("PARTS: CC120 / CC123 / CC121 on channels that are no part's leave part 2 sounding", gate_note(&trk[1], 62) && midi_owners[1] == 1u && trk[1].mw == 50);
     queued(0xB1, 123, 0, 1); queued(0x83, 40, 0, 2);
-    bad += check("CH1-4: panic on channel 2 still works", !gate_note(&trk[1], 62) && !midi_owners[1] && !midi_owners[3]);
+    bad += check("CH1-4: panic on channel 2 still works", !gate_note(&trk[1], 62) && !midi_owners[1]);
 
     midi_test_reset(); song.sel = 1; song.g[G_ROUTE] = 1; trk[1].p[P_VOICE] = V_POLY; trk[1].p[P_SUS] = 127; events_block(CTL);
     queued(0x90, 60, 100, 1); queued(0x94, 62, 100, 2); queued(0x99, 64, 100, 1); queued(0x9F, 65, 100, 2);
@@ -649,11 +650,11 @@ static int route_test(void)
     queued(0xEF, 127, 127, 1); queued(0xB9, 1, 66, 2); queued(0xD4, 33, 0, 1);
     bad += check("SEL: bend, CC1 and aftertouch from channels 5..16 reach the selected track", midi_bend_target[1] == 512 && trk[1].mw == 66 && trk[1].at == 33);
     queued(0xB4, 64, 127, 1); queued(0x84, 62, 0, 2);
-    bad += check("SEL: channel 5 pedal holds its note", gate_note(&trk[1], 62) && (midi_notes[4][62] & MIDI_PEDAL_NOTE));
+    bad += check("SEL: channel 5 pedal holds its note", gate_note(&trk[1], 62) && (MIDI_NOTE_AT(4, 62) & MIDI_PEDAL_NOTE));
     song.g[G_ROUTE] = 0; events_block(CTL);
     bad += check("SEL -> CH1-4 releases channels 5..16's notes (pedal-held too), keeps channel 1's",
                  !gate_note(&trk[1], 62) && !gate_note(&trk[1], 64) && !gate_note(&trk[1], 65) && gate_note(&trk[1], 60) &&
-                 !midi_notes[4][62] && !midi_notes[9][64] && !midi_notes[15][65] && midi_owners[1] == 1u && !midi_ch[4].pedal);
+                 !MIDI_NOTE_AT(4, 62) && !MIDI_NOTE_AT(9, 64) && !MIDI_NOTE_AT(15, 65) && midi_owners[1] == 1u && !midi_ch[4].pedal);
     bad += check(".. and resets their bend: each part follows its own channel 1..4", !midi_bend_target[1] && !midi_ch[15].bend);
     queued(0x80, 60, 0, 1);
     bad += check("channel 1's note-off still releases its note after the switch", !any_gate() && !midi_owners[1]);
@@ -686,7 +687,7 @@ static int cc_map_test(void)
     queued(0xB0, 10, 64, 1); ok &= trk[0].p[P_PAN] == 0;
     bad += check("CC10 PAN: 0 left, 64 centre, 127 right", ok);
     queued(0xB0, 74, 127, 1); queued(0xB0, 71, 0, 1);
-    bad += check("CC74 / CC71 on ANALOG: CUT / RES", trk[0].p[P_E4] == 127 && trk[0].p[P_E5] == 0);
+    bad += check("CC74 / CC71 on ANALOG: CUT / RES", trk[0].p[P_FREEA] == UF_STEPS && trk[0].p[P_FREEB] == 0);
     queued(0xB1, 74, 64, 1);
     ok = trk[1].p[P_FREEA] == 41;
     queued(0xB1, 74, 127, 1);
@@ -695,7 +696,7 @@ static int cc_map_test(void)
     queued(0xB1, 71, 99, 1);
     bad += check("CC71 on FM6: the multimode filter's RES (0..127)", trk[1].p[P_FREEB] == 99);
     queued(0xB0, 74, 20, 1); queued(0xB0, 71, 20, 1);
-    bad += check("  ANALOG (a filter of its own): CC74 / CC71 leave the multimode filter's ids alone", trk[0].p[P_FREEA] == TP[P_FREEA].def && trk[0].p[P_FREEB] == 0);
+    bad += check("  ANALOG (cloud job J: no filter of its own any more): CC74 / CC71 are the multimode filter's CUT and RES", trk[0].p[P_FREEA] == 13 && trk[0].p[P_FREEB] == 20);
     queued(0xB0, 74, 127, 1); queued(0xB0, 71, 0, 1);
     for (e = 0, ok = 1; e < NENGINES; e++) {   /* the table names a continuous EDIT value of every engine */
         uint32_t m = MIDI_CC_ENG[e], k;
@@ -716,32 +717,32 @@ static int cc_map_test(void)
     bad += check("CC121 resets no mapped parameter (RP-015)", !memcmp(before, trk[0].p, sizeof before));
     queued(0xB0, 20, 99, 1); queued(0xB0, 76, 99, 1); queued(0xB0, 95, 99, 1);
     bad += check("CCs outside the map change nothing", !memcmp(before, trk[0].p, sizeof before));
-    memcpy(before, trk[2].p, sizeof before);
+    memcpy(before, trk[1].p, sizeof before);
     queued(0xB4, 7, 5, 1); queued(0xB9, 74, 5, 2); queued(0xBF, 91, 5, 1);
-    ok = !memcmp(before, trk[2].p, sizeof before) && trk[0].p[P_LEVEL] != 5 && trk[3].p[P_LEVEL] != 5;
+    ok = !memcmp(before, trk[1].p, sizeof before) && trk[0].p[P_LEVEL] != 5;
     bad += check("ROUT CH1-4: mapped CCs on channels 5..16 reach no part", ok);
-    song.g[G_ROUTE] = 1; song.sel = 2; events_block(CTL);
+    song.g[G_ROUTE] = 1; song.sel = 1; events_block(CTL);
     queued(0xB9, 7, 5, 2);
-    bad += check("ROUT SEL: channel 10's CC7 sets the selected track's LEVEL", trk[2].p[P_LEVEL] == 5 && trk[0].p[P_LEVEL] != 5);
+    bad += check("ROUT SEL: channel 10's CC7 sets the selected track's LEVEL", trk[1].p[P_LEVEL] == 5 && trk[0].p[P_LEVEL] != 5);
     song.g[G_ROUTE] = 0; song.sel = 0; events_block(CTL);
 
     /* AUTOMATION: the selected track armed and playing records the CC as a knob move; else it is the new base */
     midi_test_reset();
-    cut0 = trk[0].p[P_E4];
+    cut0 = trk[0].p[P_FREEA];
     song.rec = 1; seq_start(); events_block(CTL);
     queued(0xB0, 74, 20, 1);
     bad += check("armed and playing: CC74 records a motion event of CUT on the selected track", motion.count == 1u &&
-                 motion.event[0].param == P_E4 && motion.event[0].value == 20 && (motion.event[0].place >> 6) == 0u);
+                 motion.event[0].param == P_FREEA && motion.event[0].value == 13 && (motion.event[0].place >> 6) == 0u);
     queued(0xB1, 74, 20, 1);
     bad += check("  another track (channel 2, not selected): not recorded", motion.count == 1u && trk[1].p[P_FREEA] == 13);
     seq_stop(); events_block(CTL);
-    bad += check("  stopped: the patch's own CUT comes back", trk[0].p[P_E4] == cut0);
+    bad += check("  stopped: the patch's own CUT comes back", trk[0].p[P_FREEA] == cut0);
     song.rec = 0;
     queued(0xB0, 74, 77, 1);
-    bad += check("not armed: the CC is the new value, no event", trk[0].p[P_E4] == 77 && motion.count == 1u);
+    bad += check("not armed: the CC is the new value, no event", trk[0].p[P_FREEA] == 50 && motion.count == 1u);
     return bad;
 }
-/* 1.5 (Discussion #170): MIDI LEARN. GLO + D4 on, a knob picks, a CC is learned; the map in favorites.factory[14] */
+/* 1.5 (Discussion #170): MIDI LEARN. GLO + D4 on, a knob picks, a CC is learned; the map is the MIDI MAP's learned lines (this test runs on the legacy map: tests/midimap_legacy.csv; learned onto numbers it leaves free, 26 and 27 for 20 and 21, since a taken number is refused now) */
 static int ml_entry(uint32_t cc, uint32_t k, uint32_t id) { return ml_cc_of(k, id) == cc + 1u; }
 static int learn_test(void)
 {
@@ -749,8 +750,8 @@ static int learn_test(void)
     uint32_t i;
     int16_t before[P_COUNT], cut, lvl;
     midi_test_reset();
-    bad += check("MIDI LEARN: nothing learned at power-on (every older setting: all 0)", !ui.ml.on && !ml_count() &&
-                 !ml_tab[0] && !memcmp(ml_tab, ml_tab + 1, 31));
+    bad += check("MIDI LEARN: nothing learned at power-on (the map is the shipped list)", !ui.ml.on && !ml_count() &&
+                 !memcmp(midi_map, MIDI_MAP_DEFAULTS, sizeof midi_map));
     memcpy(before, trk[0].p, sizeof before);
     queued(0xB0, 20, 99, 1);
     bad += check("  an unlearned CC changes nothing (as before)", !memcmp(before, trk[0].p, sizeof before));
@@ -768,92 +769,102 @@ static int learn_test(void)
 
     /* a knob picks (as it edits), a CC is learned */
     frames(300);                                                     /* (#39: the knobs quiet after a layer) */
-    go_title("EDIT 2");
-    cut = trk[0].p[P_E4];
+    go_title("MULTI FILTER 1/2");                                   /* (cloud job J: filter 1's CUT and RES are every engine's K1, K2) */
+    cut = trk[0].p[P_FREEA];
     turn(EN_K1, -3);
-    ok = ui.ml.pick && ui.ml.trk == 0u && ui.ml.id == P_E4 && trk[0].p[P_E4] == cut - 3 && ml_arm;
-    { char b[24]; ml_line(b); ok &= str_eq(b, "T1 CUT: SEND A CC"); }
+    ok = ui.ml.pick && ui.ml.trk == 0u && ui.ml.id == P_FREEA && trk[0].p[P_FREEA] == cut - 3 && ml_arm;
+    { char b[40]; ml_line(b); ok &= str_eq(b, "T1 CUTOFF: SEND A CC"); }
     queued(0xB0, 1, 99, 1); queued(0xB0, 64, 127, 1); queued(0xB0, 64, 0, 1); queued(0xB0, 0, 5, 1);
     frame();
     ok &= !ml_count() && ui.ml.pick;                                   /* (CC1, CC64, CC0: never learned) */
-    queued(0xB0, 20, 100, 1); frame();
-    ok &= ml_count() == 1u && ml_entry(20, 0, P_E4) && msg_is("CC20 -> T1 CUT") && !ui.ml.pick && !ml_arm;
-    ok &= trk[0].p[P_E4] == cut - 3;                                /* (the learning CC sets nothing itself) */
-    { char b[24]; ml_line(b); ok &= str_eq(b, "LEARN: TURN A KNOB"); }
-    bad += check("  EDIT 2 KNOB 1 picks T1 CUT; CC1 / CC64 / CC0 are passed over; CC20 is learned", ok);
-    queued(0xB0, 20, 127, 1);
-    ok = trk[0].p[P_E4] == 127;
-    queued(0xB1, 20, 0, 1);                                          /* (channel 2: part 2's, still T1 CUT) */
-    ok &= trk[0].p[P_E4] == 0;
+    queued(0xB0, 26, 100, 1); frame();
+    ok &= ml_count() == 1u && ml_entry(26, 0, P_FREEA) && msg_is("CC26 -> T1 CUTOFF") && !ui.ml.pick && !ml_arm;
+    ok &= trk[0].p[P_FREEA] == cut - 3;                                /* (the learning CC sets nothing itself) */
+    { char b[40]; ml_line(b); ok &= str_eq(b, "LEARN: TURN A KNOB"); }
+    bad += check("  EDIT 1 KNOB 2 picks T1 CUT; CC1 / CC64 / CC0 are passed over; CC26 is learned", ok);
+    queued(0xB0, 26, 127, 1);
+    ok = trk[0].p[P_FREEA] == UF_STEPS;
+    queued(0xB1, 26, 0, 1);                                          /* (channel 2: part 2's, still T1 CUT) */
+    ok &= trk[0].p[P_FREEA] == 0;
     turn(EN_K1, 1);
-    { char b[24]; ml_line(b); ok &= str_eq(b, "T1 CUT = CC20"); }
-    bad += check("  CC20 sets T1 CUT on any channel ROUT hears; the knob again shows its CC", ok);
-    song.g[G_ROUTE] = 0; queued(0xB9, 20, 64, 1);
-    bad += check("  ROUT CH1-4: CC20 on channel 10 is ignored as before", trk[0].p[P_E4] == 1);
+    { char b[40]; ml_line(b); ok &= str_eq(b, "T1 CUTOFF = CC26"); }
+    bad += check("  CC26 sets T1 CUT on any channel ROUT hears; the knob again shows its CC", ok);
+    song.g[G_ROUTE] = 0; queued(0xB9, 26, 64, 1);
+    bad += check("  ROUT CH1-4: CC26 on channel 10 is ignored as before", trk[0].p[P_FREEA] == 1);
 
-    /* the standard map: a learned CC no longer reaches it; GLO's LEVEL knobs pick a part's LEVEL */
-    go_title("GLO");
-    turn(EN_K4, 2);
+    /* the standard map: a learned CC no longer reaches it; the QUICK GLO layer's LEVEL knobs pick a part's LEVEL (0.2.21: hold GLO; the GLO page is gone) */
+    go_title("TEMPO");
+    btn_down(B_GLO); frames(640);
+    turn(EN_K3, 2);                                     /* (0.2.24: K3 is LEVEL 2; K4 PAN 2) */
     ok = ui.ml.pick && ui.ml.trk == 1u && ui.ml.id == P_LEVEL;
     frames(300);
     queued(0xB0, 74, 10, 1); frame();
-    ok &= ml_entry(74, 1, P_LEVEL) && msg_is("CC74 -> T2 LVL");
-    cut = trk[0].p[P_E4];
+    ok &= !ml_entry(74, 1, P_LEVEL) && msg_is("CC74 IS CUTOFF") && ui.ml.pick && midi_map[74] == MIDI_MAP_DEFAULTS[74];   /* (a taken number is refused, whose it is on the footer, the pick stays) */
+    cut = trk[0].p[P_FREEA];
+    ok &= ml_learn(74, 1, P_LEVEL) == 3u && ml_learn_f(74, 1, P_LEVEL, 1, 0) == 1u;   /* (force takes it: the learn is the user's) */
+    ui.ml.pick = 0; ml_arm = 0;                                          /* (the learn is done, as ml_poll leaves it) */
     queued(0xB0, 74, 127, 1);
-    ok &= trk[1].p[P_LEVEL] == TP[P_LEVEL].max && trk[0].p[P_E4] == cut;
-    bad += check("  GLO KNOB 4 (LEVEL 2) picks T2 LEVEL; CC74 learned: T2 LEVEL, no more T1 CUT (the standard map)", ok);
+    ok &= ml_entry(74, 1, P_LEVEL) && trk[1].p[P_LEVEL] == TP[P_LEVEL].max && trk[0].p[P_FREEA] == cut;
+    bad += check("  QUICK GLO KNOB 3 (LEVEL 2) picks T2 LEVEL; CC74 is refused (CC74 IS CUTOFF), forced: T2 LEVEL, no more T1 CUT (the standard map)", ok);
+    ml_off(); ui.ml.on = 1;
+    duell_mode_req = DM_STEREO;                         /* (PAN has no card in DUEL) */
+    frames(300);
+    turn(EN_K2, 2);
+    ok = ui.ml.pick && ui.ml.trk == 0u && ui.ml.id == P_PAN;
+    frames(600);
+    bad += check("  QUICK GLO KNOB 2 (PAN 1, 0.2.24) picks T1 PAN", ok);
     ml_off(); ui.ml.on = 1;
     frames(300);
-    turn(EN_K2, 2);                                     /* (a nudge: nothing fires, nothing picked) */
-    frames(600);
-    turn(EN_K2, MORPH_DET);
-    ok = ui.ml.pick && ui.ml.trk == 1u && ui.ml.id == P_MUTE;
-    frames(600);
-    turn(EN_K2, -MORPH_DET);
+    btn_down(B_OCTUP); frame(); btn_up(B_OCTUP); frames(64);   /* (0.2.24: OCT+ with GLO held = MUTE 2) */
+    ok = ui.ml.pick && ui.ml.trk == 1u && ui.ml.id == P_MUTE && trk[1].p[P_MUTE] == 1;
     trk[1].p[P_MUTE] = 0;
-    bad += check("  GLO KNOB 2 (MUTE 2) picks T2 MUTE", ok);
+    bad += check("  QUICK GLO OCT+ (MUTE 2, 0.2.24) picks T2 MUTE and mutes it", ok);
+    btn_up(B_GLO); fm1_in.buttons = 0; frames(700);
 
     /* one CC one parameter, a parameter one CC */
-    go_title("EDIT 2");
+    go_title("MULTI FILTER 1/2");
     turn(EN_K1, 1);
-    queued(0xB0, 21, 0, 1); frame();
-    ok = ml_count() == 2u && ml_entry(21, 0, P_E4) && !ml_entry(20, 0, P_E4);
-    queued(0xB0, 20, 99, 1);
-    ok &= trk[0].p[P_E4] != 99;
+    queued(0xB0, 27, 0, 1); frame();
+    ok = ml_count() == 2u && ml_entry(27, 0, P_FREEA) && !ml_entry(26, 0, P_FREEA);
+    queued(0xB0, 26, 99, 1);
+    ok &= trk[0].p[P_FREEA] != 99;
     turn(EN_K2, 1);                                                  /* T1 RES */
-    queued(0xB0, 21, 0, 1); frame();
-    ok &= ml_count() == 2u && ml_entry(21, 0, P_E5) && !ml_cc_of(0, P_E4);
-    bad += check("  learning again replaces: CUT on CC21 drops CC20; CC21 on RES drops CUT's", ok);
+    queued(0xB0, 27, 0, 1); frame();
+    ok &= ml_count() == 2u && ml_entry(27, 0, P_FREEA) && !ml_entry(27, 0, P_FREEB) && ui.ml.pick && msg_is("CC27 IS T1 CUTOFF");   /* (CUT keeps CC27: the number is taken) */
+    ml_drop(27, NTRK, P_COUNT); ml_heard = 0; ml_arm = 1;                  /* (CUT's CC27 cleared: the number is free) */
+    queued(0xB0, 27, 0, 1); frame();
+    ok &= ml_count() == 2u && ml_entry(27, 0, P_FREEB) && !ml_cc_of(0, P_FREEA);
+    bad += check("  learning again replaces: CUT on CC27 drops CC26; CC27 on RES is refused (CC27 IS T1 CUTOFF), free once CUT's is cleared", ok);
 
     /* OCT- clears the picked parameter's CC; no octave */
     turn(EN_K2, -1);
     press(B_OCTDN);
-    ok = !ml_cc_of(0, P_E5) && msg_is("T1 RES CC CLEARED") && song.octave == 0 && ui.ml.on;
+    ok = !ml_cc_of(0, P_FREEB) && msg_is("T1 RES CC CLEARED") && song.octave == 0 && ui.ml.on;
     press(B_OCTDN);
     ok &= msg_is("NO CC TO CLEAR") && song.octave == 0;
     memcpy(before, trk[0].p, sizeof before);
-    queued(0xB0, 21, 50, 1);
+    queued(0xB0, 27, 50, 1);
     ok &= !memcmp(before, trk[0].p, sizeof before) && ml_count() == 1u;
     bad += check("  OCT- clears the picked parameter's CC (OCT- again: none), no octave", ok);
 
     /* review 1.5: OCT- on one parameter keeps CC16 learned elsewhere (16 = ML_N was the "no CC" mark) */
-    ml_learn(16, 2, P_LEVEL);
-    ml_learn(30, 0, P_E5);
+    ml_learn(16, 1, P_PAN);
+    ml_learn(30, 0, P_FREEB);
     turn(EN_K2, -1);                                                   /* T1 RES picked again */
     press(B_OCTDN);                                                    /* T1 RES picked: drops CC30 only */
-    ok = ml_entry(16, 2, P_LEVEL) && !ml_cc_of(0, P_E5) && msg_is("T1 RES CC CLEARED");
+    ok = ml_entry(16, 1, P_PAN) && !ml_cc_of(0, P_FREEB) && msg_is("T1 RES CC CLEARED");
     press(B_OCTDN);
-    ok &= ml_entry(16, 2, P_LEVEL) && msg_is("NO CC TO CLEAR");
+    ok &= ml_entry(16, 1, P_PAN) && msg_is("NO CC TO CLEAR");
     ml_drop(16, NTRK, P_COUNT);
     bad += check("  OCT- keeps CC16 learned on another parameter", ok);
 
     /* full: ML_N; a CC never learned */
     for (i = 0; i < ML_N - 1u; i++)
-        ml_learn(40u + i, 2, P_ATK + i);
-    turn(EN_K1, 1);
+        ml_learn(40u + i, 1, P_ATK + i);
+    turn(EN_K2, 1);
     queued(0xB0, 90, 5, 1); frame();
-    ok = msg_is("LEARN FULL") && ml_count() == ML_N && !ml_cc_of(0, P_E4);
-    ok &= ml_learn(64, 0, P_E4) == 2u && ml_learn(1, 0, P_E4) == 2u && ml_learn(123, 0, P_E4) == 2u;
+    ok = msg_is("LEARN FULL") && ml_count() == ML_N && !ml_cc_of(0, P_FREEA);
+    ok &= ml_learn(64, 0, P_FREEA) == 2u && ml_learn(1, 0, P_FREEA) == 2u && ml_learn(123, 0, P_FREEA) == 2u;
     bad += check("  16 learned: the 17th says LEARN FULL, nothing replaced; CC1 / 64 / 123 are never learned", ok);
 
     /* OCT+: done; a CC is no longer taken */
@@ -880,28 +891,27 @@ static int learn_test(void)
     memcpy(before, trk[1].p, sizeof before);
     go_title("AMP ENV");
     queued(0xB0, 74, 3, 1);
-    ok &= !memcmp(before, trk[1].p, sizeof before) && trk[0].p[P_E4] == 3;   /* (CC74: the standard map again) */
+    ok &= !memcmp(before, trk[1].p, sizeof before) && trk[0].p[P_FREEA] == 2;   /* (CC74 3 over the 0..82 dial: 2; the standard map again) */
     go_title("MIDI LEARN"); turn(EN_K2, 1);
     ok &= msg_is("NOTHING LEARNED");
     bad += check("GLO > MIDI LEARN KNOB 2 right: every CC cleared (LEARN CLEARED; none: NOTHING LEARNED)", ok);
 
-    /* the stored codes with 1.5's parameters (the INSERT 96..100, TYPE 101, ESYNC 102, P_E0 103): a common parameter
-     * id + 1, below ML_E0; an engine one ML_E0 + k whatever P_E0 is; every id back as it went in */
-    ok = P_E0 < ML_E0 && P_COUNT - P_E0 == 8u;
-    for (i = 0; i < P_COUNT; i++)
-        ok &= ml_id(ml_code(i)) == i && (i < P_E0 ? ml_code(i) == i + 1u && ml_code(i) < ML_E0 : ml_code(i) == ML_E0 + i - P_E0);
-    ok &= ml_id(0) == P_COUNT;                              /* (no such parameter; between P_E0 and ML_E0 too, if there is room) */
-    for (i = P_E0 + 1u; i < ML_E0; i++) ok &= ml_id(i) == P_COUNT;
-    memset(favorites.factory[14], 0, 32);
-    ok &= ml_learn(30, 1, P_IMIX) == 1u && ml_learn(31, 2, P_ESYNC) == 1u && ml_learn(33, 3, P_E0 + 3u) == 1u;
-    ok &= ml_get(0) == (30u | 1u << 7 | (P_IMIX + 1u) << 9) && ml_get(1) == (31u | 2u << 7 | (P_ESYNC + 1u) << 9) &&
-          ml_get(2) == (33u | 3u << 7 | (ML_E0 + 3u) << 9);
+    /* the lines of the map hold every parameter id as it went in (a common id, an engine one P_E0 + k, the INSERT, ESYNC), on one of the two tracks: the 7-bit codes of the old
+     * learn table (ML_E0) are gone with it */
+    map_reset();
+    ok = ml_learn(30, 1, P_IMIX) == 1u && ml_learn(31, 0, P_ESYNC) == 1u && ml_learn(33, 1, P_E0 + 3u) == 1u;
+    ok &= midi_map[30] == MAP_LINE(P_IMIX, 1, MAP_W_LEARNED) && midi_map[31] == MAP_LINE(P_ESYNC, 0, MAP_W_LEARNED) &&
+          midi_map[33] == MAP_LINE(P_E0 + 3u, 1, MAP_W_LEARNED);
     queued(0xB0, 30, 0, 1);
     queued(0xB0, 31, 127, 1);
     queued(0xB0, 33, 127, 1);
-    ok &= trk[1].p[P_IMIX] == 0 && trk[2].p[P_ESYNC] == 1 && trk[3].p[P_E0 + 3u] == param_desc_of(eng_idx(trk[3].eng_req), P_E0 + 3u)->max;
-    bad += check("MIDI LEARN codes: common ids + 1 (INSERT MIX, ESYNC), engine ML_E0 + k; all ids round trip", ok);
-    memset(favorites.factory[14], 0, 32);
+    ok &= trk[1].p[P_IMIX] == 0 && trk[0].p[P_ESYNC] == 1 && trk[1].p[P_E0 + 3u] == param_desc_of(eng_idx(trk[1].eng_req), P_E0 + 3u)->max;
+    for (i = 0; i < P_COUNT; i++) {
+        map_reset();
+        ok &= ml_learn(30, 0, i) == 1u && MAP_TARGET(midi_map[30]) == i && ml_cc_of(0, i) == 31u;
+    }
+    bad += check("MIDI LEARN lines: every parameter id as it went in, one of the two tracks each (the INSERT MIX, ESYNC, an engine id)", ok);
+    map_reset();
     return bad;
 }
 /* DUELL: PLAY STOP. A short press toggles at once; a second press within 300 ms or a hold of 0.6 s is STOP ALL (seq.c stop_all): transport
@@ -998,9 +1008,56 @@ static int stop_all_test(void)
     bad += stop_all_check("  .. and everything is stopped");
     return bad;
 }
+/* cloud job G (EDITABLE B): at the fader's B end only the UI's knob edits End B. A MIDI CC to a sound value (the standard map, and a learned one) edits A, as before. */
+static int editb_midi_test(void)
+{
+    int bad = 0, ok;
+    xb_edit_t ed[XB_MAX];
+    int8_t b0[P_COUNT];
+    int16_t before[P_COUNT];
+    uint32_t pid;
+    midi_test_reset();
+    morph_set_amount(40);
+    morph_roll(1);
+    morph_set_fader(127);
+    memcpy(b0, morph_cur(&mph[0], 1), P_COUNT);
+    memcpy(before, trk[0].p, sizeof before);
+    ok = morph_b_mode(0, P_FREEA) == 1u;
+    queued(0xB0, 74, 100, 1);
+    bad += check("EDITABLE B: at fader 127 a CC (the standard map, CC74 = CUT) writes A: the stored value moves, End B and its list are as they were",
+                 ok && trk[0].p[P_FREEA] != before[P_FREEA] && !morph_edits(0, ed) && !memcmp(b0, morph_cur(&mph[0], 1), P_COUNT));
+    midi_test_reset();
+    morph_set_amount(40);
+    morph_roll(1);
+    morph_set_fader(0);
+    go_title("MIDI LEARN");
+    turn(EN_K1, 1);
+    frames(300);
+    go_title("EDIT 1");
+    turn(EN_K2, -3);
+    pid = ui.ml.id;                                      /* (the knob's parameter: whichever the page's second card is) */
+    queued(0xB0, 26, 100, 1);
+    frame();
+    ok = ml_count() == 1u && ml_entry(26, 0, pid);
+    ml_off();
+    morph_set_fader(127);
+    frames(32);
+    memcpy(b0, morph_cur(&mph[0], 1), P_COUNT);
+    memcpy(before, trk[0].p, sizeof before);
+    queued(0xB0, 26, 3, 1);
+    bad += check("  .. a learned CC (CC26 -> T1, EDIT 1's second card) the same: A changes, End B and its list do not", ok && trk[0].p[pid] != before[pid] && !morph_edits(0, ed) && !memcmp(b0, morph_cur(&mph[0], 1), P_COUNT));
+    before[pid] = trk[0].p[pid];                      /* (what the CC left in A) */
+    go_title("EDIT 1");
+    frames(300);
+    turn(EN_K2, 4);
+    bad += check("  .. while the knob of the same value, at 127, is End B's (one hand-set value; A as the CC left it)",
+                 morph_edits(0, ed) == 1u && ed[0].wid == pid && trk[0].p[pid] == before[pid]);
+    return bad;
+}
+
 int main(void)
 {
     int bad = controls_test() + sustain_test() + ownership_test() + clock_test(1) + clock_test(2) + clock_arp_and_boundaries() +
-              arp_ext_stop_test() + arp_ext_clock_test() + auto_clock_test() + usb_burst_test() + drain_test() + route_test() + cc_map_test() + learn_test() + stop_all_test();
+              arp_ext_stop_test() + arp_ext_clock_test() + auto_clock_test() + usb_burst_test() + drain_test() + route_test() + cc_map_test() + learn_test() + editb_midi_test() + stop_all_test();
     printf("%s\n", bad ? "MIDI CONTROL/CLOCK TEST FAILED" : "MIDI control/clock integration tests passed"); return bad != 0;
 }

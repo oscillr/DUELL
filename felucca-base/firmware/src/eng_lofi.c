@@ -5,17 +5,17 @@
  *
  * WAVE = WRAM plays a 32-sample, 4-bit wave table, read step-wise (no interpolation);
  * DUTY then picks one of 16 built-in tables (DUTY / 8, shown as "WAV#" with its name).
- * CHIP = STEP: a 4-bit stepped volume envelope with a frame-clock divider replaces the
+ * BITS = STEP: a 4-bit stepped volume envelope with a frame-clock divider replaces the
  * ADSR curve (lofi_amp), the triangle becomes a 32-step 4-bit staircase, the pulse
  * duties are 12.5 / 25 / 50 / 75 %; CRSH then sets the envelope (shown as "DCY").
  * SHP (the track's shape input: ENV / LFO DEST SHP, the matrix's SHP; DUELL): pulse-width modulation around DUTY (PLS,
  * STEP's pulse), smooth, not in DUTY's steps (+-64 = +-12.5 % of the period, as ANALOG's PW; 6.25 .. 93.75 % at most). Not the
  * WRAM table: a table switch is a step, and the morph fades the SHP depths (tests/morph_test.c: no cliff). Centre
  * (64 << 8): DUTY as set, bit for bit. */
-static const char *const N_CHIP[] = {"4BIT", "4B/2", "8BIT", "1BIT", "STEP"};
+static const char *const N_BITS[] = {"4BIT", "4B/2", "8BIT", "1BIT", "STEP"};
 static const char *const N_RWAVE[] = {"PLS", "TRI", "SAW", "NOIS", "WRAM"};
 static const char *const N_RARP[] = {"OFF", "OCT", "MAJ", "MIN"};
-enum { CHIP_4BIT, CHIP_4B2, CHIP_8BIT, CHIP_1BIT, CHIP_STEP };
+enum { BITS_4BIT, BITS_4B2, BITS_8BIT, BITS_1BIT, BITS_STEP };
 enum { RW_PLS, RW_TRI, RW_SAW, RW_NOIS, RW_WRAM };
 
 /* wave RAM: 16 tables x 32 samples x 4 bits, two samples a byte (high nibble first);
@@ -43,7 +43,7 @@ static const uint8_t WRAM[16][16] = {
 };
 #define Q4 2184                  /* one 4-bit step (2 * 2184 * 7.5 = 32760) */
 
-/* CHIP = STEP: CRSH as the envelope, CRSH / 4 = b: 0 constant volume, 1..16 a one-shot decay
+/* BITS = STEP: CRSH as the envelope, CRSH / 4 = b: 0 constant volume, 1..16 a one-shot decay
  * (divider period 0..15), 17..31 a looping one (period 1..15) */
 static const char *const N_DCY[] = {"CONST", "D0", "D1", "D2", "D3", "D4", "D5", "D6", "D7", "D8", "D9", "D10",
                                     "D11", "D12", "D13", "D14", "D15", "L1", "L2", "L3", "L4", "L5", "L6", "L7",
@@ -55,7 +55,7 @@ static const param_desc_t *lofi_desc(const track_t *t, uint32_t k)
 {
     if (k == 2u && t->p[P_E1] == RW_WRAM)
         return &LOFI_WAVNUM;
-    if (k == 3u && t->p[P_E0] == CHIP_STEP)
+    if (k == 3u && t->p[P_E0] == BITS_STEP)
         return &LOFI_DCY;
     return 0;
 }
@@ -78,14 +78,14 @@ static void lofi_note_on(track_t *t, voice_t *v)
     v->s[7] = 0;
 }
 
-/* CHIP = STEP: the voice amplitude is the stepped envelope, not the ADSR curve. The ADSR only
+/* BITS = STEP: the voice amplitude is the stepped envelope, not the ADSR curve. The ADSR only
  * gates: held, it is kept at full; after note-off the staircase keeps running (as the chip's
  * envelope never sees a note-off) and the voice is cut when the ADSR release has fallen to 1 %
  * (about the REL time; REL 0 cuts at once) or a one-shot decay has reached 0. */
 static int32_t lofi_amp(track_t *t, voice_t *v, int32_t adsr)
 {
     int32_t b = t->p[P_E3] >> 2, vol = v->s[6] & 15, div = (v->s[6] >> 4) & 15;
-    if (t->p[P_E0] != CHIP_STEP)
+    if (t->p[P_E0] != BITS_STEP)
         return adsr;
     if (!v->active)                                     /* the ADSR ended it (or the voice was given up) */
         return 0;
@@ -137,11 +137,11 @@ static inline __attribute__((always_inline)) void lofi_body(track_t *t, voice_t 
     static const uint8_t STEP_DUTY[4] = {1, 2, 4, 6};   /* eighths: 12.5 / 25 / 50 / 75 % */
     const int16_t *p = t->p;
     uint32_t chip = (uint32_t)p[P_E0], wave = (uint32_t)p[P_E1], i;
-    uint32_t stepc = chip == CHIP_STEP;
+    uint32_t stepc = chip == BITS_STEP;
     uint32_t duty = stepc ? 0x20000000u * STEP_DUTY[(p[P_E2] / 32) & 3]
                           : 0x20000000u * (1u + (uint32_t)p[P_E2] / 32u);   /* 12.5 / 25 / 37.5 / 50 % */
     int32_t crush = stepc ? 0 : p[P_E3];                /* STEP: CRSH is the envelope */
-    int32_t bits = chip == CHIP_8BIT ? 8 : chip == CHIP_1BIT ? 1 : 4;
+    int32_t bits = chip == BITS_8BIT ? 8 : chip == BITS_1BIT ? 1 : 4;
     int32_t hold = 1 + crush / 8 + (chip == 1u ? 1 : 0);
     int32_t lpk = 3000 + (p[P_E7] << 8) + (m->cutoff > 0 ? m->cutoff : 0);
     static const int8_t ARPS[4][3] = {{0, 0, 0}, {0, 12, 0}, {0, 4, 7}, {0, 3, 7}};
@@ -208,8 +208,8 @@ static inline __attribute__((always_inline)) void lofi_body(track_t *t, voice_t 
                 s = (ph0 < duty ? 32767 : -32768) - ((int32_t)(duty >> 16) - 32768);
                 break;
             }
-            if (xf && mxf.w[MX_E0 + 1u] && wave <= RW_SAW)
-                s += (int32_t)(((int64_t)(lofi_basic(mxf.b[MX_E0 + 1u], ph0, duty, stepc) - s) * mxf.w[MX_E0 + 1u]) >> 15);
+            if (xf && MXF(t).w[MX_E0 + 1u] && wave <= RW_SAW)
+                s += (int32_t)(((int64_t)(lofi_basic(MXF(t).b[MX_E0 + 1u], ph0, duty, stepc) - s) * MXF(t).w[MX_E0 + 1u]) >> 15);
                                                         /* (64 bit: a narrow pulse minus its mean against a saw is up to ~90000 apart, x the weight
                                                          * overflowed 32 bits from a weight of ~0.73: the cliff the owner heard near 80 %) */
             if (q)                                      /* rounded, not floored (floor = DC) */
@@ -234,7 +234,7 @@ static __attribute__((noinline)) void lofi_render_m(track_t *t, voice_t *v, int3
 }
 static void lofi_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const vmod_t *m)
 {
-    if (mxf.on && mxf.w[MX_E0 + 1u])
+    if (MXF(t).on && MXF(t).w[MX_E0 + 1u])
         lofi_render_m(t, v, out, n, m);                 /* DUELL MORPH: a WAVE cross-fade */
     else
         lofi_body(t, v, out, n, m, 0);
@@ -252,9 +252,9 @@ static const preset_t LOFI_PRESETS[] = {
 
 static const engine_t ENG_LOFI = {
     .name = "LOFI",
-    .page_title = {"CHIP", "MOTN"},
+    .page_title = {"LOFI", "MOTN"},
     .edit = {
-        {"CHIP", F_ENUM, 0, 4, 0, N_CHIP, 0},
+        {"BITS", F_ENUM, 0, 4, 0, N_BITS, 0},
         {"WAVE", F_ENUM, 0, 4, 0, N_RWAVE, 0},
         {"DUTY", F_INT, 0, 127, 64, 0, 0},              /* WRAM: the table, DUTY / 8 (lofi_desc) */
         {"CRSH", F_PCT, 0, 127, 0, 0, 0},               /* STEP: the envelope (lofi_desc) */

@@ -1,0 +1,56 @@
+# A short suite for the host test (tests/bench_run_test.py): the runner against the Mac twin. Not for the unit.
+suite QUICK
+
+test SILENCE  2 s of nothing
+tail 2
+
+test PATCH-61  #61 EVOLVING PAD, a chord, aftertouch
+mode STEREO
+load patch 1 #61 "EVOLVING PAD"
+at 0.0  chord C3 E3 G3 vel 100
+at 1.0  aftertouch 0 127 over 1
+at 3.0  release
+tail 1
+measure 0.5 3.0
+
+test WRONG-NAME  a name that is not the unit's: SKIPPED with the reason
+mode STEREO
+load patch 1 #61 "ANOTHER NAME"
+at 0.0  note C3 vel 100 len 1
+tail 1
+
+test FLASH-WRITE  a settings save at 1 s
+load multi 7 "FINAL REEL"
+mode LAYER
+at 0.0  chord C3 E3 G3 B3 vel 90
+at 1.0  save-test
+at 3.0  release
+tail 1
+
+test MATRIX-SH  a matrix slot set during the test
+mode STEREO
+load patch 1 #61 "EVOLVING PAD"
+matrix 1 slot 8 LFO2 S&H CUT +63 rate 100
+at 0.0  chord C3 G3 vel 90
+at 2.0  release
+tail 1
+
+test RUN-LEGATO  a run of notes
+mode STEREO
+load patch 1 #24 "REESE BASS"
+at 0.2  run C3 C4 step 0.03 legato
+tail 2
+
+cycle CYC period 4
+at 0.0  chord C3 E3 G3 vel 90
+at 2.0  release
+at 2.0  chord A2 C3 E3 vel 90
+at 3.5  release
+end
+
+test SOAK-SHORT  a soak of 20 s, the RAM check read every 5 s
+load multi 7 "FINAL REEL"
+mode LAYER
+soak 20 repeat CYC
+check 5
+tail 1

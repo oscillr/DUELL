@@ -95,10 +95,11 @@ static void js_descs(const param_desc_t *d, uint32_t n)
 }
 
 static const char *const FAMN[] = {"HOME", "ENV", "LFO", "FX", "SCL", "EDIT", "GLO", "SAVE", "ARP", "SEQ", "TRK"};
-static const char *const SCN[] = {"TRACK", "GLOBAL", "ENGINE", "STEP", "TRK", "MORPH", "MODE", "TEST", "SCALE", "MIDI", "PERF"};
+static const char *const SCN[] = {"TRACK", "GLOBAL", "ENGINE", "STEP", "TRK", "MORPH", "MODE", "TEST", "SCALE", "MIDI", "PERF", "MODS", "FXSUM", "GMIX"};   /* (every SC_* of params.c, MODS and FXSUM too: an index past the table read whatever string lay after it) */
 static const char *const GRN[] = {"NONE", "ADSR", "LFO", "STEPS", "ARP", "SCALE", "FX", "ROLL", "BROWSE", "SLOTS", "USER", "TRK", "SLCR", "MOD", "PATS",
                                   "TOOLS", "CHORD", "SLICES", "EVENTS", "FMOP", "FMOP2", "FMENV", "INS", "ENGINE", "MORPH", "MORPHSET", "MODE", "GLO",
-                                  "MIDI", "MLEARN", "SCHAIN", "TEST", "TEMPO", "PERF", "MODS"};   /* (every GR_* of params.c: MODS was missing, so MODULES' name was whatever string lay after the table) */
+                                  "MIDI", "MLEARN", "SCHAIN", "TEST", "TEMPO", "PERF", "MODS", "MSTG", "FXSUM", "EQ", "COMP", "FILT", "SUB", "CYCLE"};   /* (every GR_* of params.c: MODS was missing, so MODULES' name was whatever string lay after the table; 0.2.25: FXSUM was missing too, then EQ COMP FILT) */
+_Static_assert(sizeof GRN / sizeof GRN[0] == GR_CYCLE + 1u && sizeof SCN / sizeof SCN[0] == SC_GMIX + 1u, "editordump: a name for every GR_* and SC_* (0.2.25)");
 
 /* page_visible (ui.c), by the page's ids: which engines show the page. "all" or a list of engine names */
 static void js_vis(const page_t *pg)
@@ -108,9 +109,9 @@ static void js_vis(const page_t *pg)
     for (e = 0; e < NENGINES; e++) {
         const engine_t *en = ENGINES[e];
         int ok = 1;
-        if (pg->id[0] == P_FTYPE)
+        if (pg->graph == GR_FILT && pg->id[0] == P_E4)   /* VCF: ANALOG's own filter (its TYPE card is retired) */
             ok = en == &ENG_ANALOG;
-        else if (pg->id[0] == P_FREEA && pg->id[3] == P_FREED)
+        else if ((pg->id[0] == P_FREEA && pg->id[3] == P_FREED) || (pg->scope == SC_TRACK && pg->id[0] == P_KTRK))
             ok = en->ufilt != 0;
         else if (pg->scope == SC_TRACK && pg->id[0] == P_E4)
             ok = en == &ENG_TRIO;
@@ -131,7 +132,7 @@ static void js_vis(const page_t *pg)
 #define PROJ_NAME_LEN 12u
 /* the factory multis' names: the record's name at MU_NAME_AT */
 /* (the same typedef as src/gfx.c: the generated build/gen/ui_palettes.h is the one table both read) */
-typedef struct { const char *name; uint16_t bg[2], bgl, surf[2], text, mid, line[2], raise[2], rec, c[4], r[4], a[4]; uint8_t hc; } ui_pal_t;
+typedef struct { const char *name; uint16_t bg[2], bgl, surf[2], text, mid, line[2], raise[2], rec, c[4], r[4], a[4], g, ga; uint8_t hc; } ui_pal_t;   /* (as gfx.c; 0.2.24: g / ga) */
 #include "ui_palettes.h"
 /* the UI palettes (src/gfx.c UI_PALETTES, RGB565 as "#rrggbb"): the editor takes the unit's COLOR setting (MENU id 0 = the palette index) and maps it to its own colours */
 static void js_rgb(uint16_t c)
@@ -165,6 +166,8 @@ static void js_palettes(void)
         printf(",\"c\":"); js_rgbs(p->c, 4);
         printf(",\"r\":"); js_rgbs(p->r, 4);
         printf(",\"a\":"); js_rgbs(p->a, 4);
+        printf(",\"g\":"); js_rgb(p->g);                /* 0.2.24: the GLOBAL colour and its accent (the editor's global column) */
+        printf(",\"ga\":"); js_rgb(p->ga);
         printf(",\"hc\":%d}", p->hc);
     }
     printf("]}");
@@ -193,12 +196,12 @@ int main(void)
     js_str(DUELL_VERSION_STR);
     printf(",\"P_COUNT\":%d,\"G_COUNT\":%d,\"P_E0\":%d,\"NSTEP\":%d,\"NENGINES\":%d,\"ESYNC_N\":%d,\n", P_COUNT, G_COUNT, P_E0, NSTEP, NENGINES, (int)ESYNC_N);
     printf("\"ID\":{\"P_LEVEL\":%d,\"P_PAN\":%d,\"P_MUTE\":%d,\"P_ESYNC\":%d,\"P_ATK\":%d,\"P_DEC\":%d,\"P_REL\":%d,\"P_E2ATK\":%d,\"P_E2DEC\":%d,\"P_E2REL\":%d,"
-           "\"P_ITYPE\":%d,\"P_IA\":%d,\"P_IMIX\":%d,\"P_ATGT\":%d,\"P_DKSRC\":%d,\"P_DKRATE\":%d,\"P_DKTHR\":%d,\"P_DKNOTE\":%d,\"P_LSYNC\":%d,\"P_L2SYNC\":%d,"
+           "\"P_ITYPE\":%d,\"P_IA\":%d,\"P_IMIX\":%d,\"P_ATGT\":%d,\"P_DKSRC\":%d,\"P_DKRATE\":%d,\"P_DKTHR\":%d,\"P_CUT2\":%d,\"P_RES2\":%d,\"P_DRV2\":%d,\"P_TWTYPE\":%d,\"P_BLEND\":%d,\"P_DKDEP\":%d,\"P_DKATK\":%d,\"P_DKRLS\":%d,\"P_DKCRV\":%d,\"P_EQLG\":%d,\"P_EQMG\":%d,\"P_EQHG\":%d,\"P_EQLF\":%d,\"P_EQMF\":%d,\"P_EQMQ\":%d,\"P_EQHF\":%d,\"P_M4SRC\":%d,\"P_LSYNC\":%d,\"P_L2SYNC\":%d,"
            "\"P_M1SRC\":%d,\"P_M5SRC\":%d,\"P_FREEA\":%d,\"P_AMODE\":%d,\"P_SLEN\":%d,\"P_SDIV\":%d,\"P_SSWING\":%d,\"P_SGATE\":%d,\"P_SQNT\":%d,"
-           "\"P_TRIM\":%d,\"P_LRATE\":%d,\"P_L2RATE\":%d,\"P_VOICE\":%d,\"P_GLIDE\":%d,\"P_GLMODE\":%d,\"P_SUS\":%d,\"P_E2SUS\":%d,\"P_ILAST\":%d,\"P_TRANS\":%d,"
-           "\"G_BPM\":%d,\"G_ENGSEL\":%d,\"G_SLOT\":%d,\"G_ROUTE\":%d,\"G_RTYPE\":%d,\"G_DMODE\":%d,\"G_DMDEP\":%d,\"G_DMRATE\":%d,\"G_PINGSPREAD\":%d,\"G_SHPITCH\":%d,\"G_SHMOD\":%d,\"G_BM\":%d},\n",
-           P_LEVEL, P_PAN, P_MUTE, P_ESYNC, P_ATK, P_DEC, P_REL, P_E2ATK, P_E2DEC, P_E2REL, P_ITYPE, P_IA, P_IMIX, P_ATGT, P_DKSRC, P_DKRATE, P_DKTHR, P_DKNOTE,
-           P_LSYNC, P_L2SYNC, P_M1SRC, P_M5SRC, P_FREEA, P_AMODE, P_SLEN, P_SDIV, P_SSWING, P_SGATE, P_SQNT, P_TRIM, P_LRATE, P_L2RATE, P_VOICE, P_GLIDE, P_GLMODE, P_SUS, P_E2SUS, P_IC, P_TRANS, G_BPM, G_ENGSEL, G_SLOT, G_ROUTE, G_RTYPE, G_DMODE, G_DMDEP, G_DMRATE, G_PINGSPREAD, G_SHPITCH, G_SHMOD, G_BM);
+           "\"P_TRIM\":%d,\"P_LRATE\":%d,\"P_L2RATE\":%d,\"P_VOICE\":%d,\"P_GLIDE\":%d,\"P_GLMODE\":%d,\"P_SUS\":%d,\"P_E2SUS\":%d,\"P_ILAST\":%d,\"P_TRANS\":%d,\"P_KTRK\":%d,\"P_E2FLT\":%d,\"P_LD_FLT\":%d,\"P_ED_FLT\":%d,\"P_L2FLT\":%d,\"P_FREEC\":%d,\"P_ED_SHP\":%d,\"P_LD_SHP\":%d,\"P_E2SHP\":%d,\"P_L2SHP\":%d,"
+           "\"G_BPM\":%d,\"G_ENGSEL\":%d,\"G_SLOT\":%d,\"G_ROUTE\":%d,\"G_RTYPE\":%d,\"G_DMODE\":%d,\"G_DMDEP\":%d,\"G_DMRATE\":%d,\"G_PINGSPREAD\":%d,\"G_SHPITCH\":%d,\"G_SHMOD\":%d,\"G_BM\":%d,\"G_CT\":%d,\"G_CR\":%d,\"G_CA\":%d,\"G_CL\":%d,\"G_WD\":%d},\n",
+           P_LEVEL, P_PAN, P_MUTE, P_ESYNC, P_ATK, P_DEC, P_REL, P_E2ATK, P_E2DEC, P_E2REL, P_ITYPE, P_IA, P_IMIX, P_ATGT, P_DKSRC, P_DKRATE, P_DKTHR, P_CUT2, P_RES2, P_DRV2, P_TWTYPE, P_BLEND, P_DKDEP, P_DKATK, P_DKRLS, P_DKCRV, P_EQLG, P_EQMG, P_EQHG, P_EQLF, P_EQMF, P_EQMQ, P_EQHF, P_M4SRC,
+           P_LSYNC, P_L2SYNC, P_M1SRC, P_M5SRC, P_FREEA, P_AMODE, P_SLEN, P_SDIV, P_SSWING, P_SGATE, P_SQNT, P_TRIM, P_LRATE, P_L2RATE, P_VOICE, P_GLIDE, P_GLMODE, P_SUS, P_E2SUS, P_IC, P_TRANS, P_KTRK, P_E2FLT, P_LD_FLT, P_ED_FLT, P_L2FLT, P_FREEC, P_ED_SHP, P_LD_SHP, P_E2SHP, P_L2SHP, G_BPM, G_ENGSEL, G_SLOT, G_ROUTE, G_RTYPE, G_DMODE, G_DMDEP, G_DMRATE, G_PINGSPREAD, G_SHPITCH, G_SHMOD, G_BM, G_CT, G_CR, G_CA, G_CL, G_WD);
     printf("\"FAM\":[");
     for (i = 0; i < NELEM(FAMN); i++) { if (i) putchar(','); js_str(FAMN[i]); }
     printf("],\n\"PAGES\":[");
@@ -225,6 +228,18 @@ int main(void)
     js_descs(GP, G_COUNT);
     printf(",\n\"MASTER\":");                    /* 0.2.19: the MASTER page's card, BASS MONO (pseudo id G_BM, past the stored globals: the editor reaches it as MENU setting 33) */
     js_desc(&GP[G_BM]);
+    printf(",\n\"COMP\":");                      /* 0.2.21: the COMP page's four cards (pseudo ids G_CT .. G_CL: the editor reaches them as MENU settings 34..37) */
+    js_descs(&GP[G_CT], 4);
+    printf(",\n\"MSTG\":");                      /* 0.2.23: the WIDTH page's card (pseudo id G_WD: the editor reaches it as MENU setting 42; 0.2.25: the saturator's DRIVE is gone) */
+    js_descs(&GP[G_WD], 1);
+    {                                                   /* 0.2.22: the SIDECHAIN page's cards (the editor reaches them as MENU settings 38..41: P1 CH, P1 NOTE, P2 CH, P2 NOTE): the channel 1..16 and the note (0 = ANY) */
+        static const param_desc_t SC_CH_D = PD("CH", F_INT, 1, 16, SC_CH_DEF + 1);
+        printf(",\n\"SIDECH\":[");
+        js_desc(&SC_CH_D);
+        putchar(',');
+        js_desc(&SC_NOTE_D);
+        putchar(']');
+    }
     printf(",\n\"DMD\":{\"chance\":");                   /* the DELAY MODE: DEPTH is CHANCE in RANDOM / OCT UP (params.c glob_desc); RATE is faded in those two and SPREAD in DIGITAL, with the mode's card name */
     js_desc(&DMD_CHANCE);
     printf(",\"why\":[");
@@ -327,11 +342,75 @@ int main(void)
     js_descs(ESYNC_DESC, 6);
     printf(",\n\"ATG\":");
     js_descs(ATG_DESC, ATG_KINDS);
-    printf(",\n\"MD\":{\"E1\":%d,\"INSA\":%d,\"IMIX\":%d,\"RES\":%d,\"PAN\":%d,\"BUS\":%d,\"N\":%d},\n", MD_E1, MD_INSA, MD_IMIX, MD_RES, MD_PAN, MD_BUS, MD_N);
+    printf(",\n\"MD\":{\"E1\":%d,\"INSA\":%d,\"IMIX\":%d,\"RES\":%d,\"PAN\":%d,\"BUS\":%d,\"N\":%d,\"SHP\":%d,\"E2SHP\":%d,\"FMODE\":%d,\"AATK\":%d,"
+           "\"CUT2\":%d,\"RES2\":%d,\"DRIVE\":%d,\"BLEND\":%d,\"SUBLVL\":%d,\"S_CYCLE\":%d},\n", MD_E1, MD_INSA, MD_IMIX, MD_RES, MD_PAN, MD_BUS, MD_N, MD_SHP, MD_E2SHP, MD_FMODE, MD_AATK,
+           MD_CUT2, MD_RES2, MD_DRIVE, MD_BLEND, MD_SUBLVL, MS_CYCLE);
+    {   /* 0.2.25 (mod.c mod_dst_removed, mod_e_inert, mod_shp_inert): the destinations the DEST knob does not offer. rm: removed for every engine (the EQ gains);
+         * eng: per engine [index, [its removed list slots as DST values], the slot that picks the wave (-1: none), [[wave value, [DST values the wave leaves without effect]], ..]]
+         * (SHP and E2SHP in a wave's list: the SHAPE depth cards hide too) */
+        uint32_t e, k;
+        int32_t v, d, first = 1;
+        printf("\"MXH\":{\"rm\":[");
+        for (d = 1; d < MD_N; d++)
+            if (!MD_ENGINE(d) && mod_dst_removed(0, d))
+                printf("%s%d", first ? "" : ",", d), first = 0;
+        printf("],\"eng\":[");
+        for (e = 0; e < NENGINES; e++) {
+            const engine_t *en = ENGINES[e];
+            int32_t key = en == &ENG_LOFI ? 1 : (en == &ENG_ANALOG || en == &ENG_TRIO) ? 0 : -1;
+            printf("%s[%u,[", e ? "," : "", (unsigned)e);
+            for (k = 0, first = 1; k < 8u; k++)
+                if (mod_dst_removed(e, MD_E1 + (int32_t)k))
+                    printf("%s%d", first ? "" : ",", MD_E1 + (int32_t)k), first = 0;
+            printf("],%d,[", key);
+            if (key >= 0)
+                for (v = en->edit[key].min; v <= en->edit[key].max; v++) {
+                    track_t t;
+                    memset(&t, 0, sizeof t);
+                    t.eng_req = (uint8_t)e;
+                    t.p[P_E0 + key] = (int16_t)v;
+                    printf("%s[%d,[", v > en->edit[key].min ? "," : "", v);
+                    first = 1;
+                    if (mod_shp_inert(&t))
+                        printf("%d,%d", MD_SHP, MD_E2SHP), first = 0;
+                    for (k = 0; k < 8u; k++)
+                        if (mod_e_inert(&t, k))
+                            printf("%s%d", first ? "" : ",", MD_E1 + (int32_t)k), first = 0;
+                    printf("]]");
+                }
+            printf("]]");
+        }
+        printf("]},\n");
+    }
     printf("\"MULTIS\":");
     js_multis();
     printf(",\n\"PALETTES\":");
     js_palettes();
+    {   /* cloud job I: the extension slots (ext.h, params.c XTP: wide id XW_BASE + k, protocol scope 2). XID: the slot numbers by name; XTP: their descriptors (the stored range; X15 is the spare, label "-");
+         * XSYNC: CYCLE RISE and FALL with SYNC on (note values, as ESYNC); TW: the TWIN FILTER's one-value-two-meanings (params.c tw_desc): CUTOFF 2 is OFFSET (LINK on), CUTOFF (LINK off) or TUNE (COMB),
+         * RES 2 is RES or FEEDBACK (COMB, label FDBK) */
+        static const char *const XN[] = {"X_ROUTE", "X_LINK", "X_KTRK2", "X_ENV2", "X_LFO1", "X_LFO2", "X_SUBLVL", "X_SUBOCT", "X_SUBWAVE", "X_SUBHARM",
+                                         "X_CYMODE", "X_CYRISE", "X_CYFALL", "X_CYCURVE", "X_CYSYNC"};
+        _Static_assert(sizeof XN / sizeof XN[0] == X_CYSYNC + 1u, "editordump: a name for every extension slot");
+        printf(",\n\"NX\":%d,\"XW_BASE\":%d,\"XID\":{", NX, XW_BASE);
+        for (k = 0; k < NELEM(XN); k++)
+            printf("%s\"%s\":%u", k ? "," : "", XN[k], (unsigned)k);
+        printf("},\n\"XTP\":");
+        js_descs(XTP, NX);
+        printf(",\n\"XSYNC\":");
+        js_descs(XTP_SYNC, 2);
+        printf(",\n\"TW\":{\"OFFSET\":");
+        js_desc(&TWD_OFFSET);
+        printf(",\"CUTOFF\":");
+        js_desc(&TWD_CUTOFF);
+        printf(",\"TUNE\":");
+        js_desc(&TWD_TUNE);
+        printf(",\"RES\":");
+        js_desc(&TWD_RES);
+        printf(",\"FDBK\":");
+        js_desc(&TWD_FDBK);
+        printf(",\"COMB\":%d}", (int)TT_COMB);
+    }
     printf(",\n\"FMTS\":[");
     for (i = 0; i < (uint32_t)nsig; i++) {                 /* (after every descriptor: fk_of filled the table) */
         int32_t v;

@@ -90,7 +90,7 @@ static void fresh(uint32_t e, uint32_t pi)        /* the boot state (no FX tails
     mod_seed = 0x2545F491u;
     song.playing = 0;
     memset(trk, 0, sizeof trk);
-    memset(&mod, 0, sizeof mod);
+    memset(&trk[0].mdw, 0, sizeof trk[0].mdw);
     memset(&motion, 0, sizeof motion);
     host_tracks_init();
     for (k = 0; k < NPART; k++)
@@ -132,8 +132,8 @@ static void t_layout(void)
     ck("layout: P_E0 + 8 == P_COUNT (the ids DUELL added all go before P_E0; no 7-bit id overflows); matrix slots 1..8 in a row (49..72); 33 retired ids (29 + the SLICER's four), the "
        "free ones inert and on no page", ok && n == 33u);
     ok = 1;
-    for (i = 0; i < NELEM(MIDI_CC_MAP); i++)
-        ok &= MIDI_CC_MAP[i][1] >= MCC_CUT || !ui_id_retired(MIDI_CC_MAP[i][1]);
+    for (i = 0; i < MAP_N; i++)
+        ok &= MAP_IS_EMPTY(MIDI_MAP_DEFAULTS[i]) || MAP_TARGET(MIDI_MAP_DEFAULTS[i]) >= P_COUNT || !ui_id_retired(MAP_TARGET(MIDI_MAP_DEFAULTS[i]));
     ck("MIDI's CC map: no CC on a retired id (the matrix's MIDI handling as before)", ok);
 }
 
@@ -192,13 +192,10 @@ static void t_old_projects(void)
     a.t[0].p[P_REV] = 40;
     a.t[0].p[P_M2SRC] = MS_LFO; a.t[0].p[P_M2DST] = MD_SHP; a.t[0].p[P_M2AMT] = 11;
     a.t[1].engine = ENGI_FM6;                           /* part B */
-    a.t[2].engine = 6; a.t[2].p[P_LEVEL] = 50;          /* tracks 3..4: not DUELL's parts */
-    a.t[3].engine = 9; a.t[3].p[P_LEVEL] = 51;
     a.motion.count = 3; a.motion.on = 15;
     a.motion.event[0] = (motion_event_t){0u << 6 | 1u, P_REV, 90};
     a.motion.event[1] = (motion_event_t){0u << 6 | 2u, (uint8_t)((PL_LN0 + 2u) | MOTION_LOCK), 40};   /* a lane lock */
     a.motion.event[2] = (motion_event_t){1u << 6 | 3u, (uint8_t)(PL_FM1_ATK + 4u), 50};      /* OP1 LEVEL */
-    chain_defaults(&a.chain);
     ok = old_pack10(b10, &a, 111u) == sizeof b10 && !proj_import(&c, b10, sizeof b10);
     ck("a FUN10 of Felucca (four tracks, 111, the reused ids as Felucca held them): refused", ok);
     a.motion.count = 1;
@@ -219,7 +216,7 @@ static void t_old_projects(void)
     ok = !project_restore_runtime(&d);
     for (t = 0; t < NSHOWN; t++)
         for (i = 0; i < P_E0; i++)
-            ok &= trk[t].p[i] == (int16_t)param_fit(param_desc_of(trk[t].eng_req, i), c.t[t].p[i]) || i == P_SCALE || i == P_QUANT;
+            ok &= trk[t].p[i] == (int16_t)param_fit(param_desc_of(trk[t].eng_req, i), c.t[t].p[i]);
     ck("  restored onto the device: parts A B with DUELL's values on the reused ids", ok && trk[0].p[P_M5AMT] == 21 && trk[1].p[P_M8AMT] == -40);
 }
 
@@ -239,7 +236,7 @@ static void t_old_backup(void)
     static project_t pr;
     static project_store_t st;
     static uint8_t b10[3840];
-    uint32_t e0, e1, e2, sum;
+    uint32_t sum;
     int ok;
     ui_power_on();
     project_capture(&pr);
@@ -254,19 +251,16 @@ static void t_old_backup(void)
     ck("backup: a FUN10 of Felucca is refused (rc 2), the music is untouched", ok);
     ok = bk_put(2, b10, 3648u) == 0u && bk_put(3, b10, 7u) == 0u;
     ck("backup: a project slot of an older archive (ids 2..5) is accepted and dropped, whatever its length", ok);
-    /* settings with a MIDI LEARN map: 0.2.14 reads the mark byte [15][25] no more; every entry is kept as saved */
+    /* settings with a MIDI map (the settings record's lines, since the learn table of the old record is gone): restored as saved */
     settings_export(&ps);
-    ps.favorites.factory[15][25] = 0;
-    e0 = 20u | 0u << 7 | (PL_LN0 + 1u + 1u) << 9;
-    e1 = 21u | 1u << 7 | (P_REV + 1u) << 9;
-    e2 = 22u | 0u << 7 | (PL_FM1_ATK + 1u) << 9;
-    ps.favorites.factory[14][0] = (uint8_t)e0; ps.favorites.factory[14][1] = (uint8_t)(e0 >> 8);
-    ps.favorites.factory[14][2] = (uint8_t)e1; ps.favorites.factory[14][3] = (uint8_t)(e1 >> 8);
-    ps.favorites.factory[14][4] = (uint8_t)e2; ps.favorites.factory[14][5] = (uint8_t)(e2 >> 8);
+    ps.map[30] = MAP_LINE(P_REV, 1, MAP_W_LEARNED);
+    ps.map[31] = MAP_LINE(P_CHOR, 0, MAP_W_TYPED);
+    ps.map[32] = MAP_LINE(P_DLY, 0, MAP_W_TYPED);          /* (32 is a standard number: the record's line is made valid, not taken) */
     ok = bk_put(1, &ps, sizeof ps) == 0u;
-    ok &= ml_get(0) == e0 && ml_get(1) == e1 && ml_get(2) == e2;
-    ck("backup: settings with a MIDI LEARN map: restored as saved, no entry converted (Felucca's map is no longer recognised)", ok);
-    memset(favorites.factory[14], 0, sizeof favorites.factory[14]);
+    ok &= midi_map[30] == MAP_LINE(P_REV, 1, MAP_W_LEARNED) && midi_map[31] == MAP_LINE(P_CHOR, 0, MAP_W_TYPED) &&
+          MAP_IS_LOCKED(midi_map[32]);
+    ck("backup: settings with a MIDI map: restored as saved (a line on a standard number made valid)", ok);
+    map_reset();
 }
 
 /* ------------------------------------------------------------------ 3 --- */
@@ -287,19 +281,19 @@ static void snap(track_t *t, uint32_t k, uint32_t s, uint32_t d, snap_t *o)
     mslot(t, k, (int32_t)s, (int32_t)d, 37);
     memset(o, 0, sizeof *o);
     mod_begin(t);
-    o->on = mod.on; o->amp = mod.amp; o->nv = mod.nv; o->nk = mod.nk;
-    o->pit = mod.pit; o->cut = mod.cut; o->shp = mod.shp; o->gain = mod.gain; o->ldep = mod.ldep;
-    o->vsrc = mod.nv ? mod.vsrc[0] : 0; o->vdst = mod.nv ? mod.vdst[0] : 0; o->vamt = mod.nv ? mod.vamt[0] : 0;
+    o->on = trk[0].mdw.on; o->amp = trk[0].mdw.amp; o->nv = trk[0].mdw.nv; o->nk = trk[0].mdw.nk;
+    o->pit = trk[0].mdw.pit; o->cut = trk[0].mdw.cut; o->shp = trk[0].mdw.shp; o->gain = trk[0].mdw.gain; o->ldep = trk[0].mdw.ldep;
+    o->vsrc = trk[0].mdw.nv ? trk[0].mdw.vsrc[0] : 0; o->vdst = trk[0].mdw.nv ? trk[0].mdw.vdst[0] : 0; o->vamt = trk[0].mdw.nv ? trk[0].mdw.vamt[0] : 0;
     for (j = 0; j < P_COUNT; j++)
         o->p[j] = t->p[j];
     for (j = 0; j < 3u; j++)
         o->p[MSLOT_ID(k) + j] = 0;                      /* (the slot itself: not the result) */
     memset(&m, 0, sizeof m);
     m.envq15 = 20000; m.shape = 64 << 8; m.pitch16 = 1000; m.inc = pitch_inc(1000); m.amp1 = 20000;
-    if (mod.on)
+    if (trk[0].mdw.on)
         mod_voice(t, &t->v[0], &m, 0);
     o->m = m;
-    if (mod.on)
+    if (trk[0].mdw.on)
         mod_end(t);
 }
 static void t_slots(void)
@@ -341,7 +335,7 @@ static void t_slots(void)
     mslot(t, 7, MS_MODW, MD_DEPTH, 63);
     mslot(t, 1, MS_LFO, MD_CUT, 63);
     mod_begin(t);
-    ck("slot 8 MODW -> DEPTH (wheel down): the LFO slot 2 reads is nearly closed", mod.ldep < 600 && mod.cut < 600 && mod.cut > 0);
+    ck("slot 8 MODW -> DEPTH (wheel down): the LFO slot 2 reads is closed (1.0: AMT +63 is a true 100 %, it was 1.6 % open)", trk[0].mdw.ldep < 600 && trk[0].mdw.cut < 600);
     mod_end(t);
 }
 
@@ -373,7 +367,7 @@ static uint64_t phrase_child(setup_fn f)
         trk_note_off(t, 60); trk_note_off(t, 64); trk_note_off(t, 67); trk_note_off(t, 72);
         mixb(FS / CTL);
         h = hash;
-        if (memcmp(keep, t->p, sizeof keep) || mod.on)
+        if (memcmp(keep, t->p, sizeof keep) || trk[0].mdw.on)
             h = 1;
         if (write(fd[1], &h, sizeof h) != sizeof h)
             _exit(1);
@@ -593,25 +587,27 @@ static void t_lfo2(void)
     t->mw = 127;
     mslot(t, 0, MS_MODW, MD_RATE2, 32);
     mod_begin(t);
-    ok = t->p[P_L2RATE] == 50 + ((((127 * 258) * 32) >> 6) * 127 >> 15);
+    ok = t->p[P_L2RATE] == 50 + ((((127 * 258) * 33) >> 6) * 127 >> 15);   /* (+32 acts as 33: mod.c MX_AMT, 1.0) */
     mod_end(t);
     ck("MODW -> RATE2 +32: LFO 2's rate up half its range this block, put back after", ok && t->p[P_L2RATE] == 50);
     t->lfo2.val = 32767; t->lfo2.fade = 32767; t->mw = 0;
     mslot(t, 0, MS_MODW, MD_DEPTH2, 63);
     mslot(t, 1, MS_LFO2, MD_CUT, 63);
+    mx_sl[0].ok = 0;                                    /* (0.2.25: the wheel's jump at once, not through the source slew) */
     mod_begin(t);
-    ok = mod.ldep2 < 600 && mod.ldep == 32767 && mod.cut > 0 && mod.cut < 600;
+    ok = trk[0].mdw.ldep2 < 600 && trk[0].mdw.ldep == 32767 && trk[0].mdw.cut < 600;
     mod_end(t);
     t->mw = 127;
+    mx_sl[0].ok = 0;                                    /* (0.2.25: a mapping probe: the wheel's jump at once, not through the source slew) */
     mod_begin(t);
-    ok &= mod.ldep2 >= 32700 && mod.cut > 16000;
+    ok &= trk[0].mdw.ldep2 >= 32700 && trk[0].mdw.cut > 16000;
     mod_end(t);
     ck("MODW -> DEPTH2: the wheel down closes LFO 2 (and not LFO 1), up opens it", ok);
     mslot(t, 0, MS_LFO2, MD_DEPTH, 63);              /* LFO 2 -> DEPTH of LFO 1: LFO 2 unscaled (no loop) */
     mslot(t, 1, MS_LFO, MD_DEPTH2, 63);
     t->lfo_val = -32767; t->lfo_fade = 32767;
     mod_begin(t);
-    ok = mod.ldep >= 32700 && mod.ldep2 < 600;
+    ok = trk[0].mdw.ldep >= 32700 && trk[0].mdw.ldep2 < 600;
     mod_end(t);
     ck("LFO 2 -> DEPTH and LFO -> DEPTH2 together: each reads the other unscaled (fixed order, no loop)", ok);
     {
@@ -710,13 +706,17 @@ static void t_pages(void)
              PAGES[m2].id[1] == P_M5SRC && PAGES[m2].id[2] == P_M5DST && PAGES[m2].id[3] == P_M5AMT && PAGES[m2].id[0] == 0xFFu;
     ck("pages: MOD 2 after MOD (LFO's family): KNOB 1 the slot 5..8, KNOB 2..4 its SRC DST AMT", ok);
     ui_power_on();
+    TSEL->p[P_M1SRC] = TSEL->p[P_M2SRC] = TSEL->p[P_M3SRC] = TSEL->p[P_M4SRC] = MS_ENV;   /* (0.2.24: the matrix stays packed; MATRIX 5-8 is in the round only while slots 1..4 are used) */
+    TSEL->p[P_M1AMT] = TSEL->p[P_M2AMT] = TSEL->p[P_M3AMT] = TSEL->p[P_M4AMT] = 0;       /* (0.2.31: the first ANALOG factory sound brings routes of its own: the test starts from empty amounts) */
+    TSEL->p[P_M5SRC] = TSEL->p[P_M6SRC] = TSEL->p[P_M7SRC] = TSEL->p[P_M8SRC] = 0;
+    TSEL->p[P_M5AMT] = TSEL->p[P_M6AMT] = TSEL->p[P_M7AMT] = TSEL->p[P_M8AMT] = 0;
     go_title("MATRIX 5-8");
     mod_ui_slot = 0;
     turn(EN_K1, 1); turn(EN_K1, 1);                    /* slot 7 */
-    turn(EN_K2, 3);                                    /* SRC 7: LFO (the knob order is OFF AENV ENV2 LFO1 ..: params.c MSRC_ORDER) */
+    turn(EN_K2, 4);                                    /* SRC 7: LFO (the knob order is OFF AENV ENV2 CYCLE LFO1 ..: params.c MSRC_ORDER; CYCLE came after ENV2 in cloud job B) */
     turn(EN_K4, 5);
     ck("MOD 2: KNOB 1 to slot 7, KNOB 2 / 4 set SRC7 / AMT7 (not slot 3's)", str_eq(cur_page()->title, "MATRIX 5-8") &&
-       mod_ui_slot == 2u && TSEL->p[P_M7SRC] == MS_LFO && TSEL->p[P_M7AMT] != 0 && !TSEL->p[P_M3SRC] && !TSEL->p[P_M3AMT]);
+       mod_ui_slot == 2u && TSEL->p[P_M7SRC] == MS_LFO && TSEL->p[P_M7AMT] != 0 && TSEL->p[P_M3SRC] == MS_ENV && !TSEL->p[P_M3AMT]);
     turn(EN_K1, 5);
     ck("MOD 2: the slot stops at 8", mod_ui_slot == 3u);
     {   /* ENV 2 (3b): after ENV DEST in ENV's family, the ADSR graph, KNOB 1..4 = ATK2 DEC2 SUS2 REL2; ENV SYNC shows note values */

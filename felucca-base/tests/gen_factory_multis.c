@@ -1,17 +1,17 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
-/* DUELL 0.2.11 (0.2.12: driven by the keys, the grooves are arps; 0.2.13: in M01 M02 M07..M10): builds six factory multis (tools/factory_multis/M01.bin, M02.bin,
- * M07.bin..M10.bin; SLOT below) with the firmware's own code, as
- * tests/gen_test_multis.c builds M13..M16: each part's factory sound loaded as the PATCHES list loads it (set_engine_of +
- * apply_preset_to: its values, End B seed and AMOUNT), then the multi's own per-part settings (HOLD, chord keys, sends, a matrix
- * route, the arp and its SEQUENCER pattern), the globals (tempo, the delay, the reverb), MODE LAYER and BALANCE / SPLIT, saved by multi.c's packer
- * (project_save_as) and read back from the store. The recipes and patterns: DUELL/SOUND_RECIPES.md, chapter 7.
- *   cc -O1 -DDUELL_TEST_MODE=1 -Ibuild/gen_test -Ibuild/gen -Ifirmware/src -Itests -DFELUCCA_VERSION='"x"' -o build/host/gen_factory_multis tests/gen_factory_multis.c -lm
- *   build/host/gen_factory_multis build tools/factory_multis    writes M01 M02 M07..M10.bin
+/* DUELL factory multis (0.2.11; 0.2.23: all sixteen, the table from tools/factory_multis.py): builds the factory multis
+ * (tools/factory_multis/Mnn.bin) with the firmware's own code: each part's factory sound loaded as the PATCHES list loads it
+ * (set_engine_of + apply_preset_to: its values, End B seed and AMOUNT), then the multi's own per-part settings (the mix, the sends,
+ * HOLD, chord keys, a matrix route, the arp and its SEQUENCER pattern, the insert, EQ and ducker), the globals (tempo, chorus, delay,
+ * reverb), the MODE, BALANCE, XFADE and SPLIT, saved by multi.c's packer (project_save_as) and read back from the store. The table is
+ * tools/factory_multis.py's; run that tool (`build`), which writes the C table, compiles and runs this. The recipes: DUELL/SOUND_RECIPES.md, chapter 7.
+ *   build/host/gen_factory_multis build tools/factory_multis    writes the built slots' Mnn.bin (tools/factory_multis.py build does it)
  *   build/host/gen_factory_multis dump [SLOT ..]                 what the factory multis of the generated header hold (default: all)
- *   build/host/gen_factory_multis loud                           the loudness of M01..M10 (needs the header regenerated with them)
+ *   build/host/gen_factory_multis loud                           the loudness of the factory multis (needs the header regenerated with them)
  *   build/host/gen_factory_multis search SLOT PART AMOUNT N [SEED]  (0.2.13) End B candidates of PART at AMOUNT: level, brightness against End A
  *   build/host/gen_factory_multis eval SLOT [S1 A1 S2 A2]         (0.2.13) End A against End B (both parts, each alone; 3 keys and C4)
  *   build/host/gen_factory_multis moves SLOT [S1 A1 [S2 A2]]       the values End B moves (optionally rolled again with these seeds / AMOUNTs)
+ * (dump, loud, search, eval, moves: compiled against the generated build/gen_test/duell_multis.h, which holds the multis)
  * Loudness ('loud'): each multi loaded in a fresh power-on with its own MODE (as MODE RECALL ON) and played 10 s as it is meant to
  * be played (a multi with a stored step pattern on a part without the SEQUENCER arp: PLAY, no key; any other, the six since 0.2.12:
  * the keys C4 E4 G4 held, or C4 alone in the second table: the arps run on the internal clock), the master output (after MASTER at its default and the limiter)
@@ -20,21 +20,13 @@
 #define UI_TEST_NO_MAIN 1
 #include "ui_test.c"
 
-/* the units of tools/duell_sounds.py */
-static int u_ms(double t) { int v = (int)lround(127 * log10(t < 1 ? 1 : t) / 4); return v < 0 ? 0 : v > 127 ? 127 : v; }
-static int u_pct(double x) { int v = (int)lround(x * 127 / 100); return v < 0 ? 0 : v > 127 ? 127 : v; }
-static int u_dep(double x) { int v = (int)lround(x * 64 / 100); return v < -64 ? -64 : v > 63 ? 63 : v; }
-static int u_uf(double hz) { int v = (int)lround(UF_STEPS * log(hz / 30) / log(16000.0 / 30)); return v < 0 ? 0 : v > UF_STEPS ? UF_STEPS : v; }
-enum { MSRC_LFO1 = 1, MSRC_MORPH = 13, MDST_CUT = 2, MDST_SHP = 3, MDST_E3 = 14 };
-enum { LS_1_4 = 5, LS_1_8 = 6 };                 /* N_LSYNC */
-enum { DV_1_4 = 0, DV_1_8 = 1, DV_1_16 = 2, DV_1_2 = 6, DV_1_1 = 7, DV_4D = 14, DV_8D = 15 };   /* N_DIV */
-enum { RT_ROOM = 0, RT_HALL = 2, RT_SHIM = 3 };
+enum { DV_1_16 = 2 };                             /* N_DIV: the steps' DIV */
 #define END (-1)
 
 typedef struct {
     uint8_t eng, idx;                            /* the factory sound (engine, factory index) */
     const char *sound;                           /* its name (checked) */
-    int16_t set[40];                             /* (P_ id, value) pairs after the load, END-terminated */
+    int16_t set[96];                             /* (P_ id, value) pairs after the load, END-terminated */
     const char *steps;                           /* the SEQUENCER arp's pattern (space separated): "." rest, a signed offset in
                                                   * semitones from the held key, suffix A accent; 0: no pattern */
     uint8_t len;
@@ -43,71 +35,19 @@ typedef struct {
 } part_t;
 typedef struct {
     const char *name;
-    int16_t g[24];                               /* (G_ id, value) pairs, END-terminated */
+    uint8_t slot;                                /* 0..15: M01..M16 */
+    uint8_t mode;                                /* DM_SPLIT (DUEL), DM_STEREO, DM_LAYER */
     int8_t bal;
-    uint8_t split;                               /* 0 OFF, else note + 1 */
+    uint8_t xf;                                  /* XFADE 0..100 (LAYER) */
+    uint8_t split;                               /* 0 OFF, else note + 1 (LAYER) */
+    int16_t g[40];                               /* (G_ id, value) pairs, END-terminated */
     part_t p[2];
 } multi_t;
 
-#define ENG_ANALOG 0
-#define ENG_PHYS 9
-#define ENG_TRIO 6
-#define ENG_VOICE 5
-#define ENG_WAVE 14
-#define HOLD_ALL P_AHOLD, 2, P_AMODE, 0
-/* DUELL 0.2.12 (owner): every part answers the keys; no stored step pattern plays on PLAY. A part's "steps" are its SEQUENCER
- * arp's pattern (AM_SEQ, SPEC 2.3): one entry a step, a signed OFFSET in semitones from the held key ("0", "+12", "-5"; stored
- * as C4 60 + the offset, which arp_seq_notes reads), "." a rest, suffix A an accent. seq.c seq_play leaves a SEQUENCER part's
- * steps to the arp (PLAY does not play them from C4 too) */
-#define ARP(mode, rate, gate, hold) P_AMODE, mode, P_ARATE, rate, P_AGATE, gate, P_AHOLD, hold
-enum { AM_UP_ = 1, AM_RND_ = 4, AM_SEQ_ = 15 };   /* (seq.c AM_*) */
-static const multi_t MM[6] = {
-    /* M01 (0.2.13; M08 before): the Reese bass plays the keys (two octaves down, its low-pass wobbling at 1/4, LFO 1 synced); an 8-step 1/16 SEQUENCER
-     * acid loop on the held key, two octaves above it. 0.2.13 (owner: End B barely changed at the sounds' AMOUNT 7 %): both parts' AMOUNT 17 %,
-     * End B rolled again at 17 % (seeds 11710 / 41045, picked with 'search' / 'eval': End B clearly brighter, about +55 % brightness with
-     * C4 E4 G4, +46 % with C4, the level within 0.3 dB of End A) */
-    {"REESE SWAMP", {G_BPM, 124, G_DTIME, DV_8D, G_DFDBK, 41, G_DMIX, 90, G_RTYPE, RT_ROOM, G_RSIZE, 57, G_DMODE, DMD_DIGITAL, END}, 0, 0, {
-        {ENG_WAVE, 12, "REESE BASS", {P_AMODE, 0, P_TRIM, 113, P_TRANS, -24, P_LSYNC, LS_1_4, P_FREEA, 52, P_M8SRC, MSRC_LFO1, P_M8DST, MDST_CUT,
-                                      P_M8AMT, 21, END}, 0, 16, 11710, 17},
-        {ENG_ANALOG, 4, "SQUELCH", {ARP(AM_SEQ_, DV_1_16, 61, 0), P_TRIM, 87, END},
-         ". 0 +12A +10 . +3A 0 +7", 8, 41045, 17}}},
-    /* M02 (0.2.13; M06 before): a wavetable sweep pad latched, a whisper choir picking the latched chord's notes at random, one a bar (1/1, long gate,
-     * latched); a shimmer reverb and a long delay; End B brighter */
-    {"WHISPER TIDE", {G_BPM, 77, G_DTIME, DV_1_2, G_DFDBK, 67, G_DMIX, 91, G_RTYPE, RT_SHIM, G_RSIZE, 111, G_RDAMP, 61, G_DMODE, DMD_PING,
-                      G_DMDEP, 17, END}, 0, 0, {
-        {ENG_WAVE, 14, "DIGITAL PAD", {HOLD_ALL, P_TRIM, 96, P_REV, 77, P_DLY, 31, P_M8SRC, MSRC_MORPH, P_M8DST, MDST_CUT, P_M8AMT, 17, END}, 0, 16},
-        {ENG_VOICE, 6, "WHISPER PAD", {ARP(AM_RND_, DV_1_1, 120, 2), P_AOCT, 2, P_TRIM, 91, P_REV, 91, P_DLY, 27,
-                                       P_M8SRC, MSRC_MORPH, P_M8DST, MDST_SHP, P_M8AMT, 17, END}, 0, 16}}},
-    /* M07 (0.2.13; M05 before): a slow drone pad latched (HOLD ALL), a bowed bowl arpeggiating the latched chord slowly (UP, 1/2 notes, long gate,
-     * latched); a long hall and delay; End B opens them (MORPH -> filter, brightness) */
-    {"COLD CHAPEL", {G_BPM, 71, G_DTIME, DV_4D, G_DFDBK, 71, G_DMIX, 97, G_RTYPE, RT_HALL, G_RSIZE, 117, G_RDAMP, 57, G_DMODE, DMD_PING,
-                     G_DMDEP, 17, END}, 0, 0, {
-        {ENG_WAVE, 3, "EVOLVING PAD", {HOLD_ALL, P_TRIM, 90, P_REV, 81, P_DLY, 37, P_M8SRC, MSRC_MORPH, P_M8DST, MDST_CUT, P_M8AMT, 24, END}, 0, 16, 38479},
-        {ENG_PHYS, 1, "SINGING BOWL", {ARP(AM_UP_, DV_1_2, 115, 2), P_VOICE, 1, P_TRIM, 93, P_TRANS, 12, P_REV, 87, P_DLY, 27,
-                                       P_M8SRC, MSRC_MORPH, P_M8DST, MDST_E3, P_M8AMT, 17, END}, 0, 16, 19072}}},
-    /* M08 (0.2.13; M07 before): the growl bass plays the keys (two octaves down, its vowel and low-pass gargling at 1/8, LFO 1 synced); the acid line
-     * an octave above it is a 1/16 SEQUENCER arp on the held key: rests, octave jumps and accents */
-    {"GARGLE ACID", {G_BPM, 127, G_DTIME, DV_8D, G_DFDBK, 37, G_DMIX, 90, G_RTYPE, RT_ROOM, G_RSIZE, 51, G_DMODE, DMD_DIGITAL, END}, 0, 0, {
-        {ENG_WAVE, 11, "GROWL BASS", {P_AMODE, 0, P_TRIM, 110, P_TRANS, -24, P_LSYNC, LS_1_8, P_FREEA, 41, P_FREEB, 39, P_FREEC, 0, P_FREED, 1,
-                                      P_M8SRC, MSRC_LFO1, P_M8DST, MDST_CUT, P_M8AMT, 17, END}, 0, 16},
-        {ENG_ANALOG, 4, "SQUELCH", {ARP(AM_SEQ_, DV_1_16, 64, 0), P_TRIM, 92, P_TRANS, -12, END},
-         "0A . +12 0 . +10 +12A . 0 . +3 0 +7A . +12 .", 16}}},
-    /* M09: house, calm: the organ's minor-seventh chord (chord keys MIN7) stabbed on the off-beats of beats 1 and 3 (a 1/8 SEQUENCER
-     * arp, 8 steps: a half-time feel), a long gate; the bass an off-beat 1/8 arp on the held key, the last an octave up */
-    {"NIGHT ORGAN", {G_BPM, 121, G_SWING, 17, G_DTIME, DV_8D, G_DFDBK, 31, G_DMIX, 90, G_RTYPE, RT_ROOM, G_RSIZE, 71, G_DMODE, DMD_DIGITAL, END}, 0, 0, {
-        {ENG_WAVE, 4, "DRAWBARS", {ARP(AM_SEQ_, DV_1_8, 100, 0), P_TRIM, 106, P_CHRD, 7, P_VOIC, 0, P_DLY, 17, P_REV, 21, END},
-         ". 0 . . . 0A . .", 8},
-        {ENG_ANALOG, 0, "LADDER BASS", {ARP(AM_SEQ_, DV_1_8, 80, 0), P_TRIM, 99, P_TRANS, -12, END},
-         ". 0 . 0 . 0 . +12", 8}}},
-    /* M10: a slow brass swell latched (HOLD ALL), strings an octave up latched with it, a slower attack; a large hall; End B
-     * swells the brass (MORPH -> its table position) */
-    {"FINAL REEL", {G_BPM, 71, G_DTIME, DV_1_4, G_DFDBK, 41, G_DMIX, 77, G_RTYPE, RT_HALL, G_RSIZE, 117, G_RDAMP, 51, G_DMODE, DMD_PING, END}, 0, 0, {
-        {ENG_WAVE, 20, "BRASS PAD", {HOLD_ALL, P_TRIM, 86, P_REV, 71, P_DLY, 11, P_M8SRC, MSRC_MORPH, P_M8DST, MDST_SHP, P_M8AMT, 17, END}, 0, 16},
-        {ENG_TRIO, 9, "STRING MACH", {HOLD_ALL, P_ATK, 97, P_TRIM, 71, P_TRANS, 12, P_REV, 67, P_DLY, 11, END}, 0, 16}}},
-};
+/* DUELL 0.2.23: the table is tools/factory_multis.py's (MULTIS), written as C by its `build` (build/gen_mm/factory_multis_def.h);
+ * the slots it marks `kept` are records kept byte for byte and are not in it */
+#include "factory_multis_def.h"
 #define NM (sizeof MM / sizeof *MM)
-static const uint8_t SLOT[NM] = {0, 1, 6, 7, 8, 9};   /* 0.2.13 (owner): M01 REESE SWAMP, M02 WHISPER TIDE, M07 COLD CHAPEL, M08 GARGLE ACID,
-                                                  * M09 NIGHT ORGAN, M10 FINAL REEL (M03..M06: the four emulator-made multis, moved up) */
 
 static int parse_steps(track_t *t, const char *s, uint32_t len)
 {
@@ -181,9 +121,9 @@ static void build(const multi_t *m)
         }
     for (i = 0; m->g[i] != END; i += 2u)
         song.g[m->g[i]] = m->g[i + 1u];
-    duell_mode_req = DM_LAYER;
+    duell_mode_req = m->mode;
     mix_bal = m->bal;
-    mix_xf = 0;
+    mix_xf = m->xf;
     mix_split = m->split;
     song.sel = 0;
 }
@@ -351,7 +291,7 @@ int main(int argc, char **argv)
         for (i = 0; i < NM; i++) {
             uint8_t rec[2048];
             const uint8_t *r;
-            uint32_t len, slot = SLOT[i];
+            uint32_t len, slot = MM[i].slot;
             char path[512];
             FILE *f;
             build(&MM[i]);
@@ -459,18 +399,18 @@ int main(int argc, char **argv)
         return 0;
     }
     if (argc > 1 && str_eq(argv[1], "loud")) {
-        for (i = 0; i < 10u; i++)
+        for (i = 0; i < MU_SLOTS; i++)
             loud(i, 3u, 0);
-        for (i = 0; i < 10u; i++)
+        for (i = 0; i < MU_SLOTS; i++)
             loud(i, 1u, 0);
         at_b = 1;                                /* End B (both faders at B), the 3 keys / PLAY */
-        for (i = 0; i < 10u; i++)
+        for (i = 0; i < MU_SLOTS; i++)
             loud(i, 3u, 0);
         at_b = 0;
         if (argc > 2)                            /* loud parts: each part alone (3 keys / PLAY) */
-            for (i = 0; i < 40u; i++) {
-                at_b = i >= 20u;
-                loud(i % 20u / 2u, 3u, 1u + i % 2u);
+            for (i = 0; i < 4u * MU_SLOTS; i++) {
+                at_b = i >= 2u * MU_SLOTS;
+                loud(i % (2u * MU_SLOTS) / 2u, 3u, 1u + i % 2u);
             }
         return 0;
     }

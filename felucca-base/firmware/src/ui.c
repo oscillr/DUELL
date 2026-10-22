@@ -15,7 +15,7 @@ static uint32_t up_engine(uint32_t k);
 static void up_name(uint32_t k, char *b);
 static void up_slot_label(char *b, uint32_t k);   /* "#7" */
 static void up_ui(uint32_t op, uint32_t k);
-static int ps_used(uint32_t k);                  /* DUELL: the pattern slots P1..P16 (patslot.c) */
+static int ps_changed(uint32_t k);               /* DUELL: the pattern slots P01..P32 (patslot.c) */
 static uint32_t ps_len(uint32_t k);
 static int ps_save_trk(const track_t *t, uint32_t k, const char *name);
 static void ps_name(uint32_t k, char *b);
@@ -45,6 +45,7 @@ static int sl_fac(uint32_t k, uint32_t *e, uint32_t *fk);   /* the factory sound
 static void sl_load(uint32_t k);                   /* slot k -> the selected part */
 static uint32_t up_gen;                      /* bumped on every patch store change (redraws) */
 static void patch_save_do(uint32_t both);    /* SAVE held, OCT+: the sound over its slot (upreset.c) */
+static char save_nm[13] __attribute__((section(".pool")));   /* 0.2.21: the SAVE dialog's RENAME (K2, ui_name.c NK_SAVE_NAME): the name the saved record gets; "" = the sound's own (cleared when SAVE is held, and after the save) */
 static void patch_restore_ask(void);         /* PATCHES, K4 RESTORE (upreset.c) */
 static void patch_restore_do(uint32_t k);
 static void patch_restore_all_do(void);      /* SAVE > TOOLS: RESTORE ALL */
@@ -60,7 +61,8 @@ static void patch_restore_all_do(void);      /* SAVE > TOOLS: RESTORE ALL */
                                                /* (1: retired, was MENU > FX LATCH ON; the FX hold layer is removed in DUELL 0.2.2: keep it clear, never reused) */
 #define PREF_ANIM_OFF 2u                       /* MENU > ANIM OFF (#46): values snap (no rolling digits, no glide) */
 #define PREF_ACCEL 4u                          /* MENU > KNOB ACCEL ON (#52): fast turns of wide values x2..x8 */
-#define PREF_USB_FIXED 8u                      /* MENU > USB LEVEL FIXED: USB audio at the default MASTER level, MASTER after */
+                                               /* (8: retired in DUELL 0.2.25, was MENU > USB LEVEL FIXED: USB audio is always at the default MASTER level now; the bit stays in
+                                                * the stored settings as it is, ignored: the record's size and layout do not change; never reused) */
                                                /* (16: retired, was BPM LOCK; SELECT is no tempo any more: keep it clear) */
                                                /* (32: retired, was MENU > LARGE ON; DUELL 0.2.2 removed the view: the bit is ignored, never reused) */
 #define PREF_SERIAL_OFF 64u                    /* MENU > USB SERIAL OFF (#67): no serial console, the device enumerates as
@@ -106,7 +108,7 @@ static void patch_restore_all_do(void);      /* SAVE > TOOLS: RESTORE ALL */
  * [15][4] the global root 0..11 (0 = C) */
 #define ui_scale_set (favorites.factory[15][3])
 #define ui_root_set (favorites.factory[15][4])
-enum { HP_MORPH, HP_MODE, HP_MIXER, HP_COUNT };   /* (0.2.14: 3 was OVERVIEW, retired: reads as MORPH) */
+enum { HP_MORPH, HP_MODE, HP_COUNT };   /* (0.2.14: 3 was OVERVIEW, retired; 0.2.25 layout round: 2 was MIXER, which is GLO's first page now, not HOME's: both read as MORPH) */
 /* DUELL 0.1: the very first start. project.c persist_boot raises it when the flash holds no valid settings (a new unit, stock firmware's
  * data or garbage in the sector, a flash erase) and main.c drops it again when an autosave was restored; ui_input.c first_boot_poll then
  * makes the start state: MODE LAYER and factory multi M01 loaded (VIOLET is the theme of a settings record that is not valid:
@@ -158,6 +160,10 @@ static void rp_put(uint32_t f, uint32_t v)
  * reads as the default and is kept as saved until changed: ui_input.c midi_ch_get). Not in the MULTIs (the device's, like the clock) */
 #define ui_midi_p1 (favorites.factory[15][0])
 #define ui_midi_p2 (favorites.factory[15][1])
+/* DUELL 0.2.22: GLO > SIDECHAIN's MIDI setup (fx.c sc_midi, core.h SC_CH_DEF), the device's like the channels above: [15][14] part 1's channel, [15][15] its note, [15][16] part 2's channel, [15][17] its note
+ * (bytes of the FX layer's old key map, retired in 0.2.2 and unused since; a value out of range reads as the default). 0 = the default (every older setting); a channel is stored 1 + 0..15, a note 1 + 0..127 (0 = ANY).
+ * Not in a patch, a multi or the project: a load never touches them (ui_input.c sc_get / sc_put / sc_sync) */
+#define ui_sc_set (&favorites.factory[15][14])
 static const char *const DM_NAME[DM_N] = {"DUEL", "STEREO", "LAYER"};
 static void draw_gaps(uint32_t y, uint32_t h);        /* (ui_draw.c) */
 
@@ -291,6 +297,14 @@ enum { CF_NONE, CF_CLEAR_SEQ, CF_CLEAR_TRK, CF_OVR_PROJ, CF_OVR_USER, CF_LOAD_PA
  * older record, settings_defaults clears bits 1..7 once): leaving PERFORM, and a sound / multi load, glide PERFORM's live SPACE and KILL back to neutral
  * (ui_perform.c perf_fade_*); KEEP: they stay as they are. A device setting, never in a patch or multi */
 #define PERF_KEEP_BIT 0x20u
+#if DUELL_VELO
+#define KEYVEL_ON_BIT 0x40u         /* DUELL (job D): MENU > CONTROL > KEY VELOCITY ON (sense.c sense_enable); bit 6 of the same byte, set = ON: a clear bit (a new unit, ERASE DATA, every older record) = OFF, the default (0.2.31, owner 2026-10-21; before: the bit meant OFF, default ON) */
+/* DUELL 1.0 (owner, 2026-10-21): MENU > CONTROL > AFTERTOUCH ON / OFF, on its own line (sense.c sense_at_enable): bit 7 of the same byte, set = OFF; a clear bit (a new unit, ERASE DATA,
+ * every older record) = ON, the default (0.2.32, owner 2026-10-22; KEY VELOCITY stays OFF by default). Aftertouch is the matrix source AT; with the line OFF the keys send no channel pressure, KEY VELOCITY is unaffected */
+#define AFTERT_OFF_BIT 0x80u
+static uint32_t keyvel_on(void) { return (ui_idle & KEYVEL_ON_BIT) != 0u; }
+static uint32_t aftert_on(void) { return (ui_idle & AFTERT_OFF_BIT) == 0u; }
+#endif
 static uint32_t perf_keep(void) { return (ui_idle & PERF_KEEP_BIT) != 0u; }
 static uint32_t mods_get(void) { return ((uint32_t)ui_idle >> MODS_SHIFT) & MODS_ALL; }
 static void mods_apply(void) { mods_off = (uint8_t)mods_get(); }
@@ -311,7 +325,7 @@ static const char *const MODS_NAME[4] = {"ARP", "SEQ", "SENDS", "PART FX"};
 static const char *const MODS_FULL[4] = {"MODULES: ARP OFF", "MODULES: SEQ OFF", "MODULES: SENDS OFF", "MODULES: PART FX OFF"};
 static uint32_t mods_idx(uint32_t bit) { return bit == MODS_ARP ? 0u : bit == MODS_SEQ ? 1u : bit == MODS_SENDS ? 2u : 3u; }
 /* the module a parameter belongs to (MODS_*; 0: none): glob a song.g id, else a part's. SENDS: the three sends and the CHORUS, DELAY 1/2,
- * 2/2 and REVERB pages' globals; PART FX: DIST, INSERT, EQ, DUCK (its SRC / NOTE on GLO > SIDECHAIN too); ARP: the arp's nine; SEQ: the
+ * 2/2 and REVERB pages' globals; PART FX: DIST, INSERT, EQ, DUCK (its MIDI channel and note are the device's: GLO > SIDECHAIN); ARP: the arp's nine; SEQ: the
  * steps' DIV and SWING (they only time the playback; LEN and GATE also serve the editing and STEP PREVIEW) */
 static uint32_t mods_of(uint32_t glob, uint32_t id)
 {
@@ -329,7 +343,7 @@ static uint32_t mods_of(uint32_t glob, uint32_t id)
         return MODS_SENDS;
     case P_DIST: case P_ITYPE: case P_IA: case P_IB: case P_IC: case P_IMIX:
     case P_EQLF: case P_EQLG: case P_EQMF: case P_EQMQ: case P_EQMG: case P_EQHF: case P_EQHG:
-    case P_DKSRC: case P_DKRATE: case P_DKTHR: case P_DKNOTE: case P_DKDEP: case P_DKATK: case P_DKRLS: case P_DKCRV:
+    case P_DKSRC: case P_DKRATE: case P_DKTHR: case P_DKDEP: case P_DKATK: case P_DKRLS: case P_DKCRV:
         return MODS_PFX;
     case P_AMODE: case P_ARATE: case P_AOCT: case P_AGATE: case P_ASWING: case P_APROB: case P_AHOLD: case P_AORDER: case P_ATGT:
         return MODS_ARP;
@@ -560,23 +574,31 @@ static void layer_foot_title(char *nm, char *ct);   /* the footer's page name an
 static uint32_t layer_leds(uint32_t *br);
 static uint32_t layer_btn(void);
 
-/* FILTER the multimode filter's (every engine with ufilt), VCF ANALOG's own, TRIO FILTER, NOISE FILT their own; OPERATOR, OP ENV, OPERATOR 2 an FM6 track's (its patch's
+/* FILTER the multimode filter's (every engine with ufilt; the engines' own filter pages are gone: cloud job J); OPERATOR, OP ENV, OPERATOR 2 an FM6 track's (its patch's
  * operators, ui_fm6op.c). (DUELL: DIGITAL's OP ENV pages and DRUM's LANES are gone, their ids hold DUELL's parameters; 0.2.9: SLICE's
  * SLICES page is gone with the engine) */
+static int page_twin_sub(uint32_t i)   /* TWIN MOD or TWIN CHAIN (cloud job H): the pages that exist only while filter 2's TYPE is not OFF */
+{
+    return PAGES[i].scope == SC_TRACK && (PAGES[i].id[0] == XW_BASE + X_KTRK2 || PAGES[i].id[0] == XW_BASE + X_ROUTE);
+}
 static int page_visible(uint32_t i)
 {
     if (PAGES[i].scope == SC_GLOBAL && PAGES[i].id[0] == G_SHPITCH)   /* SHIMMER (0.2.19): SHIM's PITCH and MOD, shown only while the reverb TYPE is SHIM (the page cycle skips it) */
         return song.g[G_RTYPE] == 3;
-    if (PAGES[i].id[0] == P_FTYPE)                    /* VCF (1.5, #104): ANALOG's own filter */
-        return ENGINES[TSEL->eng_req % NENGINES] == &ENG_ANALOG;
-    if (PAGES[i].id[0] == P_FREEA && PAGES[i].id[3] == P_FREED)   /* MULTI FILTER (DUELL 0.2.2): the multimode filter's, on every engine that has it (ufilt) */
+    if ((PAGES[i].id[0] == P_FREEA && PAGES[i].id[3] == P_FREED) || (PAGES[i].scope == SC_TRACK && PAGES[i].id[0] == P_KTRK))   /* MULTI FILTER 1/2, 2/2 (DUELL 0.2.2, 0.2.21): the multimode filter's, on every engine that has it (ufilt) */
         return ENGINES[TSEL->eng_req % NENGINES]->ufilt;
-    if (PAGES[i].scope == SC_TRACK && PAGES[i].id[0] == P_E4)   /* TRIO FILTER: TRIO's own */
-        return ENGINES[TSEL->eng_req % NENGINES] == &ENG_TRIO;
-    if (PAGES[i].scope == SC_TRACK && PAGES[i].id[0] == P_E2)   /* NOISE FILT: NOISE's own */
-        return ENGINES[TSEL->eng_req % NENGINES] == &ENG_NOISE;
+    if (page_twin_sub(i))   /* TWIN MOD, TWIN CHAIN (cloud job H): filter 2's, skipped by the page buttons and SELECT while its TYPE is OFF
+                                                         * (twin_on; TWIN FILTER, the page with the TYPE switch, is always there); the footer's page count counts the visible ones only (ui_graph.c page_parts) */
+        return twin_on(TSEL);
+    if (PAGES[i].scope == SC_ENGINE && PAGES[i].id[0] == P_E7) {   /* T0227: EDIT 2 holds the engine's eighth card: only where the engine has one (ANALOG, TRIO, NOISE, PHASE, WAVE, WHEEL: none) */
+        uint32_t id = pg_id(&PAGES[i], 0);
+        const char *l = ENGINES[TSEL->eng_req % NENGINES]->edit[(id - P_E0) & 7u].label;
+        return l && l[0] && l[0] != '-';
+    }
     if (PAGES[i].graph >= GR_FMOP && PAGES[i].graph <= GR_FMENV)
         return TSEL->eng_req % NENGINES == ENGI_FM6;
+    if (PAGES[i].graph == GR_MOD && PAGES[i].id[1] == P_M5SRC)   /* MATRIX 5-8 (0.2.24, owner): only while slots 1..4 are all in use (the matrix stays packed: mod.c mod_compact) */
+        return TSEL->p[P_M4SRC] != 0;
     return 1;
 }
 
@@ -746,14 +768,14 @@ static void open_family(uint32_t fam)
     page_entered();
 }
 
-/* DUELL 3.5: the main page. HOME's round is MORPH, MORPH SET, MODE, MIXER (FAM_TRK's pages, in PAGES order; 0.2.14: no OVERVIEW); power-on, a tap of HOME from another page and leaving the menu open the page
+/* DUELL 3.5: the main page. HOME's round is MORPH, MORPH SET, MODE (FAM_TRK's pages, in PAGES order; 0.2.14: no OVERVIEW; 0.2.25: the MIXER is GLO's); power-on, a tap of HOME from another page and leaving the menu open the page
  * MENU > CONTROL > HOME OPENS says (ui_home_pg; MORPH unless changed) */
 static void go_main_to(uint32_t want)
 {
     uint32_t i;
     ui.page = (uint8_t)page_first(FAM_TRK);
-    for (i = 0; (want == HP_MODE || want == HP_MIXER) && i < NPAGES; i++)
-        if (PAGES[i].fam == FAM_TRK && page_visible(i) && (want == HP_MODE ? PAGES[i].scope == SC_MODE : PAGES[i].graph == GR_TRK)) {
+    for (i = 0; want == HP_MODE && i < NPAGES; i++)
+        if (PAGES[i].fam == FAM_TRK && page_visible(i) && PAGES[i].scope == SC_MODE) {
             ui.page = (uint8_t)i;
             break;
         }
@@ -767,7 +789,7 @@ static void go_main_to(uint32_t want)
 static void go_main(void) { go_main_to(ui_home_pg < HP_COUNT ? ui_home_pg : HP_MORPH); }
 
 /* The SELECT knob (SPEC 1.2): the previous / next sub-page of the screen shown, wrapping: the family's pages, the order
- * its button's taps go round (open_family). HOME's round: its pages, round (SELECT right from MIXER goes to MORPH, left from MORPH to MIXER) */
+ * its button's taps go round (open_family). HOME's round: its pages, round (SELECT right from MODE goes to MORPH, left from MORPH to MODE) */
 static void page_select(int32_t dir)
 {
     uint32_t i;
@@ -834,7 +856,7 @@ static int seq_is_empty(const track_t *t)
  * takes the copy too (UNDO_MOT: SAVE held puts the track's motion back, the sound and the steps stay; motion_undo_take).
  * A sound load keeps the track's motion on the parameters every engine has (load_end, motion.c motion_sound_loaded);
  * a pattern load drops it all (the steps it was on are gone) */
-enum { UNDO_SOUND = 1, UNDO_PAT = 2, UNDO_MOT = 4 };
+enum { UNDO_SOUND = 1, UNDO_PAT = 2, UNDO_MOT = 4, UNDO_ENG = 8 /* (0.2.24: with UNDO_SOUND: an engine change, no sound load: no PERFORM fade, no pending place) */ };
 static struct {
     uint8_t trk;                 /* track + 1, 0 = nothing to undo */
     uint8_t keep;                /* the track is as the last load left it (undo.after): a next load keeps the copy */
@@ -875,7 +897,7 @@ static uint32_t steps_sig(const track_t *t) { return fnv(2166136261u, t->step, s
 static uint32_t track_sig(const track_t *t)      /* the sound (an FM6 track's patch too), the steps */
 {
     uint8_t id[3] = {t->eng_req, t->preset, t->user};
-    uint32_t h = fnv(fnv(steps_sig(t), t->p, sizeof t->p), id, 3), k = trk_index(t);
+    uint32_t h = fnv(fnv(steps_sig(t), t->p, P_COUNT * sizeof t->p[0]), id, 3), k = trk_index(t);
     h = fnv(h, fm6_patch[k], sizeof fm6_patch[k]); /* (a patch the editor sent between two loads) */
     for (uint32_t j = 0; j < motion.count; j++)
         if ((motion.event[j].place >> 6) == k) h = fnv(h, &motion.event[j], sizeof motion.event[j]);
@@ -920,11 +942,11 @@ static void load_motion_hold(track_t *t, uint32_t what)
 static void load_begin(track_t *t, uint32_t what)
 {
     uint32_t i = trk_index(t);
-    if (what & UNDO_SOUND) {
+    if ((what & UNDO_SOUND) && !(what & UNDO_ENG)) {
         pl_pend_on = 0;                           /* (and no cursor place waits for a load) */
+        perf_fade_begin(0);                       /* (0.2.14 PERF LEAVE FADE: a sound load takes PERFORM's SPACE and KILL back to neutral; 0.2.24: not an engine change) */
     }
-    if (what & UNDO_SOUND)
-        perf_fade_begin(0);                       /* (0.2.14 PERF LEAVE FADE: a sound load takes PERFORM's SPACE and KILL back to neutral) */
+    what &= (uint32_t)~UNDO_ENG;
     if (undo_depth++)
         return;
     motion_restore(t);
@@ -954,6 +976,7 @@ static void load_end(track_t *t)
 {
     if (--undo_depth)
         return;
+    mod_compact(t);                               /* (0.2.24: a sound with gaps in its matrix is packed as it loads, before the morph's ends are taken: sound-identical) */
     if (load_mo & 1u) {                           /* a sound load: the motion on the common parameters stays */
         morph_rebase(t);                          /* DUELL: the MORPH's ends belong to the sound before (morph.c) */
         (void)motion_sound_loaded(t, load_from, t->eng_req);
@@ -1045,6 +1068,93 @@ static void scale_sync(void)
     }
     scale_last = scale_pack();
 }
+/* GLO > SIDECHAIN: the MIDI setup of the ducker (fx.c sc_midi) <-> its settings bytes (ui.c ui_sc_set): i = 0 part 1's channel (0..15), 1 its note (0 ANY .. 127), 2 part 2's channel, 3 its note */
+static uint32_t sc_get(uint32_t i)
+{
+    uint32_t b = ui_sc_set[i & 3u];
+    if (i & 1u)
+        return b >= 1u && b <= 128u ? b - 1u : SC_NOTE_DEF;
+    return b >= 1u && b <= 16u ? b - 1u : SC_CH_DEF;
+}
+static void sc_put(uint32_t i, uint32_t v)
+{
+    if (v > ((i & 1u) ? 127u : 15u) || ui_sc_set[i & 3u] == (uint8_t)(v + 1u))
+        return;
+    ui_sc_set[i & 3u] = (uint8_t)(v + 1u);
+    sc_midi[i & 3u] = (uint8_t)v;
+    ui.mset_dirty = 1;
+    ui.mset_t = fm1_ms;
+}
+/* COMP (DUELL 0.2.21, the master compressor; fx.c comp_stage): song.cp[] (THRESH, RATIO, ATTACK, RELEASE; core.h G_CT .. G_CL) <-> the settings record's word cmp_set (settings_persist.c:
+ * the retired `rsv` field), a DEVICE setting: no multi, no project, no patch holds it, and a load never touches it. The word is 0xC8 << 24 | thr | ratio << 6 | atk << 10 (7 bits) | rel << 17 (7 bits) (0.2.24: fine times; the 0.2.21..0.2.23 tag 0xC7 reads as the defaults);
+ * anything without the tag (0, as every older record has, and a unit that never set it) is the defaults (RATIO 1:1); a field out of its range reads as its default. The RAM values
+ * are written to the word only when they change here (a changed word is saved ~2 s later, morph_settings' timer), so an untouched unit never writes the record for it; a word changed
+ * from outside (power-on, a backup restore) is read. Every frame (ui_input.c); the audio side gets cmp_cfg */
+static uint32_t cmp_pack(void)
+{
+    return 0xC8000000u | (uint32_t)song.cp[0] | (uint32_t)song.cp[1] << 6 | (uint32_t)song.cp[2] << 10 | (uint32_t)song.cp[3] << 17;
+}
+static uint32_t cmp_norm(uint32_t w)
+{
+    uint32_t t = w & 63u, r = w >> 6 & 15u, a = w >> 10 & 127u, l = w >> 17 & 127u;
+    if ((w >> 24) != 0xC8u)
+        t = CMP_THR_DEF, r = 0, a = CMP_ATK_DEF, l = CMP_REL_DEF;
+    t = t < CMP_THR_N ? t : (uint32_t)CMP_THR_DEF;
+    r = r < 9u ? r : 0u;
+    a = a < CMP_ATK_N ? a : (uint32_t)CMP_ATK_DEF;
+    l = l < CMP_REL_N ? l : (uint32_t)CMP_REL_DEF;
+    return 0xC8000000u | t | r << 6 | a << 10 | l << 17;
+}
+static uint32_t cmp_last = 0xFFFFFFFFu;
+static void cmp_sync(void)
+{
+    uint32_t ram, by = cmp_norm(cmp_set);
+    song.cp[0] = (int16_t)clamp(song.cp[0], 0, (int32_t)CMP_THR_N - 1);      /* (an editor or a stray write: in range) */
+    song.cp[1] = (int16_t)clamp(song.cp[1], 0, 8);
+    song.cp[2] = (int16_t)clamp(song.cp[2], 0, (int32_t)CMP_ATK_N - 1);
+    song.cp[3] = (int16_t)clamp(song.cp[3], 0, (int32_t)CMP_REL_N - 1);
+    ram = cmp_pack();
+    if (cmp_last != 0xFFFFFFFFu && ram != cmp_last) {              /* changed here */
+        cmp_set = ram;
+        ui.mset_dirty = 1;
+        ui.mset_t = fm1_ms;
+    } else if (by != ram || cmp_last == 0xFFFFFFFFu) {             /* changed outside, or the first look */
+        song.cp[0] = (int16_t)(by & 63u);
+        song.cp[1] = (int16_t)(by >> 6 & 15u);
+        song.cp[2] = (int16_t)(by >> 10 & 127u);
+        song.cp[3] = (int16_t)(by >> 17 & 127u);
+    }
+    cmp_last = cmp_pack();
+    cmp_cfg = (uint32_t)song.cp[0] | (uint32_t)song.cp[1] << 8 | (uint32_t)song.cp[2] << 16 | (uint32_t)song.cp[3] << 24;
+}
+/* WIDTH (DUELL 0.2.23; fx.c width_stage): song.ms[] (WIDTH 0..200 %; core.h G_WD) <-> the settings record's bytes
+ * favorites.factory[15][18..21] (ui_ms_set; bytes of the FX layer's key map, retired in 0.2.2, that nothing has read since): [18] the tag MS_TAG, [19] WIDTH, [20] (0.2.25: the SATURATOR's DRIVE of 0.2.23 / 0.2.24, removed: never read, written 0), [21] BASS MONO + 1 (0.2.24; 0 = the default, ON at 200 Hz). DEVICE settings like COMP: no
+ * multi, project or patch holds them and a load never touches them. Without the tag (every older record: 0, or what the old key map left) the bytes are the defaults (WIDTH 100 %:
+ * the stage off); a value out of range reads as its default. As cmp_sync: written only when changed here (saved ~2 s later), read when changed from outside (power-on,
+ * a backup restore), every frame (ui_input.c); the audio side gets wd_sel */
+#define ui_ms_set (&favorites.factory[15][18])
+#define MS_TAG 0xB7u
+static uint32_t ms_last = 0xFFFFFFFFu;
+static uint32_t ms_pack(void) { return (uint32_t)song.ms[0] | (uint32_t)song.bm << 16; }
+static void ms_sync(void)
+{
+    uint8_t *b = ui_ms_set;
+    uint32_t w = b[0] == MS_TAG && b[1] <= 200u ? b[1] : (uint32_t)WD_DEF, ram;
+    uint32_t m = b[0] == MS_TAG && b[3] >= 1u && b[3] <= BM_N + 1u ? b[3] - 1u : (uint32_t)BM_DEF;   /* 0.2.24 BASS MONO, a device setting: [21] = setting + 1, 0 (and no tag) = the default, ON at 200 Hz */
+    song.ms[0] = (int16_t)clamp(song.ms[0], 0, 200);                  /* (an editor or a stray write: in range) */
+    song.bm = (int16_t)clamp(song.bm, 0, (int32_t)BM_N);
+    ram = ms_pack();
+    if (ms_last != 0xFFFFFFFFu && ram != ms_last) {                   /* changed here */
+        b[0] = (uint8_t)MS_TAG, b[1] = (uint8_t)song.ms[0], b[2] = 0, b[3] = (uint8_t)(song.bm + 1);
+        ui.mset_dirty = 1;
+        ui.mset_t = fm1_ms;
+    } else if (ram != (w | m << 16) || ms_last == 0xFFFFFFFFu) {   /* changed outside, or the first look */
+        song.ms[0] = (int16_t)w;
+        song.bm = (int16_t)m;
+    }
+    ms_last = ms_pack();
+    wd_sel = (uint8_t)song.ms[0];
+}
 /* param_kept for the sound loaded into track t: a load never touches the global scale (core.h), and no patch holds one */
 static int param_kept_on(const track_t *t, uint32_t i) { (void)t; return param_kept(i); }
 static void ds_seq_back(track_t *t);              /* (upreset.c: a patch's lent sequencer pattern back) */
@@ -1086,6 +1196,7 @@ static void undo_swap(void)
                 t->p[i] = undo.p[i];
                 undo.p[i] = v;
             }
+        duck_set_part(trk_index(t));                    /* (DUCK SRC PART on one part only, params.c) */
     }
     if (undo.what & UNDO_PAT) {
         uint32_t ps = pat_sig[trk_index(t)];
@@ -1133,21 +1244,34 @@ static void undo_swap(void)
     ui.force = 1;
 }
 
-/* a 16-step pattern (PATTERNS[] format, user presets too) into steps 1..16, the rest empty, LEN 16 */
+/* one step of the pattern tables' format (a note 0 = rest; flags 1 accent, 2 slide, 4 tie): PATTERNS[] (the slots' defaults, patslot.c), user presets */
+static void pat_make_step(step_t *s, uint8_t n, uint8_t fl)
+{
+    s->note[0] = n;
+    s->note[1] = s->note[2] = s->note[3] = 0;
+    s->n = n ? 1 : 0;
+    s->time = (fl & 4u) ? ST_TIE : n ? ST_NOTE : ST_REST;
+    s->flags = n ? (fl & (SF_ACCENT | SF_SLIDE | SF_RATCH)) : 0;
+    s->vel = n ? 96 : 0;
+    s->probability = 0;
+}
+/* a 16-step pattern (user presets' format) into steps 1..16, the rest empty, LEN 16 */
 static void load_pat16(track_t *t, const uint8_t *note, const uint8_t *flags)
 {
     uint32_t i;
-    for (i = 0; i < NSTEP; i++) {
-        step_t *s = &t->step[i];
-        uint8_t n = i < 16u ? note[i] : 0, fl = i < 16u ? flags[i] : 0;
-        s->note[0] = n;
-        s->n = n ? 1 : 0;
-        s->time = (fl & 4u) ? ST_TIE : n ? ST_NOTE : ST_REST;
-        s->flags = n ? (fl & (SF_ACCENT | SF_SLIDE | SF_RATCH)) : 0;
-        s->vel = n ? 96 : 0;
-        s->probability = 0;
-    }
+    for (i = 0; i < NSTEP; i++)
+        pat_make_step(&t->step[i], i < 16u ? note[i] : 0, i < 16u ? flags[i] : 0);
     t->p[P_SLEN] = 16;
+}
+
+/* default pattern k (PATTERNS[k]) into track t: the steps, LEN and DIV (a part's power-on pattern: TRK_DEF; all are 0 = none today) */
+static void pat_load_def(track_t *t, uint32_t k)
+{
+    uint32_t i;
+    for (i = 0; i < NSTEP; i++)
+        pat_make_step(&t->step[i], i < NPAT_STEPS ? PATTERNS[k].note[i] : 0, i < NPAT_STEPS ? PATTERNS[k].flags[i] : 0);
+    t->p[P_SLEN] = PATTERNS[k].len;
+    t->p[P_SDIV] = PATTERNS[k].div;
 }
 
 static void track_defaults_steps(track_t *t)
@@ -1158,38 +1282,27 @@ static void track_defaults_steps(track_t *t)
         step_clear(&t->step[i]);
 }
 
-/* SAVE > PATTERNS: ONE list of DUELL's sixteen pattern slots ("P01".."P16"), all overwritable (patslot.c). The factory
- * patterns (PATTERNS[], 16: engines.c, SPEC 3.7) are the DEFAULT content of all 16 slots: a slot never saved (or erased) shows
- * and loads its factory pattern ("P03 OFFBEAT"); no slot is empty by default. SAVE writes the selected part's pattern
- * into the slot, ERASE deletes what was saved there (back to the factory default / empty). The patterns inside user
- * sounds are not listed (a sound still carries one). A factory pattern replaces the track's steps 1..16 (the rest
- * cleared) and LEN; a slot's own: all 64 steps with its LEN, DIV, SWING, GATE and QUANTIZE. The notes are
- * loaded as they are: the factory ones are C4 (60) + an offset, so they also serve the SEQUENCER arp as it is;
+/* SAVE > PATTERNS: ONE list of DUELL's 32 pattern slots ("P01".."P32") for the whole device, all overwritable, none empty
+ * (patslot.c). The 32 default patterns (PATTERNS[]: engines.c, SPEC 3.7) are installed in the slots as ordinary content
+ * ("P03 OFFBEAT"); no second list exists (the arp's SEQ mode plays the part's own steps, which came from a slot or were played).
+ * SAVE writes the selected part's pattern into the slot, ERASE gives the slot's default back. The patterns inside user
+ * sounds are not listed (a sound still carries one). A slot holds all 64 steps with its LEN, DIV, SWING, GATE and QUANTIZE. The notes are
+ * loaded as they are: the defaults are C4 (60) + an offset, so they also serve the SEQUENCER arp as it is;
  * SCL TRANS / OCT transpose what plays */
-_Static_assert(NPATTERNS <= PS_SLOTS, "the factory patterns are the default content of the pattern slots");
 static uint32_t pat_count(void) { return PS_SLOTS; }
-static int pat_has(uint32_t k) { return k < NPATTERNS || ps_used(k); }   /* the slot shows / loads something */
 
-static void pat_label(uint32_t n, char *tag, char *name)   /* tag: 4 bytes ("P03"), name: 13 ("MELODY", "SAVED", "--") */
+static void pat_label(uint32_t n, char *tag, char *name)   /* tag: 4 bytes ("P03"), name: 13 ("OFFBEAT"; "SAVED" if it has none) */
 {
     ps_label(tag, n % PS_SLOTS);
-    if (ps_used(n)) {
-        ps_name(n % PS_SLOTS, name);                /* the stored name ("SAVED" if it has none) */
-        if (!name[0])
-            str_cpy(name, "SAVED", 13);
-    } else if (n < NPATTERNS)
-        str_cpy(name, PATTERNS[n].name, 13);
-    else
-        str_cpy(name, "--", 13);
+    ps_name(n % PS_SLOTS, name);
+    if (!name[0])
+        str_cpy(name, "SAVED", 13);
 }
 
 static void pat_load(track_t *t, uint32_t n)
 {
     load_begin(t, UNDO_PAT);
-    if (ps_used(n))
-        ps_load_trk(t, n);
-    else if (n < NPATTERNS)
-        load_pat16(t, PATTERNS[n].note, PATTERNS[n].flags);
+    ps_load_trk(t, n);
     pat_sig[trk_index(t)] = steps_sig(t);
     pat_last[trk_index(t)] = (uint8_t)(n + 1u);
     pat_from[trk_index(t)] = 0;                     /* (a phrase: no PROJECT slot) */
@@ -1209,15 +1322,11 @@ static uint32_t pat_pick(void)                   /* ui.ppick inside the list (us
     return ui.ppick < n ? ui.ppick : n - 1u;
 }
 
-/* SAVE > PATTERNS LOAD: slot n into track t, "LOADED P03 MELODY" (factory default), "LOADED P03 <name>" (saved) */
+/* SAVE > PATTERNS LOAD: slot n into track t, "LOADED P03 OFFBEAT" */
 static void pat_load_ui(track_t *t, uint32_t n)
 {
     char tag[4], nm[13], b[20];
     pat_label(n, tag, nm);
-    if (!pat_has(n)) {
-        ui_message("EMPTY SLOT");
-        return;
-    }
     pat_load(t, n);
     str_cpy(b, tag, sizeof b);
     str_cpy(b + str_len(b), " ", 2);
@@ -1226,14 +1335,20 @@ static void pat_load_ui(track_t *t, uint32_t n)
 }
 
 /* SAVE > PATTERNS SAVE: the selected part's pattern into the slot picked under the name the NAME screen gave it
- * (ui_name.c NK_PATTERN; "SAVED P03"); ERASE: what was saved there
- * deleted (the factory default / empty again; "ALREADY FACTORY" / "EMPTY" when nothing was saved). Both
+ * (ui_name.c NK_PATTERN; "SAVED P03"; "PATTERN LIST FULL" when it does not fit the slot's object); ERASE: the slot's default back
+ * ("ALREADY DEFAULT" when it holds it). Both
  * at once, while playing too: the flash write follows when nothing plays (patslot.c ps_poll) */
 static void pslot_save_ui(uint32_t k, const char *name)
 {
     char l[4];
     ps_label(l, k);
-    if (ps_save_trk(TSEL, k, name)) {
+    switch (ps_save_trk(TSEL, k, name)) {
+    case 0:
+        break;
+    case 2:
+        ui_message("PATTERN LIST FULL");
+        return;
+    default:
         ui_message("SAVE ERROR");
         return;
     }
@@ -1246,9 +1361,10 @@ static void pslot_erase_ui(uint32_t k)
 {
     char l[4];
     uint32_t i;
+    int rc;
     ps_label(l, k);
-    if (ps_erase(k)) {
-        ui_message(k < NPATTERNS ? "ALREADY FACTORY" : "EMPTY");
+    if ((rc = ps_erase(k)) != 0) {
+        ui_message(rc == 2 ? "PATTERN LIST FULL" : "ALREADY DEFAULT");
         return;
     }
     for (i = 0; i < NTRK; i++)                          /* (no part plays "the slot's pattern" any more) */
@@ -1260,22 +1376,22 @@ static void pslot_erase_ui(uint32_t k)
 
 /* the track's settings, not the sound's: what a sound load (factory or user preset, an engine jump,
  * TOOLS INIT) leaves alone. The mix (LEVEL, PAN, MUTE: the MIXER; 0.2.19: LEVEL is the player's mixer level, the sound's loudness is P_TRIM, which a load sets), the arpeggiator (ARP, ARP 2),
- * the scale and key map (SCL), the pattern parameters (LEN, DIV, SWING, GATE; 1.2: QUANTIZE). (DUELL: the SLICER
+ * the scale and key map (SCL; not id 27, KEY TRK, which is the sound's), the pattern parameters (LEN, DIV, SWING, GATE; 1.2: QUANTIZE). (DUELL: the SLICER
  * insert's ids were kept too; it is removed, its ids P_FREEA..D are not) */
 static int param_kept(uint32_t i)
 {
-    return i == P_LEVEL || i == P_PAN || i == P_MUTE || (i >= P_AMODE && i <= P_SGATE) ||
+    return i == P_LEVEL || i == P_PAN || i == P_MUTE || (i >= P_AMODE && i <= P_SGATE && i != P_KTRK && i != P_RES2 && i != P_DRV2) ||   /* (0.2.21: id 27, once QNT, is the multimode filter's KEY TRK: part of the sound; ids 25 and 26, once ROOT and SCALE, are the TWIN FILTER's RES 2 and DRIVE: part of the sound too) */
            i == P_CHRD || i == P_VOIC || i == P_SQNT;
 }
 
-/* DUELL factory sounds (sounds.c) and the arp: a sound that sets the arp (DSF_ARP) lends it to the part. Its load keeps the
- * part's arp settings (P_AMODE .. P_AORDER) aside; the next sound loaded (factory or stored) gives them back, unless the arp
- * was changed since (then the change stays: the player's). A sound without arp pairs leaves the arp as it is (param_kept) */
+/* DUELL patches and the arp: every patch sets the part's arp (DUELL 1.0, owner: a patch restores its own arp state, OFF as well; there are no factory and user kinds):
+ * a factory sound's arp pairs, or the defaults (OFF) when it has none; a stored patch's AK block (upreset.c up_load), or the defaults. The load keeps the
+ * part's own arp settings (P_AMODE .. P_AORDER) aside; the next patch loaded gives them back first, unless the arp was changed since (then the change
+ * stays: the player's) and then sets its own. The global GLO > MODULES ARP switch still kills every arp. */
 _Static_assert(P_AORDER == P_AMODE + 7, "the arp's eight ids in a row");
 static uint8_t ds_lent[NTRK];
 static int16_t ds_arp_was[NTRK][8], ds_arp_set[NTRK][8];
-/* ov: a stored patch's own arp (upreset.c: its AK block, the eight values), which wins over the factory sound s (a shadow copy
- * whose arp the player edited); 0: the factory sound's, if it has one */
+/* ov: a stored patch's own arp (upreset.c: its AK block, the eight values, or the defaults); 0: the factory sound s's (its pairs, else the defaults) */
 static void ds_arp(track_t *t, const ds_sound_t *s, const int16_t *ov)
 {
     uint32_t k = trk_index(t) % NTRK, i;
@@ -1285,7 +1401,7 @@ static void ds_arp(track_t *t, const ds_sound_t *s, const int16_t *ov)
             memcpy(a, ds_arp_was[k], sizeof ds_arp_was[k]);
         ds_lent[k] = 0;
     }
-    if (ov || (s && (s->flags & DSF_ARP))) {
+    if (ov || s) {
         memcpy(ds_arp_was[k], a, sizeof ds_arp_was[k]);
         for (i = 0; i < 8u; i++)
             a[i] = TP[P_AMODE + i].def;
@@ -1311,7 +1427,7 @@ static void ds_keys(track_t *t, const ds_sound_t *s, const int16_t *ov)   /* ov:
                 t->p[DS_KEYID[i]] = ds_key_was[k][i];
         ds_klent[k] = 0;
     }
-    if (ov || (s && (s->flags & DSF_KEYS))) {
+    if (ov || s) {
         for (i = 0; i < 2u; i++) {
             ds_key_was[k][i] = t->p[DS_KEYID[i]];
             t->p[DS_KEYID[i]] = TP[DS_KEYID[i]].def;
@@ -1344,6 +1460,7 @@ static void apply_preset_to(track_t *t, uint32_t pi)
     for (i = 0; i < P_E0; i++)                        /* INIT: the sound's parameters to their defaults (a preset */
         if (!param_kept_on(t, i))                     /* sounds the same after any edit) */
             t->p[i] = TP[i].def;
+    ext_defaults(t);                                  /* .. the extension slots too (ext.h: TWIN, SUB, CYCLE values; a factory sound's pairs on top) */
     for (i = 0; i < 8u; i++)
         t->p[P_E0 + i] = e->edit[i].def;
     if (s)
@@ -1355,9 +1472,9 @@ static void apply_preset_to(track_t *t, uint32_t pi)
     load_end(t);
 }
 
-/* the engine's defaults and its first preset. With the audio IRQ off: the ISR sees the old engine with
+/* INIT: the engine's defaults and its first preset (power-on, INIT SOUND; up to 0.2.23 every engine change did this). With the audio IRQ off: the ISR sees the old engine with
  * its values or the new one with its own (voice.c engine_block), never one with the other's */
-static void set_engine_of(track_t *t, uint32_t ei)
+static void init_engine_of(track_t *t, uint32_t ei)
 {
     const engine_t *e = ENGINES[ei % NENGINES];
     uint32_t i;
@@ -1374,6 +1491,65 @@ static void set_engine_of(track_t *t, uint32_t ei)
     fm1_irq_on();
     load_end(t);
 }
+/* DUELL 0.2.24 (owner): an ENGINE CHANGE (the ENGINE page's K1, the editor's engine list) keeps the sound's common settings: everything below P_E0 (the envelopes, the multimode
+ * filter and KEY TRK, the LFOs, the matrix, the sends, INSERT, SAT (DIST), EQ, DUCK, LEVEL / PAN / TRIM, the arp, CHORD) and the slot the sound came from stay as they are; only the
+ * engine and its own eight (P_E0..P_E7) change. The eight: the new engine's defaults, except a slot whose label and format match one of the old engine's (a number: CUT, RES, DTN,
+ * DRV ..., clamped to the new range; a list: the same list only): that value carries over. Switching back to the engine this part came from in this session puts its eight back as they were
+ * (eng_prev: 18 bytes a part). The voices are released (an engine's voice state is its own); FM6 loads the patch its SLOT names. No PERFORM fade (UNDO_ENG: not a sound load) */
+static struct { uint8_t eng, ok; int16_t e[8]; } eng_prev[NLIVE];
+static int eng_slot_match(const param_desc_t *a, const param_desc_t *b)
+{
+    if (!a->label || !b->label || a->label[0] == '-' || !str_eq(a->label, b->label) || a->fmt != b->fmt || a->names != b->names)
+        return 0;
+    return !a->names || (a->min == b->min && a->max == b->max);   /* (a number: clamped to the new range; a list: the same list only) */
+}
+static void set_engine_of(track_t *t, uint32_t ei)
+{
+    uint32_t k = trk_index(t) % NLIVE, i, j, old;
+    const engine_t *e, *oe;
+    int16_t was[8];
+    if (!eng_ok(ei % NENGINES))
+        ei = 0u;
+    ei %= NENGINES;
+    old = t->eng_req % NENGINES;
+    if (ei == old)
+        return;
+    e = ENGINES[ei];
+    oe = ENGINES[old];
+    load_begin(t, UNDO_SOUND | UNDO_ENG);
+    {                                                   /* T0227 (owner): the patch stays the one it came from: a factory sound's slot becomes the part's slot (t->user), so the
+                                                         * name and the slot shown (footer, PATCHES, SAVE's offer) do not turn into the new engine's first sound when preset goes to 0 */
+        uint32_t sl = slot_of(t);
+        if (!t->user && sl < UP_SLOTS)
+            t->user = (uint8_t)(sl + 1u);
+    }
+    fm1_irq_off();
+    memcpy(was, &t->p[P_E0], sizeof was);
+    t->eng_req = (uint8_t)ei;
+    for (i = 0; i < 8u; i++) {
+        int16_t v = e->edit[i].def;
+        if (eng_prev[k].ok && eng_prev[k].eng == ei) {       /* back to the engine of before: its own eight as they were */
+            v = eng_prev[k].e[i];
+        } else {
+            for (j = 0; j < 8u; j++)
+                if (eng_slot_match(&e->edit[i], &oe->edit[j])) {   /* the same control on both engines: carried over */
+                    v = (int16_t)clamp(was[j], e->edit[i].min, e->edit[i].max);
+                    break;
+                }
+        }
+        t->p[P_E0 + i] = v;
+    }
+    eng_prev[k].eng = (uint8_t)old;
+    eng_prev[k].ok = 1;
+    memcpy(eng_prev[k].e, was, sizeof was);
+    panic_req |= (uint8_t)(1u << trk_index(t));        /* (the voices: an engine's state is its own) */
+    t->preset = 0;
+    if (t == TSEL)
+        sync_reload = 1;
+    fm6_track_loaded(t);                                /* FM6: the patch its SLOT names (nothing on the others) */
+    fm1_irq_on();
+    load_end(t);
+}
 
 static void apply_preset(uint32_t pi) { apply_preset_to(TSEL, pi); }
 static void set_engine(uint32_t ei) { set_engine_of(TSEL, ei); }
@@ -1383,10 +1559,18 @@ static void track_defaults(track_t *t)
     uint32_t i;
     for (i = 0; i < P_E0; i++)
         t->p[i] = TP[i].def;
+    ext_defaults(t);
     track_defaults_steps(t);
 }
 
-/* switch engine (its defaults + first preset) and say so */
+/* INIT (the SOUND INIT dialog, the INIT page): the engine's defaults and its first preset, then KEY TRK at the new-sound default (0.2.22: a factory BASS sound sets 0 itself) */
+static void init_sound(void)
+{
+    init_engine_of(TSEL, TSEL->eng_req);
+    TSEL->p[P_KTRK] = TP[P_KTRK].def;
+}
+
+/* switch engine (0.2.24: the common settings stay, the engine's own eight to its defaults / carried over) and say so */
 static void select_engine(uint32_t e)
 {
     set_engine(e);
@@ -1726,9 +1910,9 @@ static int act_ready(void)
     if (cur_page()->graph == GR_TOOLS)                  /* one case per column: CLEAR PAT, INIT, RESTORE ALL */
         return c == 0u ? !seq_is_empty(TSEL) || motion_count(TSEL) : c == 1u ? 1 : up_count() > 0u;
     if (cur_page()->graph == GR_PATS) {                 /* LOAD: another pattern; ERASE: a saved slot; SAVE: any slot */
-        if (c == 2u) return ps_used(pat_pick());
+        if (c == 2u) return ps_changed(pat_pick());
         if (c == 3u) return 1;
-        return pat_has(pat_pick()) && (pat_last[s] != pat_pick() + 1u || steps_sig(TSEL) != pat_sig[s]);
+        return pat_last[s] != pat_pick() + 1u || steps_sig(TSEL) != pat_sig[s];
     }
     if (cur_page()->graph == GR_SLOTS)                  /* MULTI: LOAD a used one (playing too), ERASE / SAVE stopped */
         return c == 3u ? !song.playing : project_used((uint32_t)song.g[G_SLOT] - 1u) && (c == 1u || (!song.playing && !(c == 2u && project_factory((uint32_t)song.g[G_SLOT] - 1u))));

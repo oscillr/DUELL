@@ -6,6 +6,8 @@
  * used, the NAME screen opens before anything is written; OCT+ writes, OCT- cancels (back to the page, nothing
  * written). Any page button or HOME cancels it too (NOT SAVED, nothing written; ui_input.c). The name is prefilled:
  * PROJECT the current multi's (as loaded or last saved; none: "MULTI M01"), so SAVE, OCT+, OCT+ saves with the default name.
+ * (DUELL 0.2.21: NK_SAVE_NAME, the SAVE dialog's RENAME (K2): the NAME screen for the sound's name; OCT+ keeps the name and goes back to the dialog (it writes nothing),
+ * OCT- goes back with the old one; the dialog's OCT+ then saves the record under it: ui.c save_nm, upreset.c up_patch_save_part.)
  * (DUELL 0.2.17: a PATCH SLOT has no NAME screen on the device: hold SAVE overwrites a slot under the sound's own name; NK_USER_SAVE /
  * NK_USER_RENAME are kept for the tests and a later rename, no page opens them.)
  * Writing needs the transport stopped (STOP TO SAVE; the screen stays).
@@ -28,7 +30,7 @@
  *                keeps (a rename; overwriting a named sound; a multi with a name) or, if there is none, a random one.
  *   LEDs         only the five black function keys are lit (both octaves); the white keys stay dark.
  * Spaces at either end are dropped when it is written; an empty name: USER the automatic one, PROJECT none. */
-enum { NK_NONE, NK_USER_SAVE, NK_USER_RENAME, NK_PROJ_SAVE, NK_PROJ_RENAME, NK_PATTERN };   /* NK_PATTERN: SAVE > PATTERNS (0.2.17: no NAME screen for patches: SAVE overwrites a slot, the sound keeps its name) */
+enum { NK_NONE, NK_USER_SAVE, NK_USER_RENAME, NK_PROJ_SAVE, NK_PROJ_RENAME, NK_PATTERN, NK_SAVE_NAME };   /* NK_PATTERN: SAVE > PATTERNS (0.2.17: no NAME screen for patches: SAVE overwrites a slot, the sound keeps its name) */
 #define NM_LEN 12u
 #define NM_TAP_MS 800u                                 /* multi-tap: the next letter within this */
 #define NM_REP_MS 450u                                 /* a held arrow / DELETE repeats after this, */
@@ -102,12 +104,18 @@ static void name_open(uint32_t kind, uint32_t slot)
         else if (slot_of(TSEL) < UP_SLOTS)             /* the sound's own name */
             sl_name(slot_of(TSEL), b);
         nm.cat = (uint8_t)(kind == NK_USER_RENAME ? sl_cat(slot) : track_cat(TSEL));
-    } else if (kind == NK_PATTERN) {                   /* SAVE > PATTERNS: the slot's name (a factory one counts), else random */
+    } else if (kind == NK_SAVE_NAME) {                 /* the SAVE dialog's RENAME: the name chosen before, else the sound's (slot = the part) */
+        str_cpy(nm.ph, "PATCH", sizeof nm.ph);
+        if (save_nm[0])
+            str_cpy(b, save_nm, sizeof b);
+        else
+            sound_name(&trk[slot % NTRK], b);
+        if (str_eq(b, "INIT"))
+            b[0] = 0;                                  /* (no name of its own: a random one to start from) */
+    } else if (kind == NK_PATTERN) {                   /* SAVE > PATTERNS: the slot's own name to start from */
         char tag[4];
         str_cpy(nm.ph, "PATTERN", sizeof nm.ph);
         pat_label(slot % PS_SLOTS, tag, b);
-        if (!ps_used(slot % PS_SLOTS) && slot >= NPATTERNS)
-            b[0] = 0;                                  /* ("--": an empty slot has no name) */
     } else {
         str_cpy(nm.ph, "MULTI ", sizeof nm.ph);       /* DUELL: "MULTI M05" (SAVE > MULTI) */
         mu_label(nm.ph + 6, slot % MU_SLOTS);
@@ -270,8 +278,15 @@ static void name_ok(void)
         a++;
     for (z -= a, b[z] = 0; z--;)
         b[z] = nm.s[a + z];
-    if (nm.kind != NK_PATTERN && transport_busy()) {   /* (a pattern slot is saved in RAM at once, while playing too) */
+    if (nm.kind != NK_PATTERN && nm.kind != NK_SAVE_NAME && transport_busy()) {   /* (a pattern slot is saved in RAM at once, while playing too) */
         ui_message("STOP TO SAVE");
+        return;
+    }
+    if (nm.kind == NK_SAVE_NAME) {                     /* RENAME in the SAVE dialog: keep the name, back to the dialog (nothing is written) */
+        uint32_t trk2 = nm.slot;
+        str_cpy(save_nm, b, sizeof save_nm);
+        name_close();
+        confirm_open(CF_SAVE_OVER, trk2);
         return;
     }
     switch (nm.kind) {
@@ -327,8 +342,15 @@ static void name_input(uint32_t notes, uint32_t oct)
     enc_drop();                                        /* the other knobs do nothing here */
     if (oct & 2u)
         name_ok();
-    else if (oct & 1u)
-        name_close();                                  /* cancel: nothing written, back to the page */
+    else if (oct & 1u) {
+        if (nm.kind == NK_SAVE_NAME) {                 /* cancel: back to the SAVE dialog with the name it had */
+            uint32_t trk2 = nm.slot;
+            name_close();
+            confirm_open(CF_SAVE_OVER, trk2);
+        } else {
+            name_close();                              /* cancel: nothing written, back to the page */
+        }
+    }
 }
 
 /* the key LEDs: only the five function keys (the black keys: cursor left / right, SPACE, DELETE, ABC / 123), in
@@ -355,6 +377,8 @@ static void nm_title(char *b)
     str_cpy(b, nm.kind == NK_USER_SAVE || nm.kind == NK_PROJ_SAVE ? "SAVE " : "NAME ", 8);
     if (nm.kind == NK_PATTERN)
         str_cpy(b + 5, "PATTERN", 12);
+    else if (nm.kind == NK_SAVE_NAME)
+        up_slot_label(b + 5, ui.svs % UP_SLOTS);       /* "NAME #17": the slot it will be saved to */
     else if (nm.kind <= NK_USER_RENAME)
         up_slot_label(b + 5, nm.slot);
     else
@@ -451,8 +475,8 @@ static void nm_draw_panel(void)
 static void nm_draw_foot(void)
 {
     khint_t a[3], b[4];
-    int ok = nm.kind == NK_PATTERN || !transport_busy();
-    a[0] = (khint_t){KC_OCTUP, nm.kind == NK_USER_SAVE || nm.kind == NK_PROJ_SAVE || nm.kind == NK_PATTERN ? "SAVE" : "RENAME"};
+    int ok = nm.kind == NK_PATTERN || nm.kind == NK_SAVE_NAME || !transport_busy();
+    a[0] = (khint_t){KC_OCTUP, nm.kind == NK_SAVE_NAME ? "OK" : nm.kind == NK_USER_SAVE || nm.kind == NK_PROJ_SAVE || nm.kind == NK_PATTERN ? "SAVE" : "RENAME"};
     a[1] = (khint_t){KC_OCTDN, "CANCEL"};
     a[2] = (khint_t){KC_K4, "RANDOM"};                 /* (every NAME screen: a new random name) */
     b[0] = (khint_t){KC_K1, "MOVE"};

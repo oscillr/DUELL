@@ -62,6 +62,7 @@ static void boot(void)
     persist_pending = 0;
     flash_ok = 1;
     persist_boot();
+    ps_dirty = 0;                                       /* (the pattern slots' defaults of a blank flash are written at the first quiet pass: not what these erase counts are about) */
     settings_init();
     if (autosave_boot(1))
         first_boot_pending = 0;

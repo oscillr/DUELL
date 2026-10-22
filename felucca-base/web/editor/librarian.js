@@ -161,6 +161,40 @@ export async function runPlan(u, plan, { safety = null, safetyAt = 4, onProgress
 //   copy a -> b: b becomes a (a record whole; a factory sound as an approximate copy)
 //   swap a <-> b: two saved records change places; a saved record and a factory slot: the record moves (the old place shows its own factory sound again, b's
 //   factory sound is not carried over); two factory slots: nothing to swap
+// a stored patch's CATEGORY (0.2.25): the record read whole, byte 6 changed, written whole (the unit checks it at commit); a factory slot cannot be given one
+export async function setCategory(u, slot, cat) {
+  if (!hasRaw(u)) throw new UnitError("Changing a category needs firmware 0.2.19 or newer.");
+  if (!(cat >= 1 && cat < CATEGORIES.length)) throw new UnitError("Pick a category.");
+  const rec = await rawRead(u, slot);
+  if (!rec) throw new UnitError("This slot holds a factory sound: its category is fixed. Store a sound in it first.");
+  if (rec[6] === cat) return;
+  const b = rec.slice(); b[6] = cat;
+  await rawWrite(u, slot, b);
+  await u.listSlots();
+}
+// SAVE TO UNIT from the PATCHES form: the patch in slot `src` (read whole, as the unit holds it) is stored in slot `dst` under `name` and `cat`. Nothing of the
+// parts is read or sent: the sound a part plays has no say in it. A saved patch is its record with the name (bytes 7..18) and the category (byte 6) changed
+// and written back through PATCH_RAW; a factory sound goes as the copy of its values (UP_PUT, as in a copy). The result is read back.
+export async function saveAs(u, src, dst, { name, cat = null } = {}) {
+  const nm = String(name ?? "").replace(/[^ -~]/g, "").trim().slice(0, 12);
+  if (!nm) throw new UnitError("Give the patch a name (1 to 12 characters).");
+  const it = await readItem(u, src);
+  if (it.error) throw new UnitError(it.error);
+  let item;
+  if (it.kind === "record") {
+    const b = it.record.slice(); b.fill(0, 7, 19); [...nm].forEach((c, i) => { b[7 + i] = c.charCodeAt(0); });
+    if (cat != null && cat >= 0 && cat < CATEGORIES.length) b[6] = cat;
+    item = itemFromRecord(b, { number: dst + 1 });
+    if (item.error) throw new UnitError(item.error);
+  } else item = { ...it, name: nm, cat: cat != null && cat >= 0 && cat < CATEGORIES.length ? cat : it.cat, number: dst + 1 };
+  const plan = makePlan(u, [item], [dst]);
+  if (plan.problems.length) throw new UnitError(plan.problems[0]);
+  const r = await runPlan(u, plan, {});
+  if (r.failed) throw r.failed.error;
+  if (r.mismatched?.length) throw new UnitError("The unit did not read the patch back the same. Try again.");
+  await u.listSlots();
+  return item;
+}
 export async function planCopy(u, a, b) { const it = await readItem(u, a); return makePlan(u, [it], [b]); }
 export async function swapSlots(u, a, b) {
   u.guard();
@@ -201,6 +235,7 @@ export function swapLines(u, a, b) {
 // parameter but the mixer LEVEL, PAN, MUTE and the arp / keys / sequencer ids (those of a patch that carries its own arp block are set); the sound's loudness is its TRIM; an FM6 sound brings its own patch.
 // The 16 steps, End B and the pattern stay with a saved patch (the protocol has no command to set them). -> { notes: [text] }
 const KEPT = (i) => i === ID.P_LEVEL || i === ID.P_PAN || i === ID.P_MUTE || (i >= 17 && i <= 32) || i === 81 || i === 82 || i === 94;
+const ARPKEY = (i) => (i >= 17 && i <= 24) || i === 81 || i === 82;      // the arp's eight values (P_AMODE .. P_AORDER) and the chord keys (P_CHRD, P_VOIC): a patch always brings its own
 export async function loadItemIntoPart(u, part, item) {
   u.guard();
   let values, eng, patch128 = null, ak = null; const notes = [];
@@ -215,7 +250,7 @@ export async function loadItemIntoPart(u, part, item) {
     const a = await u.req(CMD.FM6_PUT, [0, part, ...patch128], 6000);
     if (a[2]) throw new UnitError("The unit did not take the FM6 patch.", a[2]);
   }
-  const want = (i) => !KEPT(i) || ak?.values.has(i);
+  const want = (i) => !KEPT(i) || ARPKEY(i) || ak?.values.has(i);         // (DUELL 1.0: every patch sets the arp and the chord keys, OFF and the defaults too: a record without the block is the defaults)
   for (let pass = 0; pass < 2; pass++) {
     await u.readPart(part);
     const p = u.parts[part].p, diff = [];
@@ -226,6 +261,7 @@ export async function loadItemIntoPart(u, part, item) {
   }
   await u.readPart(part);
   u.parts[part].name = item.name;
+  u.parts[part].slot = null;                                // (a file's sound: in no slot of the unit)
   const left = [...Array(L.P_COUNT).keys()].filter((i) => want(i) && u.parts[part].p[i] !== values[i]).length;
   if (left) notes.push(`${left} value${left > 1 ? "s" : ""} the part would not take`);
   return { notes };

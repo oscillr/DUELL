@@ -1,10 +1,10 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 /* DUELL effects step 2 (SPEC 5c.4): the per-part MIDI-triggered sidechain (fx.c duck_*). On mode_test.c's rig (the DSP, MIDI in).
  *   build/host/duck_test   (DUELL/host_tests.sh "duck")
- *   CURVE    part 1 SRC CH10, NOTE ANY, DEPTH 100, ATK 5 ms, RLS 242 ms; a held tone; a note-on on channel 10: LIN (a straight line):
+ *   CURVE    part 1 SRC MIDI (setup: channel 10, note ANY), DEPTH 100, ATK 5 ms, RLS 242 ms; a held tone; a note-on on channel 10: LIN (a straight line):
  *            about half in the middle of the release; EXP (the default since 0.2.5): 63 % after one time constant (RLS / 3), faster
  *            than LIN at first, full after it; the legacy HOLD is gone (0.2.19: its id is the PATCH TRIM)
- *   DEFAULTS a fresh part: SRC PUMP, RATE 1/4, DEPTH 0, ATK 5 ms, RLS 242 ms, CURVE EXP; DUCK 1/2 and 2/2 list no HOLD
+ *   DEFAULTS a fresh part: SRC OFF (0.2.24), RATE 1/4, DEPTH 0, ATK 5 ms, RLS 242 ms, CURVE EXP; DUCK 1/2 and 2/2 list no HOLD
  *   PER PART part 2 (DEPTH 0) is not touched; then part 2's own DUCK (another channel) leaves part 1 alone
  *   SWALLOW  a trigger note plays nothing on a channel that plays no part
  *   PUMP     SRC PUMP, DEPTH 100, RATE 1/4 at 120 BPM: three dips in 1.48 s, at 0, 500 and 1000 ms
@@ -20,8 +20,9 @@ static double rms_win(const int32_t *x, uint32_t at, uint32_t n)
     return sqrt(s / n);
 }
 static int32_t ref_l[MAXB * CTL], ref_r[MAXB * CTL];
+static uint32_t scene_note = 0;                        /* the scene's SIDECHAIN NOTE (0 ANY; the device's setup, sc_midi) */
 static uint32_t scene_crv = 1;                         /* the scene's stored CURVE (0 LIN, 1 EXP) */
-/* the scene: two held tones, part 1 on DUCK CH ch1, part 2 on ch2 (0 = OFF); the trigger note-on(s) at 500 ms; 1200 ms in all */
+/* the scene: two held tones, part 1 on DUCK SRC MIDI with the setup channel ch1, part 2 on ch2 (0 = OFF); the trigger note-on(s) at 500 ms; 1200 ms in all */
 static uint32_t scene(uint32_t ch1, uint32_t ch2, uint32_t trig_ch)
 {
     uint32_t e = eng_of("ANALOG"), ms = FS / 1000u, i, v;
@@ -33,14 +34,15 @@ static uint32_t scene(uint32_t ch1, uint32_t ch2, uint32_t trig_ch)
         trk[i].p[P_SUS] = 127;
         trk[i].p[P_AMODE] = 0;
         trk[i].p[P_CHOR] = trk[i].p[P_DLY] = trk[i].p[P_REV] = 0;   /* (the sends' tails are not ducked) */
-        trk[i].p[P_DKNOTE] = 0;
         trk[i].p[P_DKDEP] = 100;
         trk[i].p[P_DKATK] = 5;
         trk[i].p[P_DKRLS] = 36;                          /* 242 ms */
         trk[i].p[P_DKCRV] = (int16_t)scene_crv;
     }
-    trk[0].p[P_DKSRC] = (int16_t)(ch1 ? ch1 + 1u : 0u);   /* SRC 2..17 = CH1..16 (0 = off here: PUMP with DEPTH 0) */
-    trk[1].p[P_DKSRC] = (int16_t)(ch2 ? ch2 + 1u : 0u);
+    trk[0].p[P_DKSRC] = (int16_t)(ch1 ? 2u : 0u);        /* SRC 2 = MIDI (0 = off here: PUMP with DEPTH 0); 0.2.22: the channel and the note are the device's setup (sc_midi), here channel ch (1..16), note ANY */
+    trk[1].p[P_DKSRC] = (int16_t)(ch2 ? 2u : 0u);
+    sc_midi[0] = (uint8_t)(ch1 ? ch1 - 1u : SC_CH_DEF); sc_midi[1] = (uint8_t)scene_note;
+    sc_midi[2] = (uint8_t)(ch2 ? ch2 - 1u : SC_CH_DEF); sc_midi[3] = (uint8_t)scene_note;
     if (!ch1)
         trk[0].p[P_DKDEP] = 0;
     if (!ch2)
@@ -79,7 +81,7 @@ static void pump_levels(int32_t depth, uint32_t twist_ms, double *r)
     trk[0].p[P_DKRATE] = 0;                              /* 1/4 */
     song.g[G_BPM] = 120;
     song.g[G_CLOCK] = 0;
-    trk[0].p[P_DKSRC] = 2;                               /* (CH1, no note: idle) */
+    trk[0].p[P_DKSRC] = 2;                               /* (MIDI, no note: idle) */
     trk_note_on(&trk[0], 57, 100);
     mblk(200u * ms / CTL);
     trk[0].p[P_DKSRC] = 0;                               /* PUMP */
@@ -197,6 +199,22 @@ int main(void)
     scene(10, 0, 10);                                    /* (0.2.19: the legacy HOLD's id is the PATCH TRIM now; its scene, a stored 500 ms HOLD changing nothing, is gone) */
     expect("PER PART: part 2 (CH OFF) identical all through (0.99 .. 1.01)", lo > 0.99 && hi < 1.01);
     expect("SWALLOW: the trigger note started no voice", v_on == v_ref);
+    {   /* 0.2.22: the setup's NOTE: only that key starts the duck (the scene's trigger is note 36) */
+        double hit, miss, other;
+        scene_note = 36; scene(10, 0, 10); hit = ratio(rec_l, ref_l, 5, 4);
+        scene_note = 37; scene(10, 0, 10); miss = ratio(rec_l, ref_l, 5, 4);
+        scene_note = 36; scene(11, 0, 10); other = ratio(rec_l, ref_l, 5, 4);
+        scene_note = 0;
+        printf("duck: setup note 36: the note 36 %.3f, a setup of 37 %.3f, another channel %.3f\n", hit, miss, other);
+        expect("SETUP NOTE: the setup's note (36) ducks (< 0.15 at the trough); another note (37) or another channel does not (0.99 .. 1.01)", hit < 0.15 && miss > 0.99 && miss < 1.01 && other > 0.99 && other < 1.01);
+        memset(duck_st, 0, sizeof duck_st);
+        sc_midi[0] = 9; sc_midi[1] = 36; sc_midi[2] = 9; sc_midi[3] = 36;
+        trk[0].p[P_DKSRC] = 0; trk[1].p[P_DKSRC] = 1;
+        trk[0].p[P_DKDEP] = trk[1].p[P_DKDEP] = 100;
+        expect("SRC PUMP / PART: the setup's channel and note start nothing and are no trigger to swallow (the MIDI key is for SRC MIDI only)", duck_note(9, 36, 1, 0) == 0u && duck_st[0].ph == 0 && duck_st[1].ph == 0);
+        trk[1].p[P_DKSRC] = 2;
+        expect("  .. SRC MIDI on part 2 only: part 2 starts (its note 36 on channel 10 is swallowed: that channel plays no part), part 1 does not", duck_note(9, 36, 1, 0) == 1u && duck_st[1].ph == 1 && duck_st[0].ph == 0);
+    }
     scene(0, 11, 11);                                    /* part 2 on channel 11, part 1 OFF */
     double r2 = ratio(rec_r, ref_r, 5, 4), l1 = ratio(rec_l, ref_l, 5, 4);
     printf("duck: part 2 at its trough %.3f, part 1 %.3f\n", r2, l1);
@@ -208,7 +226,7 @@ int main(void)
     nd = pump_dips(dip, 710u);
     printf("duck: PUMP, DEPTH turned up at 710 ms: %u dips at %.0f ms\n", nd, dip[0]);
     expect("PUMP: DEPTH raised at 710 ms (PUMP counting since 200 ms): the first dip is on the beat at 1000 ms (+- 20), not at the turn", nd == 1u && dip[0] > 980 && dip[0] < 1020);
-    part_levels(2, 1, &b0, &d0, &a0);                    /* the reference: SRC CH1 (no key), part 2 plays */
+    part_levels(2, 1, &b0, &d0, &a0);                    /* the reference: SRC MIDI (no key), part 2 plays */
     part_levels(1, 1, &b1, &d1, &a1);
     part_levels(1, 0, &b2, &d2, &a2);
     printf("duck: PART keyed part 1 of its level: before %.3f, during %.3f, after %.3f; part 2 silent %.3f\n", b1 / b0, d1 / d0, a1 / a0, d2 / d0);
@@ -219,12 +237,12 @@ int main(void)
     expect("PING SPREAD 0: the repeats centred (L == R), 100: left / right (|L-R| large), 50 between", sp0 < 1.0 && sp100 > 1000.0 && sp50 > 0.3 * sp100 && sp50 < 0.7 * sp100);
     {   /* DEFAULTS: a fresh part, DEPTH 0 (the ducker off) and nothing else touched, is a house / techno pump once DEPTH is turned up */
         const param_desc_t *d;
-        uint32_t ok = TP[P_DKDEP].def == 0 && TP[P_DKSRC].def == 0 && TP[P_DKRATE].def == 0 && TP[P_DKATK].def == 5 && TP[P_DKRLS].def == 36 &&
+        uint32_t ok = TP[P_DKDEP].def == 0 && TP[P_DKSRC].def == 3 && TP[P_DKRATE].def == 0 && TP[P_DKATK].def == 5 && TP[P_DKRLS].def == 36 &&
                       TP[P_DKCRV].def == 1 && TP[P_DKTHR].def == 30, nohold = 1, k;
         d = &TP[P_DKRATE];
         printf("duck: defaults SRC %s, RATE %s (index %d), DEPTH %d, ATK %d ms, RLS step %d, CURVE %s\n", N_DKSRC[TP[P_DKSRC].def], d->names[TP[P_DKRATE].def],
                TP[P_DKRATE].def, TP[P_DKDEP].def, TP[P_DKATK].def, TP[P_DKRLS].def, N_DKCRV[TP[P_DKCRV].def]);
-        expect("DEFAULTS: SRC PUMP, RATE 1/4, DEPTH 0, ATK 5 ms, RLS 242 ms (step 36), CURVE EXP, THR 30", ok && str_eq(d->names[0], "1/4"));
+        expect("DEFAULTS: SRC OFF (0.2.24; PUMP up to 0.2.23), RATE 1/4, DEPTH 0, ATK 5 ms, RLS 242 ms (step 36), CURVE EXP, THR 30", ok && str_eq(d->names[0], "1/4") && str_eq(N_DKSRC[3], "OFF"));
         for (k = 0; k < NPAGES; k++)
             for (uint32_t j = 0; j < 4u; j++)
                 if (PAGES[k].scope == SC_TRACK && PAGES[k].id[j] == P_TRIM && !str_eq(PAGES[k].title, "VOICE 2/2"))

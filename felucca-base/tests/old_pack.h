@@ -9,6 +9,7 @@
  * patches at name - 512 (not FUN7), the name, the FNV-1a hash. -> its size, 0 when q does not fit the old format.
  * The song's chain as rows {slot, repeat} (chain_v9_t, 36 bytes): a section with its four tracks on one slot each (a
  * section of several slots or a "-" does not fit) */
+#define CHAIN_ROWS 16u   /* (the song chain: gone from the firmware; the old images still carry an empty one) */
 typedef struct { uint8_t slot, repeat; } chain_row_v9_t;   /* the rows of FUN6..FUN9 (core.h had them until 0.2.14) */
 typedef struct { uint8_t count, rsv[3]; chain_row_v9_t row[CHAIN_ROWS]; } chain_v9_t;
 #define OLD_FUN9 0x46554E39u
@@ -47,15 +48,8 @@ static uint32_t old_pack(uint8_t *b, const project_t *q, uint32_t magic, uint32_
     {
         chain_v9_t c9;
         memset(&c9, 0, sizeof c9);
-        c9.count = q->chain.count;
-        for (i = 0; i < CHAIN_ROWS; i++) {
-            const chain_row_t *r = &q->chain.row[i];
-            if (i < q->chain.count && (r->slot[0] > 3u || r->slot[1] != r->slot[0] || r->slot[2] != r->slot[0] ||
-                                       r->slot[3] != r->slot[0]))
-                return 0;
-            c9.row[i].slot = r->slot[0] & 3u;
-            c9.row[i].repeat = r->repeat;
-        }
+        for (i = 0; i < CHAIN_ROWS; i++)                   /* (an empty chain: no section, every repeat 1) */
+            c9.row[i].repeat = 1;
         memcpy(b + pos, &c9, sizeof c9);
         pos += sizeof c9;
     }
@@ -124,8 +118,9 @@ static uint32_t old_pack10(uint8_t *b, const project_t *q, uint32_t np)
     for (i = 0; i < m.count && i < MOTION_MAX; i++)
         if (MOTION_ID(&m.event[i]) >= P_E0)
             m.event[i].param = (uint8_t)((m.event[i].param & MOTION_LOCK) | (MOTION_ID(&m.event[i]) - (P_COUNT - np)));
-    memcpy(b + pos, &q->chain, sizeof q->chain);
-    pos += sizeof q->chain;
+    for (i = 0; i < CHAIN_ROWS; i++)                       /* the 84-byte chain: empty (count 0, rsv 3, 16 rows of 4 slots and a repeat 1) */
+        b[pos + 4u + i * 5u + 4u] = 1;
+    pos += 84u;
     memcpy(b + pos, &m, sizeof m);
     pos += sizeof m;
     if (pos > fm6)

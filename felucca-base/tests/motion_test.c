@@ -87,7 +87,7 @@ static int compact_project(void)
     corrupt = packed; corrupt.raw[68] = 255; uint32_t sum = proj_hash(corrupt.raw, sizeof corrupt - 4u);
     memcpy(corrupt.raw + sizeof corrupt - 4u, &sum, 4);
     bad += check("compact parameter range is validated even with a correct hash", !proj_import(&after, &corrupt, sizeof corrupt));
-    corrupt = packed; uint32_t probability_byte = 68u + P_COUNT + 2u + 8u; corrupt.raw[probability_byte] = 127;
+    corrupt = packed; uint32_t probability_byte = 68u + P_COUNT + 1u + NX + 1u + 7u + 2u + 8u;   /* (PROJ_REV 7: End B block 7 bytes; REV 6: the slots and the edit list sit after the values) */ corrupt.raw[probability_byte] = 127;
     sum = proj_hash(corrupt.raw, sizeof corrupt - 4u); memcpy(corrupt.raw + sizeof corrupt - 4u, &sum, 4);
     bad += check("invalid probability is refused even with a correct hash", !proj_import(&after, &corrupt, sizeof corrupt));
     project_save(1); motion_clear(t); t->p[P_M5AMT] = 0; step_set_chance(&t->step[3], 100);
@@ -113,7 +113,7 @@ static void pack_fun7_89(project_store_t *out, const project_t *q, const motion_
             b[pos++] = s->vel; b[pos++] = 0; b[pos++] = 0; b[pos++] = s->probability;
         }
     }
-    memcpy(b + pos, &q->chain, sizeof q->chain); pos += sizeof q->chain;
+    pos += 84u;                                         /* (the song chain block of that format: not read here) */
     memcpy(b + pos, m, sizeof *m);
     sum = proj_hash(b, PROJ_STORE_SIZE - 4u); memcpy(b + PROJ_STORE_SIZE - 4u, &sum, 4);
 }
@@ -468,14 +468,14 @@ static int lock_playback(void)
     }
     seq_stop();
     t = lock_track(0);                                   /* an engine parameter, read by the note-on */
-    t->p[P_E4] = 10;
-    motion_set_lock(t, 1, P_E4, 90);
-    motion_set_lock(t, 1, P_E4, 300);                    /* (out of its range: refused, the lock as it was) */
+    t->p[P_E6] = 10;
+    motion_set_lock(t, 1, P_E6, 90);
+    motion_set_lock(t, 1, P_E6, 300);                    /* (out of its range: refused, the lock as it was) */
     seq_start(); seq_tick(t, CTL); lock_next(t);
-    bad += check("  an engine parameter: set at the step's start (before its notes), in its range", t->p[P_E4] == 90 &&
+    bad += check("  an engine parameter: set at the step's start (before its notes), in its range", t->p[P_E6] == 90 &&
         t->seq_n == 1u);
     lock_next(t);
-    bad += check("  .. and back at the next step", t->p[P_E4] == 10);
+    bad += check("  .. and back at the next step", t->p[P_E6] == 10);
     seq_stop();
     return bad;
 }
@@ -511,7 +511,7 @@ static int lock_project(void)
     for (i = 0; i < before.motion.count; i++)
         ok &= before.motion.event[i].param < 128u && !(before.motion.event[i].param & MOTION_LOCK);
     bad += check("a project without locks: the bytes as before (ids < 128), the same round trip", ok);
-    motion_set_lock(t, 2, P_REV, 101); motion_set_lock(t, 7, P_E4, 77);
+    motion_set_lock(t, 2, P_REV, 101); motion_set_lock(t, 7, P_E6, 77);
     project_capture(&before);
     ok = proj_pack(&a, &before) && proj_import(&after, &a, sizeof a) && !memcmp(&before.t, &after.t, NSHOWN * sizeof before.t[0]) &&
          !memcmp(&before.motion, &after.motion, sizeof before.motion);   /* (DUELL: FUN11 keeps parts A B) */
@@ -697,9 +697,9 @@ static int auto_list(void)
             break;
     bad += check("  KNOB 3's list: what motion records and the sound has", i == P_COUNT);
     {
-        char a[12], b[12];
-        ev_name(t, P_ED_FLT, a); ev_name(t, P_LD_FLT, b);
-        bad += check("  names: ENV FLT / LFO FLT", str_eq(a, "ENV FLT") && str_eq(b, "LFO FLT"));
+        char a[20], b[20], c[20];
+        ev_name(t, P_ED_FLT, a); ev_name(t, P_LD_FLT, b); ev_name(t, P_E2ATK, c);
+        bad += check("  names (T0227: in full): AMP ENV CUTOFF / LFO 1 CUTOFF / FILT ENV ATTACK", str_eq(a, "AMP ENV CUTOFF") && str_eq(b, "LFO 1 CUTOFF") && str_eq(c, "FILT ENV ATTACK"));
     }
     return bad;
 }

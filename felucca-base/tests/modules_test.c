@@ -19,6 +19,7 @@
 #define UI_TEST_NO_MAIN 1
 #define FELUCCA_FLASH 1
 #include "ui_test.c"
+#include "scenes.h"                                   /* (0.2.23: 0.2.22's M01 / M03 as test scenes) */
 
 static uint8_t nor[0x100000];
 static int st_read(uint32_t off, void *dst, uint32_t n) { memcpy(dst, nor + off, n); return 0; }
@@ -137,6 +138,8 @@ static void quiet_start(void)
     song.master_q12 = MASTER_USB_REF;                   /* (MASTER at its default) */
     snd_st = SND_ON, snd_x = 0, snd_clr = 0;           /* (the audio side as at power-on) */
     memset(pfx_x, 0, sizeof pfx_x);
+    memset(eqs, 0, sizeof eqs);                        /* (0.2.25: the EQ's states and bands from rest too; sound 3, RUBBER BAND, runs its HIGH band since the band fix) */
+    trk[0].eqlv = trk[1].eqlv = 0;
 }
 static uint32_t n_gated(const track_t *t)                 /* voices held (gate on) */
 {
@@ -321,13 +324,14 @@ static void test_arp(void)
 }
 
 /* ---- SEQ OFF ---- */
-static void multi_start(uint32_t slot)
+static void multi_start(uint32_t slot)                  /* (0.2.23: the scene of 0.2.22's multi of that slot, tests/scenes.h, loaded as then) */
 {
     quiet_start();
     memset(nor, 0xFF, sizeof nor);
     flash_ok = 1;
     multi_boot();
     frame();
+    scene_put(slot, slot == 2u ? "M03_EERIE_SIGNAL" : "M01_REESE_SWAMP");
     project_load(slot);
     frame();
     rblocks(MS(100));
@@ -475,6 +479,14 @@ static int32_t max_step(uint32_t a, uint32_t from, uint32_t to)   /* the largest
     return m;
 }
 /* two parts holding chords, STEREO with HALL, PING-PONG and the delay's modulation (every side mix), or DUEL; sends 0 / 1 */
+static void plain_twin(track_t *t)                      /* 0.2.31: the refined factory sounds run filter 2 and the SUB layer; these scenes compare two renders of the same notes and want the plain sound */
+{
+    t->p[P_TWTYPE] = 0;
+    XV(t, X_SUBLVL) = 0;
+    t->p[P_CHRD] = 0;                                   /* DUELL 1.0: the owner's BEHIVE (ANALOG #1) plays a POWER chord on every key, and has a little NOISE (ANALOG E4): the noise generator is shared with the buses' random modulation, so the two renders would differ by it (+-1 LSB); the scene wants the plain notes. */
+    t->p[P_E0 + 3] = 0;
+    t->p[P_LD_AMP] = t->p[P_LD_FLT] = t->p[P_L2FLT] = 0;   /* .. and its LFOs (on the level and the filters) move the dry mix by one LSB between the two scenes (found by zeroing one group at a time) */
+}
 static void send_scene(uint32_t mode, uint32_t sends)
 {
     uint32_t i;
@@ -482,6 +494,8 @@ static void send_scene(uint32_t mode, uint32_t sends)
     duell_mode_force(mode);
     sound(&trk[0], ENG_AN, 0);
     sound(&trk[1], ENG_AN, 3);
+    plain_twin(&trk[0]);
+    plain_twin(&trk[1]);
     trk[1].p[P_SPRD] = 60;
     song.g[G_RTYPE] = 2;
     song.g[G_DMODE] = DMD_PING;
@@ -558,6 +572,9 @@ static void pfx_scene(uint32_t fx)
     duell_mode_force(DM_STEREO);
     sound(&trk[0], ENG_AN, 0);
     sound(&trk[1], ENG_AN, 3);
+    plain_twin(&trk[0]);
+    plain_twin(&trk[1]);
+    trk[1].p[P_DIST] = trk[1].p[P_EQHG] = trk[1].p[P_EQHF] = 0;   /* (0.2.20: RUBBER BAND has its own SAT and HF shelf; this scene wants a part with no part FX of its own) */
     trk[1].p[P_SPRD] = 60;
     for (i = 0; i < 2u; i++)
         trk[i].p[P_CHOR] = trk[i].p[P_DLY] = trk[i].p[P_REV] = 0;
@@ -680,12 +697,7 @@ static void test_ui(void)
     ui.msg_t = 0;
     turn(EN_K4, 3);
     expect("  .. REV turned: the knob does nothing (the value kept at 50, no message)", trk[0].p[P_REV] == 50 && !ui.msg_t);
-    go_page(GR_TRK);
-    ui.force = 1; frame();
-    expect("  .. the MIXER's SPACE card not drawn", card_hid(2) && !card_hid(0));
-    ui.msg_t = 0;
-    turn(EN_K3, 2);
-    expect("  .. SPACE turned there: nothing moves, nothing said", perf_space == 0 && !ui.msg_t);
+    /* (0.2.25 layout round: HOME's MIXER page, whose K3 was a copy of SPACE, is gone; GLO's MIXER has no SPACE card) */
     show("AMP ENV");
     expect("  .. other pages: every card drawn", !card_hid(0) && !card_hid(3));
     set(MODS_PFX, 1u);
@@ -707,7 +719,8 @@ static void test_ui(void)
     show("SIDECHAIN");
     expect("  .. GLO > SIDECHAIN (the DUCK's SRC and NOTE), not drawn", card_hid(0) && card_hid(1));
     show("FX");
-    expect("  .. the FX page: CHO DLY REV live again (SENDS ON)", !card_hid(1) && !card_hid(3));
+    expect("  .. the FX page: CHO DLY REV live again (SENDS ON), moved left to K1..K3 while DRIVE has no card (T0227)", !card_hid(0) && !card_hid(2) && card_hid(3) &&
+           !strncmp(ui.col[0], "CHORUS|", 7));
     set(MODS_PFX, 0u);
     show("FX");
     expect("all ON: every card drawn", !card_hid(0) && !card_hid(1));
@@ -716,14 +729,14 @@ static void test_ui(void)
     trk[0].p[P_AHOLD] = 0;
     set(MODS_ARP, 1u);
     show("ARP 1/3");
-    expect("ARP OFF: ARP 1/3's MODE RATE GATE not drawn, HOLD OFF drawn",
-           card_hid(0) && !card_hid(1) && card_hid(2) && card_hid(3));
+    expect("ARP OFF: ARP 1/3's MODE ORDER OCT not drawn, HOLD OFF drawn, moved left to K1 (T0227)",
+           !card_hid(0) && card_is(0, "HOLD", "OFF") && card_hid(1) && card_hid(2) && card_hid(3));
     trk[0].p[P_AHOLD] = 1;
     show("ARP 1/3");
-    expect("  .. HOLD ARP not drawn (no chord to keep)", card_hid(1));
+    expect("  .. HOLD ARP not drawn (no chord to keep)", card_hid(0) && card_hid(1));
     trk[0].p[P_AHOLD] = 2;
     show("ARP 1/3");
-    expect("  .. HOLD ALL drawn (it latches the keys)", !card_hid(1));
+    expect("  .. HOLD ALL drawn (it latches the keys), on K1", card_is(0, "HOLD", "ALL"));
     show("ARP 2/3");
     expect("  .. ARP 2/3 all not drawn", card_hid(0) && card_hid(1) && card_hid(2) && card_hid(3));
     show("ARP 3/3");
@@ -748,8 +761,8 @@ static void test_ui(void)
     expect("SEQ OFF, an arp in UP: the ARP pages live", !card_hid(0));
     trk[0].p[P_AMODE] = AM_SEQ;
     show("ARP 1/3");
-    expect("  .. an arp in SEQUENCER: its cards not drawn, no step strip",
-           card_hid(0) && card_hid(2) && !foot_steps());
+    expect("  .. an arp in SEQUENCER: its cards not drawn (HOLD, which applies, moved left to K1), no step strip",
+           !strncmp(ui.col[0], "HOLD|", 5) && card_hid(1) && card_hid(2) && !foot_steps());
     trk[0].p[P_AMODE] = 0;
     go_page(GR_EVENTS); ui.force = 1; frame();
     expect("  .. AUTOMATION: PLAY not drawn (the step strip stays)", card_hid(3) && foot_steps());

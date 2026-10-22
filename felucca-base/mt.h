@@ -174,7 +174,7 @@ static void test_tags(void)
         ok = morph_tag(&ENG_ANALOG, q, P_E0, 1).kind == MK_HARD && !(morph_tag(&ENG_ANALOG, q, P_E1, 1).flags & MF_CAP);
         q[P_E0] = 0;
         ok &= morph_tag(&ENG_ANALOG, q, P_E0, 1).kind == MK_FADE && morph_tag(&ENG_PHASE, q, P_FTYPE, 1).kind == MK_EX;
-        q[P_E0] = CHIP_STEP;
+        q[P_E0] = BITS_STEP;
         ok &= morph_tag(&ENG_LOFI, q, P_E3, 1).kind == MK_EX;
         q[P_E0] = 0;
         q[P_E1] = RW_NOIS;
@@ -1224,7 +1224,7 @@ static void test_v2(void)
     check("a patch's saved End B (seed, AMOUNT, bits: MB_N bytes) comes back exactly on load, fader at A (12 engines)", ok);
     /* 2. PITCH, WILD, ARP in the rolls */
     {
-        static const uint8_t PIT[] = {P_ED_PIT, P_LD_PIT, P_GLIDE, P_TRANS, P_ROOT, P_SCALE, P_QUANT};
+        static const uint8_t PIT[] = {P_ED_PIT, P_LD_PIT, P_GLIDE, P_TRANS, P_ROOT, P_SCALE};
         static const uint8_t ARPS[] = {P_AMODE, P_ARATE, P_AOCT, P_AGATE};
         uint32_t cfg, pitch_moved[4] = {0}, arp_moved[4] = {0}, wild_sw = 0, never = 0, off_ok = 1, amode_off = 0;
         int8_t o[P_COUNT], end[P_COUNT];

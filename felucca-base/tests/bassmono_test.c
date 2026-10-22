@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
-/* DUELL 0.2.19 BASS MONO (fx.c bass_mono; params.c master-stage page, core.h G_BM / song.bm; stored in project.c byte 65 and multi.c byte 5): the master mono below a chosen
+/* DUELL 0.2.19 BASS MONO (fx.c bass_mono; params.c master-stage page, core.h G_BM / song.bm; stored in project.c byte 65; NOT in a multi since 0.2.21, multi.c byte 5 bits 1..4 are written 0 and ignored): the master mono below a chosen
  * frequency, stereo above it. On the firmware's sources (the DSP of hostsim.c and the UI of ui_test.c), against simulated NOR flash.
  *   build/host/bassmono_test         (host_tests.sh bassmono)
  * 1. OFF is bit for bit what it was: a busy two-part render (mode_scn.h, the process's first render) hashes to MODE_STEREO_HASH, the hash the sources
@@ -11,7 +11,7 @@
  *    signal's own slope; exact silence after the sound stops (and after the fade-out the state is dropped).
  * 4. DUEL (SPLIT): the stage does not run (the render with BASS MONO set is bit for bit the render without), STEREO and LAYER run it; a change of
  *    the mode clears its state.
- * 5. the control: the master-stage page (GLO family, after SIDECHAIN, title BASS MONO; K1 BASS MONO, OFF the default, OFF + 11 corners 40 .. 400 Hz), no MENU row (AUDIO back to its six
+ * 5. the control: the master-stage page (GLO family, after REVERB / SHIMMER and before MODULES (0.2.21), title BASS MONO; K1 BASS MONO, OFF the default, OFF + 11 corners 40 .. 400 Hz), no MENU row (AUDIO back to its six
  *    rows), not in DUEL (the page is skipped, the card hidden), the knob; not in the settings record ([15][29] ignored, any byte); the multis carry it (a multi saved
  *    with 100 Hz restores it, a factory multi loads OFF, a code past 11 reads OFF), the project (byte 65); the editor's id 33 is editor_test's.
  * 6. cost, host instructions per sample (steady, gliding), and the mix_block gate when OFF. */
@@ -24,7 +24,7 @@
 #include <sys/resource.h>
 #endif
 
-#define MODE_STEREO_HASH 0xA77A7B40656EB88Dull   /* the same constant as mode_test.c (the sources before BASS MONO give it too) */
+#define MODE_STEREO_HASH 0xC04494F53D46F0F0ull   /* 0.2.30: merged line (cloud wave 6 + click fixes), re-based on purpose, was 0x1CC6C8241C84C0DA; before:  0.2.29: re-based on purpose, the scenario runs the HALL and its quiet lines now round to the nearest (fx.c hall_end; 0.2.21..0.2.28: 0xC970174114DFD9BA) */   /* the same constant as mode_test.c (0.2.21: re-based with the STEREO CHORUS; the sources before BASS MONO gave 0xA77A7B40656EB88D, and still do with the second chorus tap set to the first, -DCHO_OFF=0u) */
 
 static uint8_t nor[0x100000];
 static int st_read(uint32_t off, void *dst, uint32_t n) { memcpy(dst, nor + off, n); return 0; }
@@ -361,10 +361,10 @@ static void test_click(void)
 static void dsp_clean(uint32_t mode)                    /* the DSP as at power-on (silence everywhere), in mode (as mode_test.c) */
 {
     memset(trk, 0, sizeof trk);
-    memset(&mod, 0, sizeof mod);
+    memset(&trk[0].mdw, 0, sizeof trk[0].mdw);
     memset(mph, 0, sizeof mph);
     memset(&morph, 0, sizeof morph);
-    memset(&mxf, 0, sizeof mxf);
+    memset(&trk[0].mxw, 0, sizeof trk[0].mxw);
     memset(ins, 0, sizeof ins);
     memset(midi_sel_on, 0, sizeof midi_sel_on);
     memset(midi_ch, 0, sizeof midi_ch);
@@ -569,16 +569,16 @@ static void test_control(void)
     boot();
     duell_mode_force(DM_STEREO);
     mp = master_page();
-    expect("a fresh unit: BASS MONO OFF (song.bm 0, bm_sel 0 on the audio side)", song.bm == 0 && bm_sel == 0u);
-    expect("the master-stage page (title BASS MONO for now) exists: GLO family, after SIDECHAIN and before MIDI, SC_GLOBAL only (no part's control), K1 BASS MONO, K2..K4 empty", mp < NPAGES && PAGES[mp].fam == FAM_GLO &&
-           PAGES[mp].scope == SC_GLOBAL && PAGES[mp].graph == GR_NONE && PAGES[mp].id[0] == G_BM && PAGES[mp].id[1] == 0xFFu && PAGES[mp].id[2] == 0xFFu && PAGES[mp].id[3] == 0xFFu &&
-           str_eq(PAGES[mp - 1u].title, "SIDECHAIN") && str_eq(PAGES[mp + 1u].title, "MIDI") && page_global(&PAGES[mp]));
+    expect("a fresh unit: BASS MONO ON at 200 Hz (0.2.24: song.bm 8 = BM_HZ[7], bm_sel 8 on the audio side; nothing written for it until it is touched)", song.bm == 8 && BM_HZ[7] == 200u && BM_DEF == 8 && bm_sel == 8u && ui_ms_set[3] == 0u);
+    expect("the master page STEREO MASTER exists (0.2.25 layout round): GLO family, after SHIMMER and before COMPRESSOR, SC_GLOBAL only (no part's control), K1 BASS MONO, K2 WIDTH, K3 K4 empty", mp < NPAGES && PAGES[mp].fam == FAM_GLO &&
+           PAGES[mp].scope == SC_GLOBAL && PAGES[mp].graph == GR_MSTG && PAGES[mp].id[0] == G_BM && PAGES[mp].id[1] == G_WD && PAGES[mp].id[2] == 0xFFu && PAGES[mp].id[3] == 0xFFu &&
+           str_eq(PAGES[mp].title, "STEREO MASTER") && str_eq(PAGES[mp - 1u].title, "SHIMMER") && str_eq(PAGES[mp + 1u].title, "COMPRESSOR") && page_global(&PAGES[mp]));
     {
         const param_desc_t *d = glob_desc(G_BM);
         int16_t *vp;
         char val[16];
         const char *unit;
-        ok = d == &GP[G_BM] && str_eq(d->label, "BMONO") && d->fmt == F_BMONO && d->min == 0 && d->max == (int16_t)BM_N && d->def == 0 &&
+        ok = d == &GP[G_BM] && str_eq(d->label, "BMONO") && d->fmt == F_BMONO && d->min == 0 && d->max == (int16_t)BM_N && d->def == BM_DEF &&
              page_desc(&PAGES[mp], 0, &vp) == d && vp == &song.bm;
         unit = "";
         param_format(d, 0, val, &unit);
@@ -590,17 +590,20 @@ static void test_control(void)
             param_format(d, (int32_t)v, val, &unit);
             ok &= !strcmp(val, want) && !strcmp(unit, "Hz");
         }
-        expect("the card: \"BMONO\" (the full name BASS MONO is in the header, the editor, the docs), OFF + the 11 corners shown as the number and Hz (BM_HZ), on song.bm", ok);
+        ok &= str_eq(desc_shown(d), "BASS\nMONO");
+        expect("the card: the stored label \"BMONO\", shown BASS / MONO (two lines, 0.2.25 layout round), OFF + the 11 corners shown as the number and Hz (BM_HZ), on song.bm", ok);
     }
     ok = 1;
     for (r = 0; r < MI_COUNT; r++)
         ok &= strcmp(MI_NAME[r], "BASS MONO") != 0 && strcmp(MI_NAME[r], "OUTPUT EQ") != 0;
-    expect("no MENU row is called BASS MONO or OUTPUT EQ; the AUDIO tab: USB LEVEL, CLICK, CLICK LEVEL, COUNT-IN, TUNE (5 rows, one page)",
-           ok && mtab_rows(MTAB_AUDIO) == 5u && mtab_pages(MTAB_AUDIO) == 1u && mtab_first(MTAB_AUDIO) == MI_USB && menu_place(MI_TUNE, &r) == 0u && r == 4u);
+    expect("no MENU row is called BASS MONO or OUTPUT EQ; the AUDIO tab: CLICK, CLICK LEVEL, COUNT-IN, TUNE (4 rows, one page; 0.2.25: USB LEVEL removed)",
+           ok && mtab_rows(MTAB_AUDIO) == 4u && mtab_pages(MTAB_AUDIO) == 1u && mtab_first(MTAB_AUDIO) == MI_CLICK && menu_place(MI_TUNE, &r) == 0u && r == 3u);
 
     /* the knob */
     go_title(MASTER_PAGE_TITLE);
     expect("STEREO: the page is visible and the card is drawn", page_visible(mp) && !card_hidden_vp(&song.bm) && ui.page == mp);
+    song.bm = 0;
+    frame();
     turn(EN_K1, 1);
     frame();
     expect("K1 right: 40 Hz (one corner a detent), the audio side after the next frame; the header says \"BASS MONO 40 Hz\" (the card's label is BMONO)", song.bm == 1 && bm_sel == 1u && str_eq(ui.msg, "BASS MONO 40 Hz"));
@@ -632,72 +635,106 @@ static void test_control(void)
     expect("LAYER: the card is there again", !card_hidden_vp(&song.bm));
     duell_mode_force(DM_STEREO);
     ok = 0;
-    {   /* SELECT in the GLO round reaches it from SIDECHAIN */
-        go_title("SIDECHAIN");
+    {   /* SELECT in the GLO round reaches it from REVERB (SHIMMER is skipped unless TYPE is SHIM) */
+        go_title("REVERB");
         turn(EN_SELECT, 1);
-        ok = ui.page == mp;
+        ok = ui.page == mp;                             /* (0.2.25 layout round: STEREO MASTER (BASS MONO, WIDTH) where WIDTH and MASTER were, then COMPRESSOR) */
         turn(EN_SELECT, 1);
-        ok &= str_eq(cur_page()->title, "MIDI");
+        ok &= str_eq(cur_page()->title, "COMPRESSOR");  /* (0.2.21: the master compressor's page follows) */
+        turn(EN_SELECT, 1);
+        ok &= str_eq(cur_page()->title, "MODULES");
     }
-    expect("STEREO: the GLO round (SELECT) goes SIDECHAIN, MASTER, MIDI", ok);
+    expect("STEREO: the GLO round (SELECT) goes REVERB, STEREO MASTER, COMPRESSOR, MODULES", ok);
 
-    /* not in the settings record any more */
-    song.bm = 5;
-    settings_save();
-    flush();
-    {
-        static persist_t p;
-        ok = st_load(OBJ_SETTINGS, &p, sizeof p) > 0 && p.favorites.factory[15][29] == 0u;
-        expect("BASS MONO is not in the settings record ([15][29] stays 0)", ok);
-        boot();
-        expect("  .. a restart without an autosave reads OFF (a setting of the unit it is not)", song.bm == 0 && bm_sel == 0u);
-        memset(&p, 0, sizeof p);
-        ok = st_load(OBJ_SETTINGS, &p, sizeof p) > 0;
-        for (v = 0; v < 256u; v++) {                    /* whatever an early 0.2.19 build left in [15][29] is ignored */
-            p.favorites.factory[15][29] = (uint8_t)v;
-            st_save(OBJ_SETTINGS, &p, sizeof p);
-            boot();
-            ok &= song.bm == 0 && bm_sel == 0u;
-        }
-        expect("every byte value 0..255 in [15][29] (STYLE's 0 and 1, an early build's 0x80 + n): ignored, OFF (all 256 booted)", ok);
-    }
-
-    /* the multis carry it */
+    /* a DEVICE setting (0.2.24): the settings record's byte [15][21], stored + 1 (0 = the default, ON at 200 Hz) */
     boot();
     duell_mode_force(DM_STEREO);
     song.bm = 5;
-    project_save_as(10, "BM TEST");                     /* M11: no factory multi there */
+    frame();
+    fm1_ms += 2100u;
+    frame();
+    flush();
+    {
+        static persist_t p;
+        ok = st_load(OBJ_SETTINGS, &p, sizeof p) > 0 && p.favorites.factory[15][18] == 0xB7u && p.favorites.factory[15][21] == 6u && p.favorites.factory[15][29] == 0u;
+        expect("a change is saved ~2 s later in the settings record: byte [15][21] = setting + 1 (6 = 100 Hz), under the WIDTH / DRIVE tag; [15][29] (the retired STYLE) stays 0", ok);
+        boot();
+        expect("  .. a restart reads it back (100 Hz), the audio side follows", song.bm == 5 && bm_sel == 5u);
+        p.favorites.factory[15][21] = 1u;
+        st_save(OBJ_SETTINGS, &p, sizeof p);
+        boot();
+        expect("  .. stored 1 is OFF (the user's own choice stays OFF, it is not the default)", song.bm == 0 && bm_sel == 0u);
+        ok = 1;
+        for (v = 0; v < 256u; v++) {                    /* every byte value: in range; 0 and past BM_N + 1 are the default */
+            p.favorites.factory[15][21] = (uint8_t)v;
+            st_save(OBJ_SETTINGS, &p, sizeof p);
+            boot();
+            ok &= song.bm >= 0 && song.bm <= (int16_t)BM_N && bm_sel <= BM_N && song.bm == (v >= 1u && v <= BM_N + 1u ? (int16_t)v - 1 : (int16_t)BM_DEF);
+        }
+        expect("every byte value 0..255 in [15][21]: in range; 0 and anything past 12 read the default (200 Hz)", ok);
+        memset(&p, 0, sizeof p);
+        ok = st_load(OBJ_SETTINGS, &p, sizeof p) > 0;
+        for (v = 0; v < 256u; v++) {                    /* whatever an early 0.2.19 build left in [15][29] is ignored */
+            p.favorites.factory[15][21] = 0;
+            p.favorites.factory[15][29] = (uint8_t)v;
+            st_save(OBJ_SETTINGS, &p, sizeof p);
+            boot();
+            ok &= song.bm == (int16_t)BM_DEF && bm_sel == (uint8_t)BM_DEF;
+        }
+        expect("every byte value 0..255 in [15][29] (STYLE's 0 and 1, an early build's 0x80 + n): ignored, the default", ok);
+        memset(&p, 0, sizeof p);
+        p.favorites.factory[15][21] = 3;                /* a record with the byte set but no tag: the tag decides (an older key map left bytes there) */
+        st_save(OBJ_SETTINGS, &p, sizeof p);
+        boot();
+        expect("  .. a byte [15][21] without the tag byte [15][18] is no setting: the default", song.bm == (int16_t)BM_DEF);
+    }
+    memset(nor, 0xFF, sizeof nor);
+    boot();
+    expect("after ERASE DATA (no settings, the restart): ON at 200 Hz again", song.bm == (int16_t)BM_DEF && bm_sel == (uint8_t)BM_DEF);
+
+    /* the multis do not carry it (0.2.21, owner: a master effect is the device's, not part of a multi) */
+    boot();
+    duell_mode_force(DM_STEREO);
+    song.bm = 5;
+    project_save_as(10, "BM TEST");                     /* M11 (saved over its factory multi) */
     song.bm = 0;
     project_load(10);
-    expect("a multi saved with BASS MONO 100 Hz restores it on load (song.bm 5, byte 5 of the record bits 1..4)", song.bm == 5);
+    expect("a multi saved with BASS MONO 100 Hz does not bring it back on load (song.bm stays 0, as the unit has it)", song.bm == 0);
+    song.bm = 8;
+    project_load(10);
+    expect("  .. and a load leaves the unit's own 315 Hz as it is", song.bm == 8);
     {
         project_t q;
         uint32_t cut;
         uint8_t blk[NSHOWN][MB_N], rec[MU_REC_MAX];
         uint32_t len;
         memset(blk, 0, sizeof blk);
+        song.bm = 5;
         project_capture(&q);
         len = mu_pack(rec, &q, blk, &cut);
-        ok = len > MU_G_AT && rec[5] == (uint8_t)((morph.target == MT_BOTH) | 5u << 1) && q.bm == 5;
-        rec[5] = (uint8_t)((rec[5] & 1u) | 12u << 1);   /* a code past BM_N */
+        ok = len > MU_G_AT && q.bm == 0 && rec[5] == (uint8_t)(morph.target == MT_BOTH);
+        expect("a save writes byte 5 bits 1..4 as 0 and project byte 65 as 0 (BASS MONO 100 Hz on the unit)", ok);
+        rec[5] = (uint8_t)((rec[5] & 1u) | 7u << 1);    /* a record of 0.2.19 / 0.2.20 with BASS MONO 125 Hz in it */
         {
             uint8_t amt[NSHOWN], set[6];
             project_t q2;
             project_capture(&q2);
             q2.bm = 3;
-            ok &= mu_unpack(&q2, blk, amt, set, rec, len) && q2.bm == 0u;
+            ok = mu_unpack(&q2, blk, amt, set, rec, len) && q2.bm == 3u;
+            rec[5] = (uint8_t)((rec[5] & 1u) | 12u << 1);   /* a code past BM_N */
+            ok &= mu_unpack(&q2, blk, amt, set, rec, len) && q2.bm == 3u;
             rec[5] |= 0x20u;                            /* a reserved bit set: not a multi this firmware loads */
             ok &= !mu_unpack(&q2, blk, amt, set, rec, len);
         }
-        expect("  .. a code past 11 reads OFF; a stray bit 5..7 in byte 5 is no multi", ok);
+        expect("  .. an older record with BASS MONO in it loads with the unit's value kept (any code); a stray bit 5..7 in byte 5 is still no multi", ok);
     }
     song.bm = 0;
     project_save_as(11, "BM OFF");
     song.bm = 9;
     project_load(11);
-    expect("a multi saved with OFF loads OFF (it replaces the 250 Hz that was set)", song.bm == 0);
+    expect("a multi saved with OFF leaves the 400 Hz that was set", song.bm == 9);
     ok = 1;
-    for (v = 0; v < DF_N; v++) {                        /* the factory multis: byte 5 holds no BASS MONO bit (they get OFF) */
+    for (v = 0; v < DF_N; v++) {                        /* the factory multis: byte 5 holds no BASS MONO bit */
         ok &= (DM_REC[DM_AT[v] + 5u] >> 1) == 0u;
     }
     {
@@ -707,12 +744,12 @@ static void test_control(void)
                 continue;
             song.bm = 7;
             project_load(k);
-            ok &= song.bm == 0;
+            ok &= song.bm == 7;
         }
     }
-    expect("every factory multi (M01.., byte 5 bits 1..4 clear) loads BASS MONO OFF", ok);
+    expect("every factory multi (M01.., byte 5 bits 1..4 clear) leaves BASS MONO as it is", ok);
 
-    /* the project: the autosave and the editor's backup */
+    /* the project: byte 65 is written 0 and not read (the format keeps its size): BASS MONO is the unit's (0.2.24) */
     boot();
     duell_mode_force(DM_STEREO);
     song.bm = 8;
@@ -720,32 +757,32 @@ static void test_control(void)
         project_t q;
         static project_store_t store;
         project_capture(&q);
-        ok = q.bm == 8 && proj_pack(&store, &q) && store.raw[65] == 8u;
+        ok = q.bm == 0 && proj_pack(&store, &q) && store.raw[65] == 0u;
         memset(&q, 0, sizeof q);
-        ok &= proj_import(&q, store.raw, (int)sizeof store) && q.bm == 8u;
+        ok &= proj_import(&q, store.raw, (int)sizeof store) && q.bm == 0u;
         store.raw[65] = 12;                             /* a code past BM_N: the hash no longer matches, so it is no project */
         ok &= !proj_import(&q, store.raw, (int)sizeof store);
-        expect("the project stores it in byte 65 (was reserved, written 0); packed, imported, hash covers it", ok);
+        expect("the project writes 0 in byte 65 (it held BASS MONO up to 0.2.23; the format is the same); packed, imported, the hash covers the byte", ok);
     }
     {
         uint32_t s8 = autosave_sig();
         song.bm = 0;
-        expect("  .. the autosave sees a change of it (autosave_sig differs: BASS MONO alone starts an autosave)", autosave_sig() != s8);
+        expect("  .. the autosave does NOT see a change of it (a device setting: autosave_sig is the same)", autosave_sig() == s8);
     }
     ok = 1;
-    song.bm = 0;
+    song.bm = 3;
     {
         project_t q;
         project_capture(&q);
         q.bm = 4;
         q.sum = proj_sum(&q);
         project_restore_runtime(&q);
-        ok &= song.bm == 4;
+        ok &= song.bm == 3;
         q.bm = 200;
         q.sum = proj_sum(&q);
         project_restore_runtime(&q);
-        ok &= song.bm == 0;
-        expect("project_restore_runtime brings it back (4 -> 4), a code past BM_N reads OFF", ok);
+        ok &= song.bm == 3;
+        expect("project_restore_runtime leaves the unit's BASS MONO as it is (3 stays 3)", ok);
     }
     song.bm = 0;
     boot();

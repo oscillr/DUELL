@@ -1,0 +1,232 @@
+# TWOCORE-2: the BENCHT3 suite (release_drafts/BENCH_TWOCORE3.md). About 10 minutes: three scenes, each under five settings of the runner, so one command shows what the two changes of BENCHT3 do.
+# The two changes: (1) a very late block whose job still finished inside its half no longer pauses core 1 by itself (it pauses for a real fault, for 4 very late blocks in a row, or 8 within 2 s);
+#                  (2) the deadline has a floor from core 1's own measured run time (`bench floor 1`).
+# The five settings (each test sets them itself after its `bench reset`; reset puts them back):
+#   NEW-F1  new pause rule, floor on     = the BENCHT3 defaults
+#   NEW-F0  new pause rule, floor off    (what the pause rule alone does)
+#   OLD-F1  old pause rule (`vrun 1`: one very late block pauses 10 s), floor on
+#   OLD-F0  old pause rule, floor off    = BENCHT2's S1 (compare with its numbers)
+#   POFF    pause off (no pause for late or very late blocks), floor off = BENCHT2's POFF; a real fault still pauses
+# On a BENCHT4 or later build the defaults changed (run and window rules off, floor off): "NEW" then means BENCHT4's rule (the tests that name `floor` set it themselves). TWOCORE-3 is the BENCHT4 suite.
+# Scenes: M07-style CHORDS (17 s, the OWNER-1 test), M07 cycle (60 s: chord changes, MORPH, aftertouch), heavy 8 + 8 DUEL STRESS (40 s).
+# `ref A P`: the CPU average and peak the same scene gave in BENCHT2 (OLD-F0 numbers on every test of the scene except POFF, which carries BENCHT2's POFF numbers); the summary prints them beside this run's.
+# `diag`: very late blocks and pauses are WARN here (the point of the run is to count them); silent blocks, refused jobs, missed halves and a core 1 that stops stay FAIL.
+suite TWOCORE-2
+diag
+
+cycle M07-CYCLE period 20
+at 0.0  chord C3 E3 G3 B3 vel 90
+at 4.0  release
+at 4.0  chord A2 C3 E3 G3 vel 90
+at 8.0  release
+at 8.0  chord F2 A2 C3 E3 vel 90
+at 12.0 release
+at 12.0 chord G2 B2 D3 F3 vel 90
+at 14.0 morph 0 127 over 2
+at 16.0 release
+at 16.0 chord C3 E3 G3 B3 vel 90
+at 16.0 aftertouch 0 127 over 2
+at 18.0 morph 127 0 over 1
+at 19.0 aftertouch 127 0 over 0.9
+at 19.9 release
+end
+
+cycle STRESS-HOLD period 600
+at 0.0  chord C3 E3 G3 B3 D4 F4 A4 C5 vel 64 ch 1
+at 0.0  chord G3 B3 D4 F#4 A4 C5 E5 G5 vel 64 ch 2
+end
+
+# ---- CHORDS
+
+test CHORDS-NEW-F1  M07 FINAL REEL, four chords; new pause rule, floor on (the BENCHT3 defaults)
+load multi 7 "FINAL REEL"
+mode LAYER
+tune floor 1
+ref 41.8 62.2
+at 0.0  chord C3 E3 G3 B3 vel 90
+at 3.0  release
+at 3.0  chord A2 C3 E3 G3 vel 90
+at 6.0  release
+at 6.0  chord F2 A2 C3 E3 vel 90
+at 9.0  release
+at 9.0  chord G2 B2 D3 F3 vel 90
+at 12.0 release
+tail 5
+measure 1.0 12.0
+expect report
+
+test CHORDS-NEW-F0  M07 FINAL REEL, four chords; new pause rule, floor off
+load multi 7 "FINAL REEL"
+mode LAYER
+tune floor 0
+ref 41.8 62.2
+at 0.0  chord C3 E3 G3 B3 vel 90
+at 3.0  release
+at 3.0  chord A2 C3 E3 G3 vel 90
+at 6.0  release
+at 6.0  chord F2 A2 C3 E3 vel 90
+at 9.0  release
+at 9.0  chord G2 B2 D3 F3 vel 90
+at 12.0 release
+tail 5
+measure 1.0 12.0
+expect report
+
+test CHORDS-OLD-F1  M07 FINAL REEL, four chords; old pause rule (vrun 1), floor on
+load multi 7 "FINAL REEL"
+mode LAYER
+tune vrun 1
+tune floor 1
+ref 41.8 62.2
+at 0.0  chord C3 E3 G3 B3 vel 90
+at 3.0  release
+at 3.0  chord A2 C3 E3 G3 vel 90
+at 6.0  release
+at 6.0  chord F2 A2 C3 E3 vel 90
+at 9.0  release
+at 9.0  chord G2 B2 D3 F3 vel 90
+at 12.0 release
+tail 5
+measure 1.0 12.0
+expect report
+
+test CHORDS-OLD-F0  M07 FINAL REEL, four chords; old pause rule (vrun 1), floor off (= BENCHT2 S1)
+load multi 7 "FINAL REEL"
+mode LAYER
+tune vrun 1
+tune floor 0
+ref 41.8 62.2
+at 0.0  chord C3 E3 G3 B3 vel 90
+at 3.0  release
+at 3.0  chord A2 C3 E3 G3 vel 90
+at 6.0  release
+at 6.0  chord F2 A2 C3 E3 vel 90
+at 9.0  release
+at 9.0  chord G2 B2 D3 F3 vel 90
+at 12.0 release
+tail 5
+measure 1.0 12.0
+expect report
+
+test CHORDS-POFF  M07 FINAL REEL, four chords; pause off, floor off (= BENCHT2 POFF)
+load multi 7 "FINAL REEL"
+mode LAYER
+tune pause off
+tune floor 0
+ref 34.3 52.8
+at 0.0  chord C3 E3 G3 B3 vel 90
+at 3.0  release
+at 3.0  chord A2 C3 E3 G3 vel 90
+at 6.0  release
+at 6.0  chord F2 A2 C3 E3 vel 90
+at 9.0  release
+at 9.0  chord G2 B2 D3 F3 vel 90
+at 12.0 release
+tail 5
+measure 1.0 12.0
+expect report
+
+# ---- M07
+
+test M07-NEW-F1  M07 FINAL REEL cycle, 60 s; new pause rule, floor on (the BENCHT3 defaults)
+load multi 7 "FINAL REEL"
+mode LAYER
+tune floor 1
+ref 41.7 67.1
+soak 60 repeat M07-CYCLE
+check 30
+tail 3
+expect report
+
+test M07-NEW-F0  M07 FINAL REEL cycle, 60 s; new pause rule, floor off
+load multi 7 "FINAL REEL"
+mode LAYER
+tune floor 0
+ref 41.7 67.1
+soak 60 repeat M07-CYCLE
+check 30
+tail 3
+expect report
+
+test M07-OLD-F1  M07 FINAL REEL cycle, 60 s; old pause rule (vrun 1), floor on
+load multi 7 "FINAL REEL"
+mode LAYER
+tune vrun 1
+tune floor 1
+ref 41.7 67.1
+soak 60 repeat M07-CYCLE
+check 30
+tail 3
+expect report
+
+test M07-OLD-F0  M07 FINAL REEL cycle, 60 s; old pause rule (vrun 1), floor off (= BENCHT2 S1)
+load multi 7 "FINAL REEL"
+mode LAYER
+tune vrun 1
+tune floor 0
+ref 41.7 67.1
+soak 60 repeat M07-CYCLE
+check 30
+tail 3
+expect report
+
+test M07-POFF  M07 FINAL REEL cycle, 60 s; pause off, floor off (= BENCHT2 POFF)
+load multi 7 "FINAL REEL"
+mode LAYER
+tune pause off
+tune floor 0
+ref 34.4 53.9
+soak 60 repeat M07-CYCLE
+check 30
+tail 3
+expect report
+
+# ---- STRESS
+
+test STRESS-NEW-F1  heavy 8 + 8 DUEL scene, 40 s; new pause rule, floor on (the BENCHT3 defaults)
+scene "HVY DUEL 8+8"
+tune floor 1
+ref 66.6 79.6
+soak 40 repeat STRESS-HOLD
+check 20
+tail 3
+expect report
+
+test STRESS-NEW-F0  heavy 8 + 8 DUEL scene, 40 s; new pause rule, floor off
+scene "HVY DUEL 8+8"
+tune floor 0
+ref 66.6 79.6
+soak 40 repeat STRESS-HOLD
+check 20
+tail 3
+expect report
+
+test STRESS-OLD-F1  heavy 8 + 8 DUEL scene, 40 s; old pause rule (vrun 1), floor on
+scene "HVY DUEL 8+8"
+tune vrun 1
+tune floor 1
+ref 66.6 79.6
+soak 40 repeat STRESS-HOLD
+check 20
+tail 3
+expect report
+
+test STRESS-OLD-F0  heavy 8 + 8 DUEL scene, 40 s; old pause rule (vrun 1), floor off (= BENCHT2 S1)
+scene "HVY DUEL 8+8"
+tune vrun 1
+tune floor 0
+ref 66.6 79.6
+soak 40 repeat STRESS-HOLD
+check 20
+tail 3
+expect report
+
+test STRESS-POFF  heavy 8 + 8 DUEL scene, 40 s; pause off, floor off (= BENCHT2 POFF)
+scene "HVY DUEL 8+8"
+tune pause off
+tune floor 0
+ref 66.9 79.7
+soak 40 repeat STRESS-HOLD
+check 20
+tail 3
+expect report

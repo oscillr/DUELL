@@ -24,7 +24,7 @@
  * user sample slots 0xA0000..0xC7FFF (USR1 0xA0000, USR2 0xB4000, 80 KiB each; DUELL retired USR3, which lay at 0xC8000..0xCDFFF;
  * DUELL 0.2.9 retired USR1 and USR2 with the SAMPLE engine: 0xA0000..0xC7FFF (160 KiB) was UNUSED, nothing read or wrote it (old
  * sample data may still lie there). DUELL 0.2.14: the USER WAVETABLES (wtab.c, OBJ_WTAB0..2, three A/B pairs) take the first 24 KiB of it, all inside the old USR1 range,
- * 0xA0000..0xA5FFF (USR1 0xA0000/0xA1000, USR2 0xA2000/0xA3000, USR3 0xA4000/0xA5000); DUELL 0.2.15: the PATCH store's chunks 6..15 (OBJ_PATCHX0..9, ids 33..42, ten A/B pairs) take the next 80 KiB, 0xA6000..0xB9FFF; 0xBA000..0xC7FFF (56 KiB, 14 sectors) stays FREE), DUELL's PATCH store (upreset.c, OBJ_PATCH0..5: six A/B pairs, below) 0xC8000..0xCDFFF (chunks 0..2),
+ * 0xA0000..0xA5FFF (USR1 0xA0000/0xA1000, USR2 0xA2000/0xA3000, USR3 0xA4000/0xA5000); DUELL 0.2.15: the PATCH store's chunks 6..15 (OBJ_PATCHX0..9, ids 33..42, ten A/B pairs) take the next 80 KiB, 0xA6000..0xB9FFF; the cloud plan's job A (PT_VER 3: 6 records a chunk, 22 chunks): chunks 16..21 = OBJ_PATCHX0+10..15 (ids 43..48, six more pairs) 0xBA000..0xC5FFF; 0xC6000..0xC7FFF (8 KiB, one pair) is OBJ_VELO, id 49, the velocity calibration (VELO_STUDY, up to 128 bytes: project.c velo_cal_load / velo_cal_save). Every one of these is inside FL_STORE_OK (fm1_flash.h: FL_DATA 0x97000..0xE0000)), DUELL's PATCH store (upreset.c, OBJ_PATCH0..5: six A/B pairs, below) 0xC8000..0xCDFFF (chunks 0..2),
  * the MULTI store M09..M16 0xCE000..0xD5FFF (taken from USR3's end), DUELL's pattern slots 0xD6000..0xDBFFF (below); the user
  * preset banks of Felucca (OBJ_UPRESET0/1, 0xDC000..0xDFFFF: since DUELL step 3.6b the PATCH store's chunks 3 and 4) and the user
  * presets' FM6 patches (OBJ_UPFM6, copy A 0x9F000, copy B 0xFE000, shared with the retired FM6 bank: the PATCH store's chunk 5)
@@ -55,7 +55,8 @@ enum { OBJ_SETTINGS, OBJ_PROJECT0, OBJ_UPRESET0 = OBJ_PROJECT0 + 4, OBJ_FM6BANK 
        OBJ_PATCH0 = OBJ_MULTI0 + 8,                                 /* DUELL: the MULTI store (project.c), 8 objects; the PATCH store (upreset.c), */
        OBJ_WTAB0 = OBJ_PATCH0 + 6,                                  /* .. 6 objects; DUELL 0.2.14: the user wavetables (wtab.c), 3 objects */
        OBJ_PATCHX0 = OBJ_FM6VB + 1,                                 /* DUELL 0.2.15: the PATCH store's chunks 6..15 (upreset.c), 10 objects, ids 33..42: id 32 is skipped */
-       OBJ_COUNT = OBJ_PATCHX0 + 10 };
+       OBJ_VELO = OBJ_PATCHX0 + 16,                                 /* the cloud plan's job A: chunks 6..21 = OBJ_PATCHX0..15 (ids 33..48), six more at 0xBA000..0xC5FFF; id 49: the velocity calibration, 0xC6000 / 0xC7000 */
+       OBJ_COUNT = OBJ_VELO + 1 };
 _Static_assert(OBJ_WTAB0 + 3 <= OBJ_FM6VB, "the object ids below the voice bank's");
 /* the project slots' numbers, Felucca's user preset banks and the FM6 patch objects (DUELL: all retired, never read or written) */
 #define OBJ_RETIRED(obj) (((obj) >= OBJ_PROJECT0 && (obj) < OBJ_PROJECT0 + 4u) || ((obj) >= OBJ_UPRESET0 && (obj) <= OBJ_UPFM6) || \
@@ -93,7 +94,7 @@ static uint32_t st_sector(uint32_t obj, uint32_t copy)  /* flash offset of copy 
 {
     if (obj == OBJ_SETTINGS)
         return 0xFC000u + copy * ST_SECTOR;
-    if (obj >= OBJ_PATCHX0)                              /* DUELL 0.2.15: the PATCH store's chunks 6..15: 0xA6000..0xB9FFF (the old sample region) */
+    if (obj >= OBJ_PATCHX0)                              /* DUELL 0.2.15: the PATCH store's chunks 6..15: 0xA6000..0xB9FFF (the old sample region); ids 43..48: chunks 16..21, 0xBA000..0xC5FFF; OBJ_VELO (49): 0xC6000 */
         return 0xA6000u + (obj - OBJ_PATCHX0) * 2u * ST_SECTOR + copy * ST_SECTOR;
     if (obj >= OBJ_WTAB0)                                /* the user wavetables USR1..USR3: 0xA0000..0xA5FFF (the old sample region) */
         return 0xA0000u + (obj - OBJ_WTAB0) * 2u * ST_SECTOR + copy * ST_SECTOR;

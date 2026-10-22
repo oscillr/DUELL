@@ -175,6 +175,13 @@ static const menu_credit_t MENU_CREDITS[] = {
     {"FM VOICE", MC_TITLE},                        /* DUELL 0.2.17: FM BASS 2 (FM6 factory patch F9), a DX7 voice import */
     {"One FM voice: aquanodemusic (Aquanode Soundscapes), CC0 1.0 Universal", MC_TEXT},
     {"https://github.com/aquanodemusic/aquanode-soundscapes", MC_URL},
+#if DUELL_VELO
+    {"", MC_TEXT},
+    {"VELO", MC_TITLE},                            /* KEY VELOCITY and aftertouch (sense.c): the method of Velo, built on Felucca; in builds with KEY SENSE, where the method is */
+    {"Charles Vestal: key velocity and aftertouch from the keys (method)", MC_TEXT},
+    {"GPL-3.0-only", MC_TEXT},
+    {"https://github.com/charlesvestal/fm1-velocity", MC_URL},
+#endif
 };
 
 static int32_t menu_text(const char *s, int32_t y, uint16_t col, int draw)
@@ -239,6 +246,27 @@ static int32_t menu_document(int32_t y, int draw)
         }
         cv_text(6, y + 118, &AF_S, "USB", T_MID);                /* the link (INFO's USB row): OFF, WAIT, BUS, ENUM or MIDI */
         cv_text(34, y + 118, &AF_S, (const char *const[5]){"OFF", "WAIT", "BUS", "ENUM", "MIDI"}[info_usb()], vt(T_THEME, T_BG));
+        if (ovl_lite)                                   /* 0.2.25: the overload guard is engaged (fx.c ovl_step: RANDOM / OCT UP as the plain delay) */
+            cv_text_r(232, y + 118, &AF_S, "LIGHT FX", cpu_col(1u, T_BG), T_BG);
+#if DUELL_RAMPLACE
+        {   /* two-core stage 1a: part 2's voice code in RAM (ramplace.c): OK and its size, or FAIL and the range that differs from the
+             * flash image (checked once a second here, about_sig); BOOT COPY n: the start needed n more copies */
+            cv_text(6, y + 136, &AF_S, "RAM CODE", T_MID);
+            if (!rp_state) {
+                fmt_int(b, (int32_t)((ramplace_bytes() + 512u) / 1024u));
+                str_cpy(b + str_len(b), " KB", 4);
+                cv_text(78, y + 136, &AF_S, "OK", vt(T_THEME, T_BG));
+                cv_text(104, y + 136, &AF_S, b, T_TEXT);
+            } else
+                cv_text(78, y + 136, &AF_S, rp_state == 1u ? "FAIL X" : rp_state == 2u ? "FAIL Z" : "FAIL X Z", cpu_col(2u, T_BG));
+            if (rp_boot_copies) {
+                str_cpy(b, "BOOT COPY ", 11);
+                fmt_int(b + str_len(b), rp_boot_copies);
+                cv_text_r(232, y + 136, &AF_S, b, cpu_col(1u, T_BG), T_BG);
+            }
+            y += 18;                                    /* (the lines below one row down; with draw 0 too: below) */
+        }
+#endif
         cv_text(6, y + 142, &AF_S, "based on Felucca (GPL-3.0)", T_TEXT);
         cv_text(6, y + 160, &AF_S, "(C) 2026 Leo Kuroshita", T_TEXT);
         cv_text(6, y + 178, &AF_S, "H\xFCgelton Instruments", T_TEXT);
@@ -247,6 +275,10 @@ static int32_t menu_document(int32_t y, int draw)
         cv_text(6, y + 244, &AF_S, "hugelton.com", T_MID);
         draw_about_qr(158, y + 186);
     }
+#if DUELL_RAMPLACE
+    if (!draw)
+        y += 18;                                        /* (the RAM CODE line's row, as drawn) */
+#endif
     about_sec[0] = y + 280 - y0;
     y = menu_text("CREDITS", y + 280, T_THEME, draw) + 8;
     for (i = 0; i < NELEM(MENU_CREDITS); i++) {
@@ -476,12 +508,12 @@ static void menu_row(uint32_t row)
         cv_icon_in(MR_VR - 12, y, 0, h, 12, ICON_X_RIGHT, sel ? T_INK : T_MID, bg);
         return;
     }
-    if (row == MI_HOLD || row == MI_TUNE) {            /* "0.4" s, "+12" ct: the value and its unit */
+    if (row == MI_HOLD || row == MI_TUNE) {            /* "0.4" s, "440.0" Hz: the value and its unit */
         char b[8] = "0.4";
         b[2] = (char)('0' + HOLD_MS[settings_hold % 4u] / 100u);
         GFX_HOOK_ALIGN(0, y, 0, y + h, AL_V, "menu row value centred up/down");
         GFX_HOOK_ALIGN(0, 0, 0, vy + AF_M.asc, AL_B, "menu row unit on its value's baseline");
-        cv_text_r(cv_text_r(MR_VR, vy + AF_M.asc - AF_S.asc, &AF_S, row == MI_TUNE ? "ct" : "s", sel ? T_INK : T_MID, bg) - 3,
+        cv_text_r(cv_text_r(MR_VR, vy + AF_M.asc - AF_S.asc, &AF_S, row == MI_TUNE ? "Hz" : "s", sel ? T_INK : T_MID, bg) - 3,
                   vy, &AF_M, row == MI_TUNE ? v : b, val, bg);
         return;
     }
@@ -508,7 +540,16 @@ static void menu_row(uint32_t row)
 static uint32_t about_sig(void)
 {
     cpu_meter_poll();
-    return cpu_sig() + info_usb() * 131u;
+#if DUELL_RAMPLACE
+    {   /* the RAM code compared with its flash image once a second while ABOUT is up (ramplace.c; about 1 ms) */
+        if (!rp_about_t || fm1_ms - rp_about_t >= 1000u) {
+            rp_about_t = fm1_ms | 1u;
+            rp_state = (uint8_t)ramplace_check();
+        }
+    }
+    return cpu_sig() + info_usb() * 131u + ovl_lite * 977u + rp_state * 7919u;
+#endif
+    return cpu_sig() + info_usb() * 131u + ovl_lite * 977u;
 }
 #if DUELL_TEST_MODE                                    /* the CPU test screen is a developer build (DUELL_TEST_MODE); the release leaves it out down to #endif (TEST screen) */
 /* MENU > SYSTEM > TEST (the CPU test screen, beta; ui.menu 3, drawn as the page TEST_PAGE, params.c): what is loaded and how hard the audio works. The multi (slot + name), per part the ENGINE
@@ -673,6 +714,12 @@ static void draw_menu(void)
         return;
     }
 #endif
+#if DUELL_BENCH
+    if (ui.menu == 5) {                                /* BENCH (bench builds): src/bench.c draws it */
+        bench_draw();
+        return;
+    }
+#endif
     if (ui.menu == 1)
         mt_follow();
     sig = ui.menu * 7u + ui.menu_sel * 131u + settings.palette * 1009u + settings_hold * 3511u +
@@ -775,6 +822,7 @@ static void menu_move(int32_t s)                       /* SELECT: the next / pre
     t = menu_tab();
     ui.menu_row[t] = (uint8_t)(ui.menu_sel - mtab_first(t));
 }
+static int32_t accel(uint32_t role, int32_t s, int32_t range);   /* (ui_input.c, KNOB ACCEL) */
 static void menu_input(uint32_t oct)                  /* oct: ui_input.c oct_taps */
 {
     int32_t s;
@@ -821,8 +869,10 @@ static void menu_input(uint32_t oct)                  /* oct: ui_input.c oct_tap
     }
     if ((s = panel_enc(EN_SELECT)) != 0)
         menu_move(s);
-    for (s = 0, k = 0; k < 4u; k++)                    /* KNOB 1..4, any of them */
-        s += panel_enc(EN_K1 + k);
+    for (s = 0, k = 0; k < 4u; k++) {                  /* KNOB 1..4, any of them */
+        int32_t e = panel_enc(EN_K1 + k);
+        s += ui.menu_sel == MI_TUNE ? accel(EN_K1 + k, e, (int32_t)TUNE_N) : e;   /* (0.2.22: TUNE has 510 steps: with KNOB ACCEL ON a fast turn goes x2 .. x8, ui_input.c accel; the other rows as ever) */
+    }
     if (menu_valued(ui.menu_sel)) {
         /* a step (OCT+ the next value, OCT- the previous); COLOR previews the palette */
         s += (int32_t)up - (int32_t)dn;

@@ -448,6 +448,7 @@ static int cap_src = -1;
 static void capture(int src)
 {
     uint32_t t, i;
+    blockstate_t bs;
     setup_src(src);
     model_reset(M_ROOM, 90, 60);
     transport_req = 1;
@@ -458,8 +459,10 @@ static void capture(int src)
         for (i = 0; i < CTL; i++)
             send_c[i] = send_d[i] = send_r[i] = mix_l[i] = mix_r[i] = 0;
         events_block(CTL);
-        for (i = 0; i < NPART; i++)
-            mix_part(&trk[i], CTL);
+        blk_snap(&bs, sp_tap);
+        for (i = 0; i < NLIVE; i++)
+            mix_part(&trk[i], CTL, &bs);
+        mix_gather(CTL, &bs);
         for (i = 0; i < CTL; i++) {
             int32_t a = send_r[i] < 0 ? -send_r[i] : send_r[i];
             if (a > send_peak) send_peak = a;

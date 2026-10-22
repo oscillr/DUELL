@@ -1,6 +1,9 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
 /* Firmware save flows against NOR flash: deferred settings, retries, and failed-save rollback. */
+#ifndef FELUCCA_CDC
+#define FELUCCA_CDC 1                                    /* (the developer builds' MENU: USB SERIAL is a row there; the product has none, tests/release_test.c) */
+#endif
 #define main hostsim_main
 #include "hostsim.c"
 #undef main
@@ -73,6 +76,17 @@ static int check(const char *what, int ok)
 {
     printf("persist: %-66s %s\n", what, ok ? "ok" : "FAIL");
     return ok ? 0 : 1;
+}
+
+/* T0227: the unit's save timer (ui_input.c morph_settings: ui.mset_dirty saved ~2 s after the last change), as the main loop runs it */
+static void rest(void)
+{
+    fm1_ms += 2100u;
+    if (ui.mset_dirty && fm1_ms - ui.mset_t >= 2000u) {
+        ui.mset_dirty = 0;
+        settings_save();
+    }
+    settings_poll();
 }
 
 static void reset(void)
@@ -202,6 +216,8 @@ static int autosave_test(void)
     /* power-on: restored */
     as_edit(6);
     song.g[G_BPM] = 97;
+    song.bm = 5;                                           /* BASS MONO: the autosave carries it, a multi does not (0.2.21) */
+    song.g[G_TUNE] = 4321;                                 /* MASTER TUNE (0.2.22): 432.1 Hz, the project's: the autosave carries it */
     str_cpy(proj_name, "MY TUNE", sizeof proj_name);
     as_run(70000u);
     memcpy(st, trk[0].step, sizeof st);
@@ -213,6 +229,8 @@ static int autosave_test(void)
     as_run(300000u);
     bad += check("autosave: power-on restores it (steps, tempo, name; RESTORED); no write after (unchanged)",
                  ok && !as.writes && as_erases == b0);
+    bad += check("autosave: MASTER TUNE (A4 in 0.1 Hz) comes back with it (432.1 Hz)", song.g[G_TUNE] == 4321);
+    bad += check("autosave: BASS MONO (a master effect, project byte 65) comes back with it (5); a multi load (M01) leaves it as it is", song.bm == 5 && (project_load(0), song.bm == 5));
     as_power_on();
     ok = autosave_boot(0) == 0 && song.g[G_BPM] != 97;
     as_run(60000u);
@@ -307,6 +325,25 @@ static int autosave_test(void)
     bad += check("autosave: a write cut short (power off): the copy before is restored", ok);
     /* wear: a 4-hour session: 3 h of editing (a change every 3 s), pauses and playing it back, then an hour away */
     as_power_on();
+    {   /* the cloud plan's job A: the 16 extension slots of both parts are part of the music: a change of one alone is autosaved, and they come back at power-on */
+        uint32_t w0 = as.writes, k2;
+        for (k2 = 0; k2 < NX; k2++) {
+            XV(&trk[0], k2) = (int16_t)(k2 * 5u) - 30;
+            XV(&trk[1], k2) = (int16_t)(100 - 6 * (int)k2);
+        }
+        as_run(70000u);
+        ok = as.writes == w0 + 1u;
+        as_power_on();
+        ok &= autosave_boot(1) == 1;
+        for (k2 = 0; k2 < NX; k2++)
+            ok &= XV(&trk[0], k2) == (int)(k2 * 5u) - 30 && XV(&trk[1], k2) == 100 - 6 * (int)k2;
+        as_run(300000u);
+        bad += check("autosave: the extension slots (XV) of both parts are written when they change (alone) and come back at power-on", ok && as.writes == 0u);
+        w0 = as.writes;
+        XV(&trk[1], X_SUBLVL) = 5;
+        as_run(70000u);
+        bad += check("  and a change of one slot alone is a new autosave (the signature covers them)", as.writes == w0 + 1u);
+    }
     autosave_boot(1);
     as_erases = 0;
     for (minute = 0; minute < 240u; minute++) {
@@ -352,6 +389,7 @@ static void d14_boot(void)                               /* a power cycle: RAM g
     persist_pending = 0;
     jedec_ok = 1;
     persist_boot();
+    ps_dirty = 0;                                        /* (the pattern slots' defaults of a blank flash are written at the first quiet pass: not what these counts of erases are about) */
     jedec_ok = 0;
     flash_ok = 1;
     settings_init();
@@ -392,19 +430,20 @@ static int defaults_0214_test(void)
     reset();
     d14_boot();
     settings_export(&p);
-    p.favorites.factory[15][30] = PREF_USB_FIXED;        /* (ACCEL clear, SERIAL clear = ON, USB LEVEL FIXED: kept) */
+    p.favorites.factory[15][30] = 8u;        /* (ACCEL clear, SERIAL clear = ON, the retired bit 8 (was USB LEVEL FIXED): kept as it is) */
     p.favorites.factory[15][28] = 2u << 4;               /* CLICK OFF, LEVEL MID, COUNT-IN 2 BARS */
     p.favorites.factory[15][24] = 0x40u | 0x02u;         /* MODE RECALL ON, STEP PREVIEW ON; the flag clear */
     p.favorites.factory[15][10] = 0xFFu;                 /* ANIM IDLE (bit 0) and bits 1-7 set */
     ok = st_save(OBJ_SETTINGS, &p, sizeof p) == 0;
     d14_boot();
-    ok &= first_boot_pending == 0u && d14_new() && (ui_prefs & PREF_USB_FIXED) && rp_get(RP_COUNTIN) == 2u &&
-          (ui_prefs2 & 0x42u) == 0x42u && ui_idle == 1u && ui_prefs == (PREF_USB_FIXED | PREF_ACCEL | PREF_SERIAL_OFF);
+    ok &= first_boot_pending == 0u && d14_new() && (ui_prefs & 8u) && rp_get(RP_COUNTIN) == 2u &&
+          (ui_prefs2 & 0x42u) == 0x42u && ui_idle == 1u && ui_prefs == (8u | PREF_ACCEL | PREF_SERIAL_OFF);
     e0 = erases;
     settings_save(); settings_poll();
     ok &= erases == e0 && !persist_pending;              /* (no save at boot: the record as read, changed in RAM, is the saved copy) */
-    q = persist_saved;
-    ok &= settings_import(&q, (int)sizeof q) == 1 && !memcmp(&q, &persist_saved, sizeof q);   /* (importing twice changes nothing) */
+    persist_base(&q);
+    memcpy(q.map, midi_map, sizeof q.map);
+    ok &= settings_import(&q, (int)sizeof q) == 1 && !memcmp(&q, &persist_saved, sizeof persist_saved) && persist_is_saved(&q);   /* (importing twice changes nothing) */
     bad += check("0.2.14 an older record: ACCEL ON, CLICK OFF -> REC, USB SERIAL ON -> OFF once; the rest kept, [15][10] bits 1-7 cleared", ok);
     /* .. with CLICK ON / REC and USB SERIAL OFF stored: kept (only the old default changes) */
     p.favorites.factory[15][28] = 2u;                    /* CLICK ON */
@@ -441,6 +480,58 @@ static int defaults_0214_test(void)
     return bad;
 }
 
+/* cloud job G (EDITABLE B): End B, as saved, survives a power cycle through the autosave (PROJ_REV 7's block), and so do the values set by hand */
+static int editb_power_test(void)
+{
+    int bad = 0, ok;
+    uint32_t seed0, w;
+    int8_t b0[P_COUNT], bx0[NX];
+    xb_edit_t ed[XB_MAX], ed0[XB_MAX];
+    uint32_t ne0;
+    reset();
+    as_power_on();
+    memset(mph, 0, sizeof mph);
+    memset(&morph, 0, sizeof morph);
+    song.sel = 0;
+    morph_set_target(0);
+    trk[0].user = 3;                                        /* a loaded user patch: slot 3, preset 0 (up_load) */
+    trk[0].preset = 0;
+    morph_rebase_all();
+    morph_roll_seed(0, 1, 4321);                            /* End B as the patch saved it */
+    morph_set_fader(127);
+    morph_b_set(0, P_E6, 44);                               /* two values by hand */
+    morph_b_set(0, P_LD_FLT, 3);
+    morph_set_fader(0);
+    seed0 = morph_seed_of(0, 1);
+    memcpy(b0, morph_cur(&mph[0], 1), P_COUNT);
+    memcpy(bx0, morph_curx(&mph[0], 1), NX);
+    ne0 = morph_edits(0, ed0);
+    as_edit(0);
+    as_run(30000u);
+    ok = as.writes == 1u && ne0 == 2u;
+    memset(mph, 0, sizeof mph);                             /* the power cycle: RAM gone, the morph too */
+    memset(&morph, 0, sizeof morph);
+    as_power_on();
+    ok &= autosave_boot(1) == 1;
+    morph_ready(0);                                         /* (the first use of the morph) */
+    bad += check("EDITABLE B: a power cycle (autosave): End B comes back as it was (the seed, the whole end)",
+                 ok && morph_seed_of(0, 1) == seed0 && !memcmp(b0, morph_cur(&mph[0], 1), P_COUNT) && !memcmp(bx0, morph_curx(&mph[0], 1), NX) && mph[0].fader == 0u);
+    ok = morph_edits(0, ed) == 2u && ed[0].wid == ed0[0].wid && ed[0].val == ed0[0].val && ed[1].wid == ed0[1].wid && ed[1].val == ed0[1].val;
+    bad += check("  .. and the two values set by hand with it", ok);
+    as_run(300000u);
+    bad += check("  .. nothing is written after the restore (the music is unchanged)", as.writes == 0u);
+    as_edit(1);
+    as_run(30000u);
+    ok = as.writes == 1u;
+    morph_set_fader(127);
+    morph_b_set(0, P_E1, 12);
+    as_run(70000u);                                         /* (a minute's gap after the write before) */
+    bad += check("  .. a B edit alone (nothing else changed) is a change the autosave writes", ok && as.writes == 2u);
+    for (w = 0; w < 4u; w++)
+        ed[w].val = 0;
+    return bad;
+}
+
 int main(void)
 {
     int bad = 0, ok;
@@ -473,38 +564,82 @@ int main(void)
         const uint8_t bold[] = {1, 1};
         bad += check("the retired font weight is refused without a write", ed_ui_set(bold, sizeof bold) == 2);
     }
-    {   /* MENU_SET (editor_menu.c): the same settings record, the same deferral, retry and idempotence */
+    {   /* MENU_SET (editor_menu.c): the same settings record, the same deferral, retry and idempotence. T0227 (flicker fix): as the unit's own knob, a two-value
+         * switch is saved at once, a setting of more values once it has rested ~2 s (ui.mset_dirty; ui_input.c morph_settings' timer, emulated here by rest()) */
         const uint8_t leds_off[] = {4, 0, 64}, accel_on[] = {6, 1, 64}, hold_06[] = {5, 3, 64};
         persist_t q;
+        uint32_t k;
         reset();
         settings_init();
         song.playing = 1;
         ed_repn = 0; ed_menu_handle(ED_MENU_SET, leds_off, 3);
-        bad += check("MENU_SET while playing: applied, rc 4 (queued until STOP), no erase",
-                     ed_repn == 4 && ed_rep[0] == 4 && ed_rep[1] == 4 && settings_leds == LEDS_OFF && persist_pending == 1 && !erases);
+        bad += check("MENU_SET while playing: applied, rc 4 (queued), no erase",
+                     ed_repn == 4 && ed_rep[0] == 4 && ed_rep[1] == 4 && settings_leds == LEDS_OFF && ui.mset_dirty && !erases);
+        rest();
+        bad += check("  .. rested 2 s, still playing: the write waits (no erase)", persist_pending == 1 && !erases);
         song.playing = 0;
         settings_poll();
         bad += check("STOP commits the MENU setting (LEDS OFF in the settings record)",
                      !persist_pending && erases == 1 && st_load(OBJ_SETTINGS, &q, sizeof q) == (int)sizeof q &&
                      leds_from_stored(q.zoom) == LEDS_OFF);
         ed_repn = 0; ed_menu_handle(ED_MENU_SET, accel_on, 3);
-        ok = ed_rep[0] == 0 && (ui_prefs & PREF_ACCEL);
+        ok = ed_rep[0] == 0 && (ui_prefs & PREF_ACCEL) && erases == 2;
+        bad += check("MENU_SET stopped, a two-value switch (KNOB ACCEL): rc 0, saved at once (as the menu's knob)", ok);
         ed_repn = 0; ed_menu_handle(ED_MENU_SET, hold_06, 3);
-        ok &= ed_rep[0] == 0 && settings_hold == 3u;
-        ok &= st_load(OBJ_SETTINGS, &q, sizeof q) == (int)sizeof q &&
+        ok = ed_rep[0] == 4 && settings_hold == 3u && erases == 2;
+        rest();
+        ok &= erases == 3 && st_load(OBJ_SETTINGS, &q, sizeof q) == (int)sizeof q &&
               hold_from_stored(q.bold) == 3u && (q.favorites.factory[15][30] & PREF_ACCEL) && leds_from_stored(q.zoom) == LEDS_OFF;
-        bad += check("MENU_SET stopped: rc 0, saved at once (KNOB ACCEL, HOLD), the others kept", ok);
+        bad += check("MENU_SET stopped, HOLD (4 values): rc 4, saved once it rested, the others kept", ok);
         before = erases;
         ed_repn = 0; ed_menu_handle(ED_MENU_SET, hold_06, 3);
+        rest();
         bad += check("repeating an unchanged MENU_SET: rc 0, no erase", ed_rep[0] == 0 && erases == before);
+        /* T0227: the editor's BASS MONO slider dragged over every value with nothing sounding: no erase while it moves, ONE when it rests */
+        before = erases;
+        ok = 1;
+        ui.force = 0;
+        for (k = 0; k <= BM_N; k++) {
+            const uint8_t bm[] = {33, (uint8_t)((k + 8192u) & 127u), (uint8_t)((k + 8192u) >> 7)};
+            ed_repn = 0; ed_menu_handle(ED_MENU_SET, bm, 3);
+            ok &= song.bm == (int16_t)k && ed_rep[0] != 3 && !ui.force;
+            fm1_ms += 30u;
+            settings_poll();
+        }
+        ok &= erases == before;
+        rest();
+        ok &= erases == before + 1u;
+        bad += check("BASS MONO dragged OFF..400 Hz (stopped, quiet): no erase per step, no forced redraw, one erase 2 s after the last", ok);
+        before = erases;
+        for (k = 0; k < 20u; k++) {                      /* WIDTH, COMP THRESH, SIDECHAIN P1 NOTE: the same */
+            const uint8_t wd[] = {42, (uint8_t)((100u + k + 8192u) & 127u), (uint8_t)((100u + k + 8192u) >> 7)};
+            const uint8_t th[] = {34, (uint8_t)((8192u - 30u + k) & 127u), (uint8_t)((8192u - 30u + k) >> 7)};
+            const uint8_t sn[] = {39, (uint8_t)((30u + k + 8192u) & 127u), (uint8_t)((30u + k + 8192u) >> 7)};
+            ed_repn = 0; ed_menu_handle(ED_MENU_SET, wd, 3);
+            ed_repn = 0; ed_menu_handle(ED_MENU_SET, th, 3);
+            ed_repn = 0; ed_menu_handle(ED_MENU_SET, sn, 3);
+            fm1_ms += 30u;
+            settings_poll();
+        }
+        ok = erases == before && !ui.force;
+        rest();
+        ok &= erases == before + 1u;
+        bad += check("WIDTH, COMP THRESH, SIDECHAIN NOTE dragged: one erase once they rest", ok);
         erase_error = 1;
         ed_repn = 0; ed_menu_handle(ED_MENU_SET, leds_off, 3);   /* unchanged: still rc 0 (no write) */
         ok = ed_rep[0] == 0;
         {
             const uint8_t leds_inv[] = {4, 3, 64};
             ed_repn = 0; ed_menu_handle(ED_MENU_SET, leds_inv, 3);
+            rest();
         }
-        ok &= ed_rep[0] == 3 && settings_leds == LEDS_INV && persist_pending == 2 && leds_from_stored(persist_saved.zoom) == LEDS_OFF;
+        ok &= settings_leds == LEDS_INV && persist_pending == 2 && leds_from_stored(persist_saved.zoom) == LEDS_OFF;
+        ed_repn = 0;
+        {
+            const uint8_t leds_inv[] = {4, 3, 64};
+            ed_menu_handle(ED_MENU_SET, leds_inv, 3);
+        }
+        ok &= ed_rep[0] == 3;
         bad += check("MENU_SET with a failing flash: applied, rc 3, the saved setting kept", ok);
         erase_error = 0;
         fm1_ms += 1000;
@@ -558,10 +693,10 @@ int main(void)
         before = erases;
         song.playing = 0; transport_req = 0; fm1_in.notes = 0; fm1_in.buttons = 0;
         favorites.factory[15][31] = (uint8_t)(seen0 | 0x10u);
-        trk[2].v[1].active = 1;                               /* a voice sounding (stopped transport) */
+        trk[1].v[1].active = 1;                               /* a voice sounding (stopped transport) */
         settings_save();
         bad += check("a voice sounding: seen bit queued, no erase", persist_pending && erases == before);
-        trk[2].v[1].active = 0; fm1_in.notes = 1u << 5;       /* a key held */
+        trk[1].v[1].active = 0; fm1_in.notes = 1u << 5;       /* a key held */
         settings_poll();
         bad += check("a key held: still no erase", persist_pending && erases == before);
         fm1_in.notes = 0; fm1_in.buttons = 1u << 3;           /* a button held (the long press that opened the layer) */
@@ -582,6 +717,7 @@ int main(void)
     bad += check("PLAY consumed before the settings snapshot defers the write",
                   irq_races == 1u && song.playing && !transport_req && persist_pending && erases == before);
     bad += autosave_test();
+    bad += editb_power_test();
     bad += defaults_0214_test();
     printf("%s\n", bad ? "PERSISTENCE TEST FAILED" : "persistence test passed");
     return bad != 0;

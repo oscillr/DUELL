@@ -5,7 +5,7 @@
  *   build/host/locut_test            (host_tests.sh locut)
  *   cc -DLOCUT_REF ... locut_test.c  prints the hashes of test 1 (these are the ones pasted below: made with the code BEFORE the low cut, at 0e8d8ed)
  * 1. LOCUT 0 is the reverb as before, bit for bit: all six models on bus A (wet and side) and bus B, 8 s of sends, against the hashes of the code before.
- * 2. the control: id, label, range, default (61 = 88 Hz), the REVERB page's K4, the display (OFF / Hz), the table (exponential, 20 .. 450 Hz).
+ * 2. the control: id, label, range, default (0.2.22: 75 = 299 Hz; 61 = 88 Hz before), the REVERB page's K4, the display (OFF / Hz / kHz from 1000 Hz), the table (exponential, 20 Hz .. 2 kHz, 0.2.22; 20 .. 450 Hz before).
  * 3. the response of the filter itself: the -3 dB corner against the printed Hz over the whole range, 6 dB an octave below it, unity far above it.
  * 4. every model: the 40 Hz and 1 kHz (and 150 Hz) level of the reverb's output with the default low cut against LOCUT 0 (bass down, treble not).
  * 5. no click: the value changed while a bass note rings (jumps across the range, off and on), the step of the filter's output no larger than the signal's own.
@@ -87,9 +87,10 @@ static void rev_locut_inplace(int32_t *x, uint32_t n)
 
 /* ------------------------------------------------ 1. LOCUT 0 as before --- */
 #ifndef LOCUT_REF
-/* made by -DLOCUT_REF with the code before the low cut (0e8d8ed) */
-static const uint32_t REF_A[6] = { 0x54f891f4u, 0xb9dbb185u, 0x2aba341du, 0x145eae7cu, 0x23eaefbau, 0x5213a10bu, };
-static const uint32_t REF_B[6] = { 0x54f891f4u, 0xb9dbb185u, 0xe38e0e45u, 0x145eae7cu, 0x23eaefbau, 0xb0f3473cu, };
+/* made by -DLOCUT_REF with the code before the low cut (0e8d8ed); HALL's (the third) re-made in 0.2.29 (its quiet lines round to the nearest:
+ * fx.c hall_end; with LOCUT 0 it is the 0.2.29 HALL bit for bit; before: A 0x2aba341d, B 0xe38e0e45) */
+static const uint32_t REF_A[6] = { 0x54f891f4u, 0xb9dbb185u, 0x7964e0edu, 0x145eae7cu, 0x23eaefbau, 0x5213a10bu, };
+static const uint32_t REF_B[6] = { 0x54f891f4u, 0xb9dbb185u, 0x15be3bf1u, 0x145eae7cu, 0x23eaefbau, 0xb0f3473cu, };
 #endif
 static uint32_t run_hash(int model, int bus_b, uint32_t secs)
 {
@@ -154,23 +155,39 @@ static void test_control(void)
         if (!strcmp(PAGES[pg].title, "REVERB"))
             k4 = PAGES[pg].id[3], found = PAGES[pg].id[0] == G_RTYPE && PAGES[pg].id[1] == G_RSIZE && PAGES[pg].id[2] == G_RDAMP;
     snprintf(w, sizeof w, "the control: id %d (the old G_ENGGO's, G_COUNT %d), label %s, 0..127, default %d, fmt F_LOCUT", (int)G_RLOCUT, (int)G_COUNT, d->label, d->def);
-    check(w, G_RLOCUT == 21 && G_COUNT == 27 && !strcmp(d->label, "LOCUT") && d->min == 0 && d->max == 127 && d->def == 61 && d->fmt == F_LOCUT);
+    check(w, G_RLOCUT == 21 && G_COUNT == 27 && !strcmp(d->label, "LOCUT") && d->min == 0 && d->max == 127 && d->def == 75 && d->fmt == F_LOCUT);
     check("the REVERB page: TYPE SIZE DAMP LOCUT (K4)", k4 == G_RLOCUT && found);
     param_format(d, 0, val, &unit);
     ok &= !strcmp(val, "OFF");
     param_format(d, 1, val, &unit);
     ok &= !strcmp(val, "20") && !strcmp(unit, "Hz");
-    param_format(d, 61, val, &unit);
-    snprintf(w, sizeof w, "the display: 0 OFF, 1 20 Hz, 61 %s %s, 127", val, unit);
-    ok &= !strcmp(val, "88") && !strcmp(unit, "Hz");
+    param_format(d, 75, val, &unit);
+    snprintf(w, sizeof w, "the display: 0 OFF, 1 20 Hz, 75 %s %s, ", val, unit);
+    ok &= !strcmp(val, "299") && !strcmp(unit, "Hz");
     param_format(d, 127, val, &unit);
-    ok &= !strcmp(val, "450");
+    ok &= !strcmp(val, "2.0") && !strcmp(unit, "kHz");
+    param_format(d, 61, val, &unit);
+    ok &= !strcmp(val, "179") && !strcmp(unit, "Hz");               /* (the old default's value: 179 Hz now) */
+    for (i = 1; i < 128; i++) {                                     /* Hz below 1000, kHz with one decimal from 1000 (the filter CUT's way) */
+        param_format(d, (int32_t)i, val, &unit);
+        ok &= LOCUT_HZ[i] < 1000u ? !strcmp(unit, "Hz") && (uint32_t)atoi(val) == LOCUT_HZ[i] : !strcmp(unit, "kHz") && strlen(val) == 3 && val[1] == '.';
+    }
+    param_format(d, 102, val, &unit);
+    strcat(w, val); strcat(w, " "); strcat(w, unit);
+    strcat(w, " at 102, 127 2.0 kHz");
     check(w, ok);
     ok = LOCUT_HZ[0] == 0 && LOCUT_K[0] == 0;
     for (i = 2; i < 128; i++)
-        ok &= LOCUT_HZ[i] >= LOCUT_HZ[i - 1] && (double)LOCUT_HZ[i] / LOCUT_HZ[i - 1] < 1.06 && LOCUT_K[i] > LOCUT_K[i - 1];
-    check("the table: 20 Hz .. 450 Hz, rising, a step of 1.06 at most (exponential, 1.025 before the rounding)", ok && LOCUT_HZ[1] == 20 && LOCUT_HZ[127] == 450);
-    check("the default is a mild cut, 80 .. 100 Hz", LOCUT_HZ[GP[G_RLOCUT].def] >= 80 && LOCUT_HZ[GP[G_RLOCUT].def] <= 100);
+        ok &= LOCUT_HZ[i] >= LOCUT_HZ[i - 1] && (double)LOCUT_HZ[i] / LOCUT_HZ[i - 1] < 1.07 && LOCUT_K[i] > LOCUT_K[i - 1];
+    check("the table: 20 Hz .. 2 kHz, rising, a step of 1.07 at most (exponential, 1.037 before the whole-Hz rounding)", ok && LOCUT_HZ[1] == 20 && LOCUT_HZ[127] == 2000);
+    {   /* the default is the value whose frequency is closest to 300 Hz */
+        uint32_t best = 1;
+        for (i = 1; i < 128; i++)
+            if (abs((int)LOCUT_HZ[i] - 300) < abs((int)LOCUT_HZ[best] - 300))
+                best = i;
+        snprintf(w, sizeof w, "the default is the value closest to 300 Hz: %u = %u Hz (the factory multis hold it too)", best, LOCUT_HZ[best]);
+        check(w, best == GP[G_RLOCUT].def && best == 75u && LOCUT_HZ[best] == 299u);
+    }
 }
 
 /* ------------------------------------------- 3. the filter's response --- */
@@ -195,6 +212,13 @@ static double gain_at(int v, double f)
     }
     return sqrt(s_out / s_in);
 }
+/* |H| of the filter as it is built (y = x - lp, lp += k (x - lp), a = 1 - k): a (1 - 1/z) / (1 - a / z) at f Hz */
+static double one_pole_gain(int v, double f)
+{
+    double a = 1.0 - LOCUT_K[v] / 32768.0, w = 2 * M_PI * f / FS;
+    double nr = a * (1 - cos(w)), ni = a * sin(w), dr = 1 - a * cos(w), di = a * sin(w);
+    return sqrt((nr * nr + ni * ni) / (dr * dr + di * di));
+}
 static void test_response(void)
 {
     static const int V[] = {1, 21, 41, 61, 81, 101, 127};
@@ -215,7 +239,7 @@ static void test_response(void)
             else
                 hi = mid;
         }
-        double c = 0.5 * (lo + hi), oct = gain_at(V[vi], fc / 2), far = gain_at(V[vi], fc * 20 < 18000 ? fc * 20 : 18000);
+        double ff = fc * 20 < 18000 ? fc * 20 : 18000, c = 0.5 * (lo + hi), oct = gain_at(V[vi], fc / 2), far = gain_at(V[vi], ff) / one_pole_gain(V[vi], ff);   /* (far: against the one-pole's own response: the discrete design is 1.3 dB down at Nyquist at the 2 kHz corner) */
         double dev = fabs(c / fc - 1.0);
         double sl = 20 * log10(gain_at(V[vi], fc / 4) / gain_at(V[vi], fc / 8));
         worst_c = dev > worst_c ? dev : worst_c;
@@ -229,7 +253,7 @@ static void test_response(void)
     ok_u = worst_u < 0.4;
     snprintf(w, sizeof w, "corner: the -3 dB point within 6 %% of the printed Hz over the range (worst %.1f %%)", 100 * worst_c);
     check(w, ok_c);
-    snprintf(w, sizeof w, "slope: 6 dB an octave an octave and more below the corner (worst %.2f dB off); far above: unity within %.2f dB", worst_s, worst_u);
+    snprintf(w, sizeof w, "slope: 6 dB an octave an octave and more below the corner (worst %.2f dB off); far above: the one-pole's own response within %.2f dB", worst_s, worst_u);
     check(w, ok_s && ok_u);
 }
 
@@ -258,16 +282,16 @@ static void test_models(void)
 {
     int m, ok = 1, ok_t = 1;
     char w[300];
-    double want40 = 20 * log10(gain_at(61, 40)), want150 = 20 * log10(gain_at(61, 150));
-    printf("locut:   the filter alone at the default (88 Hz): 40 Hz %.1f dB, 150 Hz %.1f dB\n", want40, want150);
+    double want40 = 20 * log10(gain_at(75, 40)), want150 = 20 * log10(gain_at(75, 150)), want1k = 20 * log10(gain_at(75, 1000));
+    printf("locut:   the filter alone at the default (299 Hz): 40 Hz %.1f dB, 150 Hz %.1f dB\n", want40, want150);
     for (m = 0; m < 6; m++) {
-        double a40 = 20 * log10(wet_rms(m, 61, 40) / wet_rms(m, 0, 40)), a150 = 20 * log10(wet_rms(m, 61, 150) / wet_rms(m, 0, 150));
-        double a1k = 20 * log10(wet_rms(m, 61, 1000) / wet_rms(m, 0, 1000)), a40m = 20 * log10(wet_rms(m, 127, 40) / wet_rms(m, 0, 40));
+        double a40 = 20 * log10(wet_rms(m, 75, 40) / wet_rms(m, 0, 40)), a150 = 20 * log10(wet_rms(m, 75, 150) / wet_rms(m, 0, 150));
+        double a1k = 20 * log10(wet_rms(m, 75, 1000) / wet_rms(m, 0, 1000)), a40m = 20 * log10(wet_rms(m, 127, 40) / wet_rms(m, 0, 40));
         snprintf(w, sizeof w, "%-6s wet level with the default low cut against LOCUT 0: 40 Hz %+.1f dB (the filter: %.1f), 150 Hz %+.1f dB (%.1f), 1 kHz %+.1f dB; LOCUT 127 at 40 Hz %+.1f dB",
                  MN[m], a40, want40, a150, want150, a1k, a40m);
         /* SHIM puts the octave above a bass, RESO rings tuned combs: allow them more; the others follow the filter */
         double tol = m == 3 || m == 4 ? 4.0 : 1.5;
-        ok = (a40 < -4.0 && fabs(a40 - want40) < tol && fabs(a1k) < 0.5 && a40m < a40 - 5.0);
+        ok = (a40 < -4.0 && fabs(a40 - want40) < tol && fabs(a1k - want1k) < 0.8 && a40m < a40 - 5.0);   /* (the treble: only what the filter itself takes at 1 kHz, -0.4 dB at 299 Hz) */
         ok_t &= ok;
         check(w, ok);
     }
@@ -278,7 +302,7 @@ static void test_models(void)
 static void test_click(void)
 {
     static int32_t x[CTL];
-    static const int32_t SEQ[][2] = {{61, 127}, {127, 1}, {1, 61}, {61, 0}, {0, 61}, {61, 31}, {0, 127}, {127, 0}};
+    static const int32_t SEQ[][2] = {{75, 127}, {127, 1}, {1, 75}, {75, 0}, {0, 75}, {75, 31}, {0, 127}, {127, 0}};
     uint32_t s, b, i, nb = 2u * FS / CTL, ok = 1;
     int32_t worst_step = 0, own = 0, prev = 0, raw = 0;
     char w[220];
@@ -332,7 +356,7 @@ static void test_silence(void)
         uint32_t last = 0, sil_in = 0;
         double dc = 0, rms = 0, cnt = 0;
         start(m);
-        song.g[LOCUT_ID] = 61;
+        song.g[LOCUT_ID] = 75;
         xs = 0x777u;
         for (b = 0; b < nb; b++) {
             for (i = 0; i < CTL; i++) {
@@ -364,7 +388,7 @@ static void test_silence(void)
         static int32_t x[CTL], y[CTL];
         uint32_t zeros = 0, same = 1;
         start(0);
-        song.g[LOCUT_ID] = 61;
+        song.g[LOCUT_ID] = 75;
         for (b = 0; b < 200; b++) {
             for (i = 0; i < CTL; i++)
                 x[i] = 40000 + noise(40000);
@@ -406,7 +430,7 @@ static void test_buses(void)
         double sa = 0, sb = 0;
         start(m);
         start_b(m);
-        song.g[LOCUT_ID] = 61;
+        song.g[LOCUT_ID] = 75;
         xs = 0xBEEFu;
         for (b = 0; b < 3u * FS / CTL; b++) {
             for (i = 0; i < CTL; i++)
@@ -429,7 +453,7 @@ static void test_buses(void)
     /* B alone, A silent: only B's state moves */
     start(0);
     start_b(0);
-    song.g[LOCUT_ID] = 61;
+    song.g[LOCUT_ID] = 75;
     for (i = 0; i < CTL; i++)
         c[i] = d[i] = 0, r[i] = 30000;
     fx_buses_m_b(DLY_HALF - 1u, delay_split(), c, d, r, w, CTL, 0u, 0);
@@ -445,7 +469,7 @@ static void test_buses(void)
             sv.on = 1;
             sv.rsize = 120;
             sv.sg = sv.sg0 = 32768;
-            song.g[LOCUT_ID] = v ? 61 : 0;
+            song.g[LOCUT_ID] = v ? 75 : 0;
             for (b = 0; b < 3u * FS / CTL; b++) {
                 for (i = 0; i < CTL; i++)
                     r[i] = (int32_t)lround(20000.0 * sin(2 * M_PI * 40.0 * (double)(b * CTL + i) / FS)), c[i] = d[i] = 0;
@@ -461,7 +485,7 @@ static void test_buses(void)
     }
     /* SENDS OFF's line clear drops the state; a model change keeps it (no step) */
     start(0);
-    song.g[LOCUT_ID] = 61;
+    song.g[LOCUT_ID] = 75;
     for (b = 0; b < 40; b++) {
         for (i = 0; i < CTL; i++)
             r[i] = 30000, c[i] = d[i] = 0;
@@ -502,7 +526,7 @@ static double cost_of(int v, int glide)
 }
 static void test_cost(void)
 {
-    double st = cost_of(61, 0), gl = cost_of(61, 1), off = cost_of(0, 0);   /* (off: the loop's own memcpy and call) */
+    double st = cost_of(75, 0), gl = cost_of(75, 1), off = cost_of(0, 0);   /* (off: the loop's own memcpy and call) */
     char w[220];
     if (!st) {
         printf("locut: cost not measured (no instruction counter)\n");

@@ -321,7 +321,7 @@ static void nm_title(char *b);                         /* ui_name.c: NAME's titl
  * (head_msg). tb holds 24; *pi gets the page's icon (MIXER, PATTERNS, AUTOMATION) or ICON_NONE */
 static void head_page_title(char *tb, uint32_t *pi)
 {
-    char nm[16], ct[8];
+    char nm[20], ct[8];
     *pi = ICON_NONE;
     if (ui.uboot) {
         str_cpy(tb, "UPDATE MODE", 24);
@@ -343,6 +343,34 @@ static void head_page_title(char *tb, uint32_t *pi)
         *pi = page_icon(cur_page());
     }
 }
+/* EDITABLE B (cloud job G, docs/design/EDITABLE_B_DESIGN.md 2.2): the letter A or B in a filled cushion in the part's A or B colour, right of the 1 2 badges (x 33, 14 px like them; where the multi number was
+ * before 0.2.10), on the sound pages while the selected part has a live morph (an End B that differs from A; shown always, so B is seen before the first turn). B when the part's fader is at 127: the end
+ * a knob edits. Not on MORPH, MORPH SET, PERFORM, MODE, the global pages (GLO, SCALE) or the SAVE / MENU / dialog screens. The cushion is drawn by cv_trk_r as the badges are (its digit is the letter's
+ * glyph, '1' + 16 = 'A'); it takes 15 px of the page title's room (head_page_title drops to the small font when the name no longer fits, as it does for the octave) */
+#define HEAD_AB_X (HEAD_TRK_X + (int32_t)NSHOWN * 15)
+#define HEAD_AB_W 15                                   /* its cell with the gap */
+static int head_ab_on(void)
+{
+    const page_t *pg = cur_page();
+#ifdef DUELL_TEST_NO_AB
+    return 0;                                          /* (tests/pages_fp.c's check: the same renders with the letter off, to tell its change from any other in the header) */
+#endif
+    if (ui.menu || ui.confirm || ui.uboot || ui.guide || name_on() || seq_counting())
+        return 0;
+    if (ui.layer)
+        return ui.layer == LAYER_EDIT || ui.layer == LAYER_LFO || ui.layer == LAYER_ENV || ui.layer == LAYER_ARP ? morph_view_on(song.sel) : 0;
+    if (page_global(pg) || (pg->scope != SC_TRACK && pg->scope != SC_ENGINE) || pg->fam == FAM_SAVE || pg->fam == FAM_HOME)
+        return 0;
+    if (pg->graph == GR_BROWSE || pg->graph == GR_PATS || pg->graph == GR_TOOLS || pg->graph == GR_EVENTS || pg->graph == GR_SLOTS)
+        return 0;
+    return morph_view_on(song.sel);
+}
+static uint32_t head_ab_b(void) { return morph_fader_of(song.sel) >= 127u; }    /* 1: B (the knobs edit End B), 0: A */
+static void head_ab(int32_t x)
+{
+    uint32_t b = head_ab_b();
+    cv_trk_r(x, H_HEAD / 2 - 7, 14, b ? 'B' - '1' : 'A' - '1', T_PEND(song.sel, b), T_BG, ux.bw && song.sel == 1u);
+}
 /* the parts the badge lights: the selected one; with ALGORITHM at BOTH both, only where both are the target (0.2.9, owner 2026-10-14:
  * the MORPH page, PERFORM, the TEST page's MORPH; was every MORPH page with TARGET BOTH): every other page edits one part and shows
  * its badge alone; on a GLOBAL page (params.c page_global: the SCALE page, GLO's) both, equally lit: the page does not edit the selected part */
@@ -363,13 +391,13 @@ static void draw_head(void)
 {
     char tb[24];
     uint32_t pi;
-    int msg = ui.msg_t || ui.layer;
+    int msg = ui.msg_t || ui.layer, ab;
     uint32_t sig;
     head_page_title(tb, &pi);
     sig = (uint32_t)(song.octave + 8) * 11u + song.sel * 13131u +
           (ui.msg_t ? str_hash(7u, ui.msg) : ui.layer * 7919u + (uint32_t)layer_locked() * 3u) +
           (uint32_t)batt_shown() * 7777u + cpu_bar_state() * 1717u + badge_lit() * 4093u +
-          (msg ? 0u : str_hash(13u, tb) + pi * 31u);
+          (msg ? 0u : str_hash(13u, tb) + pi * 31u) + (head_ab_on() ? 3571u + head_ab_b() * 811u : 0u);
     if (!ui.force && sig == ui.head_sig)
         return;
     ui.head_sig = sig;
@@ -380,8 +408,11 @@ static void draw_head(void)
         for (k = 0; k < NSHOWN; k++)
             cv_part(HEAD_TRK_X + (int32_t)k * 15, H_HEAD / 2 - 7, 14, k, (lit >> k) & 1u, T_BG);
     }
+    ab = head_ab_on();
+    if (ab)
+        head_ab(HEAD_AB_X);
     if (msg) {                                         /* a message / a layer's label: centred, over the page name and the octave */
-        head_msg(-1, HEAD_MSG_W);
+        head_msg(-1, HEAD_MSG_W - (ab ? 4 : 0));
     } else {
         char ob[8];
         int32_t ow, iw = 0, ib[4] = {0, 0, 0, 0}, tw, x, lb, rb;
@@ -398,7 +429,7 @@ static void draw_head(void)
         for (lv = 0; lv < 3; lv++) {
             oc_on = oct && lv < 2;
             fo = lv == 1 ? &AF_S : &AF_M;
-            lb = HEAD_LEFT_R + 4;
+            lb = HEAD_LEFT_R + (ab ? HEAD_AB_W : 0) + 4;
             rb = oc_on ? HEAD_GRP_R - ow - 6 : HEAD_ROOM_R;
             tw = iw + text_w(fo, tb);
             if (tw <= rb - lb)
@@ -470,6 +501,8 @@ static uint8_t card_mot_next, card_mot;
  * (the source an external or AUTO clock plays on, clock_why). */
 static const char *card_why_next;
 static uint8_t card_hide_next;
+static const char *quick_label(const page_t *pg, uint32_t s);   /* (ui_layer.c: QUICK MULTI's CUT 1 RES 1 CUT 2 RES 2) */
+static uint8_t card_ctr_next;                           /* the next draw_column's gauge fills from the CENTRE (a true bipolar value: OFFSET, TUNE, FDBK, BLEND; ratio 0..1000 with 500 = zero); cloud job H */
 /* MORPH on the cards: the value a track parameter's card shows is what the fader sounds like (morph.c morph_view), and the card
  * the morph is moving (shown != stored Original) carries a mark. card_mk_next (ui_fm6op.c): set by card_vv, taken by the next draw_column */
 static int32_t card_vv(const int16_t *vp)
@@ -496,10 +529,55 @@ static void card_mot_of(const int16_t *vp)
  * the motion icon in place of its own, in the theme colour; a long label moves it left, up to the card's edge;
  * a label with no room for it at all (or FELUCCA_ICONS=0): the label in the theme colour.
  * vc: the value's colour (T_THEME, T_DIM inactive, T_ACCENT the knob just turned) */
+/* 0.2.25 layout round (owner): a label too long for the card's 50 px breaks into two lines at a space (never inside a word); a label may also carry
+ * its break itself ("PATCH\nLEVEL": the cards of one page alike). Then the label takes the card's first two lines, the value its third, in S, and
+ * there is no gauge (the TEMPO page's clock card's method: CLK / AUTO / INT). l1 holds 16; -> the second line, 0 for a label of one line */
+#define LBL_W (COL_W - 7)                              /* a label's line: x 5 .. COL_W - 2 */
+static const char *label_split(const char *label, char *l1)
+{
+    uint32_t i, cut = 0;
+    for (i = 0; label[i] && i < 15u; i++)
+        if (label[i] == '\n') {
+            str_cpy(l1, label, i + 1u);
+            return label + i + 1;
+        }
+    if (!label[0] || text_w(&AF_S, label) <= LBL_W)
+        return 0;
+    for (i = 0; label[i] && i < 15u; i++)              /* the last space whose first line fits */
+        if (label[i] == ' ') {
+            str_cpy(l1, label, i + 1u);
+            if (text_w(&AF_S, l1) <= LBL_W)
+                cut = i;
+        }
+    if (!cut)
+        return 0;
+    str_cpy(l1, label, cut + 1u);
+    return label + cut + 1;
+}
+/* one line of a card's label at (lx, ly): MONO's hot chip, or the label colour */
+static void card_label_line(int32_t lx, int32_t ly, const char *txt, int hot, uint16_t lc)
+{
+    const aafont_t *lf = &AF_S;
+    int32_t cy = ly + AF_S_CAP_Y;
+    if (hot && T_ACCENT == T_MID) {                     /* MONO: no colour tells the hot knob: its label inverted, */
+        int32_t b[4], w;                                /* the chip 2 px round its ink (M: 3 above, 2 below) */
+        text_ink(lf, txt, b);
+        w = b[2] - b[0] + 4;
+        if (w > COL_W + 1 - lx - b[0]) w = COL_W + 1 - lx - b[0];
+        cv_rrect(lx + b[0] - 2, cy - 3, w, 15, 3, T_ACCENT, T_SURF);
+        GFX_HOOK_ALIGN(lx + b[0] - 2, cy - 3, lx + b[0] - 2 + w, cy + 12, AL_HV,
+                       "card label chip (MONO hot)");
+        cv_text_fit(lx, ly, lf, txt, T_INK, T_ACCENT, COL_W - 2 - lx);
+    } else
+        cv_text_fit(lx, ly, lf, txt, lc, T_SURF, COL_W - 2 - lx);
+}
 static void draw_column(uint32_t c, const char *label, const char *val, const char *unit, uint16_t vc,
                         int32_t ratio, uint32_t icon)
 {
-    char key[48];
+    char key[48], l1[16];
+    const char *l2 = label_split(label, l1);            /* (0.2.25: a label of two lines) */
+    char v1[16];
+    const char *v2 = 0;                                 /* (T0229: a value of two lines, "FILTER\nRES": the label's line, then the value's two lines in S) */
     int hot = c == ui.hot_col && ui.hot_t, named = fmt_named, mot = card_mot_next && label[0], strip, snap;
     uint8_t sig;
     uint16_t lc = hot ? T_ACCENT : T_MID;
@@ -508,6 +586,8 @@ static void draw_column(uint32_t c, const char *label, const char *val, const ch
     uint32_t n, kn;
     int32_t kid = kc_tag(val, &kn);
     int mk = card_mk_next;                              /* MORPH moves this card's value (card_vv) */
+    int ctr = card_ctr_next && ratio >= 0;              /* the gauge fills from the centre */
+    card_ctr_next = 0;
     const char *why = card_why_next;                    /* the CLK card's state line (clock_why) */
     card_why_next = 0;
     if (card_hide_next) {                               /* draw_column_hide: the column is left empty (the background only) */
@@ -532,6 +612,22 @@ static void draw_column(uint32_t c, const char *label, const char *val, const ch
         unit = "";                                      /* "BPM 124 BPM", "USB OFF USB": the label says it */
     if (icon == ICON_AUTO)
         icon = icon_for_label(label);
+    if (l2) {                                           /* two lines: no icon, the value on the third line in S, no gauge */
+        icon = ICON_NONE;
+        ratio = -1;
+        why = 0;
+    }
+    if (!l2) {
+        uint32_t i;
+        for (i = 0; val[i] && i < 15u; i++)
+            if (val[i] == '\n') {
+                str_cpy(v1, val, i + 1u);
+                v2 = val + i + 1;
+                ratio = -1;
+                why = 0;
+                break;
+            }
+    }
     str_cpy(key, label, 12);                            /* cache key: texts + colour + gauge */
     str_cpy(key + str_len(key), "|", 2);
     str_cpy(key + str_len(key), val, 14);
@@ -546,15 +642,17 @@ static void draw_column(uint32_t c, const char *label, const char *val, const ch
     key[n + 4] = (char)(' ' + (ratio < 0 ? 0 : 1 + ratio * (COL_W - 10) / 1000));   /* the gauge's own pixel (as
                                                         * drawn: gw; ratio / 20 missed a pixel inside a step, #63 soak) */
     key[n + 5] = (char)(icon == ICON_NONE ? '~' : '!' + icon % 90u);
-    key[n + 6] = (char)('0' + hot + 2 * mot + 16 * mk);
+    key[n + 6] = (char)('0' + hot + 2 * mot + 16 * mk + 32 * ctr);
     key[n + 7] = (char)(why ? '#' + (int)(str_hash(5u, why) & 31u) : '-');   /* (the reason, as its own mark) */
-    key[n + 8] = 0;
+    key[n + 8] = (char)(why ? '#' + (int)((str_hash(5u, why) >> 5) & 31u) : '-');   /* (0.2.21: ten bits of it: SEND FX's second lines, "71 %", "72 %", are many) */
+    key[n + 9] = 0;
     uw = unit[0] ? text_w(&AF_S, unit) + 3 : 0;
     if (why)
         vf = &AF_S;                                     /* (faded value small, the reason under it) */
-    if (text_w(vf, val) + uw > room) {
+    if (v2 || text_w(vf, val) + uw > room || l2) {
         vf = &AF_S;
-        CARD_HOOK(val, unit);                           /* (host: the values set in S) */
+        if (!l2)
+            CARD_HOOK(val, unit);                       /* (host: the values set in S) */
     }
     sig = (uint8_t)str_hash(str_hash(song.sel + TSEL->eng_req * 4u + ux.gen * 64u, label), unit);
     snap = ui.force || sig != ui.roll[c].sig;           /* what the value is of: label, unit, track, engine, palette */
@@ -583,7 +681,12 @@ static void draw_column(uint32_t c, const char *label, const char *val, const ch
         cv_rrect(0, 0, COL_W, COL_H, 4, T_SURF, T_BG);
     }
     if (label[0] || val[0]) {
-        if (!strip && label[0]) {
+        if (!strip && l2) {                             /* 0.2.25: the label's two lines (rows 3 and 16), the value under them */
+            if (mot)
+                lc = hot ? T_ACCENT : T_THEME;          /* (no room for MOTION's icon: the label says it) */
+            card_label_line(5, 3, l1, hot, lc);
+            card_label_line(5, 16, l2, hot, lc);
+        } else if (!strip && label[0]) {
             const aafont_t *lf = &AF_S;                 /* the label in S */
             int32_t lw = text_w(lf, label), ix = 5, ly = 3;
             int32_t cy = ly + AF_S_CAP_Y, chh = AF_S_CAP_H;
@@ -609,17 +712,20 @@ static void draw_column(uint32_t c, const char *label, const char *val, const ch
             } else
                 cv_text_fit(lx, ly, lf, label, lc, T_SURF, COL_W - 2 - lx);
         }
-        if (kid >= 0)                                   /* "[OCT+]": the keycap (accent: it would act; DIM: it would not) */
+        if (v2) {                                       /* T0229: the value's two lines (rows 16 and 29) */
+            cv_text_fit(5, 16, vf, v1, vt(vc, T_SURF), T_SURF, room);
+            x = cv_text_fit(5, 29, vf, v2, vt(vc, T_SURF), T_SURF, room - uw);
+        } else if (kid >= 0)                            /* "[OCT+]": the keycap (accent: it would act; DIM: it would not) */
             x = cv_keycap(5, 20, (uint32_t)kid, vc == T_ACCENT || vc == T_DIM ? vc : T_KEY, T_KINK, T_SURF);
         else if (vf == &AF_M) {
             if (!ui.roll[c].from[0] && val[0])
                 GFX_HOOK_ALIGN(0, ROLL_Y, COL_W, ROLL_Y + ROLL_H, AL_V, "card value in its roll window");
             x = roll_text(c, 5, 17, val, vt(vc, T_SURF));
         } else
-            x = cv_text_fit(5, why ? 17 : 20, vf, val, vt(vc, T_SURF), T_SURF, room - uw);   /* (a faded card's value a little higher, its reason under it) */
+            x = cv_text_fit(5, l2 ? 29 : why ? 17 : 20, vf, val, vt(vc, T_SURF), T_SURF, room - uw);   /* (a faded card's value a little higher, its reason under it; two label lines: the third line) */
         if (unit[0]) {
-            GFX_HOOK_ALIGN(0, 0, 0, vf == &AF_M ? 17 + AF_M.asc : 20 + AF_S.asc, AL_B, "card unit on its value's baseline");
-            cv_text_on(x + 3, 20, &AF_S, unit, T_MID, T_SURF);     /* on the value's baseline (S) */
+            GFX_HOOK_ALIGN(0, 0, 0, vf == &AF_M ? 17 + AF_M.asc : (l2 ? 29 : 20) + AF_S.asc, AL_B, "card unit on its value's baseline");
+            cv_text_on(x + 3, l2 ? 29 : 20, &AF_S, unit, T_MID, T_SURF);     /* on the value's baseline (S) */
         }
         if (!strip && why) {                            /* the reason where the gauge would be (its capitals rows 31 .. 39) */
             GFX_HOOK_ALIGN(0, 28, 0, 28 + AF_S.asc, AL_B, "card reason under its value");
@@ -628,6 +734,10 @@ static void draw_column(uint32_t c, const char *label, const char *val, const ch
         if (!strip && ratio >= 0 && !why) {
             int32_t gw = COL_W - 10, fx = ratio * gw / 1000;
             cv_rrect(5, 38, gw, 3, 1, T_BG, T_SURF);
+            if (ctr) {                                  /* a bipolar value: from the middle of the track to its side (zero: a 2 px tick) */
+                int32_t half = gw / 2, ext = (ratio - 500) * half / 500, x0 = 5 + half;
+                cv_rrect(ext < 0 ? x0 + ext : x0 - (ext ? 0 : 1), 38, ext < 0 ? -ext : ext < 2 ? 2 : ext, 3, 1, hot ? T_ACCENT : vc == T_DIM ? T_DIM : T_THEME, T_BG);
+            } else
             cv_rrect(5, 38, fx < 3 ? 3 : fx, 3, 1, hot ? T_ACCENT : vc == T_DIM ? T_DIM : T_THEME, T_BG);
         }
         if (!strip && mk)                               /* MORPH moves it: a 7 x 2 tick in the accent under the gauge */
@@ -655,8 +765,69 @@ static void draw_column_hide(uint32_t c)
     card_hide_next = 1;
     draw_column(c, "", "", "", T_THEME, -1, ICON_NONE);
 }
+/* The TWIN FILTER's hide-inert rules (cloud job H, FILTER_PAGES_PROPOSAL 5.2): TYPE OFF: filter 2 does nothing, so its TYPE card is the only one that shows (LINK, CUTOFF 2, RES 2, DRIVE, BLEND, ROUTE and the
+ * four amounts have nothing to act on); COMB: LINK (the comb follows the key by itself) and KEY TRACK hide. A value of 0 never hides; filter 1's cards never hide */
+static int twin_card_hidden(const track_t *t, const int16_t *vp)
+{
+    if (vp == &t->p[P_CUT2] || vp == &t->p[P_RES2] || vp == &t->p[P_DRV2] || vp == &t->p[P_BLEND])
+        return !twin_on(t);
+    if (vp >= &XV(t, X_ROUTE) && vp <= &XV(t, X_LFO2))
+        return !twin_on(t) || (t->p[P_TWTYPE] == TT_COMB && (vp == &XV(t, X_LINK) || vp == &XV(t, X_KTRK2)));
+    return 0;
+}
+/* The TWIN FILTER's cards where the generic one is not enough (cloud job H): DRIVE says OFF at 0 (really not run), BLEND names its ends and its middle (MULTI at -64, BOTH at 0, TWIN at +63, the name and a percent
+ * between), TYPE is a list (no gauge that pretends to be an amount); OFFSET, TUNE, FDBK and BLEND are true bipolar: their gauge fills from the centre (card_ctr_next). val / unit as param_format left them;
+ * -> the gauge's ratio (-1: none), or -2 when the generic one applies */
+static int32_t twin_card(const track_t *t, const int16_t *vp, const param_desc_t *d, int32_t v, char *val, const char **unit)
+{
+    int comb = t->p[P_TWTYPE] == TT_COMB;
+    if (d->fmt == F_ENUM && d->names && (vp == &t->p[P_TWTYPE] || (vp >= &XV(t, 0) && vp <= &XV(t, NX - 1)))) {   /* the names in full: param_format cuts an enum's name at 5 characters (SERIES, LADDER, SQUARE are 6) */
+        str_cpy(val, d->names[clamp(v, d->min, d->max)], 12);
+        if (d->unit)
+            *unit = d->unit;
+        if (vp == &t->p[P_TWTYPE])
+            return -1;
+        return d->max < 2 ? -1 : RATIO(d, enum_rank(d, v));              /* (the lists' gauge as every enum card's; a switch has none) */
+    }
+    if (vp == &t->p[P_DRV2]) {
+        if (v <= 0)
+            str_cpy(val, "OFF", 12);
+        else
+            fmt_int(val, v);
+        *unit = "";
+        return v * 1000 / 127;
+    }
+    if (vp == &t->p[P_BLEND]) {
+        if (v <= -64) {                                  /* (1.0, owner: the filters' real names; a number alone does not say which: MULTI at the left end, BOTH in the middle, TWIN at the right end,
+                                                          * between them the name and how far towards it from BOTH, in the card's two small lines: MULTI / 40% (the gauge is left out there, as on every two-line card)) */
+            str_cpy(val, "MULTI", 12);
+        } else if (v >= 63) {
+            str_cpy(val, "TWIN", 12);
+        } else if (!v) {
+            str_cpy(val, "BOTH", 12);
+        } else {
+            char b[8];
+            fmt_int(b, v < 0 ? -v * 100 / 64 : v * 100 / 63);
+            str_cpy(val, v < 0 ? "MULTI\n" : "TWIN\n", 12);
+            str_cpy(val + str_len(val), b, 5);
+            str_cpy(val + str_len(val), "%", 2);
+        }
+        *unit = "";
+        card_ctr_next = 1;
+        return 500 + v * 500 / (v < 0 ? 64 : 63);
+    }
+    if (vp == &t->p[P_CUT2] && (comb || XV(t, X_LINK))) {      /* OFFSET (LINK on) or TUNE (COMB): around zero */
+        card_ctr_next = 1;
+        return 500 + clamp(v, d->min, d->max) * 500 / (comb ? 24 : TW_OFF_MAX);
+    }
+    if (vp == &t->p[P_RES2] && comb) {                        /* FDBK */
+        card_ctr_next = 1;
+        return 500 + clamp(v, -64, 63) * 500 / (v < 0 ? 64 : 63);
+    }
+    return -2;
+}
 /* the card of the parameter at vp does not apply for the current selection (ui_draw.c draws nothing, ui_input.c: the knob does nothing). Only what a
- * selection makes impossible; a value of 0 is not a reason. MODULES OFF (the module's cards), DUEL (PAN, SPREAD of the voice and the delay's MODE and
+ * selection makes impossible; a value of 0 is not a reason. MODULES OFF (the module's cards), DUEL (PAN, SPREAD of the voice and the delay's
  * SPREAD), the delay mode (params.c dly_mode_why: DIGI hides SPREAD, RAND and OCT+ hide MRATE; PING-PONG hides nothing), an external MIDI clock
  * (TEMPO), a synced LFO's RATE, INSERT A B C MIX with the INSERT OFF, the ADSR of an engine with its own envelopes (FM6) */
 static int card_hidden_vp(const int16_t *vp)
@@ -666,9 +837,15 @@ static int card_hidden_vp(const int16_t *vp)
         return 0;
     if (mods_fade_vp(vp))
         return 1;
+    if (twin_card_hidden(t, vp))
+        return 1;
     if (vp == &song.g[G_BPM] && clock_src())
         return 1;
     if (vp == &song.bm && duell_mode == DM_SPLIT)          /* BASS MONO (0.2.19): the stage does not run in DUEL */
+        return 1;
+    if (vp >= song.cp && vp < song.cp + 4 && (duell_mode == DM_SPLIT || (vp != &song.cp[1] && !song.cp[1])))   /* COMP (0.2.21): the stage does not run in DUEL; at RATIO 1:1 (off) THRESH, ATTACK and RELEASE have nothing to act on */
+        return 1;
+    if (vp == &song.ms[0] && duell_mode == DM_SPLIT)   /* WIDTH (0.2.23): the stage does not run in DUEL (the panel says why: ui_graph.c graph_mstg) */
         return 1;
     if (duell_mode_req == DM_SPLIT && (vp == &t->p[P_PAN] || vp == &t->p[P_SPRD]))
         return 1;
@@ -676,10 +853,22 @@ static int card_hidden_vp(const int16_t *vp)
         return 1;
     if (vp >= &t->p[P_IA] && vp <= &t->p[P_IMIX] && vp != &t->p[P_ITYPE] && !t->p[P_ITYPE])   /* INSERT OFF: A, B, C and MIX have nothing to act on */
         return 1;
+    if (duck_forced(t) && vp == &t->p[P_DKSRC])         /* the other part has DUCK SRC PART: this part has no ducker at all (params.c), its SRC card is not drawn either */
+        return 1;
+    if (duck_off(t) && (vp == &t->p[P_DKRATE] || vp == &t->p[P_DKTHR] || vp == &t->p[P_DKDEP] || vp == &t->p[P_DKATK] || vp == &t->p[P_DKRLS] || vp == &t->p[P_DKCRV]))   /* DUCK SRC OFF (0.2.24): nothing ducks, the other DUCK cards have nothing to act on */
+        return 1;
+    if (vp == &t->p[P_PRIO] && t->p[P_VOICE] == V_POLY)   /* T0227 (owner: the controls that apply): NOTE PRIORITY picks the one note of MONO, LEGATO, UNISON (voice.c mono_pick); POLY sounds every key */
+        return 1;
+    if (vp == &t->p[P_DETUNE] && t->p[P_VOICE] != V_UNISON)   /* 0.2.25 layout round (owner): UNISON DETUNE acts only in UNISON (voice.c mono_play: the unison voices' offsets) */
+        return 1;
+    if (vp == &t->p[P_SPRD] && (t->p[P_VOICE] == V_MONO || t->p[P_VOICE] == V_LEGATO))   /* .. SPREAD only with more than one voice: POLY and UNISON (fx.c spread_on; docs/VOICE_CONTROLS.md) */
+        return 1;
     if (ENGINES[t->eng_req % NENGINES]->ownenv && (vp == &t->p[P_ATK] || vp == &t->p[P_DEC] || vp == &t->p[P_SUS] || vp == &t->p[P_REL]))   /* FM6: its operators' envelopes */
         return 1;
-    return (vp == &t->p[P_LRATE] && t->p[P_LSYNC]) || (vp == &t->p[P_L2RATE] && t->p[P_L2SYNC]) ||
-           (vp == &t->p[P_DKNOTE] && t->p[P_DKSRC] < 2);      /* SIDECHAIN's NOTE: the key of a CH source only */
+    if ((vp == &t->p[P_ED_SHP] || vp == &t->p[P_LD_SHP] || vp == &t->p[P_E2SHP] || vp == &t->p[P_L2SHP]) && mod_shp_inert(t))   /* 0.2.25 (owner: the hide rule for modulation): the SHAPE depths
+                                                         * of AMP DEST, LFO 1 DEST, ENV 2 DEST, LFO 2 DEST with a wave that has no shape input (mod.c mod_shp_inert: ANALOG not PWM / SYNC, LOFI not PLS, TRIO with no pulse) */
+        return 1;
+    return (vp == &t->p[P_LRATE] && t->p[P_LSYNC]) || (vp == &t->p[P_L2RATE] && t->p[P_L2SYNC]);
 }
 
 /* an action's column (act_cols): picked, the OCT+ keycap (accent while it would do something); else "--" */
@@ -756,7 +945,7 @@ static uint32_t foot_playhead(const track_t *t)
 }
 static void draw_foot(void)
 {
-    char s[48], pn[20], ti[16], ct[8], ln[24], pfl[24], pfr[24];
+    char s[48], pn[20], ti[20], ct[8], ln[40], pfl[24], pfr[24];
     const track_t *t = TSEL;
     uint32_t sig;
     const engine_t *e = ENGINES[TSEL->eng_req % NENGINES];
@@ -844,39 +1033,102 @@ static void draw_foot(void)
     }
     cv_blit(0, Y_FOOT);
 }
-/* the EDIT layer's cards (ui_layer.c): ENG (the engine), No. (its sounds: KNOB 2's list), FAV, an empty card */
-static void engine_columns(int init)
+/* the ENGINE page's K1 card (T0227: K2..K4 are the engine's first three controls, drawn as every parameter card; no SOUND, FAV, INIT here) */
+static void engine_card(uint32_t c)
 {
-    uint32_t total, cur = eng_list_pos(&total), e = TSEL->eng_req % NENGINES;
-    char val[8], u[8];
-    if (cur < total) fmt_int(val, (int32_t)cur + 1);
-    else str_cpy(val, "--", 8);                         /* (the sound is in no slot of this engine) */
-    str_cpy(u, "/", 8);
-    fmt_int(u + 1, (int32_t)total);
-    draw_column(0, init ? "ENGINE" : "ENG", ENGINES[e]->name, "", VAL(0u), (int32_t)eng_rank(e) * 1000 / (NENG_SHOWN > 1 ? NENG_SHOWN - 1 : 1),
-                engine_icon(ENGINES[e]->name));
-    draw_column(1, init ? "SOUND" : "No.", val, u, VAL(1u), total > 1u && cur < total ? (int32_t)(cur * 1000u / (total - 1u)) : 0, ICON_NONE);
-    if (slot_of(TSEL) < UP_SLOTS)
-        draw_column(2, "FAV", preset_favorite() ? "ON" : "OFF", "", VAL(2u), -1, ICON_X_STAR);
-    else                                                /* a sound from no slot has no flag: no card */
-        draw_column_hide(2);
-    if (init)                                           /* the ENGINE page (SPEC 1.2): KNOB 4 INIT, a turn right asks */
-        draw_column(3, "INIT", "--", "", VAL(3u), -1, ICON_AUTO);
-    else
-        draw_column(3, "", "", "", T_THEME, -1, ICON_NONE);
+    uint32_t e = TSEL->eng_req % NENGINES;
+    draw_column(c, "ENGINE", ENGINES[e]->name, "", VAL(c), (int32_t)eng_rank(e) * 1000 / (NENG_SHOWN > 1 ? NENG_SHOWN - 1 : 1), engine_icon(ENGINES[e]->name));
 }
+/* T0227 (owner): CONTROLS MOVE LEFT. On a parameter page, the cards a selection hides (card_hidden_vp: UNISON's DETUNE, SPREAD, the delay's MOD RATE in
+ * RANDOM / OCT UP, DUCK's cards with SOURCE OFF, an external clock's TEMPO and TAP, ...) leave no hole: the cards that show take K1, K2, .. in the page's order
+ * and the columns after them stay empty; K1..K4 address the n-th card that shows (ui_input.c edit_param, knob_reset), the stored ids and their order do not move.
+ * A page with nothing hidden is drawn as ever (its blank slots where they are). Not on the pages with cards of their own (AUTOMATION, the action pages, the
+ * matrix, FM6's operators, the step page) nor in the QUICK layers, whose group cells sit over fixed knobs (ui_layer.c layer_quick).
+ * -> n, the page slots K1..Kn show in vis[] */
+static int page_compacts(const page_t *pg)
+{
+    uint32_t g = pg->graph;
+    if (ui.layer || (pg->scope != SC_TRACK && pg->scope != SC_GLOBAL && pg->scope != SC_ENGINE))
+        return 0;
+    if (g == GR_EVENTS || g == GR_TOOLS || g == GR_ENGINE || g == GR_BROWSE || g == GR_PATS || g == GR_SLOTS || g == GR_MOD || g == GR_ROLL || g == GR_GLO || fop_page(g))
+        return 0;
+    return !act_cols();
+}
+static int slot_hidden(const page_t *pg, uint32_t s)
+{
+    int16_t *vp;
+    if (pg->graph == GR_TEMPO && s == TEMPO_TAP_SLOT)
+        return clock_src() != 0;
+    if (pg->id[s] == P_DKRATE && duck_ctx_id(TSEL) == 0xFFu)
+        return 1;
+    if (s == 3u && duck_midi_page(pg))
+        return 0;
+    (void)page_desc(pg, s, &vp);
+    return vp && card_hidden_vp(vp);
+}
+static int slot_blank(const page_t *pg, uint32_t s)
+{
+    int16_t *vp;
+    const param_desc_t *d;
+    if ((pg->graph == GR_TEMPO && s == TEMPO_TAP_SLOT) || (s == 3u && duck_midi_page(pg)))
+        return 0;
+    d = page_desc(pg, s, &vp);
+    return !d || !d->label || d->label[0] == '-';
+}
+static uint32_t page_cards(const page_t *pg, uint8_t vis[4])
+{
+    uint32_t s, n = 0, hid = 0;
+    for (s = 0; s < 4u; s++)
+        vis[s] = (uint8_t)s;
+    if (!page_compacts(pg))
+        return 4u;
+    for (s = 0; s < 4u; s++)
+        hid |= (uint32_t)slot_hidden(pg, s) << s;
+    if (!hid)
+        return 4u;
+    for (s = 0; s < 4u; s++)
+        if (!((hid >> s) & 1u) && !slot_blank(pg, s))
+            vis[n++] = (uint8_t)s;
+    for (s = n; s < 4u; s++)
+        vis[s] = 0xFFu;
+    return n;
+}
+/* the page slot knob k (0..3) addresses: 0xFF = none (no card there) */
+static uint32_t knob_slot(const page_t *pg, uint32_t k)
+{
+    uint8_t vis[4];
+    uint32_t n = page_cards(pg, vis);
+    return k < n ? vis[k] : 0xFFu;
+}
+/* GLO > MIDI (T0227: moved left): the cards that show, K1.. in order: PART 1 CH (not with MIDI IN SELECTED), PART 2 CH (not SELECTED, not in LAYER), MIDI IN.
+ * -> their count, the cards (0, 1 the parts' channels, 2 MIDI IN) in vis[] */
+static uint32_t midi_cards(uint8_t vis[4])
+{
+    uint32_t n = 0, sel = song.g[G_ROUTE] == 1, lay = duell_mode_req == DM_LAYER;
+    if (!sel)
+        vis[n++] = 0;
+    if (!sel && !lay)
+        vis[n++] = 1;
+    vis[n++] = 2;
+    while (n < 4u)
+        vis[n] = 0xFFu, n++;
+    return 1u + (uint32_t)!sel + (uint32_t)(!sel && !lay);
+}
+/* (the name a card shows: params.c desc_shown, T0227's unit label pass) */
 static void draw_columns(void)
 {
-    uint32_t c;
+    uint32_t c, nvis;
+    uint8_t vis[4];
     char val[12];
     const char *unit;
+    int32_t twin_rt;
     (void)motion_mask(song.sel, card_mot_mask);       /* (PLAY OFF: no scan) */
     if (cur_page()->graph == GR_EVENTS) {              /* AUTOMATION (ui_events.c): ROW STEP PARAM VALUE */
         const track_t *t = TSEL;
         uint16_t rw[EV_ROWS];
         uint32_t n, c = ev_cur(rw, &n), r = ev_row(n), k = c >> 8, step, id;
         int16_t v;
-        char nm[12];
+        char nm[20];
         const param_desc_t *d;
         if (k == EVK_TOP) {                            /* PLAY: the counts, PLAY ON / OFF (OCT+: CLEAR) */
             draw_column(0, "ROW", "ALL", "", VAL(0u), -1, ICON_AUTO);
@@ -917,7 +1169,12 @@ static void draw_columns(void)
             draw_column(3, "VALUE", "--", "", T_DIM, -1, ICON_AUTO);
             return;
         }
-        ev_name(t, id, nm);
+        ev_name(t, id, nm);                            /* (T0227: the list says the full name, AMP ENV ATTACK; the card the card's own name where that does not fit it) */
+        if (text_w(&AF_S, nm) > COL_W - 8 && !ev_sid(id)) {
+            desc_said(track_desc(t, id), nm, sizeof nm);
+            if (text_w(&AF_S, nm) > COL_W - 8)
+                str_cpy(nm, track_desc(t, id)->label, sizeof nm);   /* (a two-word name that cannot break here: the stored short one) */
+        }
         draw_column(2, "PARAM", nm, "", k == EVK_REC || k == EVK_ADD ? VAL(2u) : T_MID, -1, ICON_AUTO);
         if (id == EV_NUDGE) {                          /* a step's NUDGE (1.2): "+3 /16", DIM where it does not play */
             const step_t *cs = &t->step[step % NSTEP];
@@ -1025,6 +1282,37 @@ static void draw_columns(void)
             draw_column(c, MODS_NAME[c], (m >> c) & 1u ? "OFF" : "ON", "", (m >> c) & 1u ? T_DIM : VAL(c), -1, MI[c]);
         return;
     }
+    if (cur_page()->scope == SC_FXSUM) {               /* 0.2.22 FX's SEND FX (owner): the effects' main settings as GLO has them, NO send levels (those are on the FX page): K1 CHORUS (no value), K2 DELAY (the mode, the time
+                                                        * under it as the card's small line: "RAND" "1/8"), K3 REVERB (the type, the size under it: "PLATE" "71 %"). The cards are always drawn; when the selected part sends
+                                                        * nothing to that effect (its send is 0, or MODULES SENDS OFF) the value is dim and the panel says INACTIVE (0.2.24: not the card's small line). A twist jumps to GLO's page of that effect (ui_input.c fxsum_knob) */
+        static const char *const LB[3] = {"CHORUS", "DELAY", "REVERB"};
+        static const uint8_t IC[3] = {ICON_CHORUS, ICON_DELAY, ICON_REVERB};
+        char l2[24], t2[12];
+        const char *unit2, *v1;
+        for (c = 0; c < 3u; c++) {
+            uint32_t off = (mods_off & MODS_SENDS) || TSEL->p[FXSUM_ID[c]] <= 0;
+            v1 = "";
+            l2[0] = 0;
+            if (c == 1u) {
+                v1 = N_DMODE[dly_mode_ui()];
+                param_format(glob_desc(G_DTIME), song.g[G_DTIME], l2, &unit2);
+            } else if (c == 2u) {
+                v1 = N_RTYPE[(uint32_t)clamp(song.g[G_RTYPE], 0, 5)];
+                param_format(glob_desc(G_RSIZE), song.g[G_RSIZE], t2, &unit2);
+                str_cpy(l2, t2, sizeof l2);
+                if (unit2[0]) {
+                    str_cpy(l2 + str_len(l2), " ", 2);
+                    str_cpy(l2 + str_len(l2), unit2, 4);
+                    if (text_w(&AF_S, l2) > COL_W - 7)
+                        str_cpy(l2, t2, sizeof l2);
+                }
+            }
+            card_why_next = l2[0] ? l2 : 0;             /* (0.2.24: the small line is the effect's setting only; INACTIVE and the jump hint are the panel's: ui_graph.c graph_fxsum) */
+            draw_column(c, LB[c], v1, "", off ? T_DIM : VAL(c), -1, IC[c]);
+        }
+        draw_column(3, "", "", "", T_THEME, -1, ICON_NONE);
+        return;
+    }
     if (cur_page()->scope == SC_MIDI) {                /* GLO's MIDI pages: MIDI (P1 CH, P2 CH, MIDI IN; CLK is on TEMPO), SIDECHAIN (SC SRC, SC NOTE), MIDI LEARN (LEARN, CLEAR) */
         const track_t *t = TSEL;
         if (cur_page()->graph == GR_MLEARN) {
@@ -1039,40 +1327,44 @@ static void draw_columns(void)
                 draw_column(c, "", "", "", T_THEME, -1, ICON_NONE);
             return;
         }
-        if (cur_page()->graph == GR_SCHAIN) {          /* the selected part's DUCK SRC and NOTE: the same values as its DUCK 1 page */
-            uint32_t src = (uint32_t)t->p[P_DKSRC];
-            param_format(&TP[P_DKSRC], t->p[P_DKSRC], val, &unit);
-            if (mods_off & MODS_PFX)                   /* (0.2.14 GLO > MODULES PART FX OFF: the DUCK is skipped; the footer says it in full) */
-                draw_column_hide(0);
-            else
-                draw_column(0, "SC SRC", val, unit, VAL(0u), -1, ICON_MIDI);
-            param_format(&TP[P_DKNOTE], t->p[P_DKNOTE], val, &unit);
-            if (mods_off & MODS_PFX)
-                draw_column_hide(1);
-            else if (card_hidden_vp(&t->p[P_DKNOTE]))   /* NOTE is the key of a CH source only */
-                draw_column_hide(1);
-            else
-                draw_column(1, "SC NOTE", val, unit, VAL(1u), -1, ICON_MIDI);
-            for (c = 2; c < 4u; c++)
-                draw_column(c, "", "", "", T_THEME, -1, ICON_NONE);
+        if (cur_page()->graph == GR_SCHAIN) {          /* 0.2.22: the sidechain's MIDI setup, a device setting: K1 P1 CH, K2 P1 NOTE, K3 P2 CH, K4 P2 NOTE (shown whatever the DUCK SRC is) */
+            static const char *const SL[4] = {"PART 1\nCH", "PART 1\nNOTE", "PART 2\nCH", "PART 2\nNOTE"};   /* (0.2.25 layout round, owner: PART 1 / PART 2, not P1 CH; two lines: CHANNEL does not fit) */
+            for (c = 0; c < 4u; c++) {
+                uint32_t n = sc_midi[c];
+                if (mods_off & MODS_PFX) {             /* (0.2.14 GLO > MODULES PART FX OFF: the DUCK is skipped; the footer says it in full) */
+                    draw_column_hide(c);
+                    continue;
+                }
+                if (c & 1u) {
+                    param_format(&SC_NOTE_D, (int16_t)n, val, &unit);
+                } else {
+                    fmt_int(val, (int32_t)n + 1);
+                    unit = "";
+                }
+                draw_column(c, SL[c], val, unit, VAL(c), (int32_t)n * 1000 / ((c & 1u) ? 127 : 15), ICON_MIDI);
+            }
             return;
         }
         {
-            uint32_t sel = song.g[G_ROUTE] == 1, lay = duell_mode_req == DM_LAYER, k;
-            for (k = 0; k < 2u; k++) {                 /* the parts' channels (not shown when SELECTED listens on one channel; part 2 in LAYER) */
-                fmt_int(val, (int32_t)midi_ch_get(k) + 1);
-                if (sel || (lay && k))
-                    draw_column_hide(k);
-                else
-                    draw_column(k, k ? "P2 CH" : "P1 CH", val, "", VAL(k), (int32_t)midi_ch_get(k) * 1000 / 15, ICON_MIDI);
+            uint32_t sel = song.g[G_ROUTE] == 1, k, n = midi_cards(vis);
+            for (c = 0; c < 4u; c++) {                 /* the parts' channels (not shown when SELECTED listens on one channel; part 2 in LAYER), MIDI IN; T0227: moved left */
+                k = c < n ? vis[c] : 0xFFu;
+                if (k < 2u) {
+                    fmt_int(val, (int32_t)midi_ch_get(k) + 1);
+                    draw_column(c, k ? "PART 2\nCH" : "PART 1\nCH", val, "", VAL(c), (int32_t)midi_ch_get(k) * 1000 / 15, ICON_MIDI);
+                } else if (k == 2u) {
+                    draw_column(c, "MIDI IN", sel ? "SELECT" : "OWN CH", "", VAL(c), -1, ICON_MIDI);
+                } else if (n < 3u) {
+                    draw_column_hide(c);
+                } else {
+                    draw_column(c, "", "", "", T_THEME, -1, ICON_NONE);   /* (CLK moved to TEMPO) */
+                }
             }
-            draw_column(2, "MIDI IN", sel ? "SELECT" : "OWN CH", "", VAL(2u), -1, ICON_MIDI);
-            draw_column(3, "", "", "", T_THEME, -1, ICON_NONE);   /* (CLK moved to TEMPO) */
         }
         return;
     }
     if (cur_page()->scope == SC_SCALE) {               /* GLOBAL (core.h): K1 SCALE, K2 ROOT, K3 OFF-SCALE SNAP / PLAY, K4 none */
-        const param_desc_t *ds = &TP[P_SCALE], *dr = &TP[P_ROOT];
+        const param_desc_t *ds = &SCALE_D, *dr = &ROOT_D;
         int16_t sv = (int16_t)clamp(scale_g, 0, ds->max), rv = (int16_t)clamp(root_g, 0, dr->max);
         param_format(ds, sv, val, &unit);
         draw_column(0, "SCALE", val, unit, VAL(0u), RATIO(ds, enum_rank(ds, sv)), param_icon(ds, sv));
@@ -1081,7 +1373,7 @@ static void draw_columns(void)
         if (!sv)                                       /* CHROMATIC: every note is in the scale, nothing to snap: no card */
             draw_column_hide(2);
         else
-            draw_column(2, "OFF-SCL", N_OFFSCALE[offscale_g % OS_N], "", VAL(2u), -1, ICON_AUTO);
+            draw_column(2, "OFF-\nSCALE", N_OFFSCALE[offscale_g % OS_N], "", VAL(2u), -1, ICON_AUTO);   /* (T0227: OFF-SCALE in two lines, at its hyphen) */
         draw_column(3, "", "", "", T_THEME, -1, ICON_NONE);
         return;
     }
@@ -1111,27 +1403,6 @@ static void draw_columns(void)
             draw_column_hide(3);
         return;
     }
-    if (cur_page()->scope == SC_TRK) {                 /* MUTE PAN SPACE LEVEL of the selected track (0.2.18) */
-        const track_t *t = TSEL;
-        uint32_t lvl = trk_level(song.sel);
-        draw_column(0, "MUTE", t->p[P_MUTE] ? "ON" : "OFF", "", t->p[P_MUTE] ? T_ACCENT : VAL(0u), -1, ICON_AUTO);
-        if (duell_mode_req == DM_SPLIT) {              /* DUEL: part 1 left, part 2 right, fixed: no PAN card */
-            draw_column_hide(1);
-        } else {
-            param_format(&TP[P_PAN], t->p[P_PAN], val, &unit);
-            card_mot_of(&TSEL->p[P_PAN]);
-            draw_column(1, "PAN", val, unit, VAL(1u), RATIO(&TP[P_PAN], t->p[P_PAN]), param_icon(&TP[P_PAN], t->p[P_PAN]));
-        }
-        space_card(2u);                                /* SPACE (0.2.9): the global macro, PERFORM's K2 */
-        param_format(&TP[P_LEVEL], (int32_t)lvl, val, &unit);   /* (0: OFF) */
-        card_mot_of(&TSEL->p[P_LEVEL]);
-        draw_column(3, "LEVEL", val, unit, lvl && !t->p[P_MUTE] ? VAL(3u) : T_DIM, (int32_t)lvl * 1000 / 127, ICON_AUTO);
-        return;
-    }
-    if (cur_page()->graph == GR_ENGINE) {              /* ENGINE SOUND FAV INIT (the EDIT layer's three, and INIT) */
-        engine_columns(1);
-        return;
-    }
     if (cur_page()->graph == GR_BROWSE) {              /* PATCHES: PATCH (the slot's number), TYPE, FAV, RESTORE (a turn right asks) */
         uint32_t total, cur = pl_cursor(&total), k = pl_cursor_slot();
         char sl[6];
@@ -1153,8 +1424,8 @@ static void draw_columns(void)
         char tag[4], nm[13];
         pat_label(k, tag, nm);
         draw_column(0, "SLOT", tag, "", VAL(0u), (int32_t)k * 1000 / (int32_t)(n > 1u ? n - 1u : 1u), ICON_X_PATTERN);
-        draw_act_column(1, "LOAD", pat_has(k) ? T_THEME : T_DIM, ICON_AUTO);
-        draw_act_column(2, "ERASE", ps_used(k) ? T_THEME : T_DIM, ICON_AUTO);   /* (a saved pattern only) */
+        draw_act_column(1, "LOAD", T_THEME, ICON_AUTO);
+        draw_act_column(2, "ERASE", ps_changed(k) ? T_THEME : T_DIM, ICON_AUTO);   /* (gives the slot's default back: a saved one only) */
         draw_act_column(3, "SAVE", T_THEME, ICON_AUTO);
         return;
     }
@@ -1179,7 +1450,7 @@ static void draw_columns(void)
                 continue;
             }
             on = fop_card(c, &lb, val, &u, &r, &ic);
-            draw_column(c, lb, val, u, on ? VAL(c) : T_DIM, r, ic);
+            draw_column(c, label_shown(lb), val, u, on ? VAL(c) : T_DIM, r, ic);   /* (T0227: COARSE, STAGE, DETUNE) */
         }
         return;
     }
@@ -1193,14 +1464,14 @@ static void draw_columns(void)
         draw_column(0, "SLOT", val, "/8", VAL(0u), (int32_t)(base + mod_ui_slot) * 1000 / (NMSLOT - 1u),
                     mod_src_icon(MS_OFF));   /* (the mod icon) */
         card_mk_next = mks;
-        draw_column(1, "SRC", N_MSRC[clamp(s, 0, MS_N - 1)], "", s ? VAL(1u) : T_DIM, -1, mod_src_icon(s));
+        draw_column(1, "SOURCE", msrc_shown(s), "", s ? VAL(1u) : T_DIM, -1, mod_src_icon(s));
         card_mk_next = mkd;
         /* (a destination this part cannot move now: the DEST card is the selector that changes it, so it stays; the panel's DEST line says it in
          * words. The one card that is not hidden for an inapplicable state: hiding it would lock the slot) */
         draw_column(2, "DEST", mod_dst_name(t, d), "", d && !mod_dst_why(t, d) ? VAL(2u) : T_DIM, -1, mod_dst_icon(t, d));
         param_format(&TP[id + 2u], a, val, &unit);
         card_mk_next = mka;
-        draw_column(3, "AMT", val, unit, a ? VAL(3u) : T_DIM, RATIO(&TP[id + 2u], a), mod_src_icon(MS_OFF));
+        draw_column(3, "AMOUNT", val, unit, a ? VAL(3u) : T_DIM, RATIO(&TP[id + 2u], a), mod_src_icon(MS_OFF));
         return;
     }
     if (cur_page()->graph == GR_ROLL && lock_held()) {   /* a step held: what KNOB 1..4 lock (ui_input.c lock_turn) */
@@ -1222,7 +1493,7 @@ static void draw_columns(void)
             if (!on)
                 v = motion_base_value(TSEL, id);      /* not locked: the sound's own, DIM */
             param_format(d, v, val, &unit);
-            draw_column(c, d->label, val, unit, on ? VAL(c) : T_DIM, RATIO(d, enum_rank(d, v)), param_icon(d, v));
+            draw_column(c, desc_shown(d), val, unit, on ? VAL(c) : T_DIM, RATIO(d, enum_rank(d, v)), param_icon(d, v));
         }
         return;
     }
@@ -1252,7 +1523,7 @@ static void draw_columns(void)
             draw_column(1, "NOTE", val, u, step_on(st) ? VAL(1u) : T_DIM, -1, ICON_AUTO);
             if (step_on(st)) {                            /* a note: its LEN (1.5, KNOB 3: the TIEs after it) */
                 fmt_int(sn, (int32_t)note_len(TSEL, ui.cursor));
-                draw_column(2, "LEN", sn, "", VAL(2u), -1, ICON_AUTO);
+                draw_column(2, "LENGTH", sn, "", VAL(2u), -1, icon_for_label("LEN"));   /* (T0227: LENGTH; the icon of LEN) */
             } else {
                 draw_column(2, "TIME", TIME_N[st->time % 3u], "", VAL(2u), -1, ICON_AUTO);
             }
@@ -1261,11 +1532,22 @@ static void draw_columns(void)
         }
         return;
     }
+    nvis = page_cards(cur_page(), vis);                 /* T0227 (owner): the cards that show, moved left (K1..Kn); the columns after them stay empty */
     for (c = 0; c < 4u; c++) {
         int16_t *vp;
         int32_t vv;
-        const param_desc_t *d = page_desc(cur_page(), c, &vp);
-        if (cur_page()->graph == GR_TEMPO && c == TEMPO_TAP_SLOT) { /* TAP: the tempo of the taps for 2 s after the last, else TAP (EXT clock: no card) */
+        uint32_t s = c < nvis ? vis[c] : 0xFFu;         /* (the page's slot this column shows) */
+        const param_desc_t *d;
+        if (s == 0xFFu) {
+            draw_column_hide(c);
+            continue;
+        }
+        d = page_desc(cur_page(), s, &vp);
+        if (cur_page()->graph == GR_ENGINE && s == 0u) {   /* ENGINE (T0227): K1 the engine, then its own controls */
+            engine_card(c);
+            continue;
+        }
+        if (cur_page()->graph == GR_TEMPO && s == TEMPO_TAP_SLOT) { /* TAP: the tempo of the taps for 2 s after the last, else TAP (EXT clock: no card) */
             uint32_t n = tempo_tapping();
             if (clock_src()) {
                 draw_column_hide(c);
@@ -1278,27 +1560,39 @@ static void draw_columns(void)
             draw_column(c, "TAP", val, n >= 2u ? "BPM" : "", n ? T_ACCENT : VAL(c), -1, ICON_TEMPO);
             continue;
         }
+        if (cur_page()->id[s] == P_DKRATE && duck_ctx_id(TSEL) == 0xFFu) {   /* DUCK 1/2 K2 with SRC MIDI / OFF (0.2.24): no card (hidden, as the hide rule) */
+            draw_column_hide(c);
+            continue;
+        }
+        if (s == 3u && duck_midi_page(cur_page())) {    /* DUCK 1/2, SRC MIDI: the notes come from GLO > SIDECHAIN; K4 jumps there */
+            draw_column(c, "SETUP", "GLO", "", VAL(c), -1, ICON_MIDI);   /* (T0227: the link card says SETUP, its value GLO: the page it jumps to) */
+            continue;
+        }
+        if (vp && card_hidden_vp(vp)) {                 /* a card the selection makes inapplicable: not drawn (the knob does nothing); before the blank check: DUCK's retired K2 (SRC MIDI / OFF) hides with the rest */
+            draw_column_hide(c);
+            continue;
+        }
         if (!d || !d->label || d->label[0] == '-') {
             draw_column(c, "", "", "", T_THEME, -1, ICON_AUTO);
             continue;
         }
-        if (card_hidden_vp(vp)) {                       /* a card the selection makes inapplicable: not drawn (the knob does nothing) */
-            draw_column_hide(c);
-            continue;
-        }
-        if (cur_page()->graph == GR_TEMPO && c == 0u)  /* CLK: an external clock's state under the source (EXT / NO CLOCK; AUTO: the source) */
+        if (cur_page()->graph == GR_TEMPO && s == 0u)  /* CLK: an external clock's state under the source (EXT / NO CLOCK; AUTO: the source) */
             card_why_next = clock_why(1);
-        if ((act_cols() >> c) & 1u) {
+        if ((act_cols() >> s) & 1u) {
             draw_act_column(c, d->label, T_THEME, ICON_AUTO);
             continue;
         }
         vv = card_vv(vp);                               /* (MORPH: the blended value; the mark) */
         param_format(d, (int16_t)vv, val, &unit);
         card_mot_of(vp);                                /* (a global: never) */
+        if (cur_page()->scope == SC_TRACK && cur_page()->graph != GR_MOD && (twin_rt = twin_card(TSEL, vp, d, vv, val, &unit)) != -2) {   /* cloud job H: the TWIN FILTER's own texts and gauges */
+            draw_column(c, quick_label(cur_page(), s) ? quick_label(cur_page(), s) : desc_shown(d), val, unit, VAL(c), twin_rt, param_icon(d, (int16_t)vv));
+            continue;
+        }
         /* (owner, 2026-10-13: faded ONLY what a selection makes impossible. A value of 0 is not a reason: CUT's RES and the FLT depths of the
          * universal filter, the delay modulation's RATE at DEPTH 0 and the like are live cards, a zero can be turned up) */
-        draw_column(c, d->label, val, unit, VAL(c), d->fmt == F_ENUM && d->max < 2 ? -1 : RATIO(d, enum_rank(d, (int16_t)vv)),
-                    param_icon(d, (int16_t)vv));
+        draw_column(c, quick_label(cur_page(), s) ? quick_label(cur_page(), s) : desc_shown(d), val, unit, VAL(c), d->fmt == F_ENUM && d->max < 2 ? -1 : RATIO(d, enum_rank(d, (int16_t)vv)),
+                    param_icon(d, (int16_t)vv));   /* (0.2.25: the card's display name; the icon by the stored label) */
     }
 }
 
@@ -1518,12 +1812,12 @@ static void confirm_text(char *a, char *b)          /* a, b hold 32 */
         str_cpy(a + str_len(a), "?", 2);
         project_name(k % MU_SLOTS, b);                  /* the multi's name ("" none) */
         break;
-    case CF_OVR_PSLOT:                                  /* PATTERNS: SAVE over a saved pattern or the factory default */
+    case CF_OVR_PSLOT:                                  /* PATTERNS: SAVE over what the slot holds */
     case CF_ERASE_PSLOT:
         str_cpy(a, ui.confirm == CF_OVR_PSLOT ? "OVERWRITE " : "ERASE ", 24);
         ps_label(a + str_len(a), k % PS_SLOTS);
         str_cpy(a + str_len(a), "?", 2);
-        {                                               /* its name (the stored one, or the factory default's) */
+        {                                               /* its name */
             char tag[4];
             pat_label(k % PS_SLOTS, tag, b);
         }
@@ -1561,7 +1855,10 @@ static void confirm_text(char *a, char *b)          /* a, b hold 32 */
         }
         sl_name(ui.svs % UP_SLOTS, n[0]);
         up_slot_label(l, ui.svs % UP_SLOTS);
-        sound_name(&trk[k], src);
+        if (save_nm[0])
+            str_cpy(src, save_nm, sizeof src);           /* 0.2.21: RENAME (K2) */
+        else
+            sound_name(&trk[k], src);
         str_cpy(a, "OVERWRITE ", 32);
         str_cpy(a + str_len(a), l, 6);
         str_cpy(a + str_len(a), " ", 2);
@@ -1673,8 +1970,10 @@ static void draw_confirm(void)
         cv_text_flags(ink_in(&AF_M, f, DLG_W), 55, &AF_M, f, T_MID, T_SURF, 8u | (f[str_len(f) - 1u] == ELLIPSIS));
     }
     if (hint) {                                       /* SAVE held: K1 picks the slot the sound goes to */
-        GFX_HOOK_ALIGN(0, 78, DLG_W, 78 + KC_H, AL_H | AL_N(2), "dialog hint centred");
-        cv_key_hint(HALF_UP(DLG_W - kh_ink(KC_K1, "OTHER SLOT")), 78, KC_K1, "OTHER SLOT", 1, T_SURF);
+        GFX_HOOK_ALIGN(0, 78, DLG_W, 78 + KC_H, AL_H | AL_N(4), "dialog hint centred");
+        int32_t w1 = kh_ink(KC_K1, "OTHER SLOT"), w2 = kh_ink(KC_K2, "RENAME"), x0 = HALF_UP(DLG_W - (w1 + 14 + w2));   /* K1 OTHER SLOT, K2 RENAME (0.2.21) */
+        cv_key_hint(x0, 78, KC_K1, "OTHER SLOT", 1, T_SURF);
+        cv_key_hint(x0 + w1 + 14, 78, KC_K2, "RENAME", 1, T_SURF);
     }
     cv_rrect(10, by, 90, 26, 6, T_RAISE, T_SURF);     /* OCT-: NO */
     GFX_HOOK_ALIGN(10, by, 100, by + 26, AL_HV | AL_N(2), "dialog button NO");
@@ -1693,8 +1992,9 @@ static void ui_draw_page(uint32_t counting);
 static void ui_draw(void)
 {
     static uint8_t counting;
-    /* the theme follows the selected part (SPEC 5a), its MORPH fader (colour A -> B) and LAYER mode (cheap: only on a change) */
-    if (theme_follow(song.sel, morph_fader_of(0), morph_fader_of(1), duell_mode_req == DM_LAYER))
+    /* the theme follows the selected part (SPEC 5a), its MORPH fader (colour A -> B), LAYER mode and (0.2.24) a GLOBAL page: the third colour (cheap: only on a change). A quick layer over
+     * a global page and PERFORM are per part: the part's colours */
+    if (theme_follow(song.sel, morph_fader_of(0), morph_fader_of(1), duell_mode_req == DM_LAYER, page_global(cur_page()) && !ui.layer && !ui.perf))
         ui.force = 1;
     ui.frame++;
     if (counting != (uint8_t)seq_counting()) {          /* a count-in began or ended: the page drawn again after it */
@@ -1762,7 +2062,7 @@ static void ui_draw_page(uint32_t counting)
         return;
     }
     if (!page_visible(ui.page)) {          /* a page the track has not (page_visible): EDIT 1; SHIMMER (the TYPE left SHIM, by the editor, a multi, MIDI): the page before it, REVERB */
-        ui.page = (uint8_t)(PAGES[ui.page].fam == FAM_EDIT ? page_first(FAM_EDIT) : page_next(-1));
+        ui.page = (uint8_t)(PAGES[ui.page].fam == FAM_EDIT && !page_twin_sub(ui.page) ? page_first(FAM_EDIT) : page_next(-1));   /* (cloud job H: TWIN MOD / TWIN CHAIN, TYPE gone to OFF: the page before, TWIN FILTER) */
         if (!ui.perf)                                   /* (PERFORM over it stays: its tap of FX comes back to EDIT 1) */
             page_entered();
     }

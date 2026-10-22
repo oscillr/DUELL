@@ -14,11 +14,20 @@ typedef struct {
     uint8_t bank_msb, bank_lsb;             /* DUELL: CC0 / CC32, applied at the channel's next PROGRAM CHANGE (midi_pc) */
 } midi_channel_t;
 static midi_channel_t midi_ch[16];
-/* Low bits: track + 1. High bit: key released, held by its channel's pedal. */
-static uint8_t midi_sel_on[16][128];
-#define midi_notes midi_sel_on
+/* Per channel and key 4 bits (memory trim 1; was a byte: 2,048 B, now 1,024 B; two keys a byte, the even key low): bits 0..2 track + 1 (0: not held;
+ * NPART is 2), bit 3 (MIDI_PEDAL_NOTE) key released, held by its channel's pedal. Read and written by the MIDI event path only (events_block, the audio
+ * interrupt), so two keys sharing a byte never meet two writers. */
+static uint8_t midi_sel_on[16][64];
+_Static_assert(NPART < 8, "midi_control.c: a key's track + 1 is 3 bits");
+static uint32_t midi_note_get(uint32_t ch, uint32_t note) { return (midi_sel_on[ch][note >> 1] >> ((note & 1u) << 2)) & 15u; }
+static void midi_note_put(uint32_t ch, uint32_t note, uint32_t v)
+{
+    uint32_t sh = (note & 1u) << 2;
+    midi_sel_on[ch][note >> 1] = (uint8_t)((midi_sel_on[ch][note >> 1] & ~(15u << sh)) | (v & 15u) << sh);
+}
+#define MIDI_OWNER(v) ((v) & 7u)                 /* a key's track + 1 */
 static uint16_t midi_owners[NTRK];           /* avoids rescanning all 2048 entries for CC123 */
-#define MIDI_PEDAL_NOTE 0x80u
+#define MIDI_PEDAL_NOTE 8u
 
 static midi_channel_t *midi_channel(uint32_t ch)
 {
@@ -62,7 +71,7 @@ static int midi_note_held(const track_t *t, uint32_t note)
 {
     uint32_t ch, id = trk_index(t) + 1u, own = duell_mode == DM_LAYER && id == 2u ? 1u : id;   /* (LAYER: part 2's copy of part 1's) */
     for (ch = 0; ch < 16u; ch++)
-        if ((midi_notes[ch][note] & 0x7Fu) == own && !mchord_of(ch, note, id))
+        if (MIDI_OWNER(midi_note_get(ch, note)) == own && !mchord_of(ch, note, id))
             return 1;
     return mchord_held(id, note);
 }
@@ -86,8 +95,8 @@ static int midi_local_held(const track_t *t, uint32_t note)
 
 static void midi_release(uint32_t ch, uint32_t note)
 {
-    uint32_t id = midi_notes[ch][note] & 0x7Fu;
-    midi_notes[ch][note] = 0;
+    uint32_t id = MIDI_OWNER(midi_note_get(ch, note));
+    midi_note_put(ch, note, 0);
     if (id) {
         midi_owners[id - 1u]--;
         if (!--midi_ch[ch].owned[id - 1u])
@@ -186,7 +195,7 @@ static void midi_play(track_t *t, uint32_t ch, uint32_t note, uint32_t vel)
 static void midi_note_event(uint32_t ch, uint32_t note, uint32_t vel)
 {
     midi_channel_t *c = midi_channel(ch);
-    uint32_t id = midi_notes[ch][note] & 0x7Fu;
+    uint32_t id = MIDI_OWNER(midi_note_get(ch, note));
     if (vel) {
         track_t *t = midi_track(ch);
         /* Repeated notes replace the previous press, including a pedal-held one. */
@@ -197,12 +206,12 @@ static void midi_note_event(uint32_t ch, uint32_t note, uint32_t vel)
             midi_hint = (uint8_t)(trk_index(t) + 1u);
         c->targets |= (uint8_t)(1u << trk_index(t));
         midi_play(t, ch, note, vel);
-        midi_notes[ch][note] = (uint8_t)(trk_index(t) + 1u);
+        midi_note_put(ch, note, trk_index(t) + 1u);
         midi_owners[trk_index(t)]++;
         c->owned[trk_index(t)]++;
     } else if (id) {
         if (c->pedal)
-            midi_notes[ch][note] |= MIDI_PEDAL_NOTE;
+            midi_note_put(ch, note, midi_note_get(ch, note) | MIDI_PEDAL_NOTE);
         else
             midi_release(ch, note);
     }
@@ -213,7 +222,7 @@ static void midi_pedal_up(uint32_t ch)
     uint32_t note;
     midi_channel(ch)->pedal = 0;
     for (note = 0; note < 128u; note++)
-        if (midi_notes[ch][note] & MIDI_PEDAL_NOTE)
+        if (midi_note_get(ch, note) & MIDI_PEDAL_NOTE)
             midi_release(ch, note);
 }
 
@@ -226,8 +235,8 @@ static void __attribute__((noinline)) midi_forget_track(uint32_t track)
         if (!(midi_ch[ch].targets & (1u << track)))
             continue;
         for (note = 0; note < 128u; note++)
-            if ((midi_notes[ch][note] & 0x7Fu) == track + 1u)
-                midi_notes[ch][note] = 0;
+            if (MIDI_OWNER(midi_note_get(ch, note)) == track + 1u)
+                midi_note_put(ch, note, 0);
         midi_ch[ch].targets &= (uint8_t)~(1u << track);
         midi_ch[ch].owned[track] = 0;
     }
@@ -261,26 +270,41 @@ static int midi_track_held(uint32_t track)
     return 0;
 }
 
-/* The standard CC map (#103): always on, these CCs only, on the track the channel plays (ROUT as notes). A CC
- * sets its parameter as a knob would, 0..127 over the parameter's range (64: the middle of a bipolar one), and
- * AUTOMATION records it as a knob move (motion_capture: the selected track, armed and playing). CC74 / CC71 are
- * the engine's own cutoff / resonance (MIDI_CC_ENG); an engine without one ignores them. On the engines with no filter
- * of their own (engine_t.ufilt) they are the multimode filter's CUT and RES (MCC_UF; DUELL 0.2.9: CC74 0..127 over the whole CUT dial, 30 Hz
- * .. the open end; 0.2.2's 64 = OFF is gone: a MIDI LEARN map on CUT spans the new dial the same way). CC121 resets none
- * of them (RP-015: they are the sound's) */
-#define MCC_CUT 0xFEu
-#define MCC_RES 0xFFu
-static const uint8_t MIDI_CC_MAP[][2] = {
-    {5, P_GLIDE}, {7, P_LEVEL}, {10, P_PAN}, {71, MCC_RES}, {72, P_REL}, {73, P_ATK}, {74, MCC_CUT}, {75, P_DEC},
-    {91, P_REV}, {93, P_CHOR}, {94, P_DLY},
-};
+/* THE MIDI MAP (midi_map.h, docs/design/MIDI_MAP_DESIGN_2.md): one table of 128 lines, one per CC number, in place of the lists
+ * this file had (the standard map #103, the morph's 9 CCs, the MODE's 4, the 16 learn slots). A CC sets the parameter its line names
+ * as a knob would, 0..127 over the parameter's range (64: the middle of a bipolar one), and AUTOMATION records a part value as a knob
+ * move (motion_capture: the selected track, armed and playing). The line's part rule says whose: MAP_R_CHANNEL the part the CC's channel
+ * plays (ROUT as notes), PART1 / PART2 that part, GLOBAL any channel (also one ROUT does not play, before the routing: the MODE's
+ * and the effects block); a LEARNED line is pinned to its track (midi_map.h). A number that is not in the table does nothing; the 23
+ * locked standard numbers are handled by midi_control below as they always were. CC74 / CC71 (CUTOFF_SMART, RES_SMART) are the engine's own
+ * cutoff / resonance (MIDI_CC_ENG); an engine without one ignores them. On the engines with no filter of their own (engine_t.ufilt: every engine since cloud job J) they
+ * are the multimode filter's CUT and RES (MCC_UF; DUELL 0.2.9: 0..127 over the whole CUT dial, 30 Hz .. the open end). CC121 resets none
+ * of them (RP-015: they are the sound's). A part value on an extension slot (128 + slot) is written to XV(t, slot), End A only; AUTOMATION
+ * does not record it until the motion escape (id 127) is built (EXTENSION_BLOCK_PLAN 3.3). The table is in the pool (midi_map, 256 B);
+ * it is the shipped list (midi_map_defaults.h, generated by tools/gen_midi_map.py from docs/MIDI_MAP_DEFAULTS.csv) until the settings
+ * record gives another (settings_persist.c), and the main loop edits it with the interrupts off a line at a time (midi_learn.c) */
+#include "midi_map.h"
+#include "midi_map_defaults.h"
+static uint16_t midi_map[MAP_N] __attribute__((section(".pool")));
+static uint8_t midi_map_ready;                  /* 0: not yet loaded (power-on RAM): the shipped list is copied in at the first use */
+static void map_defaults(void)
+{
+    memcpy(midi_map, MIDI_MAP_DEFAULTS, sizeof midi_map);
+    midi_map_ready = 1;
+}
+static uint32_t map_line(uint32_t cc)
+{
+    if (!midi_map_ready)
+        map_defaults();
+    return midi_map[cc & 127u];
+}
+#define MCC_UF 0xFFu
 /* per engine (ENGINES[] order): CC74's E index + 1 in the high nibble, CC71's in the low one, 0 = none; MCC_UF (0xFF): the engine's
  * multimode filter, CC74 its CUT and CC71 its RES (DUELL 0.2.2) */
-#define MCC_UF 0xFFu
 static const uint8_t MIDI_CC_ENG[NENGINES] = {
-    0x56, 0x00, MCC_UF, MCC_UF, 0x00, MCC_UF, 0x67, MCC_UF,   /* ANALOG CUT RES, - (1, DIGITAL: retired), PHASE UF, LOFI UF, - (SAMPLE: retired), VOICE UF,
-                                                       * TRIO CUT RES, WHEEL UF */
-    0x00, MCC_UF, 0x00, 0x34, MCC_UF,                 /* - (GRAIN: retired), PHYS UF, - (10, DRUM: retired in DUELL 0.2.14), NOISE FREQ RES, FM6 UF */
+    MCC_UF, 0x00, MCC_UF, MCC_UF, 0x00, MCC_UF, MCC_UF, MCC_UF,   /* ANALOG UF (its CUT RES were E5 E6 until cloud job J), - (1, DIGITAL: retired), PHASE UF, LOFI UF, - (SAMPLE: retired), VOICE UF,
+                                                       * TRIO UF (was CUT RES), WHEEL UF */
+    0x00, MCC_UF, 0x00, MCC_UF, MCC_UF,               /* - (GRAIN: retired), PHYS UF, - (10, DRUM: retired in DUELL 0.2.14), NOISE UF (was FREQ RES), FM6 UF */
     0x00,                                             /* - (13, SLICE: retired in DUELL 0.2.9) */
     MCC_UF,                                           /* WAVE UF (DUELL) */
 };
@@ -289,109 +313,81 @@ static void midi_cc_set(track_t *t, uint32_t id, uint32_t value)
 {
     const param_desc_t *d = param_desc_of(eng_idx(t->eng_req), id);
     int32_t v = d->min + ((int32_t)value * (d->max - d->min) + 63) / 127;
-    if (d->max <= d->min || t->p[id] == v)
+    if (d->max <= d->min || t->p[id] == v || id == P_DKSRC)   /* (DUCK SRC is the owner's switch: PART on one part only, params.c; a CC does not set it) */
         return;
     t->p[id] = (int16_t)v;
     (void)motion_capture(t, id, (int16_t)v);
 }
-/* MIDI LEARN (1.5, Discussion #170): up to ML_N CCs, each set to one parameter of one track, whatever channel it
- * comes on (a channel ROUT ignores stays ignored) and whichever track that channel plays. Kept with the settings in
- * the 32 bytes of favorites.factory[14] (no engine 14: favorites.c; all 0 in every older setting = nothing learned),
- * an entry two bytes, as a 16-bit value LSB first: bits 0..6 the CC, 7..8 the track, 9..15 the parameter's code, 0 =
- * an empty entry: a common parameter its P_* id + 1 (1 .. ML_E0 - 1: their ids never move, new ones go before P_E0),
- * an engine parameter ML_E0 + k for P_E0 + k (P_E0 moves when common ones are added). A learned CC no longer reaches
- * the standard map (#103) on any channel: the controller is the user's now. The CCs with a meaning of their own
- * (midi_control's cases, CC0 / 32 bank select, CC11 EXPR, CC96 / 97 data increment, CC120..127) are never learned. The UI
- * (midi_learn.c) writes the entries with the interrupts off; ml_arm / ml_heard hand a CC heard while learning to it */
-#define ML_N 16u
-#define ML_E0 120u
-typedef char ml_ids_fit[P_E0 < ML_E0 && P_COUNT - P_E0 == 8 ? 1 : -1];
-static uint8_t *const ml_tab;               /* favorites.factory[14] (midi_learn.c: a build without the UI, none) */
-static volatile uint8_t *const ml_io;       /* ui.ml.io (midi_learn.c; not globals here: the ISR's data keeps its layout) */
-#define ml_arm (ml_io[0])                   /* the UI waits for a CC (MIDI LEARN with a parameter picked) */
+/* the extension slots' ranges (ext.h), the same scaling; End A only (XV is the part's current value, never End B) */
+static const int8_t MAP_XRANGE[NX][2] = {
+    {0, 1}, {0, 1}, {-63, 63}, {-64, 63}, {-64, 63}, {-64, 63}, {0, 127}, {0, 2}, {0, 3}, {0, 127}, {0, 1}, {0, 127}, {0, 127}, {-64, 63}, {0, 1}, {0, 0},
+};
+static void midi_xv_set(track_t *t, uint32_t slot, uint32_t value)
+{
+    int32_t lo = MAP_XRANGE[slot][0], hi = MAP_XRANGE[slot][1], v = lo + ((int32_t)value * (hi - lo) + 63) / 127;
+    if (hi > lo)                                    /* (no motion_capture: the escape is not built) */
+        XV(t, slot) = (int16_t)v;
+}
+/* a global value (the effects block) as a knob would, 0..127 over its range */
+static void midi_glob_set(uint32_t g, uint32_t value)
+{
+    const param_desc_t *d = &GP[g];
+    int32_t v = d->min + ((int32_t)value * (d->max - d->min) + 63) / 127;
+    if (d->max > d->min)
+        song.g[g] = (int16_t)v;
+}
+
+/* MIDI LEARN's state (midi_learn.c): the UI waits for a CC (ml_arm); the CC that came meanwhile (ml_heard). Not globals here: the ISR's
+ * data keeps its layout. A build without the UI has no ml_io */
+static volatile uint8_t *const ml_io;       /* ui.ml.io (midi_learn.c) */
+#define ml_arm (ml_io[0])                   /* the UI waits for a CC (MIDI LEARN with a parameter picked, or the editor's MAP_ARM) */
 #define ml_heard (ml_io[1])                 /* .. the CC that came meanwhile, + 1 (0 none) */
-static uint32_t ml_id(uint32_t code)        /* an entry's code -> P_* id, P_COUNT: none this firmware knows */
-{
-    return code >= ML_E0 ? P_E0 + code - ML_E0 : code && code <= P_E0 ? code - 1u : P_COUNT;
-}
-static int ml_free_cc(uint32_t cc)          /* (CC1 6 38 64 98..101 120..127: midi_control's own) */
-{
-    return cc && cc < 120u && cc != 1u && cc != 6u && cc != 11u && cc != 32u && cc != 38u && cc != 64u &&
-           (cc < 96u || cc > 101u);
-}
-/* 1: cc is learned (set here) or taken by MIDI LEARN waiting for one */
-static int __attribute__((noinline)) midi_learned(uint32_t cc, uint32_t value)
-{
-    uint32_t i, e, id, hit = 0;
-    if (!ml_tab || !ml_free_cc(cc))
-        return 0;
-    if (ml_arm) {
-        if (!ml_heard)
-            ml_heard = (uint8_t)(cc + 1u);
-        return 1;
-    }
-    for (i = 0; i < ML_N; i++) {
-        e = ml_tab[2u * i] | (uint32_t)ml_tab[2u * i + 1u] << 8;
-        if ((e >> 9) && (e & 127u) == cc) {
-            if ((id = ml_id(e >> 9)) < P_COUNT)
-                midi_cc_set(&trk[(e >> 7) & 3u], id, value);
-            hit = 1;
-        }
-    }
-    return hit;
-}
+#define ml_free_cc(cc) (!MAP_LOCKED_CC(cc))
 
-static void __attribute__((noinline)) midi_cc_map(track_t *t, uint32_t cc, uint32_t value)
-{
-    uint32_t i, id = 0xFFFFu, e;
-    if (midi_learned(cc, value))                /* (a learned CC is the user's: not the map's) */
-        return;
-    for (i = 0; i < NELEM(MIDI_CC_MAP); i++)
-        if (MIDI_CC_MAP[i][0] == cc)
-            id = MIDI_CC_MAP[i][1];
-    if (id >= MCC_CUT) {
-        if (id == 0xFFFFu)
-            return;
-        e = MIDI_CC_ENG[eng_idx(t->eng_req)] >> (id == MCC_CUT ? 4 : 0) & 15u;
-        if (!e)
-            return;
-        id = e == 15u ? (id == MCC_CUT ? P_FREEA : P_FREEB) : P_E0 + e - 1u;   /* (15: the multimode filter's CUT, RES) */
-    }
-    midi_cc_set(t, id, value);
-}
-
-/* DUELL 4b, SPEC 4.4 / 3.4a: the MORPH's CCs, on each part's channel (the part the channel plays, as its notes: ROUT
- * CH1-4 channel 1 part 1, channel 2 part 2, the hidden parts' channels ignored; SEL the selected part):
- *   CC 20 the fader 0..127; CC 25 AMOUNT 0..127 -> 0..100 %; CC 111 TARGET 0-42 PART 1, 43-85 PART 2, 86-127 BOTH (global; 0.2.9:
+/* DUELL 4b, SPEC 4.4 / 3.4a: the MORPH's actions, on each part's channel (the part the channel plays, as its notes: ROUT CH1-4 channel 1
+ * part 1, channel 2 part 2, the hidden parts' channels ignored; SEL the selected part):
+ *   MORPH the fader 0..127; AMOUNT 0..127 -> 0..100 %; TARGET 0-42 PART 1, 43-85 PART 2, 86-127 BOTH (global; 0.2.9:
  *   ALGORITHM's selector, ui_input.c algo_step: BOTH keeps the selected part as the edit target);
- *   CC 21 ROLL A, 22 ROLL B: a value >= 64 fires once; the channel's CC re-arms below 64. CC 23 UNDO: 1..63 undoes End A once,
- *   64..127 End B once (the knob's left / right), 0 re-arms. CC 24 (KEEP, removed in
- *   SPEC 3.5) is unassigned; CC 113 SMART, 114 ARP, 115 PITCH: 0-63 off, 64-127 on (global).
+ *   ROLL (one CC, centred like the knob): 0..42 rolls End A, 43..84 nothing, 85..127 rolls End B; a roll fires when the value ENTERS its zone and again
+ *   only after the value has left it. ROLL A, ROLL B (typed lines only): a value >= 64 fires once; the channel's CC re-arms below 64. UNDO: 1..63 undoes End A once,
+ *   64..127 End B once (the knob's left / right), 0 re-arms. SMART, ARP, PITCH: 0-63 off, 64-127 on (global).
  * TARGET a part: a CC acts on its channel's part only; BOTH: a CC on either channel acts on both parts (morph.c
- * morph_mask). None of these numbers is in the standard map (#103) or a MIDI-defined controller (20-31, 102-119 are
- * undefined in MIDI 1.0); MIDI LEARN can still take one (a learned CC is the user's, as for the standard map). Queued
- * for the main loop (morph.c morph_push: a roll is no work for the audio ISR).
- * The MOD WHEEL (CC1) moves the fader too, always (no switch), as CC 20 does (same queue, same
- * TARGET rules), while it stays the matrix's MODW source (mod.c mod_midi); in LAYER it moves both parts' faders */
+ * morph_mask). Queued for the main loop (morph.c morph_push: a roll is no work for the audio ISR).
+ * The MOD WHEEL (CC1) moves the fader too, always (no switch), as the MORPH line does (same queue, same
+ * TARGET rules), while it stays the matrix's MODW source (mod.c mod_midi); in LAYER it moves both parts' faders.
+ * The triggers' memory (midi_morph_fired) is a bit of the TARGET, not of the CC number: ROLL A 0, ROLL B 1, UNDO 2, ROLL's A zone 3, B zone 4 */
 #define MQ_PART_ALL 0x7Fu                                  /* (morph_push's part: every shown part, ui_input.c morph_poll) */
-static uint8_t midi_morph_fired[16];                      /* bit k: CC 21 + k at or above 64 on the channel (fired) */
-#define MIDI_MORPH_CC(cc) (((cc) >= 20u && (cc) <= 23u) || (cc) == 25u || (cc) == 111u || ((cc) >= 113u && (cc) <= 115u))
-static void __attribute__((noinline)) midi_morph(uint32_t ch, uint32_t cc, uint32_t value)
+static uint8_t midi_morph_fired[16];                      /* bit k: ROLL A / ROLL B / UNDO (k = target - MAP_T_ROLL_A) at or above 64 on the channel (fired) */
+static void __attribute__((noinline)) midi_morph(uint32_t ch, uint32_t pi, uint32_t code, uint32_t value)
 {
-    uint32_t pi = trk_index(midi_track(ch)), b;
+    uint32_t b;
     if (pi >= NSHOWN)
         return;
-    if (cc == 20u) {
+    if (code == MAP_T_MORPH) {
         morph_push(MQ_FADER, pi, value);
-    } else if (cc == 25u) {
+    } else if (code == MAP_T_AMOUNT) {
         morph_push(MQ_AMOUNT, pi, (value * 100u + 63u) / 127u);
-    } else if (cc == 111u) {
+    } else if (code == MAP_T_TARGET) {
         morph_push(MQ_TARGET, pi, value < 43u ? 0u : value < 86u ? 1u : 2u);
-    } else if (cc >= 113u) {
-        morph_push(cc == 113u ? MQ_SMART : cc == 114u ? MQ_ARP : MQ_PITCH, pi, value >= 64u);
+    } else if (code == MAP_T_ROLL) {
+        uint32_t za = 1u << (MAP_T_ROLL - MAP_T_ROLL_A), zb = za << 1;
+        if (value >= 43u)
+            midi_morph_fired[ch] &= (uint8_t)~za;                 /* left the A zone: armed again */
+        else if (!(midi_morph_fired[ch] & za)) {
+            midi_morph_fired[ch] |= (uint8_t)za;
+            morph_push(MQ_ROLL, pi, 0u);
+        }
+        if (value < 85u)
+            midi_morph_fired[ch] &= (uint8_t)~zb;
+        else if (!(midi_morph_fired[ch] & zb)) {
+            midi_morph_fired[ch] |= (uint8_t)zb;
+            morph_push(MQ_ROLL, pi, 1u);
+        }
+    } else if (code >= MAP_T_SMART) {
+        morph_push(code == MAP_T_SMART ? MQ_SMART : code == MAP_T_ARP ? MQ_ARP : MQ_PITCH, pi, value >= 64u);
     } else {
-        b = 1u << (cc - 21u);
-        if (cc == 23u) {
+        b = 1u << (code - MAP_T_ROLL_A);
+        if (code == MAP_T_UNDO) {
             if (!value) {
                 midi_morph_fired[ch] &= (uint8_t)~b;
             } else if (!(midi_morph_fired[ch] & b)) {
@@ -402,8 +398,76 @@ static void __attribute__((noinline)) midi_morph(uint32_t ch, uint32_t cc, uint3
             midi_morph_fired[ch] &= (uint8_t)~b;        /* released: armed again */
         } else if (!(midi_morph_fired[ch] & b)) {
             midi_morph_fired[ch] |= (uint8_t)b;
-            morph_push(MQ_ROLL, pi, cc == 22u);
+            morph_push(MQ_ROLL, pi, code == MAP_T_ROLL_B);
         }
+    }
+}
+
+/* DUELL step 5 (SPEC 5b.1): the MODE is global (not a part's): 0-42 SPLIT, 43-85 STEREO, 86-127 LAYER, on any channel (also one ROUT does
+ * not play: the MODE is no part's), a value that keeps the mode does nothing. BALANCE 0..127 -> -100..+100, 64 = 0; XFADE 0..127 -> 0..100 %;
+ * SPLIT 0 = OFF, 1..127 = the note n. Queued for nothing: mode_apply runs here, in the ISR */
+static void mode_apply(void);                   /* (seq.c) */
+/* 1: code is a global target and is set now */
+static int __attribute__((noinline)) midi_glob_act(uint32_t code, uint32_t value)
+{
+    if (code >= MAP_T_G0 && code < MAP_T_G0 + G_COUNT)
+        midi_glob_set(code - MAP_T_G0, value);
+    else if (code == MAP_T_BALANCE)                 /* 0..127 -> -100..+100, 64 = 0 */
+        mix_bal = (int8_t)(value == 64u ? 0 : value < 64u ? ((int32_t)value - 64) * 100 / 64 : ((int32_t)value - 64) * 100 / 63);
+    else if (code == MAP_T_XFADE)                   /* 0..127 -> 0..100 % */
+        mix_xf = (uint8_t)((value * 100u + 63u) / 127u);
+    else if (code == MAP_T_SPLIT)                   /* 0 OFF, 1..127 the note n (stored n + 1) */
+        mix_split = (uint8_t)(value ? value + 1u : 0u);
+    else if (code == MAP_T_MODE) {
+        duell_mode_req = (uint8_t)(value < 43u ? DM_SPLIT : value < 86u ? DM_STEREO : DM_LAYER);
+        mode_apply();
+    } else
+        return 0;
+    return 1;
+}
+/* the global lines, before the MIDI IN routing; 1: the CC is done. A learn waiting for a CC takes it instead (post routing) */
+static int __attribute__((noinline)) midi_map_global(uint32_t cc, uint32_t value)
+{
+    uint32_t l = map_line(cc);
+    if (MAP_RULE(l) != MAP_R_GLOBAL || MAP_WHO(l) == MAP_W_LOCKED || MAP_WHO(l) == MAP_W_LEARNED || (ml_io && ml_arm))
+        return 0;
+    return midi_glob_act(MAP_TARGET(l), value);
+}
+
+/* the line of a CC that is not a locked number, after the routing: whose parameter, then the set */
+static void __attribute__((noinline)) midi_map_cc(uint32_t ch, track_t *ct, uint32_t cc, uint32_t value)
+{
+    uint32_t l = map_line(cc), code = MAP_TARGET(l), rule = MAP_RULE(l), id, e;
+    track_t *t;
+    if (MAP_IS_LOCKED(l))                           /* (96 97 122 124..127: not acted on) */
+        return;
+    if (ml_io && ml_arm) {                          /* a learn waits for a CC: this one is taken by it, whatever it was */
+        if (!ml_heard)
+            ml_heard = (uint8_t)(cc + 1u);
+        return;
+    }
+    if (MAP_IS_EMPTY(l))
+        return;
+    if (MAP_WHO(l) == MAP_W_LEARNED)                /* (a learned CC is one track's, whatever channel it comes on) */
+        t = &trk[rule];
+    else if (rule == MAP_R_PART1 || rule == MAP_R_PART2)
+        t = &trk[rule - MAP_R_PART1];
+    else
+        t = ct;                                      /* (CHANNEL: ct, the part the channel plays) */
+    if (code < P_COUNT) {
+        midi_cc_set(t, code, value);
+    } else if (code >= XW_BASE && code < XW_BASE + NX) {
+        midi_xv_set(t, code - XW_BASE, value);
+    } else if (code == MAP_T_CUTOFF_SMART || code == MAP_T_RES_SMART) {
+        e = MIDI_CC_ENG[eng_idx(t->eng_req)] >> (code == MAP_T_CUTOFF_SMART ? 4 : 0) & 15u;
+        if (!e)
+            return;
+        id = e == 15u ? (code == MAP_T_CUTOFF_SMART ? P_FREEA : P_FREEB) : P_E0 + e - 1u;   /* (15: the multimode filter's CUT, RES) */
+        midi_cc_set(t, id, value);
+    } else if (code >= MAP_T_MORPH && code <= MAP_T_PITCH) {
+        midi_morph(ch, trk_index(t), code, value);
+    } else {
+        (void)midi_glob_act(code, value);           /* (a global target on a part rule: typed by hand; the editor refuses it) */
     }
 }
 
@@ -414,7 +478,7 @@ static void midi_control(uint32_t ch, uint32_t cc, uint32_t value)
     switch (cc) {
     case 1:
         c->wheel = (uint8_t)value;
-        if (trk_index(midi_track(ch)) < NSHOWN)       /* DUELL: the wheel is the MORPH fader too (as CC 20) */
+        if (trk_index(midi_track(ch)) < NSHOWN)       /* DUELL: the wheel is the MORPH fader too (as the MORPH line) */
             morph_push(MQ_FADER, duell_mode == DM_LAYER ? MQ_PART_ALL : trk_index(midi_track(ch)), value);
         break;
     case 0:                                        /* DUELL: BANK SELECT MSB / LSB, kept for the next PROGRAM CHANGE */
@@ -434,7 +498,7 @@ static void midi_control(uint32_t ch, uint32_t cc, uint32_t value)
     case 123:                                      /* All Notes Off: normal releases, honours pedal */
         mask = midi_targets(ch);
         for (i = 0; i < 128u; i++)
-            if (midi_notes[ch][i])
+            if (midi_note_get(ch, i))
                 midi_note_event(ch, i, 0);
         for (i = 0; i < NTRK; i++)
             if ((mask & (1u << i)) && !midi_track_held(i)) {
@@ -472,50 +536,9 @@ static void midi_control(uint32_t ch, uint32_t cc, uint32_t value)
         }
         break;
     default:
-        if (!MIDI_MORPH_CC(cc))
-            midi_cc_map(midi_track(ch), cc, value);
-        else if (!midi_learned(cc, value))              /* (a learned one is the user's) */
-            midi_morph(ch, cc, value);
+        midi_map_cc(ch, midi_track(ch), cc, value);
         break;
     }
-}
-
-/* DUELL step 5 (SPEC 5b.1, 4.4): CC 112 sets the output MODE, global (not a part's): 0-42 SPLIT, 43-85 STEREO, 86-127
- * LAYER, on any channel (also one ROUT does not play: the MODE is no part's), a value that keeps the mode does nothing. Free
- * in the map: the standard CCs (#103) and the MORPH's (20-25, 111) are others, SPEC 4.4's block ends at 110, and MIDI 1.0
- * leaves 102-119 undefined. MIDI LEARN can take it (ml_free_cc): learned, or MIDI LEARN waiting for a CC, it is the
- * user's, as any learned CC (only on a channel ROUT plays). Queued for nothing: mode_apply runs here, in the ISR */
-#define MIDI_MODE_CC 112u
-/* the MODE page's other three, global too (any channel; learned = the user's, as CC 112): CC 116 BALANCE (0..127 -> -100..+100,
- * 64 = 0), CC 117 XFADE (0..127 -> 0..100 %), CC 118 SPLIT (0 = OFF, 1..127 = the note n). Free: not in MIDI_CC_MAP, not the
- * morph's (20-25, 111, 113-115), not Felucca's panics (120-127) */
-#define MIDI_BAL_CC 116u
-#define MIDI_XF_CC 117u
-#define MIDI_SPLIT_CC 118u
-static void mode_apply(void);                   /* (seq.c) */
-static int __attribute__((noinline)) midi_mode_cc(uint32_t cc, uint32_t value)
-{
-    uint32_t i, e;
-    if (ml_tab) {
-        if (ml_arm)
-            return 0;
-        for (i = 0; i < ML_N; i++) {
-            e = ml_tab[2u * i] | (uint32_t)ml_tab[2u * i + 1u] << 8;
-            if ((e >> 9) && (e & 127u) == cc)
-                return 0;
-        }
-    }
-    if (cc == MIDI_BAL_CC)                          /* 0..127 -> -100..+100, 64 = 0 */
-        mix_bal = (int8_t)(value == 64u ? 0 : value < 64u ? ((int32_t)value - 64) * 100 / 64 : ((int32_t)value - 64) * 100 / 63);
-    else if (cc == MIDI_XF_CC)                      /* 0..127 -> 0..100 % */
-        mix_xf = (uint8_t)((value * 100u + 63u) / 127u);
-    else if (cc == MIDI_SPLIT_CC)                   /* 0 OFF, 1..127 the note n (stored n + 1) */
-        mix_split = (uint8_t)(value ? value + 1u : 0u);
-    else {
-        duell_mode_req = (uint8_t)(value < 43u ? DM_SPLIT : value < 86u ? DM_STEREO : DM_LAYER);
-        mode_apply();
-    }
-    return 1;
 }
 
 /* DUELL (SPEC 4.2a): PROGRAM CHANGE, with the BANK SELECT (CC0 MSB, CC32 LSB, bank = MSB << 7 | LSB) the channel last
@@ -561,7 +584,7 @@ static void __attribute__((noinline)) midi_route_block(void)
             continue;
         }
         for (note = 0; note < 128u; note++)
-            if (midi_notes[ch][note])
+            if (midi_note_get(ch, note))
                 midi_release(ch, note);
         c->pedal = c->wheel = 0;
         c->bend = 0;
@@ -576,8 +599,8 @@ static void __attribute__((noinline)) midi_route_block(void)
  * channel aftertouch, so they stay free for other instruments. */
 static void __attribute__((noinline)) midi_event(uint32_t st, uint32_t ch, uint32_t d1, uint32_t d2)
 {
-    if (st == 0xB0u && (d1 == MIDI_MODE_CC || (d1 >= MIDI_BAL_CC && d1 <= MIDI_SPLIT_CC)) && midi_mode_cc(d1, d2))
-        return;                                    /* (DUELL step 5: the MODE, any channel) */
+    if (st == 0xB0u && midi_map_global(d1, d2))
+        return;                                    /* (DUELL step 5: the MODE, the global lines, any channel) */
     if ((st == 0x90u || st == 0x80u) &&                   /* (DUELL DUCK, fx.c duck_note: a trigger note, before the routing drops or plays it) */
         duck_note(ch, d1, st == 0x90u && d2, song.g[G_ROUTE] == 1 ? 1u : duell_mode == DM_LAYER ? ch == midi_pch[0] : (uint32_t)midi_in_block(ch)))
         return;

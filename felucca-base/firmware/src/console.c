@@ -199,6 +199,8 @@ static void con_status(void)
     con_kv("audio_max_us", (int32_t)felucca_dbg.max_us);
     con_kv("audio_late", (int32_t)felucca_dbg.late);
     con_kv("voices_shed", (int32_t)shed_count);
+    con_kv("fx_light", (int32_t)ovl_lite);             /* (0.2.25: the overload guard engaged now, and how often since power-on) */
+    con_kv("fx_light_count", (int32_t)ovl_count);
     con_kv("voices_given_up", (int32_t)voice_kills);
     con_kv("track", (int32_t)song.sel + 1);
     con_kv("batt_raw", song.batt_raw);
@@ -359,6 +361,10 @@ static void con_exec(const char *p)
 #if FELUCCA_FLASH
     else if (con_word(&p, "flr"))
         con_flr(p);
+#endif
+#if DUELL_BENCH
+    else if (con_word(&p, "bench"))
+        bench_con(p);                                  /* (bench builds only: src/bench.c, the bench suite's words) */
 #endif
     else if (con_word(&p, "uboot")) {
         if (con_word(&p, "yes")) {

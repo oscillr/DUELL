@@ -95,6 +95,14 @@ GROUPS = {
 # 0.2.19, all merged (level split, BASS MONO, SHIM PITCH / MOD): 31 functions as before, 12,364 B of 12,512 B (148 B free), elfcheck ok.
 # 0.2.19 with OUTPUT EQ (the low cut and BASS+) removed: master_out and master_out_split lost them; 31 functions, 12,348 B of 12,512 B (164 B free), elfcheck ok.
 # the hot block grew by 60 B to 12,372 B of 12,512 B (140 B free), elfcheck ok. The default SHIM runs the loop of 0.2.18 in RAM, bit for bit.
+# 0.2.21 STEREO CHORUS (fx_bus.c cho_tap: a second tap in the chorus loops): the set is unchanged (31 functions); dly_mod and fx_buses_mod grew with the second read, the hot block
+# is 12,496 B of 12,512 B (16 B free, was 164), elfcheck ok. fx_buses_m (the plain bus, inlined into fx_buses) and dly_ev are in the flash. Nothing went back to the flash.
+# 0.2.22 DELAY MODES IN DUEL: the event delay is a second copy for bus B (dly_ev_b, fx_buses_ev_b, dlyev_read_b: flash, +2.6 KB, not in the set); the set is unchanged (31 functions), the hot block
+# stays 12,500 B of 12,512 B (12 B free). Bus B's state dlyev_b is in the pool (.data+.bss unchanged: in the .bss it moved addresses and grew duck_run and mod_voice by 12 B), elfcheck ok.
+# 0.2.21 merged (KEY TRK, COMP, GLO round, STEREO CHORUS, chorus skip): the set is unchanged (31 functions); track_render (KEY TRK's multiply) and comp_stage are in the flash (not in the set), as are cho_zrun and the skip
+# (fx_buses_m is inlined into fx_buses, in the flash); the hot block is 12,500 B of 12,512 B (12 B free), elfcheck ok. Nothing went back to the flash.
+# 0.2.25 PART EQ IN 32-BIT MULTIPLIES (fx.c eq_run: 32 x 32 -> 64 multiply-accumulates instead of 64 x 64 products and a 64-bit clamp): the set is unchanged
+# (31 functions); eq_run 388 -> 208 B (its loop 85 -> 32 device instructions a sample a band), the hot block 12,492 -> 12,312 B of 12,512 B (200 B free), elfcheck ok.
 # Bisection builds (2026-10-15, after the unit's R1..R3 bench: BASE 75.0 -> 89.5 with R2's functions in RAM, 88.7 with R3's): levels
 # 4..6 are R3's set (group 1..3) without the functions named here, to find which of R2's functions raise the idle load.
 # The host cannot tell (all of them run every block in the bench scene: eq_run 9 x, ins_swept 2 x, rev_room / rev_shim / dly_mod 1 x a block).

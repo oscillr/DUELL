@@ -1,0 +1,70 @@
+# RECORD-1: the recorder suite for BENCHR1 (release_drafts/BENCH_JOIN1.md). About 12 minutes, four tests, run it with --record (python3 with numpy).
+# STRESS-DEF and M07-DEF are the BENCHT4 defaults (two cores), as in TWOCORE-3, but longer so the recording has a long stretch of sound to look at.
+# STRESS-1CORE and M07-1CORE are the same scenes with core 1 given no jobs: `tune slack 400000` (the largest slack: every block's deadline is already past, so core 0 plays
+# part 2 itself and no job is posted; no pause, no fault, core 1 stays alive and idle; the unit is not power-cycled; `bench reset` between the tests puts the slack back).
+# `onecore-of NAME` marks such a test as the one-core reference of NAME: the runner compares the recorded clicks and gaps; the reference's own are what the scene has anyway, and
+# NAME fails on audio only for those above them. The reference runs FIRST for each scene. Without --record the suite still runs (the counters only; the references then
+# show CPU about the one-core figure, 66.3 % for the heavy scene).
+suite RECORD-1
+
+cycle M07-CYCLE period 20
+at 0.0  chord C3 E3 G3 B3 vel 90
+at 4.0  release
+at 4.0  chord A2 C3 E3 G3 vel 90
+at 8.0  release
+at 8.0  chord F2 A2 C3 E3 vel 90
+at 12.0 release
+at 12.0 chord G2 B2 D3 F3 vel 90
+at 14.0 morph 0 127 over 2
+at 16.0 release
+at 16.0 chord C3 E3 G3 B3 vel 90
+at 16.0 aftertouch 0 127 over 2
+at 18.0 morph 127 0 over 1
+at 19.0 aftertouch 127 0 over 0.9
+at 19.9 release
+end
+
+cycle STRESS-HOLD period 600
+at 0.0  chord C3 E3 G3 B3 D4 F4 A4 C5 vel 64 ch 1
+at 0.0  chord G3 B3 D4 F#4 A4 C5 E5 G5 vel 64 ch 2
+end
+
+# ---- STRESS (the heavy scene: the one that has the very late blocks)
+
+test STRESS-1CORE  heavy 8 + 8 DUEL scene, 140 s; core 1 given no jobs (one-core reference)
+onecore-of STRESS-DEF
+scene "HVY DUEL 8+8"
+tune slack 400000
+soak 140 repeat STRESS-HOLD
+check 30
+tail 3
+expect report
+
+test STRESS-DEF  heavy 8 + 8 DUEL scene, 140 s; the BENCHT4 defaults (two cores)
+scene "HVY DUEL 8+8"
+ref 58.8 78.3
+soak 140 repeat STRESS-HOLD
+check 30
+tail 3
+expect report
+
+# ---- M07
+
+test M07-1CORE  M07 FINAL REEL cycle, 200 s; core 1 given no jobs (one-core reference)
+onecore-of M07-DEF
+load multi 7 "FINAL REEL"
+mode LAYER
+tune slack 400000
+soak 200 repeat M07-CYCLE
+check 60
+tail 3
+expect report
+
+test M07-DEF  M07 FINAL REEL cycle, 200 s; the BENCHT4 defaults (two cores)
+load multi 7 "FINAL REEL"
+mode LAYER
+ref 34.2 55.2
+soak 200 repeat M07-CYCLE
+check 60
+tail 3
+expect report

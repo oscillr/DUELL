@@ -303,7 +303,7 @@ static void job_cpu(const job_t *j)
             click_req = 2;                              /* idle_click: the metronome sounding all the time */
         mix_block(last_out, CTL);
         if (j->e == 0xFE)
-            click_render(last_out, CTL);                /* (audio.c audio_block: after the master) */
+            click_render(last_out, CTL, 0);             /* (audio.c audio_block: after the master; here Q15, no shift) */
     }
     R.ns = (double)(now_ns() - t0) / (nb * CTL);
     R.ipc = i0 ? (double)(instr_now() - i0) / (nb * CTL) : 0;
@@ -1100,7 +1100,25 @@ int main(int argc, char **argv)
             return 2;
         }
         fprintf(f, "# FELUCCA golden renders (tests/regress.c): name, FNV-1a 64 of the output samples.\n"
-                   "# Rewritten by GOLDEN_UPDATE=1 tests/run_tests.sh -- only for an intended change of the sound.\n");
+                   "# Rewritten by GOLDEN_UPDATE=1 tests/run_tests.sh -- only for an intended change of the sound.\n"
+                   "# Job 3 (cloud/partstate2), on purpose, 12 of the 210: each part has its own random generator in the voice stage (voice.c part_rand: part 1 keeps the shared libc.c rng(), part 2 and the\n"
+                   "# hidden parts draw from their own), so a silent part's LFO no longer advances the shared sequence the sounds below draw their note-on seeds / S&H values from:\n"
+                   "# preset/PHYS/02_PLUCK, preset/PHYS/08_HARP, sound/ANALOG/15_GLASS_SHARDS, sound/PHASE/05_CRYSTAL_CAVE, sound/TRIO/05_CIRCUIT_BEND, sound/PHYS/02_GHOST_HARP, 03_NYLON_GUT, 06_RAIN_CHIMES,\n"
+                   "# 10_FAUX_HARPSI, 11_PLUCK_BASS, sound/NOISE/09_MODEM, sound/FM6/07_ALIEN_CHIMES. Every other render is unchanged.\n"
+                   "# hunt1 (release_drafts/CLICK_HUNT1.md), on purpose, 28 of the 210: LFO 1 and LFO 2 for their own depths glide at most MX_SLEW a block\n"
+                   "# (voice.c track_render, mod.c mx_slew): a saw's or a square's edge, an S&H step or a note's restart of the LFO is a glide of 5 to 10 blocks,\n"
+                   "# not a step. The sounds with such an edge on a used depth: sound/ANALOG/05_TORCH_SONG 06_RAZORWIRE 07_FUNFARE 09_SILK_CHORUS 11_VELVET_BOW,\n"
+                   "# sound/LOFI/04_DIVE_BOMB, sound/NOISE/02_SEA_ORGAN 04_MOOR_WIND 08_GEIGER, sound/PHYS/00_PAN_WHISTLE, sound/TRIO/02_CHIP_CHAPEL 05_CIRCUIT_BEND\n"
+                   "# 11_SID_BASS, sound/VOICE/02_VESPERS, sound/WAVE/00_PWM_PAD 01_VOWEL_PAD 03_EVOLVING_PAD 07_SYNC_LEAD 10_RESO_SWEEP 11_GROWL_BASS\n"
+                   "# 12_REESE_BASS 13_HOOVER 14_DIGITAL_PAD 15_BREATH_PAD 17_FROZEN_AIR 18_PURPLE_FLUTE, sound/WHEEL/02_CHOIR_LOFT 05_LESLIE_STORM (counted with a\n"
+                   "# probe: the slew clamps a used LFO value in each; the other 182 never do, or the clamp does not reach the output: sound/WHEEL/01_SMOKE_RING\n"
+                   "# clamps for one block and is bit for bit as before).\n"
+                   "# pedal hunt (release_drafts/PEDAL_BASS_HUNT.md), on purpose: (1) the ducker keeps 2 more bits of every ducked sample (fx.c duck_run: >> 2, not >> 4): the sounds with a PUMP ducker;\n"
+                   "# (2) PHASE: a stored DCW / ENV / SUB that jumps moves at most 1 unit a block (eng_phase.c pd_sl), and the shape routes add to DCW before that slew: a sound whose DCW moves faster\n"
+                   "# than that (a shape route) changes. Both are glitch removals (a hiss that pulsed with each duck, a step of the bent wave).\n"
+                   "# hunt4 (release_drafts/HUNT4.md), on purpose, 17 of the 210 (every PHASE preset and sound): PHASE's bend is built once a block, so a moving DCW (the envelope's sweep) stepped at the\n"
+                   "# block seams; eng_phase.c phase_render_0 carries the step as an offset that dies away in 8 samples (a buzz at 1,378 Hz and its harmonics, -62 .. -77 dBFS above 3 kHz, #31 BRAZEN's\n"
+                   "# whistle). A glitch removal: the peak of every one of the 17 moves by at most 0.1 dB.\n");
         for (i = g0; i < g1; i++)
             fprintf(f, "%s %016llx\n", J[i].name, (unsigned long long)J[i].r.hash);
         fclose(f);

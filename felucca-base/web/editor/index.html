@@ -1,6 +1,6 @@
 <!doctype html>
 <!-- SPDX-License-Identifier: GPL-3.0-only
-     DUELL editor (beta): the sound editor. Copyright (C) 2026 OSCILL/R (DUELL). Part of DUELL, a modified version of Felucca by Leo Kuroshita, Hügelton Instruments.
+     DUELL editor: the sound editor. Copyright (C) 2026 OSCILL/R (DUELL). Part of DUELL, a modified version of Felucca by Leo Kuroshita, Hügelton Instruments.
      Serve the folder felucca-base/web/ with any static web server and open /editor/ (the pages import ../fm1backup.js). layout.json is written by tests/editordump.c.
      /editor/?mock=1 runs a simulated unit (?mock=old: firmware 0.2.13, ?mock=playing: a unit that is playing). Chrome or Edge only (WebMIDI with SysEx). -->
 <html lang="en">
@@ -12,32 +12,20 @@
 </head>
 <body>
 <header id="top">
-  <div class="brand">
-    <!-- The owner's header image (white on transparent, wordmark + "by OSCILL/R" + "MultiMorphing Bitimbral Synthesizer"): img/editor-header.png (also .svg). On light palettes it is inverted by CSS. -->
-    <img id="logoslot" class="hdr" src="./img/editor-header.png" alt="DUELL, MultiMorphing Bitimbral Synthesizer, by OSCILL/R" width="960" height="180">
-  </div>
-  <div class="right-side">
-    <div id="mockbar" class="mockbar" hidden><b>SIMULATED UNIT</b> (nothing touches a real FM-1)
-      <button id="mockturn" class="ghost small" title="The unit's panel changes PART 1's CUT; the page follows (WATCH)">turn a knob on the unit</button>
-      <button id="mockselect" class="ghost small" title="ALGORITHM on the unit: the other part is selected">press ALGORITHM on the unit</button>
-      <button id="mockcolor" class="ghost small" title="MENU > COLOR on the unit: the next palette; the page follows">change COLOR on the unit</button></div>
-    <div class="conn">
-      <span id="palname" class="small"></span><span id="unit" class="unit" role="status"></span>
-      <button id="connect">Connect the FM-1</button><button id="disconnect" class="ghost" hidden>Disconnect</button>
-    </div>
-    <div class="tools">
-      <label class="linkbox" title="LINK: a tab choice and an edit on one part is applied to both (the same tab; a change moves the other part by the same step)"><input type="checkbox" id="link"> LINK parts 1+2</label>
-      <span class="viewsw" id="viewsw" role="group" aria-label="View"><button id="vparts" class="ghost small" type="button">PARTS</button><button id="vglobal" class="ghost small" type="button">GLOBAL</button></span>
-      <button id="placeglobal" class="ghost small" type="button" title="Where the GLOBAL column sits (remembered in this browser)">GLOBAL: right</button>
-      <button id="notyet" class="ghost small">What is not editable yet</button>
-      <a id="backuplink" class="btnlink" href="./backup.html">Backup and restore</a>
-    </div>
-  </div>
+  <!-- The owner's header image (white on transparent, wordmark + "by OSCILL/R" + "MultiMorphing Bitimbral Synthesizer"): img/editor-header.png (also .svg). On light palettes it is inverted by CSS. -->
+  <img id="logoslot" class="hdr" src="./img/editor-header.png" alt="DUELL, MultiMorphing Bitimbral Synthesizer, by OSCILL/R" width="960" height="180">
+  <span class="grow"></span>
+  <span class="viewsw" id="viewsw" role="group" aria-label="View"><button id="vparts" class="ghost small" type="button">PARTS</button><button id="vglobal" class="ghost small" type="button">GLOBAL</button></span>
+  <span id="unit" class="unit" role="status"></span>
+  <button id="connect" class="small">Connect the FM-1</button><button id="disconnect" class="ghost small" hidden>Disconnect</button>
+  <a id="backuplink" class="btnlink" href="./backup.html">Backup and restore</a>
 </header>
-<p id="betawarn" class="betawarn"><b>Saves may change before the alpha.</b> Until the alpha release the way things are saved may change. Saves may stop loading between versions, and a backup may not restore in the next. Do not rely on them yet.</p>
 <main id="main"></main>
-<footer id="foot"><span id="msg" class="msg" role="status" aria-live="polite"></span><span id="linknote" class="small"></span>
-  <span class="small right">Beta. Chrome or Edge. Live edits are not stored on the unit until you save a patch or a multi there. Untested on hardware.</span></footer>
+<footer id="foot"><span id="msg" class="msg" role="status" aria-live="polite"></span>
+  <span id="mockbar" class="mockbar" hidden><b>SIMULATED UNIT</b>
+    <button id="mockturn" class="small" title="The unit's panel changes PART 1's CUT; the page follows (WATCH)">knob</button>
+    <button id="mockselect" class="small" title="ALGORITHM on the unit: the other part is selected">ALGORITHM</button>
+    <button id="mockcolor" class="small" title="MENU > COLOR on the unit: the next palette; the page follows">COLOR</button></span></footer>
 <script type="module" src="./app.js"></script>
 </body>
 </html>

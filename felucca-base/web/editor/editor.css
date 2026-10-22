@@ -1,156 +1,184 @@
-/* SPDX-License-Identifier: GPL-3.0-only. DUELL editor: a fixed full-window layout of three columns (PART 1, GLOBAL, PART 2), tuned for 1920 x 1080, no page scrolling at 1280 x 720 and up;
-   below 1500 px the GLOBAL column is a view of its own, below 1000 px the columns stack and the page scrolls. The colours are the defaults; a connected unit's COLOR setting overrides them (theme.js). */
+/* SPDX-License-Identifier: GPL-3.0-only. DUELL editor: a fixed full-window layout of three columns (PART 1, PART 2, GLOBAL on the right). T0229 (owner): the page never scrolls,
+   sideways or down: it fits 1920 x 1080, 1440 x 900 and 1280 x 720 (the room inside the browser: about 1920 x 940, 1440 x 780, 1280 x 600); below 1260 x 600 app.js fitPage
+   draws the whole page smaller. One font size smaller than before, more space between texts (4 px at least, a label never touches its control), titles as tinted tabs.
+   Below 1500 px the GLOBAL column is a view of its own (the PARTS / GLOBAL switch). The colours are the defaults; a connected unit's COLOR setting overrides them (theme.js). */
 :root { --bg: #fff; --fg: #000; --dim: #666; --line: #ccc; --warn: #b00020; --ok: #0a6b2d; --panel: #f4f4f4; --acc: #000; --accfg: #fff; }
 @media (prefers-color-scheme: dark) { :root { --bg: #000; --fg: #fff; --dim: #999; --line: #444; --warn: #ff6b81; --ok: #62d98a; --panel: #141414; --acc: #fff; --accfg: #000; } }
+/* the sizes (the list's table 1.6): 1080 (room 880 px high and more), 900 (700 .. 879), 720 (below 700) */
+:root { --fs: 13px; --tabfs: 12px; --ttlfs: 11px; --labfs: 11px; --valfs: 13px; --unitfs: 9px; --ctlfs: 11px; --namefs: 12px;
+  --sl: 20px; --ch: 24px; --rg: 12px; --cg: 20px; --lv: 8px; --cpx: 10px; --cpb: 10px; --cgap: 12px; --ttlh: 18px; --top: 40px; --cols: 4; }
+@media (max-height: 879px) { :root { --sl: 18px; --ch: 22px; --rg: 10px; --cg: 18px; --lv: 7px; --cpx: 8px; --cpb: 8px; --cgap: 9px; } }
+@media (max-height: 699px) { :root { --tabfs: 11px; --ttlfs: 10px; --labfs: 10px; --valfs: 12px; --ctlfs: 10px; --namefs: 11px;
+  --sl: 16px; --ch: 20px; --rg: 6px; --cg: 14px; --lv: 4px; --cpx: 8px; --cpb: 5px; --cgap: 7px; --ttlh: 16px; --top: 30px; --foot: 20px; } }
+@media (max-width: 1499px) { :root { --cols: 5; } }
 * { box-sizing: border-box; }
-html, body { margin: 0; height: 100%; }
-body { background: var(--bg); color: var(--fg); font: 14px/1.35 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif; display: flex; flex-direction: column; min-height: 100%; }
+html, body { margin: 0; height: 100%; overflow: hidden; }
+body { background: var(--bg); color: var(--fg); font: var(--fs)/1.3 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif; display: flex; flex-direction: column; }
 button, select, input { font: inherit; color: inherit; }
-button { background: var(--acc); color: var(--accfg); border: 1px solid var(--acc); padding: 5px 14px; cursor: pointer; border-radius: 2px; }
+button { background: var(--acc); color: var(--accfg); border: 1px solid var(--acc); padding: 3px 12px; cursor: pointer; border-radius: 2px; }
 button.ghost { background: transparent; color: var(--fg); border-color: var(--line); }
 button.ghost:hover:not(:disabled) { border-color: var(--fg); }
 button.danger { background: var(--warn); border-color: var(--warn); color: #fff; }
 button.ghost.danger { background: transparent; color: var(--warn); border-color: var(--warn); }
-button.small { padding: 2px 8px; font-size: 12px; }
+button.small { padding: 1px 8px; font-size: var(--ctlfs); }
 button:disabled { opacity: .35; cursor: default; }
 :focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
-select, input[type=text], input[type=number], input[type=search] { background: var(--bg); border: 1px solid var(--line); padding: 3px 6px; border-radius: 2px; min-width: 0; }
+select, input[type=text], input[type=number], input[type=search] { background: var(--bg); border: 1px solid var(--line); padding: 2px 6px; border-radius: 2px; min-width: 0; font-size: var(--ctlfs); }
 a { color: inherit; }
-.small { font-size: 12px; color: var(--dim); }
+.small { font-size: var(--ctlfs); color: var(--dim); }
 .warn { color: var(--warn); } .good { color: var(--ok); }
-.note { color: var(--dim); font-size: 12px; margin: 6px 2px; }
-.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 6px 0; } .row.end { justify-content: flex-end; }
-.mockbar { background: #ffb347; color: #000; font-weight: 600; padding: 3px 10px; font-size: 12px; border-radius: 3px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; } .mockbar button { background: #fff; color: #000; border-color: #000; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 4px 0; } .row.end { justify-content: flex-end; }
+.grow { flex: 1; }
+[hidden] { display: none !important; }
 
-
-#top { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 14px 28px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
-.brand { display: flex; align-items: center; gap: 22px; }
-.brand .dev { width: 64px; height: 64px; border-radius: 6px; display: block; image-rendering: auto; }
-.title { display: flex; flex-direction: column; gap: 8px; }
-.title h1 { margin: 0; line-height: 0; }
-.title h1 img { height: 24px; width: auto; display: block; }
-.title p { margin: 0; font-size: 12px; line-height: 1.3; color: var(--dim); letter-spacing: .02em; }
-.title h1 img.wm-w { display: none; }
-html[data-scheme=dark] .title h1 img.wm-b { display: none; } html[data-scheme=dark] .title h1 img.wm-w { display: block; }
-.mockbar[hidden] { display: none; }
-.right-side { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; min-width: 0; }
-.conn { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: flex-end; }
-.unit { font-size: 13px; font-weight: 600; } .unit.good { color: var(--ok); } .unit.warn { color: var(--warn); }
-.tools { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
-.linkbox { display: flex; gap: 6px; align-items: center; cursor: pointer; user-select: none; }
-.btnlink { border: 1px solid var(--line); padding: 2px 8px; font-size: 12px; text-decoration: none; border-radius: 2px; }
-.viewsw { display: none; } .viewsw button[aria-pressed=true] { background: var(--acc); color: var(--accfg); border-color: var(--acc); }
-
-/* tab strip of one column */
-.tabs { display: flex; gap: 2px; padding: 4px 8px 0; border-bottom: 1px solid var(--line); overflow-x: auto; flex: none; }
-.tab { background: transparent; color: var(--fg); border: 1px solid transparent; border-bottom: 0; padding: 4px 10px; font-size: 12px; font-weight: 700; letter-spacing: .05em; white-space: nowrap; border-radius: 3px 3px 0 0; }
-.tab[aria-selected=true] { background: var(--acc); color: var(--accfg); }
-.tab:hover:not([aria-selected=true]) { border-color: var(--line); }
+/* the top bar: one row (40 px; 32 at 720) */
+#top { display: flex; align-items: center; gap: 12px; min-height: var(--top); padding: 0 16px; border-bottom: 1px solid var(--line); flex: none; white-space: nowrap; }
+#top .hdr { height: var(--logo, 84px); width: auto; display: block; margin: -6px 0 -6px -18px; }
+/* the logo: 84 px on a Full HD window, smaller on smaller windows, never below 56 px on the screen (app.js fitPage sets --logo) */
+html:not([data-scheme=dark]) #top .hdr { filter: invert(1); }
+.unit { font-size: var(--ctlfs); font-weight: 600; overflow: hidden; text-overflow: ellipsis; min-width: 0; } .unit.good { color: var(--ok); } .unit.warn { color: var(--warn); white-space: normal; line-height: 1.15; max-height: calc(var(--top) - 4px); }
+.btnlink { border: 1px solid var(--line); padding: 1px 8px; font-size: var(--ctlfs); text-decoration: none; border-radius: 2px; }
+.viewsw { display: none; gap: 0; } .viewsw button[aria-pressed=true] { background: var(--acc); color: var(--accfg); border-color: var(--acc); }
+#foot { display: flex; align-items: center; gap: 16px; padding: 0 16px; border-top: 1px solid var(--line); height: var(--foot, 22px); flex: none; overflow: hidden; white-space: nowrap; }
+.msg { font-weight: 600; font-size: var(--ctlfs); overflow: hidden; text-overflow: ellipsis; } .msg.warn { color: var(--warn); } .msg.good { color: var(--ok); } .right { margin-left: auto; }
+.mockbar { margin-left: auto; background: #ffb347; color: #000; font-weight: 600; padding: 0 6px; font-size: 10px; border-radius: 3px; display: flex; gap: 4px; align-items: center; } .mockbar button { background: #fff; color: #000; border-color: #000; padding: 0 5px; font-size: 10px; }
 
 /* the three columns */
-#main { flex: 1; min-height: 0; padding: 10px 16px; display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr) minmax(0, .9fr) minmax(0, 1fr); align-content: stretch; background: var(--page, var(--bg)); }
-#main[data-place=right] { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, .9fr); }
+#main { flex: 1; min-height: 0; padding: 6px 12px; display: grid; gap: 10px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, .9fr); background: var(--page, var(--bg)); overflow: hidden; }
 #main.empty { display: block; }
-.welcome { padding: 40px 10px; max-width: 560px; font-size: 15px; }
 .col { min-width: 0; min-height: 0; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 3px; background: var(--panel); overflow: hidden; }
-.colhead { padding: 6px 8px 4px; }
-.rowhead { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
-.rowhead b { letter-spacing: .06em; }
-.rowhead .snd { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: var(--dim); }
+.colhead { padding: 3px 8px 0; flex: none; }
+.rowhead { display: flex; align-items: center; gap: 8px; margin-bottom: var(--cgap); }
+.rowhead > .block { flex: 1; min-width: 0; margin: 0; }
+.rowhead b { letter-spacing: .06em; font-size: var(--namefs); }
 .seldot { width: 9px; height: 9px; border-radius: 50%; border: 1px solid var(--fg); } .seldot.on { background: var(--fg); }
-.colbody { flex: 1; min-height: 0; overflow: auto; padding: 8px; }
-.tabbody { display: flex; flex-direction: column; gap: 8px; }
-.card { margin: 0; border: 1px solid var(--line); background: var(--bg); padding: 4px 8px 6px; border-radius: 2px; }
-.card h3 { margin: 0 0 2px; font-size: 11px; letter-spacing: .08em; font-weight: 700; } .card h3 small { font-weight: 400; letter-spacing: 0; color: var(--dim); }
-.grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px 12px; }
-.grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-.grid4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
-.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr)); gap: 8px; }
-.grid2 .card { min-width: 0; } .grid2 input[type=file] { max-width: 100%; }
-.mixrow { display: grid; grid-template-columns: 56px repeat(3, minmax(0, 1fr)); gap: 12px; align-items: center; margin: 2px 0; }
-.mixrow > b { font-size: 11px; letter-spacing: .06em; }
+.colbody { flex: 1; min-height: 0; overflow: auto; padding: 6px 8px; }
+.gbody { height: 100%; display: flex; flex-direction: column; } .gbody > .patches, .gbody > .multiswrap { flex: 1; min-height: 0; }
 
-.cell { min-width: 0; padding: 1px 0; }
-.cell .top { display: flex; justify-content: space-between; align-items: baseline; gap: 4px; font-size: 11px; letter-spacing: .05em; color: var(--dim); height: 16px; }
-.cell .right { white-space: nowrap; overflow: hidden; font-variant-numeric: tabular-nums; }
-.cell .val { font-size: 13px; font-weight: 700; color: var(--fg); letter-spacing: 0; }
-.cell .lab { flex: 1; min-width: 0; font-weight: 700; color: var(--fg); cursor: default; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cell .unit { font-size: 10px; font-weight: 400; color: var(--dim); margin-left: 2px; letter-spacing: 0; }
-.cell input[type=range] { width: 100%; margin: 0; height: 16px; accent-color: var(--acc); }
-.cell select { width: 100%; height: 22px; padding: 0 2px; font-size: 12px; }
-.segs { display: flex; height: 22px; } .seg { flex: 1 1 auto; padding: 0 4px; font-size: 11px; background: transparent; color: var(--fg); border-color: var(--line); border-radius: 0; min-width: min-content; white-space: nowrap; }   /* sized by their text: no 'MONC', no 'AUTC' */
+/* the tab strip of one column: one line, never scrolled (the overflow test checks it) */
+.tabs { display: flex; gap: 2px; padding: 3px 6px 0; border-bottom: 1px solid var(--line); flex: none; overflow: hidden; align-items: flex-end; }
+.tab { background: transparent; color: var(--fg); border: 1px solid transparent; border-bottom: 0; padding: 3px 9px; font-size: var(--tabfs); font-weight: 700; letter-spacing: .04em; white-space: nowrap; border-radius: 3px 3px 0 0; flex: none; }
+.tab[aria-selected=true] { background: var(--acc); color: var(--accfg); }
+.tab:hover:not([aria-selected=true]) { border-color: var(--line); }
+.tabs .byp { margin-bottom: 2px; flex: none; }
+
+/* the cards of a tab: in a column, one under the other, every card the full width (owner, 2026-10-21); a card with few controls has the same control width as everyone's and its row ends early */
+.tabbody { display: grid; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); gap: var(--cgap); align-content: start; }
+.tabbody > * { grid-column: 1 / -1; min-width: 0; }
+.card { margin: 0; border: 1px solid var(--line); background: var(--bg); padding: 0 var(--cpx) var(--cpb); border-radius: 2px; }
+/* a section title (owner, R3; the list's option C): a small tab tinted in the part's colour, as wide as its word, on the card's top border; the tools at the right of that line */
+.card > h3, .block > h3 { margin: -1px 0 var(--lv) -1px; height: var(--ttlh); display: flex; align-items: stretch; gap: 6px; font-size: var(--ttlfs); font-weight: 700; letter-spacing: .08em; min-width: 0; }
+.ttl { display: inline-flex; align-items: center; padding: 0 8px; background: color-mix(in srgb, var(--acc) 16%, var(--bg)); color: var(--fg); border: 1px solid var(--line); border-top-left-radius: 2px; border-bottom-right-radius: 3px; white-space: nowrap; flex: none; cursor: default; }
+.cardtools { margin-left: auto; display: inline-flex; gap: 6px; align-items: center; flex: none; padding-top: 2px; }
+.cardtools button.small, .tabs .byp { font-size: 10px; padding: 0 7px; height: calc(var(--ttlh) - 3px); line-height: 1; font-weight: 600; letter-spacing: .04em; }
+.byp.on { background: var(--warn); border-color: var(--warn); color: #fff; }
+.grid { display: grid; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); gap: var(--rg) var(--cg); }
+.card.five .grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }   /* CYCLE ENV: five controls in one row (cloud job F) */
+.card .flow { margin-top: var(--cpb); font-size: var(--ctlfs); color: var(--dim); letter-spacing: .04em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }   /* TWIN CHAIN's flow line (plain text) */
+.col.glob { --cols: 4; }
+
+/* one control: its label (regular) and value (bold) on the first line, the control under it; a long label breaks at a space into two lines, the value stays on the first */
+.cell { min-width: 0; position: relative; display: flex; flex-direction: column; }
+.cell .top { display: flex; flex-wrap: nowrap; justify-content: space-between; align-items: flex-start; gap: 0 6px; font-size: var(--labfs); letter-spacing: .03em; color: var(--fg); min-height: 13px; margin-bottom: 4px; flex: 1 0 auto; }
+.cell .right { flex: none; white-space: nowrap; overflow: hidden; font-variant-numeric: tabular-nums; margin-left: auto; }
+.cell .val { font-size: var(--valfs); font-weight: 700; color: var(--fg); letter-spacing: 0; line-height: 1.1; }
+.cell .lab { flex: 1 1 auto; min-width: 0; font-weight: 400; color: var(--fg); cursor: default; white-space: normal; overflow-wrap: normal; word-break: normal; hyphens: none; line-height: 1.2; }
+.cell .unit { font-size: var(--unitfs); font-weight: 400; color: var(--dim); margin-left: 2px; letter-spacing: 0; }
+.cell input[type=range] { width: 100%; margin: 0; accent-color: var(--acc); }
+.cell .slider { position: relative; height: var(--sl); }
+.cell .slider .track { position: absolute; left: 6px; right: 6px; top: 50%; height: 4px; margin-top: -2px; border-radius: 2px; background: var(--line); }
+.cell .slider .fill { position: absolute; top: 0; bottom: 0; border-radius: 2px; background: var(--acc); }
+.cell .slider.bipolar .track::after { content: ""; position: absolute; left: 50%; top: -3px; width: 1px; height: 10px; background: var(--dim); }
+.cell .slider input[type=range] { position: absolute; left: 0; top: 0; width: 100%; height: 100%; margin: 0; -webkit-appearance: none; appearance: none; background: transparent; }
+.cell .slider input[type=range]::-webkit-slider-runnable-track { background: transparent; height: var(--sl); }
+.cell .slider input[type=range]::-moz-range-track { background: transparent; height: var(--sl); }
+.cell .slider input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 12px; height: 12px; margin-top: calc((var(--sl) - 12px) / 2); border-radius: 50%; background: var(--acc); border: 2px solid var(--bg); }
+.cell .slider input[type=range]::-moz-range-thumb { width: 12px; height: 12px; border-radius: 50%; background: var(--acc); border: 2px solid var(--bg); }
+.cell select { width: 100%; height: var(--ch); padding: 0 2px; font-size: var(--ctlfs); }
+.segs { display: flex; height: var(--ch); min-width: 0; } .seg { flex: 1 1 0; padding: 0 4px; font-size: var(--ctlfs); background: transparent; color: var(--fg); border-color: var(--line); border-radius: 0; min-width: 0; white-space: nowrap; overflow: hidden; }
 .seg.on { background: var(--acc); color: var(--accfg); border-color: var(--acc); }
-.cell.gone { visibility: hidden; }   /* a control that does not apply: not shown, its place stays empty (the unit leaves the card's column empty) */
+.cell.gone { display: none; }   /* (T0229, owner: a control that does not apply is not drawn and takes no room; its reason is in its card title's tooltip) */
 .readonly .cell { opacity: .5; pointer-events: none; }
 
-.mrow { display: grid; grid-template-columns: 18px 1fr 1.6fr 1.3fr; gap: 10px; align-items: center; margin: 1px 0; }
-.mrow .mn { font-weight: 700; color: var(--dim); font-size: 12px; }
+/* the MATRIX tab: one list of the eight slots, a head line, rows without labels */
+.card.matrix { padding-top: 4px; }
+.mrow { display: grid; grid-template-columns: 18px minmax(0, 1fr) minmax(0, 1.5fr) minmax(0, 1.2fr); gap: var(--cg); align-items: center; margin: 0 0 var(--rg); }
+.mrow:last-child { margin-bottom: 0; }
+.mrow .mn { font-weight: 700; color: var(--dim); font-size: var(--labfs); }
+.mrow.mhead { margin-bottom: 4px; font-size: var(--ttlfs); font-weight: 700; letter-spacing: .08em; color: var(--dim); }
+.cell.bare { flex-direction: row-reverse; align-items: center; gap: 8px; }
+.cell.bare .top { flex: 0 0 auto; min-height: 0; margin: 0; min-width: 48px; justify-content: flex-end; }
+.cell.bare .top:has(.val:empty) { display: none; }
+.cell.bare > select, .cell.bare > .slider { flex: 1 1 auto; min-width: 0; }
 
-.patches { display: grid; grid-template-rows: minmax(0, 1.2fr) auto; gap: 8px; min-height: 0; height: 100%; }
-.pleft { display: flex; flex-direction: column; min-height: 0; } .pright { overflow: auto; }
-.pleft .row input[type=search] { flex: 1; }
-.plist { list-style: none; margin: 4px 0 0; padding: 0; overflow: auto; flex: 1; min-height: 120px; border: 1px solid var(--line); background: var(--bg); }
-.plist li { display: grid; grid-template-columns: 16px 40px minmax(0, 1fr) 58px 48px; gap: 6px; align-items: center; padding: 3px 8px; cursor: pointer; border-bottom: 1px solid var(--line); font-size: 13px; }
-.plist li .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .plist li input[type=checkbox] { margin: 0; }
-.plist li.saved .n { font-weight: 700; } .plist li:not(.saved) .n { font-weight: 400; opacity: .85; }
-.plist li.sel { background: var(--acc); color: var(--accfg); } .plist li .k, .plist li .e, .plist li .c { font-size: 11px; opacity: .7; }
-.pdetail h3 { margin: 8px 0 4px; font-size: 13px; }
-.pdetail input[type=text] { flex: 1; }
-.multis { display: grid; gap: 2px; }
-.mrow2 { display: grid; grid-template-columns: 44px 1fr 120px auto auto auto; gap: 8px; align-items: center; padding: 2px 6px; border-bottom: 1px solid var(--line); }
-.menu { display: grid; grid-template-columns: 1fr; gap: 6px; align-items: start; }
-.menu .card:nth-child(n) .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.learn .lrow { display: grid; grid-template-columns: 70px 70px 1fr auto; gap: 8px; padding: 2px 0; align-items: center; }
+/* the column head blocks (MIXER, PATCH): the same title tab as a card, one row of controls */
+.block { margin: 0 0 var(--cgap); border: 1px solid var(--line); background: var(--bg); padding: 0 var(--cpx) var(--cpb); border-radius: 2px; }
+.block > h3 .sep { color: var(--dim); align-self: center; font-weight: 400; }
+.block .pname { align-self: center; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--namefs); font-weight: 400; letter-spacing: .03em; color: var(--fg); }
+.block .pcat { align-self: center; flex: none; font-size: var(--labfs); font-weight: 400; letter-spacing: .04em; color: var(--dim); padding-top: 2px; }
+.hgrid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: var(--rg) var(--cg); align-items: end; }
+.cell.btncell, .cell.engcell { justify-content: flex-end; }
+.btncell .prow { display: flex; gap: 6px; align-items: center; height: var(--ch); }
+.btncell .prow button { flex: none; white-space: nowrap; height: var(--ch); }
+.engcell select { width: 100%; height: var(--ch); padding: 0 2px; font-size: var(--ctlfs); }
+button.mute { height: var(--ch); padding: 0 10px; font-size: var(--ctlfs); font-weight: 700; letter-spacing: .06em; background: transparent; color: var(--fg); border: 1px solid var(--line); border-radius: 2px; }
+button.mute.on { background: var(--acc); color: var(--accfg); border-color: var(--acc); }   /* lit in the part's colour: muted / soloed */
 
-.sgrid { display: grid; grid-template-columns: repeat(16, minmax(0, 1fr)); gap: 2px; margin: 4px 0; }
-.st { padding: 3px 0; font-size: 11px; background: transparent; color: var(--fg); border-color: var(--line); min-width: 0; }
-.st.on { background: var(--panel); font-weight: 700; } .st.sel { outline: 2px solid var(--fg); }
-.sedit { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; font-size: 12px; }
-.sedit label { display: flex; gap: 4px; align-items: center; } .sedit input[type=range] { width: 90px; } .sedit input[type=number] { width: 56px; }
-
-.betawarn { margin: 0; padding: 2px 16px; font-size: 12px; color: var(--warn); border-bottom: 1px solid var(--line); }
-#foot { display: flex; align-items: center; gap: 16px; padding: 4px 16px; border-top: 1px solid var(--line); min-height: 28px; flex-wrap: wrap; }
-.msg { font-weight: 600; font-size: 13px; } .msg.warn { color: var(--warn); } .msg.good { color: var(--ok); } .right { margin-left: auto; }
-dialog.ask { background: var(--bg); color: var(--fg); border: 1px solid var(--fg); max-width: 520px; padding: 16px 20px; } dialog.ask.wide { max-width: 760px; max-height: 80vh; overflow: auto; }
-dialog.ask::backdrop { background: rgba(0, 0, 0, .5); } dialog.ask h2 { margin: 0 0 8px; font-size: 17px; } dialog.ask input { width: 100%; margin: 6px 0; }
-
-
-.gbody { height: 100%; display: flex; flex-direction: column; } .gbody > .patches, .gbody > .multis { flex: 1; min-height: 0; }
-.mrow { grid-template-columns: 18px minmax(0, 1fr) minmax(0, 1.5fr) minmax(0, 1.2fr); gap: 8px; margin: 3px 0; }
-.tabbody.matrix .mrow { margin: 6px 0; }
-.sedit input[type=range] { width: 70px; } input[type=range], input[type=checkbox] { accent-color: var(--acc); }
-
-/* no page scroll from 1000 x 600 up */
-@media (min-width: 1000px) and (min-height: 600px) { html, body { height: 100%; overflow: hidden; } #main { overflow: hidden; } }
-/* tall screens (1080 and up): roomier controls so the tabs fill the height */
-@media (min-height: 900px) {
-  .colbody { padding: 10px; } .tabbody { gap: 10px; } .card { padding: 6px 10px 10px; } .card h3 { font-size: 12px; margin-bottom: 4px; }
-    .grid { gap: 8px 14px; } .cell .top { height: 20px; font-size: 12px; } .cell .val { font-size: 14px; } .cell input[type=range] { height: 22px; } .cell select, .segs { height: 28px; }
-  .tab { padding: 6px 14px; font-size: 13px; } .colhead { padding: 10px 10px 6px; } .mrow { margin: 8px 0; } .sgrid { gap: 4px; } .st { padding: 6px 0; }
-}
-/* browser windows under 1000 px high (1080 screens with the browser's own bars): tighter panels so the MOD tab still fits */
-@media (min-height: 900px) and (max-height: 999px) { .grid { gap: 4px 14px; } .card { padding: 4px 10px 6px; } .tabbody { gap: 6px; } .cell .top { height: 16px; } .cell input[type=range] { height: 18px; } .cell select, .segs { height: 24px; } .card h3 { margin-bottom: 1px; } }
-/* low screens (720): compact */
-@media (max-height: 800px) { #top { padding: 6px 16px; gap: 12px; } .brand .dev { width: 44px; height: 44px; } .brand { gap: 14px; } .title { gap: 4px; } .title h1 img { height: 18px; } .title p { font-size: 11px; }
-  .right-side { gap: 3px; } #foot { padding: 2px 16px; min-height: 22px; } .colhead .grid3, .colhead .grid4 { gap: 8px; } }
-/* below 1500: PART 1 | PART 2, the GLOBAL column is a view of its own (the PARTS / GLOBAL switch) */
+/* the GLOBAL view (below 1500 px: the whole width): the cards two to a line */
 @media (max-width: 1499px) {
-  .viewsw { display: inline-flex; } #placeglobal { display: none; }
-  #main, #main[data-place=right] { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .viewsw { display: inline-flex; }
+  #main { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   #main[data-view=parts] .col.glob { display: none; }
   #main[data-view=global] .col.part { display: none; }
   #main[data-view=global] { grid-template-columns: minmax(0, 1fr); }
   #main[data-view=global] .col.glob { display: flex; }
-  #main[data-view=global] .tabbody { display: grid; grid-template-columns: 1fr 1fr; align-content: start; }
+  #main[data-view=global] .tabbody { grid-template-columns: repeat(8, minmax(0, 1fr)); }
+  #main[data-view=global] .tabbody > * { grid-column: span 4; }
+  #main[data-view=global] .card .grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  #main[data-view=global] .multis { grid-template-columns: 1fr 1fr; grid-auto-flow: column; grid-template-rows: repeat(8, auto); }
+  #main[data-view=global] .multis.pats { grid-template-rows: repeat(16, auto); }
 }
-@media (min-width: 1500px) { .viewsw { display: none; } }
-@media (max-width: 999px) { #main, #main[data-place=right], #main[data-view=global] { grid-template-columns: 1fr; } .colbody { overflow: visible; } .menu { grid-template-columns: 1fr; } }
-@media (max-height: 599px) { .colbody { overflow: visible; } }
 
-/* the owner's header image: white artwork, 50 px of breathing space built into the file; inverted on light palettes */
-.brand .hdr { height: 84px; width: auto; display: block; margin: -6px 0 -6px -18px; }
-html:not([data-scheme=dark]) .brand .hdr { filter: invert(1); }
-@media (max-height: 800px) { .brand .hdr { height: 64px; } }
+/* the GLOBAL column's other tabs */
+.patches { display: grid; grid-template-rows: minmax(0, 1fr) auto; gap: 6px; min-height: 0; height: 100%; }
+.pleft { display: flex; flex-direction: column; min-height: 0; } .pright { overflow: hidden; }
+.pleft .row input[type=search] { flex: 1; }
+.plist { list-style: none; margin: 4px 0 0; padding: 0; overflow: auto; flex: 1; min-height: 80px; border: 1px solid var(--line); background: var(--bg); }   /* (the 128 slots: the one list with its own scroll, the list's (?) 4.11-1 A) */
+.plist li { display: grid; grid-template-columns: 16px 40px minmax(0, 1fr) 56px 74px; gap: 6px; align-items: center; padding: 2px 8px; cursor: pointer; border-bottom: 1px solid var(--line); font-size: var(--ctlfs); }
+.plist li .n, .plist li .e, .plist li .c { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .plist li input[type=checkbox] { margin: 0; }
+.plist li.sel { background: var(--acc); color: var(--accfg); } .plist li .k, .plist li .e, .plist li .c { font-size: 10px; opacity: .7; }
+.pdetail h3 { margin: 4px 0 2px; font-size: var(--namefs); }
+.pdetail .row { margin: 3px 0; }
+.pdetail input[type=text] { flex: 1; }
+.multiswrap { display: flex; flex-direction: column; gap: 4px; } .multiswrap > .multis { flex: 1; min-height: 0; overflow: hidden; border: 1px solid var(--line); background: var(--bg); align-content: start; }
+.multis { display: grid; gap: 0 12px; }
+.multiswrap > .multis.pats { overflow: auto; }   /* (32 rows: the list scrolls inside, like the PATCHES list) */
+.mrow2 { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 1px 6px; border-bottom: 1px solid var(--line); min-height: 24px; font-size: var(--ctlfs); }
+.mrow2 .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 400; }
+.mrow2 .acts { display: flex; gap: 4px; flex-wrap: nowrap; } .mrow2 .acts button { padding: 0 6px; }
+.menu .card .grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.lrows .lrow { display: grid; grid-template-columns: 60px 60px 1fr auto; gap: 8px; padding: 1px 0; align-items: center; font-size: var(--ctlfs); }
+.learn .row select { max-width: 200px; } .learn .row input[type=number] { width: 60px; }
+.scgrid { display: grid; grid-template-columns: 56px minmax(0, 1fr) minmax(0, 1fr); gap: var(--rg) var(--cg); align-items: end; }
+.scgrid > b { font-size: var(--labfs); letter-spacing: .06em; align-self: center; }
+.grid2 { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--cgap); }
+.grid2 .card { min-width: 0; } .grid2 input[type=file] { max-width: 100%; font-size: var(--ctlfs); }
+.grid2 .card > h3 .small { align-self: center; }
+
+dialog.ask { background: var(--bg); color: var(--fg); border: 1px solid var(--fg); max-width: 520px; padding: 16px 20px; } dialog.ask.wide { max-width: 760px; max-height: 80vh; overflow: auto; }
+dialog.ask::backdrop { background: rgba(0, 0, 0, .5); } dialog.ask h2 { margin: 0 0 8px; font-size: 16px; } dialog.ask input { width: 100%; margin: 6px 0; }
+
+/* the FM6 voice editor (the OPERATORS button of the ENGINE tab opens it below the cards; the tab scrolls while it is open, the one exception) */
+.fm6ed { display: flex; flex-direction: column; gap: var(--cgap); width: 100%; }
+.opgrid { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--cgap); }   /* (owner A7: one operator per line) */
+.opsbar { grid-column: 1 / -1; }
+.opsbtn.on { background: var(--acc); color: var(--accfg); border-color: var(--acc); }
+.fm6ed .cell .top { flex-wrap: wrap; } .fm6ed .cell .lab { white-space: normal; overflow-wrap: anywhere; min-width: 0; }
+.card.carrier { border-color: var(--acc); }
+.card h4.sub { margin: 8px 0 4px; font-size: var(--ttlfs); letter-spacing: .08em; color: var(--dim); }
+.card > h3 .state, .card > h3 .opfreq { align-self: center; }
+.state { font-size: 10px; font-weight: 700; padding: 0 5px; border: 1px solid var(--line); border-radius: 2px; letter-spacing: .05em; } .state:empty { display: none; }
+.algrow { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; margin-bottom: 6px; } .algrow select { height: var(--ch); margin-top: 4px; } .algrow .lab { display: block; font-size: var(--labfs); }
 
 /* the library (patches_ui.js, dropzone.js): drop targets, the wide view, the import preview */
 .dropping { outline: 2px dashed var(--fg); outline-offset: -3px; }
@@ -166,7 +194,7 @@ body.dragfiles .col.part, body.dragfiles .col.glob { outline: 2px dashed var(--l
 .tile { display: grid; grid-template-columns: 1fr auto; grid-template-rows: auto auto; gap: 0 4px; padding: 3px 5px; border: 1px solid var(--line); background: var(--panel); cursor: pointer; font-size: 12px; min-width: 0; min-height: 42px; }
 .tile .k { grid-column: 1; font-size: 10px; opacity: .65; } .tile .e { grid-column: 2; grid-row: 1; font-size: 10px; opacity: .65; }
 .tile .n { grid-column: 1 / 3; grid-row: 2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 400; }
-.tile.saved { border-color: var(--fg); background: var(--bg); } .tile.saved .n { font-weight: 700; }
+
 .tile.sel { background: var(--acc); color: var(--accfg); border-color: var(--acc); } .tile.miss { opacity: .3; }
 .segs .seg.ghost { background: transparent; color: var(--fg); } .segs .seg.ghost.on { background: var(--acc); color: var(--accfg); }
 dialog.ask.imp { width: min(920px, 94vw); max-width: 94vw; max-height: 88vh; overflow: auto; }
@@ -183,8 +211,8 @@ dialog.ask .improw input[type=number] { width: 100%; margin: 0; } dialog.ask .ro
 dialog.ask .row > label.row { margin: 0; }
 .pgrid { align-content: stretch; grid-auto-rows: minmax(44px, 1fr); }
 /* ---- 0.2.19: the piano roll (rollview.js). One text style per panel: 12 px labels, 10 px only on the keys and in the lane. */
-.tabbody.rolltab { height: 100%; }
-.roll { display: flex; flex-direction: column; gap: 4px; height: 100%; min-height: 380px; min-width: 0; }
+.tabbody.rolltab { height: 100%; display: block; }
+.roll { display: flex; flex-direction: column; gap: 4px; height: 100%; min-height: 0; min-width: 0; }
 .rollctl { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .rolltools { display: flex; flex-wrap: wrap; gap: 3px 10px; align-items: center; font-size: 12px; }
 .rolltools button { font-weight: 700; letter-spacing: .03em; padding: 2px 7px; }
@@ -256,4 +284,26 @@ dialog.ask .row > label.row { margin: 0; }
 .ovbody[data-both=false] .ovpane { flex: 1 1 0; min-height: 0; } .ovbody[data-both=false] .ovpane .roll { min-height: 0; }
 .ovbody[data-both=true] .ovpane { flex: 1 1 0; min-height: 330px; }
 @media (max-height: 800px) { .rollctl { gap: 4px 12px; } }
-@media (max-width: 999px) { .tabbody.rolltab { height: 560px; } }
+
+/* T0229: the column head in rows (the list's 1.4 "block form"): MIXER is one line (its title tab, LEVEL, PAN, MUTE, SOLO), PATCH its title line (PATCH | #83 TINE ROOM,
+   CATEGORY at the right) and one line (ENGINE, PATCH LEVEL, Browse..., Init...); in these lines a control has its label at its left and its value at its right */
+.mixblock { display: block; }   /* (owner A4: the title box on its own line, LEVEL, PAN, MUTE and SOLO under it) */
+.hgrid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; align-items: center; }
+.hgrid .cell { display: grid; grid-template-columns: auto minmax(40px, 1fr) auto; align-items: center; column-gap: 8px; }
+.hgrid .cell .top { display: contents; }
+.hgrid .cell .lab { order: 0; white-space: nowrap; }
+.hgrid .cell .slider, .hgrid .cell > select { order: 1; }
+.hgrid .cell .right { order: 2; min-width: 50px; text-align: right; }
+.hgrid .cell.btncell { display: flex; }
+.hgrid .cell.btncell .top { display: none; }
+.hgrid .cell.engcell { grid-template-columns: auto minmax(60px, 1fr); }
+.patchblock .hgrid { grid-template-columns: auto minmax(0, 1fr); }   /* (owner 2026-10-21: name, Browse... Init..., PATCH LEVEL; the ENGINE selector is on the ENGINE tab) */
+.engline { grid-column: 1 / -1; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; column-gap: 14px; padding: 10px 4px 8px; }   /* (the ENGINE selector's own full-width line, the tab's first element) */
+.engline .lab { white-space: nowrap; font-weight: 700; letter-spacing: .06em; }
+.engline select { width: 100%; min-width: 0; font-size: 1.15em; padding: 6px 10px; }
+.col.glob .tab { padding: 3px 7px; letter-spacing: .02em; }
+.hgrid .cell .lab { min-width: max-content; }
+.seg { padding: 0 2px; letter-spacing: 0; }
+/* (from 700 px high the MIXER line has a row of its own under PART n and Undo; at 720 they share one row: the tabs need the room) */
+@media (min-height: 700px) { .rowhead { flex-wrap: wrap; row-gap: 5px; } .rowhead > .block { order: 3; flex-basis: 100%; } .rowhead > .grow-u { margin-left: auto; } }
+.hgrid .cell .right { min-width: 40px; }

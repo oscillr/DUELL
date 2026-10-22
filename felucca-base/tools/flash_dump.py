@@ -16,7 +16,7 @@ MAGIC = b"DUELLFLASH1"
 SECTOR, PAYLOAD_OFF, PAYLOAD_MAX = 4096, 256, 4096 - 256
 ST_MAGIC = 0x554C4546
 MU_MAGIC = b"MUL1"
-OBJ_SETTINGS, OBJ_UPRESET0, OBJ_UPFM6, OBJ_AUTOSAVE, OBJ_PATSLOT0, OBJ_MULTI0, OBJ_PATCH0, OBJ_WTAB0, OBJ_PATCHX0, OBJ_COUNT = 0, 5, 8, 9, 10, 13, 21, 27, 33, 43   # (ids 30..32: unused, and the FM6 voice bank's commit records)
+OBJ_SETTINGS, OBJ_UPRESET0, OBJ_UPFM6, OBJ_AUTOSAVE, OBJ_PATSLOT0, OBJ_MULTI0, OBJ_PATCH0, OBJ_WTAB0, OBJ_PATCHX0, OBJ_VELO, OBJ_COUNT = 0, 5, 8, 9, 10, 13, 21, 27, 33, 49, 50   # (ids 30..32: unused, and the FM6 voice bank's commit records)
 ENGINES = ["ANALOG", "DIGITAL", "PHASE", "LOFI", "SAMPLE", "VOICE", "TRIO", "WHEEL", "GRAIN", "PHYS",
            "DRUM", "NOISE", "FM6", "SLICE"]
 MODES = ["DUEL", "STEREO", "LAYER"]
@@ -45,7 +45,7 @@ def read_file(path):
 def sector_addr(obj, copy):
     if obj == OBJ_SETTINGS:
         return 0xFC000 + copy * SECTOR
-    if obj >= OBJ_PATCHX0:                       # DUELL 0.2.15: the PATCH store's chunks 6..15, 0xA6000..0xB9FFF
+    if obj >= OBJ_PATCHX0:                       # DUELL 0.2.15: the PATCH store's chunks 6..15, 0xA6000..0xB9FFF; the cloud plan's job A: chunks 16..21 (ids 43..48) to 0xC5FFF, OBJ_VELO (49) 0xC6000
         return 0xA6000 + (obj - OBJ_PATCHX0) * 2 * SECTOR + copy * SECTOR
     if OBJ_WTAB0 <= obj < OBJ_WTAB0 + 3:         # the user wavetables, 0xA0000..0xA5FFF
         return 0xA0000 + (obj - OBJ_WTAB0) * 2 * SECTOR + copy * SECTOR
@@ -133,7 +133,7 @@ def main():
     args = ap.parse_args()
     flash = read_file(args.file)
     print("%s: %d sectors" % (args.file, len(flash)))
-    names = {OBJ_SETTINGS: "settings", OBJ_AUTOSAVE: "autosave", OBJ_UPFM6: "user presets' FM6 patches (retired)"}
+    names = {OBJ_SETTINGS: "settings", OBJ_AUTOSAVE: "autosave", OBJ_UPFM6: "user presets' FM6 patches (retired)", OBJ_VELO: "velocity calibration"}
     for obj in range(OBJ_COUNT):
         if OBJ_MULTI0 <= obj < OBJ_PATCH0 or 1 <= obj <= 4 or obj == 7 or OBJ_WTAB0 + 3 <= obj < OBJ_PATCHX0:
             continue

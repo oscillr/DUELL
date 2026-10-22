@@ -366,8 +366,8 @@ static __attribute__((noinline)) void fm6_op_fb(int32_t *out, int32_t phase, int
 }
 
 /* msfa FmCore::render: the six operators of algorithm alg into out (Q24). Unlike msfa, out starts empty:
- * the first carrier sounding writes it, the next ones add. Returns 0 when none sounded (out untouched) */
-static int32_t fm6_bus[2][FM6_N];
+ * the first carrier sounding writes it, the next ones add. Returns 0 when none sounded (out untouched). out is 3 x FM6_N long: the first is the
+ * output, the other two the operator buses (the caller's stack: nothing shared between parts) */
 static int fm6_core_render(int32_t *out, fm6_op_t *op, uint32_t alg, int32_t *fb, int32_t fb_shift)
 {
     const uint8_t *a = FM6_ALG[alg & 31u];
@@ -376,7 +376,7 @@ static int fm6_core_render(int32_t *out, fm6_op_t *op, uint32_t alg, int32_t *fb
     for (k = 0; k < 6u; k++) {
         uint32_t f = a[k], inbus = (f >> 4) & 3u, outbus = f & 3u;
         int add = (f & FM6_OADD) != 0;
-        int32_t *o = outbus ? fm6_bus[outbus - 1u] : out;
+        int32_t *o = outbus ? out + outbus * FM6_N : out;
         int32_t g1 = op[k].gain_out, g2 = fm6_exp2(op[k].level_in - (14 << 24));
         op[k].gain_out = g2;
         if (g1 >= FM6_THRESH || g2 >= FM6_THRESH) {
@@ -388,7 +388,7 @@ static int fm6_core_render(int32_t *out, fm6_op_t *op, uint32_t alg, int32_t *fb
                 else
                     fm6_op_run(o, 0, op[k].phase, op[k].freq, g1, g2, add);
             } else {
-                fm6_op_run(o, fm6_bus[inbus - 1u], op[k].phase, op[k].freq, g1, g2, add);
+                fm6_op_run(o, out + inbus * FM6_N, op[k].phase, op[k].freq, g1, g2, add);
             }
             has[outbus] = 1;
         } else if (!add) {
@@ -534,7 +534,7 @@ static int32_t fm6_note_logfreq(int32_t pitch16, int32_t fine)
  * algorithm and feedback (already through the macros), dt[k]: a pitch offset per operator (Q24),
  * modlvl: a level offset of the operators that are not carriers (Q24 log2), ulvl: one per operator (0 = none; DUELL
  * ARP TARGET, eng_fm6.c fm6_render). Writes out (Q24); 0 = silent
- * (out untouched) */
+ * (out untouched). out: 3 x FM6_N (the output and the two operator buses) */
 static int fm6_note_compute(fm6_note_t *n, const uint8_t *p, int32_t *out, int32_t lfo_val, int32_t lfo_delay,
                              int32_t logfreq, uint32_t alg, int32_t fb, const int32_t *dt, int32_t modlvl,
                              const int32_t *ulvl)

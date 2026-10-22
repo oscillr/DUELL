@@ -11,7 +11,10 @@
  * call flash code and be called by it directly. The linker fails ("relocation truncated to fit") if a call does not reach.
  * One block: the PC limit (hal/fm1_guard.h) allows _rt_start.._rt_end-1 as its RAM window, unchanged.
  * NOINIT shrinks to 0x100 (.noinit is 0xDC at 0x01C7C000, the same address and objects as app.ld; tools/elfcheck.py checks it).
- * .data, .bss, the pool and the stacks keep app.ld's addresses; app.ld's RAMTEXT (0x01C00000..0x01C08000) is left unused. */
+ * .data, .bss, the pool and the stacks keep app.ld's addresses; app.ld's RAMTEXT (0x01C00000..0x01C08000) is left unused.
+ * DUELL bench builds (src/bench.c, DUELL_BENCH; none of these input sections exists in a normal build, whose image is unchanged): the bench's
+ * code and constants (.bench_text, .bench_rodata) go after all the other code and constants, its variables (.bench_bss) after the other .bss,
+ * its session copy (.pool.zbench) after the other pool objects (.pool), so nothing of the normal build moves for them. */
 MEMORY
 {
     XIP    (rx)  : ORIGIN = 0x02000120, LENGTH = 0x8DFBC
@@ -23,13 +26,13 @@ MEMORY
 PROVIDE(_hot_pad = 0);      /* R7: tools/build.py --defsym=_hot_pad=N pads the hot block (zeros at its end) to N bytes; 0 = no padding */
 SECTIONS
 {
-    .text : { KEEP(*(.text.crt0)) *(.text*) *(.rodata*) . = ALIGN(4); _etext = .; } > XIP
+    .text : { KEEP(*(.text.crt0)) *(.text*) *(.rodata*) *(.bench_text*) *(.bench_rodata*) . = ALIGN(4); _etext = .; } > XIP
     .ram_text : { _rt_start = .; KEEP(*(.ram_text*)) . = ALIGN(4); _hot_start = .; *(.hotx.*) . = MAX(., _hot_start + _hot_pad); . = ALIGN(4); _rt_end = .; } > RAMCODE AT > XIP
     _rt_load = LOADADDR(.ram_text);
-    .data : { . = ALIGN(4); _data_start = .; *(.data*) *(.sdata*) . = ALIGN(4); _data_end = .; } > RAM AT > XIP
+    .data : { . = ALIGN(4); _data_start = .; *(.data*) *(.sdata*) *(.bench_data*) . = ALIGN(4); _data_end = .; } > RAM AT > XIP
     _data_load = LOADADDR(.data);
-    .bss (NOLOAD) : { _bss_start = .; *(.bss*) *(.sbss*) *(COMMON) . = ALIGN(4); _bss_end = .; } > RAM
-    .pool (NOLOAD) : { _pool_start = .; *(.pool*) . = ALIGN(4); _pool_end = .; } > POOL
+    .bss (NOLOAD) : { _bss_start = .; *(.bss*) *(.sbss*) *(COMMON) *(.bench_bss*) . = ALIGN(4); _bss_end = .; } > RAM
+    .pool (NOLOAD) : { _pool_start = .; *(.pool) *(.pool.*) . = ALIGN(4); _pool_end = .; } > POOL
     .noinit (NOLOAD) : { *(.noinit*) } > NOINIT
     _guard0 = 0x01C74000; _ustack_lo = 0x01C74100; _ustack_top = 0x01C7A000;
     _guard1 = 0x01C7A000; _sstack_lo = 0x01C7A100; _sstack_top = 0x01C7C000;

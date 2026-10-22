@@ -22,7 +22,7 @@ typedef struct {
 } aafont_t;
 /* a theme (tools/gen_ui_palettes.py): per-part backgrounds, the layer one, shared surfaces, and per part A, B: c the brief's
  * colours (fills), r the same readable as values, a the accent; hc: no gradients (the morph colour jumps at the middle) */
-typedef struct { const char *name; uint16_t bg[2], bgl, surf[2], text, mid, line[2], raise[2], rec, c[4], r[4], a[4]; uint8_t hc; } ui_pal_t;
+typedef struct { const char *name; uint16_t bg[2], bgl, surf[2], text, mid, line[2], raise[2], rec, c[4], r[4], a[4], g, ga; uint8_t hc; } ui_pal_t;   /* (0.2.24: g / ga the GLOBAL colour and its accent) */
 typedef struct { uint16_t off; uint8_t w; const char *label; } kc_t;
 #include "ui_fonts.h"                   /* AF_S 12 px / 400, AF_M 15 px / 500, AF_L 28 px / 600 */
 #include "ui_palettes.h"
@@ -90,8 +90,12 @@ static struct {
     /* DUELL (SPEC 5a): part 1 draws with THEME, part 2 with THEME2; theme, sel, tint and lane are the SELECTED part's
      * (part_theme), pth / psel / ptint / plane both parts' (T_PTHEME(k) ...: a screen about both parts, ui_graph.c) */
     uint16_t pth[2], psel[2], ptint[2], plane[2];
+    uint16_t pend[2][2];         /* both parts' pure A and B colours (the fader-free ends of pth: the header's A / B letter, ui_draw.c head_ab) */
     uint16_t pacc[2], pfill[2];  /* both parts' ACCENT and the brief's A -> B colour at their MORPH fader (pfill: the MORPH bar) */
+    uint16_t gth, gacc;          /* DUELL 0.2.24 (owner): the GLOBAL colour and its accent (the palette's g / ga): a third colour, apart from both parts', for the pages that edit the
+                                  * instrument (params.c page_global: GLO's pages, SCALE); on them theme / accent / sel / tint / lane are these (glob below), the background the LAYER one */
     uint8_t fader[2], layer, pal;   /* what part_theme blends by: the parts' MORPH faders 0..127, MODE LAYER, the palette */
+    uint8_t glob;                /* a GLOBAL page is shown (theme_follow): the global colour set */
     uint8_t part, bw;            /* the part the theme follows; MONO (black and white: part 2 is an outline, cv_part) */
     uint32_t gen;                /* bumped by palette_set (the text ramps follow) */
 } ux;
@@ -113,6 +117,7 @@ static struct {
 #define T_KEY ux.key             /* a keycap's fill (its label: T_INK; unavailable: a T_DIM fill) */
 #define T_PFILL(k) ux.pfill[(k) & 1u]   /* part k's brief colour at its MORPH fader (the MORPH bar) */
 #define T_PACC(k) ux.pacc[(k) & 1u]
+#define T_PEND(k, b) ux.pend[(k) & 1u][(b) & 1u]   /* part k's colour at its A (0) or B (1) end, whatever the fader */
 #define T_PTHEME(k) ux.pth[(k) & 1u]     /* part k's THEME, SEL, TINT (T_THEME: the selected part's) */
 #define T_PSEL(k) ux.psel[(k) & 1u]
 #define T_PTINT(k) ux.ptint[(k) & 1u]
@@ -164,15 +169,16 @@ static void part_theme(uint32_t part)
 {
     const ui_pal_t *p = &UI_PALETTES[ux.pal % NPALETTES];
     uint32_t k;
+    uint32_t both = ux.layer || ux.glob;                /* (LAYER mode, or a GLOBAL page: the backgrounds of both parts mixed) */
     part &= 1u;
     ux.part = (uint8_t)part;
-    ux.bg = ux.layer ? p->bgl : p->bg[part];
-    /* panel, borders and elevated surface are per part like the background (LAYER: the mix of both) */
+    ux.bg = both ? p->bgl : p->bg[part];
+    /* panel, borders and elevated surface are per part like the background (LAYER, a global page: the mix of both) */
     {
-        uint16_t sf = ux.layer ? ux_mix(p->surf[0], p->surf[1], 50) : p->surf[part];
+        uint16_t sf = both ? ux_mix(p->surf[0], p->surf[1], 50) : p->surf[part];
         ux.surf = sf;
-        ux.line = ux.layer ? ux_mix(p->line[0], p->line[1], 50) : p->line[part];
-        ux.raise = ux.layer ? ux_mix(p->raise[0], p->raise[1], 50) : p->raise[part];
+        ux.line = both ? ux_mix(p->line[0], p->line[1], 50) : p->line[part];
+        ux.raise = both ? ux_mix(p->raise[0], p->raise[1], 50) : p->raise[part];
     }
     ux.dim = ux_mix(ux.bg, p->text, UI_DIM_PCT);
     ux.key = ux_mix(ux.bg, p->text, UI_KEY_PCT);
@@ -181,6 +187,8 @@ static void part_theme(uint32_t part)
     ux.grid = ux_mix(ux.surf, p->text, 6);
     for (k = 0; k < 2u; k++) {
         uint32_t f = ux.fader[k] > 127u ? 127u : ux.fader[k], i = 2u * k;
+        ux.pend[k][0] = p->r[i];
+        ux.pend[k][1] = p->r[i + 1u];
         if (p->hc) {
             i += f >= 64u;
             ux.pth[k] = p->r[i]; ux.pfill[k] = p->c[i]; ux.pacc[k] = p->a[i];
@@ -202,23 +210,37 @@ static void part_theme(uint32_t part)
         ux.ptint[0] = ux.ptint[1] = p->bg[0];
         ux.plane[0] = ux.plane[1] = UI_BW_GREY;
     }
-    ux.ink = ux_cr(ux.bg, ux.pth[part]) >= ux_cr(p->text, ux.pth[part]) ? ux.bg : p->text;   /* text on a part-colour fill */
-    ux.theme = ux.pth[part];
-    ux.accent = ux.pacc[part];
-    ux.sel = ux.psel[part];
-    ux.tint = ux.ptint[part];
-    ux.lane = ux.plane[part];
+    ux.gth = p->g;
+    ux.gacc = p->ga;
+    if (ux.bw)
+        ux.gth = ux.gacc = p->text;
+    if (ux.glob) {                                      /* a GLOBAL page: the third colour as THEME, SEL, TINT, LANE and its accent (0.2.24) */
+        ux.ink = ux_cr(ux.bg, ux.gth) >= ux_cr(p->text, ux.gth) ? ux.bg : p->text;
+        ux.theme = ux.gth;
+        ux.accent = ux.gacc;
+        ux.sel = ux.bw ? p->text : ux_mix(ux.bg, ux.gth, UI_SEL_PCT);
+        ux.tint = ux.bw ? p->bg[0] : ux_mix(ux.bg, ux.gth, UI_TINT_PCT);
+        ux.lane = ux.bw ? UI_BW_GREY : ux_mix(ux.surf, ux.gth, 10);
+    } else {
+        ux.ink = ux_cr(ux.bg, ux.pth[part]) >= ux_cr(p->text, ux.pth[part]) ? ux.bg : p->text;   /* text on a part-colour fill */
+        ux.theme = ux.pth[part];
+        ux.accent = ux.pacc[part];
+        ux.sel = ux.psel[part];
+        ux.tint = ux.ptint[part];
+        ux.lane = ux.plane[part];
+    }
     if (ux.bw) { ux.tint = p->bg[0]; ux.ink = ux.bg; }
     ux.gen++;                                    /* the text ramps change with the coverage curve and the background */
 }
-/* the selected part, the parts' MORPH faders and the layer mode into the theme; 1 if anything changed (redraw all) */
-static int theme_follow(uint32_t part, uint32_t f0, uint32_t f1, uint32_t layer)
+/* the selected part, the parts' MORPH faders, the layer mode and whether a GLOBAL page is shown (0.2.24) into the theme; 1 if anything changed (redraw all) */
+static int theme_follow(uint32_t part, uint32_t f0, uint32_t f1, uint32_t layer, uint32_t glob)
 {
     part &= 1u;
     layer = layer != 0u;
-    if (part == ux.part && f0 == ux.fader[0] && f1 == ux.fader[1] && layer == ux.layer)
+    glob = glob != 0u;
+    if (part == ux.part && f0 == ux.fader[0] && f1 == ux.fader[1] && layer == ux.layer && glob == ux.glob)
         return 0;
-    ux.fader[0] = (uint8_t)f0; ux.fader[1] = (uint8_t)f1; ux.layer = (uint8_t)layer;
+    ux.fader[0] = (uint8_t)f0; ux.fader[1] = (uint8_t)f1; ux.layer = (uint8_t)layer; ux.glob = (uint8_t)glob;
     part_theme(part);
     return 1;
 }

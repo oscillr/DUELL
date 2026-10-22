@@ -4,7 +4,7 @@
  * and COUNT-IN (OFF / 1 BAR / 2 BARS). seq.c decides when a beat clicks (click_beat: the song tempo's quarter notes, 4/4,
  * the bar's first beat accented; the count-in's beats whatever CLICK is); this file makes the sound. A short sine blip
  * that decays away (no sample): 1760 Hz on the bar's first beat, 1320 Hz on the others, 6 dB quieter; ~6 ms
- * decay constant, silent after ~35 ms. It is added after the master (audio.c audio_block, after uac_tap and USB LEVEL):
+ * decay constant, silent after ~35 ms. It is added after the master (audio.c audio_block, after uac_tap and master_dac):
  * never through the FX, the reverb or the limiter, never into a recording (the sequence or USB audio), only into the
  * DAC (headphones / line out, the speaker), scaled by MASTER as the rest of what the DAC gets.
  * The MENU's three settings are bits of a byte no engine uses (ui.c ui_rec_prefs), copied here every UI frame
@@ -22,10 +22,11 @@ static const uint16_t CLICK_GAIN[3] = {1024, 2048, 4096};   /* LOW MID HIGH, Q12
                                                              * of a full-scale mix (Q15) at MASTER's top */
 static struct { int32_t s, c, k, env, g; } clk;
 
-/* add the click to one block of DAC samples (stereo Q15, after the master): out of line, a loop only while it sounds */
-static __attribute__((noinline)) void click_render(int32_t *out, uint32_t n)
+/* add the click to one block of DAC samples (stereo, after the master: Q15 x 2^sh; audio.c passes OUT_SHIFT): out of line, a loop only while it sounds */
+static __attribute__((noinline)) void click_render(int32_t *out, uint32_t n, uint32_t sh)
 {
     uint32_t i;
+    int32_t hi = (1 << (15u + sh)) - 1;                 /* (+4,194,303 at sh 7, and -4,194,304 below: the bits above bit 21 and the sign, not a limit literal: audio.c mdac_sat) */
     int32_t s, c, k, env, g;
     if (click_req) {
         uint32_t down = click_req == 2u;
@@ -48,10 +49,10 @@ static __attribute__((noinline)) void click_render(int32_t *out, uint32_t n)
         env -= (env >> 8) + 1;
         if (env < 0)
             env = 0;
-        l = out[2u * i] + v;
-        r = out[2u * i + 1u] + v;
-        out[2u * i] = l > 32767 ? 32767 : l < -32767 ? -32767 : l;
-        out[2u * i + 1u] = r > 32767 ? 32767 : r < -32767 ? -32767 : r;
+        l = out[2u * i] + (v << sh);
+        r = out[2u * i + 1u] + (v << sh);
+        out[2u * i] = (l >> (15u + sh)) != (l >> 31) ? (l >> 31) ^ hi : l;
+        out[2u * i + 1u] = (r >> (15u + sh)) != (r >> 31) ? (r >> 31) ^ hi : r;
     }
     clk.s = s; clk.c = c; clk.env = env;
 }

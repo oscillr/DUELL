@@ -178,6 +178,7 @@ static int same_but_pos(uint32_t k, const uint8_t *rec, uint32_t len)   /* slot 
 }
 
 /* part t as the biggest record there can be (patch_test.c worst_part) */
+static xb_edit_t worst_ed[XB_MAX];
 static void worst_part(track_t *t, uint32_t idx)
 {
     uint32_t i;
@@ -202,6 +203,12 @@ static void worst_part(track_t *t, uint32_t idx)
         step_set_ratchet(s, 2u);
     }
     fm6_patch[(uint32_t)(t - trk) % NTRK][6] = (uint8_t)(idx % 99u);
+    for (i = 0; i < NX; i++)                                    /* the cloud plan's job A: all 16 extension slots off their default, 32 hand-set B edits */
+        XV(t, i) = (int16_t)((int)xb_def(i) - 64 + 1 + (int)(idx % 50u));
+    for (i = 0; i < XB_MAX; i++)
+        worst_ed[i] = (xb_edit_t){(uint8_t)(i < 28u ? 4u * i + 1u : 128u + i - 28u), (int16_t)(127 - (int)(i * 3u + idx % 7u))};
+    up_xb_in = worst_ed;
+    up_xb_nin = XB_MAX;
 }
 
 int main(void)
@@ -308,9 +315,12 @@ int main(void)
     ok = pr_read(70, C, &lc) == 1 && !memcmp(C + 7, "RENAMED", 7);
     transport_req = 0;
     ck("  INFO and READ work while it plays (they do not touch the flash)", ok);
-    ck("  the transfer goes on after it stops (pieces in order, commit; the commit with the missing parts was refused, rc 3, not 2)",
-       pr_data(20, 112, A + 112, 112) == 0u && pr_data(20, 224, A + 224, la - 224u > 112u ? 112u : la - 224u) == 0u && (la <= 336u || pr_data(20, 336, A + 336, la - 336u) == 0u) &&
-       pr_end(20, 4) == 0u && same_but_pos(20, A, la));
+    {   uint32_t off2, rc2 = 0;
+        for (off2 = 112u; !rc2 && off2 < la; off2 += 112u)                 /* (the pieces in order; the record is up to 534 bytes: five pieces) */
+            rc2 = pr_data(20, off2, A + off2, la - off2 > 112u ? 112u : la - off2);
+        ck("  the transfer goes on after it stops (pieces in order, commit; the commit with the missing parts was refused, rc 3, not 2)",
+           !rc2 && pr_end(20, 4) == 0u && same_but_pos(20, A, la));
+    }
 
     /* malformed and stale transfers */
     power_cycle();
@@ -358,20 +368,20 @@ int main(void)
     ok &= pr_data(0, 0, A, 112) == 5u;
     ck("a USB bus reset or 15 s with no request make the transfer stale (5)", ok);
     {   /* a backup transfer (or a wavetable) that begins after ours takes the staging RAM */
-        uint8_t bb[12] = {0, 6};
+        uint8_t bb[13] = {0, ED_BK_PATCH};
         ok = pr_begin(0, la, st_crc32(A, la)) == 0u && pr_data(0, 0, A, 112) == 0u;
-        put32(bb + 2, 4); put32(bb + 7, st_crc32((const uint8_t *)"PT\1\0", 4));
+        put32(bb + 2, 20); put32(bb + 7, st_crc32(A, 20)); bb[12] = 5;
         rep_n = 0;
-        ed_backup_handle(ED_BACKUP_PUT, bb, 12);
+        ed_backup_handle(ED_BACKUP_PUT, bb, 13);
         ok &= rep[2] == 0u;
         ok &= pr_data(0, 112, A + 112, 112) == 5u;
         {
-            uint8_t ab[2] = {3, 6};
+            uint8_t ab[2] = {3, ED_BK_PATCH};
             ed_backup_handle(ED_BACKUP_PUT, ab, 2);
         }
         ok &= pr_begin(0, la, st_crc32(A, la)) == 0u;
         {   /* ours first, then a backup data piece: the backup's transfer is over */
-            uint8_t bd[16] = {1, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+            uint8_t bd[16] = {1, ED_BK_PATCH, 0, 0, 0, 0, 0, 0, 0, 0, 0};
             rep_n = 0;
             ed_backup_handle(ED_BACKUP_PUT, bd, 11);
             ok &= rep[2] == 5u;
@@ -457,7 +467,8 @@ int main(void)
     /* 6: a bank: the worst record into all 128 slots, read back, rewritten */
     {
         static uint8_t W[UP_SLOTS][PT_WORST + 8], G[PT_WORST + 8];
-        uint32_t lw[UP_SLOTS], rc = 0, good = 0, gl;
+        uint32_t lw[UP_SLOTS], rc = 0, good = 0, gl, xb0, mb0, pr0, pat0, fm0;
+        pt_layout(A, &xb0, &mb0, &pr0, &pat0, &fm0);              /* (where End B is in this record: after the extension block, PT_VER 3) */
         memset(nor, 0xFF, sizeof nor);
         power_cycle();
         for (k = 0; k < UP_SLOTS; k++) {
@@ -468,7 +479,7 @@ int main(void)
             W[k][12] = (char)('0' + k / 100u);
             W[k][13] = (char)('0' + k / 10u % 10u);
             W[k][14] = (char)('0' + k % 10u);
-            W[k][21] = (uint8_t)k;                               /* End B's seed: the records differ a little */
+            W[k][mb0 + 1u] = (uint8_t)k;                         /* End B's seed: the records differ a little */
         }
         for (k = 0; k < UP_SLOTS && !rc; k++)
             rc = pr_all(k, W[k], lw[k]);
@@ -488,6 +499,74 @@ int main(void)
             good += pr_read(k, G, &gl) == 1 && G[7] == 'Z' && flash_rec(k)[3] >= 1u;
         ck("  a rewrite of all 128 (a newer revision each): rc 0, all read back", !rc && good == UP_SLOTS);
         ck("  every slot is saved (UP_LIST's SAVED), RESTORE of one brings its factory sound back and READ then says so", up_used(5) && sl_restore(5) == 0 && pr_read(5, G, &gl) == 0 && pr_read(6, G, &gl) == 1);
+    }
+
+    /* 7: the extension block travels whole: slots, hand-set B edits and the tags this firmware does not know, bit for bit, through READ and a write into another slot;
+     * a damaged block is refused at COMMIT (rc 1) and the slot is as it was; the record at its longest (PT_WORST) is taken, one byte more is refused at BEGIN */
+    {
+        static uint8_t R[PT_WORST + 8], X[PT_WORST + 8], blk_[XB_BLOCK_MAX + 16];
+        uint32_t lr, lx, xbo, mb, pr, pat, fm, nb, same_n;
+        memset(nor, 0xFF, sizeof nor);
+        power_cycle();
+        up_xb_in = 0; up_xb_nin = 0;
+        set_engine_of(&trk[0], 0u);
+        apply_preset_to(&trk[0], 2u);
+        for (i = 0; i < NX; i++)
+            XV(&trk[0], i) = (int16_t)xb_def(i) - 64;
+        ok = up_store_trk(&trk[0], 20u, "PLAIN", 0) == 0;
+        ok &= pr_read(20, R, &lr) == 1 && !(R[4] & PTF_XB);
+        {   /* a block with an unknown tag, an unknown wide id, a known slot and an edit, put into that record by hand */
+            uint8_t b[] = {0, XB_VER, 9, 3, 1, 2, 3, XB_T_EXT, 6, XWID(X_SUBLVL), 64 + 60, 201, 70, XWID(X_CYSYNC), 65, XB_T_EDIT, 4, P_REL, 90, XWID(X_CYRISE), 100};
+            uint32_t tail;
+            b[0] = (uint8_t)(sizeof b - 1u);
+            pt_layout(R, &xbo, &mb, &pr, &pat, &fm);
+            tail = lr - mb;
+            memmove(R + xbo + sizeof b, R + mb, tail);
+            memcpy(R + xbo, b, sizeof b);
+            R[4] |= PTF_XB;
+            lr += (uint32_t)sizeof b;
+            R[0] = (uint8_t)lr; R[1] = (uint8_t)(lr >> 8);
+        }
+        ok &= pr_all(21, R, lr) == 0 && pr_read(21, X, &lx) == 1 && lx == lr && !memcmp(X + 4, R + 4, lr - 4u);
+        ck("a record with an unknown tag and an unknown wide id: PATCH_RAW takes it (rc 0) and gives it back bit for bit (the unknown parts too)", ok);
+        ok = pr_all(22, X, lx) == 0 && pr_read(22, A, &la) == 1 && la == lx && !memcmp(A + 4, R + 4, lr - 4u);
+        {
+            const up_rec_t *r = up_rec(22);
+            ok &= up_xval(r, X_SUBLVL) == 60 && up_xval(r, X_CYSYNC) == 1 && up_xval(r, X_LINK) == (int)xb_def(X_LINK) - 64 && r->xb_n == 2u && r->xb[0].wid == P_REL && r->xb[1].wid == XWID(X_CYRISE) &&
+                  r->xb[1].val == 36;
+        }
+        ck("  and again into another slot (a librarian trip): the same bytes; up_rec reads the slots it knows (SUB LEVEL 60, CYCLE SYNC 1) and the 2 edits", ok);
+        /* damaged blocks: BEGIN and DATA are fine (the length and CRC are right), COMMIT answers rc 1 and the slot keeps what it had */
+        memcpy(X, R, lr);
+        pt_layout(X, &xbo, &mb, &pr, &pat, &fm);
+        nb = mb - xbo;
+        same_n = 0;
+        for (i = 0; i < 6u; i++) {
+            memcpy(X, R, lr);
+            switch (i) {
+            case 0: X[xbo]++; break;                                  /* L one too long */
+            case 1: X[xbo]--; break;
+            case 2: X[xbo + 1u] = 2; break;                           /* XV */
+            case 3: X[xbo + 2u + 5u + 2u] = XB_T_EXT; break;          /* the next section (tag 1 after the unknown tag) becomes... a second tag 1 further down */
+            case 4: X[xbo + nb - 1u] = 200; break;                    /* an edit value byte over 191 */
+            default: X[xbo + nb - 4u] = X[xbo + nb - 2u]; break;      /* an edit id twice */
+            }
+            {
+                uint32_t rc = pr_begin(23, lr, st_crc32(X, lr)), off;
+                for (off = 0; !rc && off < lr; off += 112u)
+                    rc = pr_data(23, off, X + off, lr - off > 112u ? 112u : lr - off);
+                rc = rc ? rc : pr_end(23, 4);
+                same_n += (rc == 1u || (i == 3u && rc == 0u)) && !up_used(23);   /* (case 3 may still be a good block: a second tag 1 is refused; if the bytes happen to make another valid block, the slot takes it) */
+                if (rc == 0u)
+                    up_put(23, 0);
+            }
+        }
+        ck("a damaged block (L, XV, a tag changed, a value byte 200, an edit id twice) is refused at COMMIT with rc 1; the slot is not written", same_n >= 5u);
+        ok = pr_begin(23, PT_WORST + 1u, 0) == 1u && pr_begin(23, PT_FIX - 1u, 0) == 1u && pr_begin(23, PT_WORST, 0) == 0u;
+        pr_end(23, 5);
+        ck("the length limit follows PT_WORST (534): BEGIN takes PT_WORST, refuses one byte more and a record shorter than the fixed part", ok && PT_WORST == 534u);
+        /* the biggest record the store can write (all 16 slots off default, 32 edits, FM6, SEQ arp) through PATCH_RAW into all 128 slots was section 6 above */
+        up_xb_in = 0; up_xb_nin = 0;
     }
 
     printf("patchraw: %s\n", bad ? "FAILED" : "all passed");

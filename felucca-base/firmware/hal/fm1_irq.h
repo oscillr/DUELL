@@ -53,6 +53,9 @@ typedef struct {
  * tools/build.py fails such a build: tools/elfcheck.py checks after every link that each .noinit object is
  * one symbol of its C size (NOINIT_OBJECTS: a new .noinit object goes there), the .noinit size, the entry. */
 fm1_crash_t fm1_crash __attribute__((section(".noinit")));
+#ifndef FM1_RESET_PREP
+#define FM1_RESET_PREP() ((void)0)                 /* (hal/fm1_sys.h: DUELL_TWOCORE holds core 1 there; nothing anywhere else) */
+#endif
 
 extern const char fm1_fatal_stubs[];
 static void fm1_fault(const fm1_crash_t *c);   /* application: report, then reset */
@@ -101,6 +104,9 @@ void fm1_fault_c(uint32_t *f)
     uint32_t i, count = fm1_crash.magic == FM1_CRASH_MAGIC ? fm1_crash.count : 0;
     uint32_t early = fm1_crash.magic == FM1_CRASH_MAGIC ? fm1_crash.early : 0;
     fm1_irq_off();
+#if DUELL_TWOCORE
+    FM1_RESET_PREP();                         /* (DUELL_TWOCORE only: core 1 held first, hal/fm1_sys.h; nothing in every other build) */
+#endif
     if (in_fault++)                           /* fault while reporting: reset at once */
         *(volatile uint32_t *)0x10000u |= 1u << 4;
     fm1_crash.magic = FM1_CRASH_MAGIC;

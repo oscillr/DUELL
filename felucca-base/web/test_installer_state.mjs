@@ -3,7 +3,7 @@ import { uiState, ACTIONS, BANNERS, TEXT, ERASE, eraseOutcome, SMART, detectUnit
 import { readFileSync } from "node:fs";
 let failed = 0;
 const ok = (c, m) => { if (!c) { failed++; console.log("FAIL", m); } };
-const base = { busy: null, ready: true, hasImage: true, checksOk: true, hasStock: true };
+const base = { busy: null, ready: true, hasImage: true, hasStock: true };
 
 function installerState() {
   // idle, everything prepared: all three enabled, no banner, no bar, no unload prompt
@@ -13,10 +13,10 @@ function installerState() {
   ok(ACTIONS.every((a) => !u.bars[a]), "idle: no bar");
 
   // idle gating (same rules as before)
-  ok(!uiState({ ...base, checksOk: false }).buttons.install.enabled, "install needs the checklist");
+  ok(uiState({ ...base }).buttons.install.enabled && uiState({ ready: true, hasImage: true }).buttons.install.enabled, "install is enabled by ready && hasImage alone (no checklist gate)");
   ok(!uiState({ ...base, hasImage: false }).buttons.install.enabled, "install needs a package");
   ok(!uiState({ ...base, hasStock: false }).buttons.return.enabled, "return needs the official file");
-  ok(uiState({ ...base, hasImage: false, checksOk: false, hasStock: false }).buttons.backup.enabled, "backup needs nothing else");
+  ok(uiState({ ...base, hasImage: false, hasStock: false }).buttons.backup.enabled, "backup needs nothing else");
   ok(ACTIONS.every((a) => !uiState({ ...base, ready: false }).buttons[a].enabled), "no WebMIDI: all off");
 
   // running: exactly one bar (its own), all buttons off, banner for that action, notes on the others
@@ -44,7 +44,7 @@ function installerState() {
 function pageWiring() {
   const h = readFileSync(new URL("./install/index.html", import.meta.url), "utf8");
   for (const a of ACTIONS) {
-    const card = h.match(new RegExp(`<div class="card ${a}" id="card-${a}">([\\s\\S]*?)\\n    </div>\\n  </section>`));
+    const card = h.match(new RegExp(`<div class="card ${a}" id="card-${a}">([\\s\\S]*?)\\n    </div>\\n(?:    </details>\\n)?  </section>`));
     ok(card, `card ${a} exists`);
     if (!card) continue;
     for (const part of ["bar", "status", "result", "lock"])
@@ -71,7 +71,7 @@ function eraseBox() {
   for (const [rc, err] of [[1, null], [3, null], [4, null], [99, null], [undefined, null], [null, new Error("timed out")], [null, "notfound"]])
     ok(clean(eraseOutcome(rc, err)), `rc ${rc} / ${err}: install succeeded, data NOT erased, menu item named`);
   ok(/playing/.test(eraseOutcome(3).text) && /could not be reached/.test(eraseOutcome(null, "x").text), "the reason is named");
-  for (const w of ["settings", "autosave", "patches", "multis", "patterns", "factory sounds, multis and patterns come back", "cannot be undone", "back up first (step 2)"])
+  for (const w of ["settings", "autosave", "patches", "multis", "patterns", "factory sounds, multis and patterns come back", "cannot be undone", "back up first"])
     ok(ERASE.help.includes(w), `help says: ${w}`);
 }
 function erasePage() {
@@ -84,6 +84,7 @@ function erasePage() {
   ok(card[1].includes(ERASE.label) && card[1].includes(ERASE.help), "the page shows the label and the description");
   ok(!document_has_chk_erase(h), "the checklist gating does not count the erase box");
   ok(/const wantErase = \$\("erase-after"\)\.checked;/.test(h) && /if \(installed && !wantErase\) result\("install", TEXT\.done\.install\)/.test(h), "the erase runs only when ticked, after the install finished");
+  ok(TEXT.done.install === "Done. Switch the unit off and on once." && /result\("install", o\.text \+ " " \+ SWITCH_OFF_ON, o\.bad\)/.test(h) && /import \{[^}]*SWITCH_OFF_ON[^}]*\} from "..\/installer_state\.js"/.test(h), "install done text: the one boot-guard line (switch the unit off and on once), also after the optional erase");
   ok(/\$\("erase-after"\)\.disabled = u\.eraseBox\.disabled/.test(h), "the box is locked with the state");
 }
 const document_has_chk_erase = (h) => /class="chk"[^>]*id="erase-after"|id="erase-after"[^>]*class="chk"/.test(h);
@@ -113,6 +114,20 @@ function smartDefault() {
   ok(/addEventListener\("change", \(\) => \{ touched = true;/.test(h), "a click on the box marks it touched");
   ok(/requestMIDIAccess/.test(h.split("a silent check at load")[1].split("// ---- install")[0]) && /state !== "granted"\) return/.test(h), "the load check asks nothing unless MIDI was already allowed");
 }
-installerState(); pageWiring(); eraseBox(); erasePage(); smartDefault();
+// editor2 item 8 (owner A6): one button, no gating tick boxes, no numbered steps; the checks that protect the unit are enforced by code and stay (a test fails if one disappears)
+function onePage() {
+  const h = readFileSync(new URL("./install/index.html", import.meta.url), "utf8"), ota = readFileSync(new URL("./fm1ota.js", import.meta.url), "utf8");
+  ok(!/class="chk"/.test(h) && !/Flash checklist/.test(h) && !/checksOk/.test(h), "install page: no flash checklist, no tick box gates the Install button");
+  ok(!/<span class="n">\d<\/span>/.test(h), "install page: no numbered step headings");
+  ok(/Do not switch off or unplug the unit while it installs\./.test(h) && /<a href="\.\.\/editor\/backup\.html">Back up first \(recommended\)<\/a>/.test(h), "install page: the do-not-switch-off line and the Back up first link (a link, not a gate)");
+  ok(h.indexOf("Do not switch off or unplug") < h.indexOf('<button id="go"') && h.indexOf('<button id="go"') < h.indexOf("RETURN TO OFFICIAL FIRMWARE"), "install page: the line stands above the one Install button");
+  ok(/<details id="backup-details">/.test(h) && h.includes('id="card-backup"') && /async function doBackup\(/.test(h) && /await doBackup\(up, "return"\)/.test(h), "install page: the Back up card is kept as a closed details; doBackup stays for the return");
+  // kept, enforced by code (silent)
+  ok(/FM-1_9\\d\\d/.test(h) && h.includes("FELUCCA-LOADER-1") && /if \(!\/\^FM-1_9/.test(h), "kept: package identity FM-1_9xx and the loader marker FELUCCA-LOADER-1 are checked before a package is accepted");
+  ok(/addEventListener\("beforeunload"/.test(h) && /if \(busy\)/.test(h.split('addEventListener("beforeunload"')[1].split("\n")[0]), "kept: the beforeunload prompt while writing");
+  ok(/fail\("model"/.test(ota) && /fail\("mismatch"/.test(ota), "kept: fm1ota.js refuses another device model and a device that reports another firmware afterwards");
+  ok(uiState({ ...base, busy: "install" }).confirmUnload && !uiState({ ...base, busy: "install" }).buttons.backup.enabled, "kept: one action at a time and the unload prompt (uiState)");
+}
+installerState(); pageWiring(); eraseBox(); erasePage(); smartDefault(); onePage();
 console.log(failed ? `INSTALLER STATE TESTS FAILED (${failed})` : "installer state tests passed");
 process.exit(failed ? 1 : 0);

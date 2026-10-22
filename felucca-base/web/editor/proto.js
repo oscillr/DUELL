@@ -13,7 +13,7 @@ export const cstr = (s) => [...asc(s), 0];
 export function rstr(a, pos) { let s = ""; while (pos < a.length && a[pos]) s += String.fromCharCode(a[pos++]); return [s, pos + 1]; }
 
 // INFO: version, counts, engine names, tagged blocks
-const TAG_LEN = { 0x55: 3, 0x4d: 4, 0x42: 3, 0x46: 4, 0x53: 3, 0x50: 3, 0x4e: 3, 0x52: 3, 0x4c: 3, 0x41: 4, 0x54: 3, 0x56: 3, 0x43: 3, 0x57: 3, 0x58: 4, 0x5a: 3 };
+const TAG_LEN = { 0x55: 3, 0x4d: 4, 0x42: 3, 0x46: 4, 0x53: 3, 0x50: 3, 0x4e: 3, 0x52: 3, 0x4c: 3, 0x41: 4, 0x54: 3, 0x56: 3, 0x43: 3, 0x57: 3, 0x58: 4, 0x59: 3, 0x5a: 3 };
 export function parseInfo(a) {
   let [version, pos] = rstr(a, 0);
   if (pos < 1 || pos > a.length) throw new Error("The unit sent an unreadable INFO");
@@ -26,7 +26,9 @@ export function parseInfo(a) {
   return { version, nEng, pcount, gcount, nstep, pe0, engines, ntrk, tags, caps: tags[0x42]?.[0] ?? null, menuCount: tags[0x4e]?.[0] ?? null, learn: !!tags[0x43],
            patchCap: tags[0x58] ? tags[0x58][0] | tags[0x58][1] << 7 : null,
            // patchCap: the patch store's capacity (tag 58 01 lo hi, DUELL 0.2.15; null: a unit without it); patchRaw: tag 5A 01 caps bit 0 (DUELL 0.2.19) = PATCH_RAW (cmd 84)
-           patchRaw: !!((tags[0x5a]?.[0] ?? 0) & 1) };
+           patchRaw: !!((tags[0x5a]?.[0] ?? 0) & 1),
+           // nx: tag 59 01 NX (cloud plan job I): the unit has protocol scope 2 (GET / SET / DESC / CHANGED and TRACK_PARAM's scope byte) for its NX extension slots; null: a unit without it
+           nx: tags[0x59] ? tags[0x59][0] : null };
 }
 
 export function parseTrackQuery(a, ntrk = 4) {      // TRACK reply: selected, NTRK, per track: engine, preset, level v14, mute, armed
@@ -76,7 +78,7 @@ export function parseMenu(a) {                      // index, id, kind, value, m
   const o = { index: a[0], id: a[1], kind: a[2], value: rv14(a, 3), min: rv14(a, 5), max: rv14(a, 7) };
   let pos = 9; [o.name, pos] = rstr(a, pos);
   if (o.kind === 0) { o.names = []; for (let i = 0; i <= o.max - o.min; i++) { const [s, n] = rstr(a, pos); o.names.push(s); pos = n; } }
-  else if (o.kind === 1) { [o.unit, pos] = rstr(a, pos); }
+  else if (o.kind === 1 || o.kind === 2) { [o.unit, pos] = rstr(a, pos); }   // 1: a number; 2 (DUELL 0.2.22): a number in tenths of its unit (TUNE: 4400 = 440.0 Hz)
   if (pos < a.length) { o.tab = a[pos]; [o.tabName] = rstr(a, pos + 1); } else { o.tab = 0; o.tabName = ""; }
   return o;
 }
@@ -96,3 +98,8 @@ export const noteName = (n) => `${NOTE_NAMES[n % 12]}${Math.floor(n / 12) - 1}`;
 export const RC_TEXT = {
   UP: { 1: "The unit refused the request (bad slot or bad name).", 2: "The unit could not write: it could not stop playback in time, or the flash failed. Stop the playback on the unit and try again." },
 };
+// scope 2 (cloud plan job I, EDITOR_PROTOCOL.md "Scope 2"): an extension slot of a part. TRACK_PARAM reaches any part: [part, slot, scope 2] reads, [part, slot, v14, 2] writes; the reply is part, slot, v14, scope
+export const XSCOPE = 2;
+export const xReadArgs = (part, k) => [part, k, XSCOPE];
+export const xWriteArgs = (part, k, v) => [part, k, ...v14(v), XSCOPE];
+export const parseXReply = (a) => ({ part: a[0], k: a[1], v: rv14(a, 2), scope: a[4] });

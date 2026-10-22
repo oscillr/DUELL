@@ -5,7 +5,7 @@
 // librarian.js. Rules of the owner's UI: no counts of free places (every slot is always writable), a control that does not apply is not drawn, one text style.
 import { h, clear, ask, askText } from "./ui_util.js";
 import { L, engineLabel } from "./layout.js";
-import { CATEGORIES } from "./patchrecord.js";
+import { CATEGORY_NAMES as CATEGORIES } from "./labels.js";
 import { UP_SLOTS } from "./unit.js";
 import * as LIB from "./librarian.js";
 import { parseFile, sniff, fileName, itemFromRecord } from "./patchfile.js";
@@ -188,7 +188,7 @@ async function loadInto(app, part, items, title, source, notes, problems) {
       const sel = h("select", { size: Math.min(12, ok.length), "aria-label": "Patch to load" }, ok.map((it, i) => h("option", { value: i, text: `${it.number != null ? label(it.number - 1) + "  " : ""}${it.name}  ·  ${it.engineName}` })));
       sel.value = "0";
       const done = (v) => { dlg.close(); dlg.remove(); resolve(v); };
-      dlg.append(h("h2", { text: `Load into PART ${part + 1}` }), h("p", { class: "small", text: `${source} Pick one patch. It is loaded into the part and not saved in any slot.` }), sel,
+      dlg.append(h("h2", { text: `Load into PART ${part + 1}` }), h("p", { class: "small", text: `${source} Pick one patch. It is loaded into the part to hear it; nothing is stored in any slot.` }), sel,
         h("div", { class: "row end" }, h("button", { class: "ghost", text: "Cancel", onclick: () => done(null) }), h("button", { text: "Load", onclick: () => done(ok[+sel.value]) })));
       dlg.addEventListener("cancel", (e) => { e.preventDefault(); done(null); });
       document.body.append(dlg); dlg.showModal();
@@ -206,27 +206,29 @@ async function loadInto(app, part, items, title, source, notes, problems) {
 // ---------------------------------------------------------------- the tab
 export function buildPatches(app, wrap) {
   const u = app.unit, lib = LIB.hasRaw(u);
-  const st = { items: [], sel: new Set(), cur: null, anchor: null, q: "", eng: "all", loading: true, wide: null, wideMode: "swap" };
+  const st = { items: [], sel: new Set(), cur: null, anchor: null, q: "", eng: "all", cat: "all", loading: true, wide: null, wideMode: "swap" };
   const rowEls = new Map();
   const list = h("ul", { class: "plist", role: "listbox", "aria-multiselectable": "true", "aria-label": "Patch slots" });
   const detail = h("div", { class: "pdetail" });
   const search = h("input", { type: "search", placeholder: "Search by name", "aria-label": "Search patches", oninput: (e) => { st.q = e.target.value.toUpperCase(); drawList(); paintWide(); } });
   const eng = h("select", { "aria-label": "Engine", onchange: (e) => { st.eng = e.target.value; drawList(); paintWide(); } }, h("option", { value: "all", text: "All engines" }),
     L.ORDER.map((e) => h("option", { value: e, text: engineLabel(e) })));
+  const catSel = h("select", { "aria-label": "Category", onchange: (e) => { st.cat = e.target.value; drawList(); paintWide(); } }, h("option", { value: "all", text: "All categories" }),
+    CATEGORIES.map((c, i) => (i ? h("option", { value: i, text: c }) : null)));
   const fileIn = h("input", { type: "file", accept: ".json,.syx,application/json", multiple: true, hidden: true, "aria-label": "Patch file", onchange: async (e) => { for (const f of e.target.files) await handleFile(app, f, { start: st.cur ?? 0 }); e.target.value = ""; } });
-  const hint = h("p", { class: "note hint" });
-  const bar1 = h("div", { class: "row" }, search, eng, h("button", { class: "ghost small", text: "Wide view", title: "All 128 slots on the full width of the page, for dragging a patch from one slot to another", onclick: openWide }));
+  const bar1 = h("div", { class: "row" }, search, catSel, eng, h("button", { class: "ghost small", text: "Wide view", title: "All 128 slots on the full width of the page, for dragging a patch from one slot to another", onclick: openWide }));
   const bar2 = h("div", { class: "row" },
-    lib ? [h("button", { class: "ghost small", text: "Import file...", title: "A patch file or a DX7 .syx file (you can also drop it here)", onclick: () => fileIn.click() }), fileIn,
-      h("button", { class: "ghost small", id: "expsel", hidden: true, text: "Export selection", onclick: () => exportSlots([...st.sel].sort((a, b) => a - b), "selection") }),
-      h("button", { class: "ghost small", text: "Export bank...", title: "Every saved patch in one file", onclick: exportBank })] : null,
-    h("button", { class: "ghost small", text: "Reload", onclick: load }),
+    lib ? [h("button", { class: "ghost small", text: "Import file...", title: "A DUELL patch file from this computer (you can also drop it here)", onclick: () => fileIn.click() }), fileIn,
+      h("button", { class: "ghost small", text: "Import .syx...", title: "A DX7 sysex file (one voice or a bank of 32): each voice becomes an FM6 patch (the six-operator engine); you choose the slots before anything is written", onclick: () => fileIn.click() }),
+      h("button", { class: "ghost small", id: "expsel", hidden: true, text: "Download selection", onclick: () => exportSlots([...st.sel].sort((a, b) => a - b), "selection") }),
+      h("button", { class: "ghost small", text: "Download all...", title: "Every patch you saved on the unit, in one file on this computer", onclick: exportBank })] : null,
+    h("button", { class: "ghost small", text: "Load from unit", title: "Reads the list of slots from the unit again", onclick: load }),
     h("button", { class: "ghost small danger", id: "restoreall", text: "Restore all...", title: "Every slot gets its factory sound back", onclick: doRestoreAll }));
   const zone = h("div", { class: "patches" },
-    h("div", { class: "pleft" }, bar1, bar2, lib ? hint : h("p", { class: "note", text: "Exporting and importing whole patches need firmware 0.2.19 (this unit has an older one; update it with the installer)." }), list),
+    h("div", { class: "pleft" }, bar1, bar2, lib ? null : h("p", { class: "warn small", text: "Downloading and importing whole patches need firmware 0.2.19 (this unit has an older one; update it with the installer)." }), list),
     h("div", { class: "pright" }, detail));
   wrap.append(zone);
-  hint.textContent = "Drop a patch file or a DX7 .syx file anywhere here. Drag a patch onto another slot to copy it. Drop it on a part to load it there without saving.";
+  list.title = "Drop a patch file or a DX7 .syx file anywhere here. Drag a patch onto another slot to copy it (Shift: swap). Drop it on a part to hear it there (nothing is saved).";
 
   async function load() {
     st.loading = true; drawList();
@@ -236,12 +238,13 @@ export function buildPatches(app, wrap) {
     } catch (e) { st.loading = false; app.fail(e); drawList(); }
   }
   app.patchesChanged = () => { st.items = (u.slots || []).map((s) => ({ slot: s.slot, eng: s.eng, name: s.name, cat: s.cat, saved: s.saved })); drawList(); paintWide(); drawDetail(); };
-  const matches = (it) => (st.eng === "all" || +st.eng === it.eng) && (!st.q || it.name.toUpperCase().includes(st.q));
+  const matches = (it) => (st.eng === "all" || +st.eng === it.eng) && (st.cat === "all" || +st.cat === it.cat) && (!st.q || it.name.toUpperCase().includes(st.q));
 
   // ---- selection
   function select(slot, e = {}) {
     if (e.shiftKey && st.anchor != null) { const a = Math.min(st.anchor, slot), b = Math.max(st.anchor, slot); st.sel = new Set([...Array(b - a + 1).keys()].map((i) => a + i)); }
     else if (e.ctrlKey || e.metaKey) { if (st.sel.has(slot)) st.sel.delete(slot); else st.sel.add(slot); st.anchor = slot; }
+    else if (st.sel.size === 1 && st.sel.has(slot) && !e.keep) { st.sel = new Set(); st.anchor = slot; }   // a second click on the one selected row deselects it
     else { st.sel = new Set([slot]); st.anchor = slot; }
     st.cur = slot; app.patchStart = slot; paintSel(); drawDetail();
   }
@@ -265,7 +268,7 @@ export function buildPatches(app, wrap) {
     for (const it of rows) {
       const on = st.sel.has(it.slot);
       const li = h("li", { role: "option", tabindex: it.slot === (st.cur ?? rows[0]?.slot) ? 0 : -1, "aria-selected": String(on), class: (on ? "sel" : "") + (it.saved ? " saved" : ""), draggable: "true", dataset: { slot: it.slot },
-        title: `${label(it.slot)} ${it.name}, ${engineLabel(it.eng)}${CATEGORIES[it.cat] ? ", " + CATEGORIES[it.cat] : ""}, ${it.saved ? "saved" : "factory sound"}` },
+        title: `${label(it.slot)} ${it.name}, ${engineLabel(it.eng)}${CATEGORIES[it.cat] ? ", " + CATEGORIES[it.cat] : ""}` },
         h("input", { type: "checkbox", tabindex: -1, checked: on, "aria-label": `Select ${label(it.slot)} ${it.name}` }),
         h("span", { class: "k", text: label(it.slot) }), h("span", { class: "n", text: it.name }), h("span", { class: "e", text: engineLabel(it.eng) }), h("span", { class: "c", text: CATEGORIES[it.cat] || "" }));
       rowEls.set(it.slot, li); list.append(li);
@@ -350,13 +353,13 @@ export function buildPatches(app, wrap) {
   async function exportBank() {
     if (!st.items.length) await load();
     const saved = st.items.filter((i) => i.saved).map((i) => i.slot);
-    const dlg = h("dialog", { class: "ask", "aria-label": "Export bank" });
+    const dlg = h("dialog", { class: "ask", "aria-label": "Download all saved patches" });
     const inc = h("input", { type: "checkbox" });
     const go = await new Promise((resolve) => {
       const done = (v) => { dlg.close(); dlg.remove(); resolve(v); };
-      dlg.append(h("h2", { text: "Export bank" }), h("p", { text: "The file holds every patch you saved, each in its slot number. Drop it on another unit's PATCHES tab to put them back in the same slots." }),
+      dlg.append(h("h2", { text: "Download all saved patches" }), h("p", { text: "One file on this computer with every patch you saved on the unit, each with its slot number. Drop it on a unit's PATCHES tab to put them back in the same slots." }),
         h("label", { class: "chk" }, inc, " Also include the factory sounds (a copy of their values, 128 patches in all)"),
-        h("div", { class: "row end" }, h("button", { class: "ghost", text: "Cancel", onclick: () => done(false) }), h("button", { text: "Export", onclick: () => done(true) })));
+        h("div", { class: "row end" }, h("button", { class: "ghost", text: "Cancel", onclick: () => done(false) }), h("button", { text: "Download", onclick: () => done(true) })));
       dlg.addEventListener("cancel", (e) => { e.preventDefault(); done(false); });
       document.body.append(dlg); dlg.showModal();
     });
@@ -409,40 +412,64 @@ export function buildPatches(app, wrap) {
     const sel = [...st.sel].sort((a, b) => a - b), it = sel.length === 1 ? st.items[sel[0]] : null;
     if (sel.length > 1) {
       detail.append(h("h3", { text: `${sel.length} slots selected` }),
-        h("div", { class: "row" }, lib ? [h("button", { text: "Export selection", onclick: () => exportSlots(sel, "selection") }), h("button", { class: "ghost", text: "Copy to...", onclick: () => copyTo(sel) })] : null,
+        h("div", { class: "row" }, lib ? [h("button", { text: "Download selection", onclick: () => exportSlots(sel, "selection") }), h("button", { class: "ghost", text: "Copy to...", onclick: () => copyTo(sel) })] : null,
           h("button", { class: "ghost", text: "Clear selection", onclick: () => { st.sel = new Set(); paintSel(); drawDetail(); } })));
       return;
     }
     const part = partSel(app, "Target part");
-    detail.append(h("h3", { text: it ? `${label(it.slot)} ${it.name}` : "Patch slots" }));
-    if (!it) { detail.append(h("p", { class: "small", text: "Pick a slot in the list. Ctrl or Shift selects several." })); return; }
-    detail.append(h("p", { class: "small", text: `${engineLabel(it.eng)}${CATEGORIES[it.cat] ? " · " + CATEGORIES[it.cat] : ""}${it.saved ? "" : " · factory sound"}` }));
-    detail.append(h("div", { class: "row" }, h("span", { text: "Load into" }), part, h("button", { text: "Load", onclick: () => doLoad(it, +part.value) })));
-    const sp = partSel(app, "Part to save"), nm = h("input", { type: "text", maxlength: 12, value: suggest(+sp.value), "aria-label": "Patch name", spellcheck: "false" });
-    sp.addEventListener("change", () => { nm.value = suggest(+sp.value); });
-    detail.append(h("h3", { text: `Save a part's sound in ${label(it.slot)}` }),
-      h("div", { class: "row" }, sp, h("span", { text: "as" }), nm, h("button", { text: "Save...", onclick: () => doSave(+sp.value, it, nm.value) })),
-      h("p", { class: "small", text: "The unit stores the part's current sound itself (End B and the arp are kept) over what the slot holds now. It stops playback to write." }));
+    if (!it) return;
+    detail.append(h("h3", { text: `${label(it.slot)} ${it.name}` }));
+    detail.append(h("p", { class: "small", text: `${engineLabel(it.eng)}${CATEGORIES[it.cat] ? " · " + CATEGORIES[it.cat] : ""}` }));
+    detail.append(h("div", { class: "row" }, h("span", { text: "RECALL INTO" }), part, h("button", { text: "Recall", title: "The slot's sound replaces the part's sound on the unit (nothing is stored)", onclick: () => doLoad(it, +part.value) })));
+    // CATEGORY (0.2.25): a stored patch's category is a byte of its record: read whole (PATCH_RAW), the byte changed, written whole
+    const catPick = h("select", { "aria-label": "Category of this patch", disabled: !it.saved || !lib, title: !it.saved ? "A factory sound's category is fixed. Save a sound to this slot to choose its category." : !lib ? "Needs firmware 0.2.19 or newer" : "",
+      onchange: (e) => setCategory(it, +e.target.value, e.target) }, CATEGORIES.map((c, i) => h("option", { value: i, text: c })));
+    catPick.value = it.cat;
+    detail.append(h("div", { class: "row" }, h("span", { text: "CATEGORY" }), catPick));
+    // SAVE TO UNIT (the bug fix of 0.2.30): the form belongs to the patch that was clicked. Its name and category are that patch's own, NO slot is chosen for you (the button
+    // stays off until you pick one), and what is stored is that patch (read whole from its slot), never the sound a part plays.
+    const nm = h("input", { type: "text", maxlength: 12, value: it.name, "aria-label": "Patch name", spellcheck: "false" });
+    const sc = h("select", { "aria-label": "Category for the stored patch" }, CATEGORIES.map((c, i) => h("option", { value: i, text: c })));
+    sc.value = String(it.cat);
+    const target = h("select", { "aria-label": "Slot to save into" }, h("option", { value: "", text: "choose a slot ..." }),
+      st.items.map((x) => h("option", { value: x.slot, text: `${label(x.slot)} ${x.name}` })));
+    target.value = "";
+    const go = h("button", { class: "small", text: "Save to unit", disabled: true, onclick: () => doSave(it, +target.value, nm.value, +sc.value) });
+    const upd = () => {
+      const t = target.value === "" ? null : st.items[+target.value];
+      go.disabled = !t || !lib || !nm.value.trim();
+      go.textContent = t ? `Replace ${label(t.slot)} ${t.name}` : "Save to unit";
+      go.title = !lib ? "Needs firmware 0.2.19 or newer" : t ? `${label(it.slot)} ${it.name} is stored in ${label(t.slot)} under the name and category above (a file is not made; no part is changed)` : "Choose the slot first";
+    };
+    target.addEventListener("change", upd); nm.addEventListener("input", upd); upd();
+    detail.append(h("div", { class: "row" }, h("span", { text: "SAVE AS" }), nm, sc), h("div", { class: "row" }, h("span", { text: "INTO" }), target, go));
     detail.append(h("div", { class: "row" }, h("button", { class: "ghost", text: "Rename...", onclick: () => doRename(it, +part.value) }),
-      it.saved ? h("button", { class: "ghost danger", text: "Restore...", title: "Take the saved sound out of this slot: the factory sound comes back", onclick: () => doRestore(it) }) : null));
-    if (lib) detail.append(h("div", { class: "row" }, h("button", { class: "ghost", text: "Export this patch", title: it.saved ? "A file with the patch whole" : "A file with a copy of this factory sound's values", onclick: () => exportSlots([it.slot], "patch") }),
-      h("button", { class: "ghost", text: "Copy to...", onclick: () => copyTo([it.slot]) }), it.saved ? h("button", { class: "ghost", text: "Move to...", onclick: () => moveTo(it.slot) }) : null),
-      it.saved ? null : h("p", { class: "small", text: "A copy of a factory sound holds its values only." }));
+      it.saved ? h("button", { class: "ghost danger", text: "Restore factory sound...", title: "Take the stored sound out of this slot: the factory sound comes back", onclick: () => doRestore(it) }) : null));
+    if (lib) detail.append(h("div", { class: "row" }, h("button", { class: "ghost", text: "Download file", title: it.saved ? "A file on this computer with the patch whole" : "A file on this computer with a copy of this factory sound's values", onclick: () => exportSlots([it.slot], "patch") }),
+      h("button", { class: "ghost", text: "Copy to...", onclick: () => copyTo([it.slot]) }), it.saved ? h("button", { class: "ghost", text: "Move to...", onclick: () => moveTo(it.slot) }) : null));
   }
   async function doLoad(it, p) {
-    try { app.say(`Loading ${it.name} into PART ${p + 1} ...`); await u.loadSlot(p, it.slot); u.parts[p].name = it.name; app.refresh(); app.say(`${it.name} is loaded in PART ${p + 1}. It replaced that part's sound.`, "good"); } catch (e) { app.fail(e); }
+    try { app.say(`Recalling ${it.name} into PART ${p + 1} ...`); await u.loadSlot(p, it.slot); u.parts[p].name = it.name; app.undo?.forget(p); app.refresh(); app.say(`${it.name} is recalled in PART ${p + 1}. It replaced that part's sound.`, "good"); } catch (e) { app.fail(e); }
   }
-  async function doSave(p, it, name) {
+  async function setCategory(it, cat, sel) {
+    try {
+      app.say("Changing the category ...");
+      await LIB.setCategory(u, it.slot, cat);
+      await load(); app.say(`${label(it.slot)} ${it.name} is in ${CATEGORIES[cat]} now.`, "good");
+    } catch (e) { app.fail(e); sel.value = it.cat; }
+  }
+  async function doSave(it, dst, name, cat) {
     name = name.replace(/[^ -~]/g, "").trim();
     if (!name) { app.say("Give the patch a name (1 to 12 characters).", "warn"); return; }
-    const lines = [`Slot ${label(it.slot)} holds "${it.name}". It will be OVERWRITTEN by PART ${p + 1}'s current sound, stored as "${name}".`,
-      it.saved ? "What it holds is lost." : "The factory sound can be brought back with Restore.", "The unit stops playback while it writes (about a second), so a held note stops."];
-    if (!(await ask(`Overwrite ${label(it.slot)}`, lines, "Overwrite", true))) return;
-    try { app.say("Saving ..."); await u.saveSlot(p, it.slot, name); u.parts[p].name = name; await load(); app.say(`Saved "${name}" in ${label(it.slot)}.`, "good"); } catch (e) { app.fail(e); }
+    try {
+      app.say("Saving ..."); await LIB.saveAs(u, it.slot, dst, { name, cat });
+      for (const pt of u.parts) if (pt && pt.slot === dst) pt.name = name;
+      await load(); app.say(`Saved "${name}" to the unit's slot ${label(dst)}.`, "good");
+    } catch (e) { app.fail(e); }
   }
   async function doRename(it, p) {
-    const nn = await askText("Rename patch", [`"${it.name}" is loaded into PART ${p + 1} and saved again under the new name, in the same slot.`,
-      `This replaces PART ${p + 1}'s current sound (unsaved edits are lost). The unit stops playback to write.`], it.name, "Rename");
+    // RENAME (owner, 0b): every patch, a factory one too: it is loaded into the part and saved to the unit under the new name (one short question)
+    const nn = await askText("Rename patch", [it.saved ? `"${it.name}" is loaded into PART ${p + 1} and saved again under the new name (PART ${p + 1}'s unsaved edits are lost).` : `"${it.name}" is a factory sound: it is loaded into PART ${p + 1} and saved to the unit under the new name (PART ${p + 1}'s unsaved edits are lost).`], it.name, "Rename");
     if (!nn) return;
     try { app.say("Renaming ..."); await u.loadSlot(p, it.slot); await u.saveSlot(p, it.slot, nn); u.parts[p].name = nn; await load(); app.say(`Renamed to "${nn}".`, "good"); } catch (e) { app.fail(e); }
   }
@@ -466,8 +493,8 @@ export function buildPatches(app, wrap) {
       ["swap", "copy"].map((m) => h("button", { class: "seg ghost" + (st.wideMode === m ? " on" : ""), type: "button", dataset: { mode: m }, text: m === "swap" ? "Drag swaps" : "Drag copies", "aria-pressed": String(st.wideMode === m),
         onclick: () => { st.wideMode = m; paintWide(); } })));
     const ov = h("div", { class: "pwide", role: "dialog", "aria-label": "Patch slots, wide view", style: `top:${top + 4}px` },
-      h("div", { class: "row" }, h("b", { text: "PATCH SLOTS" }), mode, h("span", { class: "small wmsg" }), h("span", { class: "grow" }),
-        lib ? h("button", { class: "ghost small", text: "Export selection", onclick: () => exportSlots([...st.sel].sort((a, b) => a - b), "selection") }) : null,
+      h("div", { class: "row" }, h("b", { text: "PATCH SLOTS" }), mode, h("span", { class: "grow" }),
+        lib ? h("button", { class: "ghost small", text: "Download selection", onclick: () => exportSlots([...st.sel].sort((a, b) => a - b), "selection") }) : null,
         h("button", { class: "ghost small", text: "Close", onclick: closeWide })), grid);
     st.wide = ov; document.body.append(ov); document.body.classList.add("widepatches");
     ov.addEventListener("keydown", (e) => {
@@ -495,10 +522,10 @@ export function buildPatches(app, wrap) {
       const it = by.get(+t.dataset.slot); if (!it) continue;
       t.classList.toggle("saved", it.saved); t.classList.toggle("sel", st.sel.has(it.slot)); t.classList.toggle("miss", !matches(it)); t.setAttribute("aria-selected", String(st.sel.has(it.slot)));
       t.children[1].textContent = it.name; t.children[2].textContent = engineLabel(it.eng);
-      t.title = `${label(it.slot)} ${it.name}, ${engineLabel(it.eng)}${CATEGORIES[it.cat] ? ", " + CATEGORIES[it.cat] : ""}, ${it.saved ? "saved" : "factory sound"}`;
+      t.title = `${label(it.slot)} ${it.name}, ${engineLabel(it.eng)}${CATEGORIES[it.cat] ? ", " + CATEGORIES[it.cat] : ""}`;
     }
     for (const b of st.wide.querySelectorAll(".segs button")) { b.classList.toggle("on", b.dataset.mode === st.wideMode); b.setAttribute("aria-pressed", String(b.dataset.mode === st.wideMode)); }
-    st.wide.querySelector(".wmsg").textContent = st.wideMode === "swap" ? "Drag a patch onto another slot to swap them (hold Alt to copy). Drop a file here to import." : "Drag a patch onto another slot to copy it. Drop a file here to import.";
+    st.wide.querySelector(".pgrid").title = st.wideMode === "swap" ? "Drag a patch onto another slot to swap them (hold Alt to copy). Drop a file here to import." : "Drag a patch onto another slot to copy it. Drop a file here to import.";
   }
   load();
 }

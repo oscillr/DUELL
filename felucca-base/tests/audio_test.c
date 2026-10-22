@@ -185,11 +185,11 @@ static void dma(void)
     fm1_alnk0_irq();
     check("meter: a half the DMA overtook is a miss too", cpu_miss == 2u && cpu_pk > 100u);
 }
-/* MENU > USB LEVEL (fx.c fx_usb_fixed, audio.c audio_block): MASTER (default) as before, USB = the DAC's signal and
- * follows the knob; FIXED: USB is exactly MASTER mode's signal at master_q12 = MASTER_USB_REF (2048, the default knob)
- * whatever MASTER is (MASTER 0: USB still plays, the DAC is silent), the DAC exactly USB * master_q12 / 2048, saturated */
+/* MASTER and USB (DUELL 0.2.25: MENU > USB LEVEL is removed, USB is always at the fixed level): mix_block makes the mix at master_q12 = MASTER_USB_REF (2048) whatever
+ * the knob says; USB (uac_tap) takes that; audio.c master_dac gives the DAC out * master_q12 / 2048 with OUT_SHIFT fractional bits, saturated, the gain gliding
+ * with a one-pole step every sample (tau 512 samples) to the knob's level, exactly on it once it is there */
 static int32_t usb_lim_min;                            /* the lowest lim_env of the last usb_run (the limiter's engagement) */
-static int usb_same_as_ref;                            /* the last FIXED usb_run's USB feed equals the reference run's, sample for sample */
+static int usb_same_as_ref;                            /* the last usb_run's USB feed equals the reference run's, sample for sample */
 static int32_t usb_ref_tap[400][64];
 static int usb_perf;                                   /* PERFORM busy during usb_run: DRIVE held and K3 FILTER a little low-pass (fx.c perf_master) */
 static double block_rms(const int32_t *b, uint32_t n)
@@ -199,20 +199,26 @@ static double block_rms(const int32_t *b, uint32_t n)
     for (i = 0; i < 2u * n; i++) s += (double)b[i] * b[i];
     return sqrt(s / (2.0 * n));
 }
-static double usb_run(uint32_t fixed, uint32_t master, int dac_is_tap_scaled_ok[1], double *dac_rms)
+static int32_t want_dac(int32_t tap, int32_t master)    /* what master_dac gives once settled: Q15 x 2^OUT_SHIFT, saturated */
+{
+    int32_t v = (tap * (master * 8)) >> (14 - OUT_SHIFT);
+    return v > (((32768 << OUT_SHIFT) - 1)) ? (((32768 << OUT_SHIFT) - 1)) : v < -32768 * (1 << OUT_SHIFT) ? -32768 * (1 << OUT_SHIFT) : v;
+}
+static double usb_run(uint32_t master, int dac_exact_ok[1], double *dac_rms)
 {
     int32_t out[2 * 32];
     uint32_t b, i;
     double usb = 0, dac = 0;
     fresh();
     lim_env = LIM_T; dc_l = dc_r = dce_l = dce_r = 0;    /* (the master's state as at power-on: runs compare) */
+    mdac_g = -1;                                         /* (the DAC volume starts on the knob, as at power-on) */
     trk[0].p[P_VOICE] = V_POLY;
     trk[0].p[P_DIST] = trk[0].p[P_CHOR] = trk[0].p[P_DLY] = trk[0].p[P_REV] = 0;   /* (no tails between runs) */
     trk_note_on(&trk[0], 48, 110); trk_note_on(&trk[0], 55, 110); trk_note_on(&trk[0], 64, 110);
     memset(&pf, 0, sizeof pf);                         /* (PERFORM from rest, as perform_test.c perf_reset: runs compare) */
     pf.src = pf.next = PF_N;
     pf.pbeat = perf_beat;
-    pf.mg[0] = pf.mg[1] = pf.mg[2] = pf.mg[3] = 32768;
+    pf.mg[0] = pf.mg[1] = 32768;
     perf_held = perf_act = 0;
     perf_kill = 0;
     perf_space = 0;
@@ -220,23 +226,19 @@ static double usb_run(uint32_t fixed, uint32_t master, int dac_is_tap_scaled_ok[
     perf_filt = usb_perf ? -20 : 0;
     if (usb_perf)
         perf_press(PF_DRV, 1);
-    fx_usb_fixed = (uint8_t)fixed;
     song.master_q12 = master;
-    dac_is_tap_scaled_ok[0] = 1;
+    dac_exact_ok[0] = 1;
     usb_lim_min = LIM_T; usb_same_as_ref = 1;
     for (b = 0; b < 400u; b++) {                       /* ~0.3 s */
         audio_block(out, 32);
         if (lim_env < usb_lim_min) usb_lim_min = lim_env;
         for (i = 0; i < 64u; i++) {
-            int32_t v = fixed ? (host_tap[i] * (int32_t)master) >> 11 : host_tap[i];
-            int32_t want = (v > 32767 ? 32767 : v < -32768 ? -32768 : v) << OUT_SHIFT;
-            if (out[i] != want) dac_is_tap_scaled_ok[0] = 0;
-            if (!fixed && master == 2048u) usb_ref_tap[b][i] = host_tap[i];   /* (the reference: MASTER at 2048) */
-            else if (fixed && usb_ref_tap[b][i] != host_tap[i]) usb_same_as_ref = 0;
+            if (out[i] != want_dac(host_tap[i], (int32_t)master)) dac_exact_ok[0] = 0;
+            if (master == 2048u) usb_ref_tap[b][i] = host_tap[i];   /* (the reference: the default knob) */
+            else if (usb_ref_tap[b][i] != host_tap[i]) usb_same_as_ref = 0;
         }
         if (b >= 100u) { usb += block_rms(host_tap, 32); dac += block_rms(out, 32) / (1 << OUT_SHIFT); }
     }
-    fx_usb_fixed = 0;
     if (usb_perf)
         perf_press(PF_DRV, 0);
     perf_filt = 0;
@@ -245,54 +247,85 @@ static double usb_run(uint32_t fixed, uint32_t master, int dac_is_tap_scaled_ok[
 }
 static void usb_level(void)
 {
-    int ok_full, ok_quiet, ok_off, ok_fixed, ok_fixed0, ok_ref, ok_hi, ok_def;
-    double d_full, d_quiet, d_off, d_fixed, d_fixed0, d_ref, d_hi, d_def, d_loop;
-    int32_t lim_fixed_min = LIM_T, k, same = 1;
-    double u_full = usb_run(0, 4096, &ok_full, &d_full), u_quiet = usb_run(0, 1024, &ok_quiet, &d_quiet);
-    double u_off = usb_run(0, 0, &ok_off, &d_off);
-    double u_ref = usb_run(0, 2048, &ok_ref, &d_ref), u_fixed, u_fixed0, u_hi, u_def;
-    int32_t lim_ref_min = usb_lim_min;                 /* (the reference run: MASTER at 2048) */
-    static const uint32_t knobs[] = {0, 1024, 2048, 3000, 4088};
-    u_def = usb_run(1, 2048, &ok_def, &d_def);         /* (FIXED at the default knob: the DAC = USB) */
-    same &= usb_same_as_ref;
-    u_fixed = usb_run(1, 1024, &ok_fixed, &d_fixed); same &= usb_same_as_ref; if (usb_lim_min < lim_fixed_min) lim_fixed_min = usb_lim_min;
-    u_fixed0 = usb_run(1, 0, &ok_fixed0, &d_fixed0); same &= usb_same_as_ref; if (usb_lim_min < lim_fixed_min) lim_fixed_min = usb_lim_min;
-    u_hi = usb_run(1, 4088, &ok_hi, &d_hi); same &= usb_same_as_ref; if (usb_lim_min < lim_fixed_min) lim_fixed_min = usb_lim_min;
+    int ok_ref, ok_k, all_ok = 1, same = 1;
+    double d_ref, d_k, u_ref, u_k = 0, d_q = 0, u_q = 0;
+    int32_t lim_ref_min, lim_min = LIM_T, k;
+    static const uint32_t knobs[] = {0, 64, 1024, 3000, 4088};
+    u_ref = usb_run(2048, &ok_ref, &d_ref);
+    lim_ref_min = usb_lim_min;
     for (k = 0; k < 5; k++) {
-        usb_run(1, knobs[k], &ok_def, &d_loop); same &= usb_same_as_ref && ok_def;
-        if (usb_lim_min < lim_fixed_min) lim_fixed_min = usb_lim_min;
+        u_k = usb_run(knobs[k], &ok_k, &d_k);
+        same &= usb_same_as_ref && u_k == u_ref;
+        all_ok &= ok_k;
+        if (usb_lim_min < lim_min) lim_min = usb_lim_min;
+        if (knobs[k] == 1024u) { d_q = d_k; u_q = u_k; }
     }
-    printf("audio: USB / DAC rms: MASTER full %.0f / %.0f, 2048 %.0f / %.0f, 1/4 %.0f / %.0f, 0 %.0f / %.0f; FIXED 1/4 %.0f / %.0f, 0 %.0f / %.0f, 4088 %.0f / %.0f; limiter env min: MASTER 2048 %d, FIXED (any knob) %d\n",
-           u_full, d_full, u_ref, d_ref, u_quiet, d_quiet, u_off, d_off, u_fixed, d_fixed, u_fixed0, d_fixed0, u_hi, d_hi,
-           (int)lim_ref_min, (int)lim_fixed_min);
-    check("USB LEVEL MASTER (default): USB is the DAC's signal and follows the knob (0: silent)",
-          ok_full && ok_quiet && ok_off && ok_ref && u_full > 1000.0 && u_quiet < u_full * 0.5 && u_off == 0.0);
-    check("USB LEVEL FIXED: USB is exactly MASTER mode's signal at master_q12 = 2048 (MASTER_USB_REF), whatever the knob (0, 1/4, 4088)",
-          same && u_fixed == u_ref && u_fixed0 == u_ref && u_hi == u_ref && u_def == u_ref);
-    check("USB LEVEL FIXED: the DAC gets exactly USB * master_q12 / 2048, saturated (0: silent, 2048: = USB, 1/4: -6 dB)",
-          ok_fixed && ok_fixed0 && ok_hi && d_fixed0 == 0.0 && fabs(d_def - u_def) < 1e-9 && fabs(20.0 * log10(d_fixed / u_fixed) + 6.02) < 0.2);
-    check("USB LEVEL FIXED: the limiter works no harder than MASTER mode at 2048, at any knob (the held chord)",
-          lim_fixed_min >= lim_ref_min);
-    {   /* the DAC feed saturates, never wraps: a hot signal at the knob's top (4088: x1.996) */
+    printf("audio: USB rms %.0f at every knob; DAC rms: 2048 %.0f, 1024 %.0f; limiter env min: knob 2048 %d, any knob %d\n", u_ref, d_ref, d_q, (int)lim_ref_min, (int)lim_min);
+    check("USB is exactly the mix at master_q12 = 2048 (MASTER_USB_REF) whatever the knob (0, 64, 1024, 3000, 4088)", same && u_ref > 1000.0 && u_q == u_ref);
+    check("the DAC gets exactly USB * master_q12 / 2048 with 7 fractional bits, saturated (0: silent, 2048: = USB, 1024: -6 dB, from the first block: no fade-in)",
+          ok_ref && all_ok && fabs(d_ref - u_ref) < 1e-9 && fabs(20.0 * log10(d_q / u_q) + 6.02) < 0.2);
+    check("the limiter works as at the default knob, at any knob (the held chord)", lim_min >= lim_ref_min);
+    {   /* the DAC feed saturates, never wraps; unity is exact; a quiet knob keeps the fractional bits */
         int32_t b[8] = {32767, -32768, 30000, -30000, 20000, -20000, 16383, 0};
+        int32_t c[4] = {32767, -32768, 1234, -1234}, d[4] = {1000, -1000, 31, 1};
         int ok = 1;
-        song.master_q12 = 4088;
-        usb_fixed_dac(b, 4);
-        ok &= b[0] == 32767 && b[1] == -32768 && b[2] == 32767 && b[3] == -32768 && b[4] == 32767 && b[5] == -32768
-              && b[6] == 32702 && b[7] == 0;
-        song.master_q12 = 2048;
-        { int32_t c[4] = {32767, -32768, 1234, -1234}; usb_fixed_dac(c, 2); ok &= c[0] == 32767 && c[1] == -32768 && c[2] == 1234 && c[3] == -1234; }
-        check("USB LEVEL FIXED: usb_fixed_dac saturates at int16 at master_q12 4088 (no wrap) and is unity at 2048", ok);
+        mdac_g = -1; song.master_q12 = 4088;
+        master_dac(b, 4);
+        ok &= b[0] == ((32768 << OUT_SHIFT) - 1) && b[1] == -32768 * (1 << OUT_SHIFT) && b[2] == ((32768 << OUT_SHIFT) - 1) && b[3] == -32768 * (1 << OUT_SHIFT) &&
+              b[4] == ((32768 << OUT_SHIFT) - 1) && b[5] == -32768 * (1 << OUT_SHIFT) && b[6] == (16383 * 4088 * 8) >> 7 && b[7] == 0;
+        mdac_g = -1; song.master_q12 = 2048;
+        master_dac(c, 2);
+        ok &= c[0] == 32767 * (1 << OUT_SHIFT) && c[1] == -32768 * (1 << OUT_SHIFT) && c[2] == 1234 << OUT_SHIFT && c[3] == -1234 * (1 << OUT_SHIFT);
+        mdac_g = -1; song.master_q12 = 64;               /* 1/32: Q15 1000 -> 31.25, kept as 4000 in Q22 (the old stage: 31) */
+        master_dac(d, 2);
+        ok &= d[0] == 4000 && d[1] == -4000 && d[2] == 124 && d[3] == 4;
+        check("master_dac saturates at the old ceiling at master_q12 4088 (no wrap), is unity at 2048 and keeps 7 fractional bits at a quiet knob", ok);
+        {   /* the knob's fraction (master_g16, Q16): used while its upper 12 bits are song.master_q12, otherwise the whole step alone */
+            int32_t e[2] = {1000, -1000}, f[2] = {1000, -1000};
+            ok = 1;
+            mdac_g = -1; song.master_q12 = 3; master_g16 = 3u * 16u + 8u;       /* 3.5 / 2048 */
+            master_dac(e, 1);
+            ok &= e[0] == 218 && e[1] == -219;                                  /* 1000 x 3.5 / 16 = 218.75, floor */
+            mdac_g = -1; song.master_q12 = 3; master_g16 = 999u;                 /* a torn pair: the whole step 3 */
+            master_dac(f, 1);
+            ok &= f[0] == 187 && f[1] == -188;                                  /* 1000 x 3 / 16 = 187.5 */
+            master_g16 = 2048u * 16u; song.master_q12 = 2048;
+            check("master_dac: the knob's 4 fraction bits are used while they belong to master_q12; a pair that does not agree is read as the whole step", ok);
+        }
     }
-    {   /* PERFORM busy (DRIVE held, K3 FILTER low-pass): perf_master takes the level, so FIXED must give it MASTER_USB_REF too */
+    {   /* the glide: the knob jumps 2048 -> 512 (-12 dB) and back: the gain moves at most 1/512 of the gap a sample (+1 step), no sample-to-sample step, settles exactly */
+        int32_t in[2 * 32], o[2 * 32];
+        uint32_t n, i;
+        double prev = 1.0, worst = 0, g_at_32 = 0;
+        int ok = 1, settled = 0;
+        mdac_g = -1; song.master_q12 = 2048;
+        for (n = 0; n < 4u * 2048u / 32u && ok; n++) {
+            if (n == 2u) song.master_q12 = 512;
+            for (i = 0; i < 64; i++) in[i] = 20000;
+            memcpy(o, in, sizeof o);
+            master_dac(o, 32);
+            for (i = 0; i < 64; i += 2) {
+                double g = (double)o[i] / (20000.0 * (1 << OUT_SHIFT));
+                if (n >= 2u && fabs(g - prev) > worst) worst = fabs(g - prev);
+                ok &= g <= prev + 1e-9;                   /* monotone down */
+                prev = g;
+            }
+            if (n == 2u + 1u) g_at_32 = prev;
+            if (o[0] == want_dac(20000, 512)) settled = 1;
+        }
+        printf("audio: master glide 2048 -> 512: gain %.4f after 64 samples, largest step per sample %.5f of full scale, exactly on the knob's level at the end: %d\n", g_at_32, worst, settled);
+        check("MASTER glides: a jump of the knob (-12 dB) moves the gain by at most 1/512 of the gap per sample (no step), only downwards, and ends exactly on the new level",
+              ok && settled && worst < 0.75 / 512.0 * 1.01 && g_at_32 > 0.90 && g_at_32 < 0.93);   /* (0.25 + 0.75 e^(-64/512) = 0.912) */
+    }
+    {   /* PERFORM busy (DRIVE, FILTER): perf_master takes the level MASTER_USB_REF too, the USB feed is the same at every knob */
         int okp, okr;
         double dp, dr, ur, up;
         int32_t lref, lmin = LIM_T, samep = 1;
         usb_perf = 1;
-        ur = usb_run(0, 2048, &okr, &dr);
+        ur = usb_run(2048, &okr, &dr);
         lref = usb_lim_min;
         for (k = 0; k < 5; k++) {
-            up = usb_run(1, knobs[k], &okp, &dp);
+            up = usb_run(knobs[k], &okp, &dp);
             samep &= usb_same_as_ref && okp && up == ur;
             if (usb_lim_min < lmin) lmin = usb_lim_min;
         }
@@ -301,9 +334,8 @@ static void usb_level(void)
         pf.src = pf.next = PF_N;
         pf.pbeat = perf_beat;
         pf.mg[0] = pf.mg[1] = pf.mg[2] = pf.mg[3] = 32768;
-        printf("audio: USB LEVEL FIXED, PERFORM busy: USB rms %.0f (MASTER 2048 and FIXED at every knob); limiter env min: MASTER 2048 %d, FIXED %d\n",
-               ur, (int)lref, (int)lmin);
-        check("USB LEVEL FIXED with PERFORM busy (DRIVE, FILTER): USB is exactly MASTER mode's at 2048, the DAC USB * knob / 2048, the limiter no harder",
+        printf("audio: PERFORM busy: USB rms %.0f at every knob; limiter env min: knob 2048 %d, any knob %d\n", ur, (int)lref, (int)lmin);
+        check("with PERFORM busy (DRIVE, FILTER): USB is the same at every knob, the DAC USB * knob / 2048, the limiter no harder",
               okr && samep && ur > 1000.0 && lmin >= lref);
     }
 }
@@ -314,6 +346,7 @@ static void usb_level(void)
 static void boot_fresh(void)
 {
     fresh();
+    mdac_g = -1;                                       /* (power-on: the DAC volume starts on the knob) */
     lim_env = LIM_T; dc_l = dc_r = dce_l = dce_r = 0;
     memset(kb_note, 0, sizeof kb_note); kb_prev = 0; kb_layer = 0;
     trk[0].p[P_VOICE] = V_POLY;
@@ -362,7 +395,8 @@ static void boot_keys(void)
     silent = boot_run(0, 1, &peak0, &m0, &busy0);
     old = boot_run(300, 0, &peak_old, &m_old, &busy_old);
     boot_fresh();                                      /* the reference: the chord, MASTER at the pot's level by hand */
-    song.master_q12 = ref_m = master_of_pot(300);
+    master_g16 = master_of_knob16(300u * 16u);         /* (the law at the knob's 4 more bits; master_q12 is its upper 12 bits) */
+    song.master_q12 = ref_m = master_g16 >> 4;
     for (b = 0; b < 340u; b++) {
         fm1_in.notes = (1u << 0) | (1u << 4) | (1u << 7);
         audio_block(out, 32);
@@ -443,6 +477,7 @@ static void flash_duck(void)
 int main(void)
 {
     setvbuf(stdout, NULL, _IONBF, 0);
+    host_mix_follows_master = 0;                       /* (the device's own path: the mix at the fixed level, MASTER on the DAC feed; fx.c MIX_MG) */
     usb_level();
     boot_keys();
     overload(); dma();

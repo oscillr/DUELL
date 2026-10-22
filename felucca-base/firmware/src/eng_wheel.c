@@ -10,8 +10,9 @@
  * Partials at level 0 are skipped (their phase still runs).
  *
  * Registration: 8 knobs cannot hold 9 drawbars, so REG picks one of 16 drawbar settings
- * (DRW_REG: our list of common registrations) and SUB / BODY / TOP add -8..+8 to its sub
- * bars (16', 5 1/3'), its body (8', 4') and its upper bars (2 2/3' .. 1'). The louder the
+ * (DRW_REG: our list of common registrations) and BODY / TOP add -8..+8 to its body (8', 4') and
+ * its upper bars (2 2/3' .. 1'); the sub bars (16', 5 1/3') are the registration's alone (the SUB knob went in
+ * cloud job J: more sub is the global SUB LAYER's, chain_sub.c). The louder the
  * registration, the less each bar gets (a soft normalisation: full bars are louder than one
  * bar, but they do not stack up to clipping).
  *
@@ -125,17 +126,17 @@ static drw_vc_t drw_v[NLIVE][NVOICE];
 
 static uint32_t drw_part(const track_t *t) { return (uint32_t)(t - trk) % NLIVE; }
 
-/* the bar level 0..8 of partial k: the registration plus SUB / BODY / TOP */
+/* the bar level 0..8 of partial k: the registration plus BODY / TOP (the sub bars k = 0, 1: the registration's alone) */
 static int32_t drw_level_r(uint32_t reg, const int16_t *p, uint32_t k)   /* .. of registration reg */
 {
     int32_t d = DRW_REG[reg & 15u][k] - '0';
-    d += k < 2u ? p[P_E1] : k < 4u ? p[P_E2] : p[P_E3];
+    d += k < 2u ? 0 : k < 4u ? p[P_E2] : p[P_E3];
     return clamp(d, 0, 8);
 }
 static int32_t drw_level(const int16_t *p, uint32_t k)
 {
     int32_t d = DRW_REG[(uint32_t)p[P_E0] & 15u][k] - '0';
-    d += k < 2u ? p[P_E1] : k < 4u ? p[P_E2] : p[P_E3];
+    d += k < 2u ? 0 : k < 4u ? p[P_E2] : p[P_E3];
     return clamp(d, 0, 8);
 }
 
@@ -149,8 +150,8 @@ static void wheel_block(track_t *t)
     uint32_t norm;
     for (k = 0; k < DRW_NP; k++) {
         lv[k] = perc && k == DRW_NP - 1u ? 0 : DRW_LV[drw_level(p, k)];   /* PERC on: the 1' bar is off */
-        if (mxf.on && mxf.w[MX_E0] && !(perc && k == DRW_NP - 1u))   /* DUELL MORPH: the other end's REG, cross-faded */
-            lv[k] += ((DRW_LV[drw_level_r(mxf.b[MX_E0], p, k)] - lv[k]) * (int32_t)mxf.w[MX_E0]) >> 15;
+        if (MXF(t).on && MXF(t).w[MX_E0] && !(perc && k == DRW_NP - 1u))   /* DUELL MORPH: the other end's REG, cross-faded */
+            lv[k] += ((DRW_LV[drw_level_r(MXF(t).b[MX_E0], p, k)] - lv[k]) * (int32_t)MXF(t).w[MX_E0]) >> 15;
         s += lv[k];
     }
     /* sum of the gains = 2.4 s / (s + 1.5) (s in units of a full bar): one bar 0.96, three 1.6,
@@ -311,7 +312,7 @@ static void wheel_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const
 }
 
 static const preset_t WHEEL_PRESETS[] = {
-    /* name, {REG, SUB, BODY, TOP, PERC, CLICK, DRIVE, ROTR}, {A D S R}, fenv, mono */
+    /* name, {REG, -, BODY, TOP, PERC, CLICK, DRIVE, ROTR}, {A D S R}, fenv, mono (E2 was SUB until cloud job J) */
     {"FULL ORGAN", {15, 0, 0, 0, 0, 30, 20, 1}, {0, 64, 127, 45}, 0, 0, FX(0, 0, 10, 35), PAT(5)},
     {"JAZZ PERC", {4, 0, 0, 0, 2, 50, 8, 1}, {0, 64, 127, 40}, 0, 0, FX(0, 0, 0, 25), PAT(3)},
     {"GOSPEL", {6, 0, 0, 0, 1, 60, 40, 2}, {0, 64, 127, 45}, 0, 0, FX(0, 0, 0, 40), PAT(6)},
@@ -319,12 +320,14 @@ static const preset_t WHEEL_PRESETS[] = {
     {"ROCK DRIVE", {7, 0, 0, 0, 0, 70, 100, 2}, {0, 64, 127, 40}, 0, 0, FX(35, 0, 10, 25), PAT(4)},
 };
 
+static const uint8_t WHEEL_UIORD[8] = {0, 2, 3, 4, 5, 6, 7, 1};   /* card position -> E index: ENGINE REG BODY TOP; EDIT 1 PERC CLICK DRV ROTR; the unused SUB slot last (EDIT 2 is not shown); the stored ids never move */
+
 static const engine_t ENG_WHEEL = {
     .name = "WHEEL",
     .page_title = {"BARS", "TONE"},
     .edit = {
         {"REG", F_ENUM, 0, 15, 4, N_DRW_REG, 0},
-        {"SUB", F_INT, -8, 8, 0, 0, 0},
+        {"-", F_INT, 0, 0, 0, 0, 0},                 /* was SUB: the registration's sub bars are not raised or lowered any more; the global SUB LAYER (chain_sub.c) adds sub */
         {"BODY", F_INT, -8, 8, 0, 0, 0},
         {"TOP", F_INT, -8, 8, 0, 0, 0},
         {"PERC", F_ENUM, 0, 6, 0, N_DRW_PERC, 0},
@@ -337,6 +340,7 @@ static const engine_t ENG_WHEEL = {
     .note_on = wheel_note_on,
     .render = wheel_render,
     .knob = {P_E0, P_E4, P_E6, P_E7},
+    .uiord = WHEEL_UIORD,
     .block = wheel_block,
     .ufilt = 1,                 /* no filter of its own: the multimode filter (DUELL 0.2.9; voice.c uf_run: CUT RES MODE SLOPE, P_FREEA..D) */
 };

@@ -37,7 +37,15 @@ static uint32_t kb_prev;
 static volatile uint8_t kb_boot_hold;    /* #137: set from power-on to the end of the splash (main.c): the keys sound nothing,
                                           * and one held across its end stays silent until it is let go and pressed again */
 static uint8_t kb_note[27], kb_trk[27];  /* per key: the note it started and on which track */
+static uint8_t in_root;                  /* the root key_on built the chord of that part on (its own TRN): arp_add's held_dt is relative to it */
 static uint8_t in_key;                   /* the key (+ 1) whose notes go into input_on now (key_on), 0: none (MIDI IN) */
+#if DUELL_VELO
+#define KEY_VEL(k) sense_vel(k)                  /* the velocity of key k's note: sense.c, after Velo's method (100 while the setting is OFF, and for the top 7 keys' fixed one) */
+#define KEY_VELU(k) ((uint32_t)sense_vel(k))
+#else
+#define KEY_VEL(k) 100                           /* every key plays velocity 100 */
+#define KEY_VELU(k) 100u
+#endif
 /* #191: where each track's held[i] came from, so the arp maps it again as it plays (arp_list: TRN and the global ROOT, SCALE, OFF-SCALE as
  * they are now). held_key: the key + 1 (bits 0..4) and the octave buttons then + 3 (bits 5..7); 0: not a key's own
  * mapping (MIDI IN), held[i] plays as it is. held_dt: held[i] above the key's
@@ -95,7 +103,7 @@ static int32_t scale_snap(const track_t *t, int32_t n)
 
 /* OFF-SCALE KEYS: a key's or MIDI note's note n -> the note that sounds. SNAP (the default): the NEAREST note of the global scale, a tie
  * goes DOWN (C major: C# gives C, F# gives F); PLAY, or CHROMATIC (nothing is outside it): n as it is. Every source goes through this
- * (kb_pitch for the keys, chord_make for any note that starts a chord or a single note), so both parts sound the same note for a key */
+ * (kb_pitch for the keys, chord_make for any note that starts a chord or a single note); each part maps a key with its own TRN (key_on) */
 static int32_t note_snap_to(const track_t *t, int32_t n, uint32_t force)
 {
     uint32_t mask = scale_mask(t), d;
@@ -151,7 +159,7 @@ static int in_held(const track_t *t, uint32_t note)
 
 static void arp_add(track_t *t, uint32_t note)
 {
-    uint32_t i, k = in_key - 1u;
+    uint32_t i;
     if (arp_hold(t) && t->arp_phys == 0u) {
         if (t->atg_lat)
             atg_release(t);                         /* ARP TARGET: the latched root voices end */
@@ -171,7 +179,7 @@ static void arp_add(track_t *t, uint32_t note)
         uint8_t *hk = held_key[trk_index(t)];
         hk[t->nheld] = in_key
                            ? (uint8_t)(in_key | (uint32_t)(song.octave + 3) << 5) : 0u;
-        held_dt[trk_index(t)][t->nheld] = (int8_t)(hk[t->nheld] ? (int32_t)note - kb_note[k] : 0);
+        held_dt[trk_index(t)][t->nheld] = (int8_t)(hk[t->nheld] ? (int32_t)note - (int32_t)in_root : 0);
         t->held[t->nheld++] = (uint8_t)note;
     }
     if (t->nheld == 1u) {
@@ -706,6 +714,11 @@ static uint32_t xf_gain(uint32_t part, uint32_t v)
     g = 32767 + (e - 32767) * x / 100;
     return (uint32_t)(g < 1 ? 1 : g > 32767 ? 32767 : g);
 }
+/* the key as played: the octave buttons, no TRN, no scale (what the SPLIT note is compared with, whatever each part's TRN) */
+static uint32_t kb_raw(uint32_t k)
+{
+    return (uint32_t)clamp(53 + (int32_t)k + 12 * song.octave, 0, 127);
+}
 /* LAYER with SPLIT set: which parts play note n (bit 0 part 1 below the split, bit 1 part 2 at or above it); 3 both */
 static uint32_t lay_route(uint32_t n)
 {
@@ -748,27 +761,30 @@ static void input_off(track_t *t, uint32_t note)
 static void key_on(uint32_t k, track_t *t)
 {
     uint32_t n = chord_build(t, kb_note[k], kb_chord[k]), i, mc = trk_midi_ch(trk_index(t));
-    uint32_t lay = duell_mode == DM_LAYER && t == trk, rt = lay ? lay_route(kb_note[k]) : 3u;   /* (SPLIT: who plays it) */
+    uint32_t lay = duell_mode == DM_LAYER && t == trk, rt = lay ? lay_route(kb_raw(k)) : 3u;   /* (SPLIT: who plays it; the played key, before any TRN) */
     kb_chn[k] = kb_chn2[k] = 0;
     if (!(rt & 1u))
         n = 0;
     in_key = (uint8_t)(k + 1u);                     /* (the arp keeps the key: arp_add) */
+    in_root = kb_note[k];
     for (i = 0; i < n; i++) {
         uint32_t x = kb_chord[k][i];
         if (midi_local_held(t, x))
             continue;
         if (lay)
-            lay_input(t, x, 100);
+            lay_input(t, x, KEY_VEL(k));
         else
-            input_on(t, x, 100);
-        midi_out_event(0x09u | (0x90u | mc) << 8 | x << 16 | 100u << 24);
+            input_on(t, x, KEY_VEL(k));
+        midi_out_event(0x09u | (0x90u | mc) << 8 | x << 16 | KEY_VELU(k) << 24);
     }
     if (lay && (rt & 2u)) {                         /* LAYER: part 2 gets the held key too, its own chord and arp */
-        uint32_t n2 = chord_build(&trk[1], kb_note[k], kb_chord2[k]);
+        uint32_t r2 = kb_map(&trk[1], k), n2;       /* (part 2's own TRN, on the key: not part 1's note) */
+        in_root = (uint8_t)r2;
+        n2 = chord_build(&trk[1], r2, kb_chord2[k]);
         for (i = 0; i < n2; i++) {
             uint32_t x = kb_chord2[k][i];
             if (!midi_local_held(&trk[1], x))
-                lay_input(&trk[1], x, 100);
+                lay_input(&trk[1], x, KEY_VEL(k));
         }
         kb_chn2[k] = (uint8_t)n2;
     }
@@ -863,6 +879,32 @@ static __attribute__((noinline)) void arp_rechord(void)
     }
 }
 
+#if DUELL_VELO
+/* the keys' aftertouch, the cheap form: the strongest held key's pressure (sense.c) as channel pressure (0xD0) to the part the keys play,
+ * through mod_midi's path (t->at, the matrix source AFTERTOUCH). Nothing per voice. Sent when it moves by SC_AT_DEAD, and 0 when it falls to 0, the
+ * setting goes OFF or the keys play another part (the old one's pressure goes). With the setting OFF it never calls mod_midi. */
+static __attribute__((noinline)) void velo_at_block(void)
+{
+    static uint8_t sent, tm;                      /* the last value sent; the parts (bit per part) it went to */
+    uint32_t v = sense_at_value(), lay = duell_mode == DM_LAYER;
+    uint32_t bits = lay ? 3u : 1u << song.sel, d = v > sent ? v - sent : sent - v, i;
+    if (bits != tm) {
+        for (i = 0; i < NTRK; i++)
+            if (sent && (tm >> i) & 1u)
+                mod_midi(&trk[i], 0xD0u, 0, 0);
+        tm = (uint8_t)bits;
+        sent = 0;
+        d = v;
+    }
+    if (d >= SC_AT_DEAD || (!v && sent)) {
+        sent = (uint8_t)v;
+        for (i = 0; i < NTRK; i++)
+            if ((bits >> i) & 1u)
+                mod_midi(&trk[i], 0xD0u, v, 0);
+    }
+}
+#endif
+
 static void keyboard_block(void)
 {
     uint32_t cur = fm1_in.notes, ch, k;
@@ -872,6 +914,10 @@ static void keyboard_block(void)
         gen_seen = scale_gen;
         arp_rechord();
     }
+#if DUELL_VELO
+    cur = sense_gate(cur, kb_prev);              /* a key whose velocity is not in yet waits for it (sense.c); at most SC_GATE_MAX_US */
+    velo_at_block();
+#endif
     ch = cur ^ kb_prev;                          /* keys also sound while entering steps */
     if (!ch)
         return;

@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 /* DUELL 0.2.9: OCT- held + a knob turned = that card to its DEFAULT (ui_input.c knob_reset), and OCT- / OCT+ move the octave when LET GO (oct_rel).
- *   RESET      a plain parameter (AMP ENV ATK), PERFORM's four cards, MIXER's LEVEL / PAN / SPACE (0.2.10), MODE's BAL, TEMPO (BPM, SWG): to the table's default / the natural
+ *   RESET      a plain parameter (AMP ENV ATK), PERFORM's four cards, MIXER's LEVEL 1 / PAN 1 / LEVEL 2 / PAN 2 (0.2.25: GLO's first page), MODE's BAL, TEMPO (BPM, SWG): to the table's default / the natural
  *              zero; once per gesture ("RESET .." in the header), the turn is not applied, further detents are ignored until the knob has been still ~300 ms
- *              (also after OCT- is let go); a switch (MIXER MUTE), a greyed card (MIXER PAN in DUEL mode) and an action page: nothing; normal turning is unchanged
+ *              (also after OCT- is let go); a card that is not drawn (MIXER PAN in DUEL mode) and an action page: nothing; normal turning is unchanged
  *   OCTAVE     a tap moves it on release (not on press); OCT- used as a modifier moves no octave; both together still reset it to 0
  * Built and run by DUELL/host_tests.sh (name: reset): the UI sources against ui_test.c's stub display and knobs. */
 #define UI_TEST_NO_MAIN 1
@@ -101,28 +101,29 @@ int main(void)
     expect("PERFORM without OCT-: normal turn", perf_filt == 5);
     ui.perf = 0;
 
-    /* MIXER */
+    /* MIXER (0.2.25 layout round: GLO's first page, K1 LEVEL 1, K2 PAN 1, K3 LEVEL 2, K4 PAN 2; the mutes are keys, SPACE is PERFORM's) */
     page("MIXER");
     duell_mode_req = DM_STEREO;
-    TSEL->p[P_LEVEL] = 40; TSEL->p[P_PAN] = 20; TSEL->p[P_REV] = 60; TSEL->p[P_MUTE] = 1; perf_space = 40;
+    trk[0].p[P_LEVEL] = 40; trk[0].p[P_PAN] = 20; trk[1].p[P_LEVEL] = 30; trk[1].p[P_PAN] = -20; trk[0].p[P_REV] = 60; perf_space = 40;
     btn_down(B_OCTDN); frame();
-    turn(EN_K4, 1);
-    expect("MIXER K4 LEVEL: its default", TSEL->p[P_LEVEL] == TP[P_LEVEL].def && said_reset());
+    turn(EN_K1, 1);
+    expect("MIXER K1 LEVEL 1: its default", trk[0].p[P_LEVEL] == TP[P_LEVEL].def && said_reset());
     quiet(); turn(EN_K2, 1);
-    expect("MIXER K2 PAN: centre", TSEL->p[P_PAN] == 0);
+    expect("MIXER K2 PAN 1: centre", trk[0].p[P_PAN] == 0);
     quiet(); turn(EN_K3, 1);
-    expect("MIXER K3 SPACE: 0, said RESET SPACE, the part's REV send untouched", perf_space == 0 && TSEL->p[P_REV] == 60 && msg_is("RESET SPACE"));
-    quiet(); ui.msg_t = 0; turn(EN_K1, -1);
-    expect("MIXER K1 MUTE is a switch: the turn goes as ever", TSEL->p[P_MUTE] == 0 && !said_reset());
+    expect("MIXER K3 LEVEL 2: its default", trk[1].p[P_LEVEL] == TP[P_LEVEL].def);
+    quiet(); turn(EN_K4, -1);
+    expect("MIXER K4 PAN 2: centre; SPACE and the REV send untouched", trk[1].p[P_PAN] == 0 && perf_space == 40 && trk[0].p[P_REV] == 60);
     btn_up(B_OCTDN); frame(); frame();
     expect("  .. (the hold was a modifier: no octave on release)", song.octave == 0);
     song.octave = 0;
     duell_mode_req = DM_SPLIT;
-    TSEL->p[P_PAN] = 20;
+    trk[0].p[P_PAN] = 20;
     quiet();
     btn_down(B_OCTDN); frame(); turn(EN_K2, 1); btn_up(B_OCTDN); frame(); frame();
-    expect("MIXER PAN in DUEL mode (greyed): nothing", TSEL->p[P_PAN] == 20 && song.octave == 0);
+    expect("MIXER PAN 1 in DUEL mode (no card): nothing", trk[0].p[P_PAN] == 20 && song.octave == 0);
     duell_mode_req = DM_STEREO;
+    perf_space = 0;
 
     /* MODE: BAL */
     page("MODE");
@@ -130,13 +131,13 @@ int main(void)
     btn_down(B_OCTDN); frame(); turn(EN_K2, -1); btn_up(B_OCTDN); frame();
     expect("MODE K2 BAL: centre", mix_bal == 0);
 
-    /* the REVERB page's LOCUT (0.2.14): K4, to its default 61 (88 Hz); and a turn is a turn, 1 step */
+    /* the REVERB page's LOCUT (0.2.14): K4, to its default 75 (299 Hz; 61 = 88 Hz up to 0.2.21); and a turn is a turn, 1 step */
     page("REVERB");
     song.g[G_RLOCUT] = 0;
     turn(EN_K4, 3);
     expect("REVERB K4 LOCUT: a plain turn moves it", song.g[G_RLOCUT] == 3 && !said_reset());
     btn_down(B_OCTDN); frame(); turn(EN_K4, 1);
-    expect("REVERB K4 LOCUT: OCT- + the knob, its default 61", song.g[G_RLOCUT] == GP[G_RLOCUT].def && GP[G_RLOCUT].def == 61 && said_reset());
+    expect("REVERB K4 LOCUT: OCT- + the knob, its default 75", song.g[G_RLOCUT] == GP[G_RLOCUT].def && GP[G_RLOCUT].def == 75 && said_reset());
     btn_up(B_OCTDN); frame(); frame();
 
     /* TEMPO */
@@ -180,7 +181,7 @@ int main(void)
     expect("  .. a plain OCT- tap there is still the octave", song.octave == -1);
     btn_up(B_ARP); frames(64); quiet();
     page("MIXER");
-    set_engine_of(TSEL, 2u);                                 /* PHASE: QUICK FILTER is the multimode filter's CUT RES MODE + AMP REL */
+    init_engine_of(TSEL, 2u);                                 /* PHASE: QUICK FILTER is the multimode filter's CUT RES MODE + AMP REL */
     {
         int16_t c0, r0;
         TSEL->p[P_FREEB] = (int16_t)(TP[P_FREEB].def + 20);

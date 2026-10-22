@@ -1,0 +1,452 @@
+# OWNER-1: the owner's manual test list (release_drafts/RAM1_GUIDE.md) as a bench suite, stage 1 of the automated bench suite
+# (release_drafts/BENCH_SUITE_DESIGN.md 5.2; the format: tools/bench_run.py --help). About 9 minutes without the two soaks, about 29 with them (settling included).
+# Notes: C4 = 60; channel 1 is part 1, channel 2 part 2. Patch names are checked on the unit: a wrong name SKIPS the test and says why.
+suite OWNER-1
+
+test SILENCE  5 s of nothing: the noise floor, DC, the exact-zero check (stage 2)
+tail 5
+expect exact
+
+# ---- M07 FINAL REEL (LAYER): four chords, one chord with MORPH, one with aftertouch
+test M07-CHORDS  M07 FINAL REEL, four chords
+load multi 7 "FINAL REEL"
+mode LAYER
+at 0.0  chord C3 E3 G3 B3 vel 90
+at 3.0  release
+at 3.0  chord A2 C3 E3 G3 vel 90
+at 6.0  release
+at 6.0  chord F2 A2 C3 E3 vel 90
+at 9.0  release
+at 9.0  chord G2 B2 D3 F3 vel 90
+at 12.0 release
+tail 5
+measure 1.0 12.0
+expect exact
+
+test M07-MORPH  M07 FINAL REEL, one chord held, MORPH 0 to 127 and back
+load multi 7 "FINAL REEL"
+mode LAYER
+at 0.0  chord C3 E3 G3 B3 vel 90
+at 2.0  morph 0 127 over 3
+at 6.0  morph 127 0 over 3
+at 10.0 release
+tail 5
+measure 1.0 10.0
+expect close
+
+test M07-AFTERTOUCH  M07 FINAL REEL, one chord held, aftertouch 0 to 127 and back
+load multi 7 "FINAL REEL"
+mode LAYER
+at 0.0  chord C3 E3 G3 B3 vel 90
+at 2.0  aftertouch 0 127 over 3
+at 6.0  aftertouch 127 0 over 3
+at 10.0 release
+tail 5
+measure 1.0 10.0
+expect exact
+
+# ---- M16 STRESS TEST (LAYER): 1, 2, 3 keys (the old bench rows)
+
+test M16-1KEY  M16 STRESS TEST, 1 key held
+load multi 16 "STRESS TEST"
+mode LAYER
+at 0.0  chord C4 vel 64
+at 10.0 release
+tail 4
+measure 1.0 10.0
+expect exact
+
+test M16-2KEYS  M16 STRESS TEST, 2 keys held
+load multi 16 "STRESS TEST"
+mode LAYER
+at 0.0  chord C4 E4 vel 64
+at 10.0 release
+tail 4
+measure 1.0 10.0
+expect exact
+
+test M16-3KEYS  M16 STRESS TEST, 3 keys held
+load multi 16 "STRESS TEST"
+mode LAYER
+at 0.0  chord C4 E4 G4 vel 64
+at 10.0 release
+tail 4
+measure 1.0 10.0
+expect exact
+
+# ---- two patches of every engine (RAM1_GUIDE.md), part 1, STEREO: one note, a chord, MORPH while held, aftertouch, release, tail
+test ANALOG-3  ANALOG #3 LADDER BASS
+mode STEREO
+load patch 1 #3 "LADDER BASS"
+at 0.0  note C3 vel 100 len 1.5
+at 2.0  chord C3 E3 G3 vel 100
+at 3.0  morph 0 127 over 3
+at 6.5  aftertouch 0 127 over 2
+at 9.0  release
+tail 3
+measure 0.0 9.0
+expect close
+
+test ANALOG-118  ANALOG #118 GLASS SHARDS
+mode STEREO
+load patch 1 #118 "GLASS SHARDS"
+at 0.0  note C3 vel 100 len 1.5
+at 2.0  chord C3 E3 G3 vel 100
+at 3.0  morph 0 127 over 3
+at 6.5  aftertouch 0 127 over 2
+at 9.0  release
+tail 3
+measure 0.0 9.0
+expect close
+
+test PHYS-37  PHYS #37 PAN WHISTLE
+mode STEREO
+load patch 1 #37 "PAN WHISTLE"
+at 0.0  note C3 vel 100 len 1.5
+at 2.0  chord C3 E3 G3 vel 100
+at 3.0  morph 0 127 over 3
+at 6.5  aftertouch 0 127 over 2
+at 9.0  release
+tail 3
+measure 0.0 9.0
+expect close
+
+test PHYS-77  PHYS #77 NYLON GUT
+mode STEREO
+load patch 1 #77 "NYLON GUT"
+at 0.0  note C3 vel 100 len 1.5
+at 2.0  chord C3 E3 G3 vel 100
+at 3.0  morph 0 127 over 3
+at 6.5  aftertouch 0 127 over 2
+at 9.0  release
+tail 3
+measure 0.0 9.0
+expect close
+
+test TRIO-17  TRIO #17 SYNC BASS
+mode STEREO
+load patch 1 #17 "SYNC BASS"
+at 0.0  note C3 vel 100 len 1.5
+at 2.0  chord C3 E3 G3 vel 100
+at 3.0  morph 0 127 over 3
+at 6.5  aftertouch 0 127 over 2
+at 9.0  release
+tail 3
+measure 0.0 9.0
+expect close
+
+test TRIO-54  TRIO #54 STRING MACH
+mode STEREO
+load patch 1 #54 "STRING MACH"
+at 0.0  note C3 vel 100 len 1.5
+at 2.0  chord C3 E3 G3 vel 100
+at 3.0  morph 0 127 over 3
+at 6.5  aftertouch 0 127 over 2
+at 9.0  release
+tail 3
+measure 0.0 9.0
+expect close
+
+test PHASE-10  PHASE #10 ELASTIC BASS
+mode STEREO
+load patch 1 #10 "ELASTIC BASS"
+at 0.0  note C3 vel 100 len 1.5
+at 2.0  chord C3 E3 G3 vel 100
+at 3.0  morph 0 127 over 3
+at 6.5  aftertouch 0 127 over 2
+at 9.0  release
+tail 3
+measure 0.0 9.0
+expect close
+
+test PHASE-31  PHASE #31 BRAZEN
+mode STEREO
+load patch 1 #31 "BRAZEN"
+at 0.0  note C3 vel 100 len 1.5
+at 2.0  chord C3 E3 G3 vel 100
+at 3.0  morph 0 127 over 3
+at 6.5  aftertouch 0 127 over 2
+at 9.0  release
+tail 3
+measure 0.0 9.0
+expect close
+
+test LOFI-13  LOFI #13 CARTRIDGE
+mode STEREO
+load patch 1 #13 "CARTRIDGE"
+at 0.0  note C3 vel 100 len 1.5
+at 2.0  chord C3 E3 G3 vel 100
+at 3.0  morph 0 127 over 3
+at 6.5  aftertouch 0 127 over 2
+at 9.0  release
+tail 3
+measure 0.0 9.0
+expect close
+
+test LOFI-71  LOFI #71 MARBLE RUN
+mode STEREO
+load patch 1 #71 "MARBLE RUN"
+at 0.0  note C3 vel 100 len 1.5
+at 2.0  chord C3 E3 G3 vel 100
+at 3.0  morph 0 127 over 3
+at 6.5  aftertouch 0 127 over 2
+at 9.0  release
+tail 3
+measure 0.0 9.0
+expect close
+
+test VOICE-51  VOICE #51 VESPERS
+mode STEREO
+load patch 1 #51 "VESPERS"
+at 0.0  note C3 vel 100 len 1.5
+at 2.0  chord C3 E3 G3 vel 100
+at 3.0  morph 0 127 over 3
+at 6.5  aftertouch 0 127 over 2
+at 9.0  release
+tail 3
+measure 0.0 9.0
+expect close
+
+test VOICE-107  VOICE #107 GHOST VOICES
+mode STEREO
+load patch 1 #107 "GHOST VOICES"
+at 0.0  note C3 vel 100 len 1.5
+at 2.0  chord C3 E3 G3 vel 100
+at 3.0  morph 0 127 over 3
+at 6.5  aftertouch 0 127 over 2
+at 9.0  release
+tail 3
+measure 0.0 9.0
+expect close
+
+test NOISE-57  NOISE #57 SEA ORGAN
+mode STEREO
+load patch 1 #57 "SEA ORGAN"
+at 0.0  note C3 vel 100 len 1.5
+at 2.0  chord C3 E3 G3 vel 100
+at 3.0  morph 0 127 over 3
+at 6.5  aftertouch 0 127 over 2
+at 9.0  release
+tail 3
+measure 0.0 9.0
+expect close
+
+test NOISE-101  NOISE #101 TIZZ HAT
+mode STEREO
+load patch 1 #101 "TIZZ HAT"
+at 0.0  note C3 vel 100 len 1.5
+at 2.0  chord C3 E3 G3 vel 100
+at 3.0  morph 0 127 over 3
+at 6.5  aftertouch 0 127 over 2
+at 9.0  release
+tail 3
+measure 0.0 9.0
+expect close
+
+test FM6-47  FM6 #47 GLASS HALL
+mode STEREO
+load patch 1 #47 "GLASS HALL"
+at 0.0  note C3 vel 100 len 1.5
+at 2.0  chord C3 E3 G3 vel 100
+at 3.0  morph 0 127 over 3
+at 6.5  aftertouch 0 127 over 2
+at 9.0  release
+tail 3
+measure 0.0 9.0
+expect close
+
+test FM6-83  FM6 #83 TINE ROOM
+mode STEREO
+load patch 1 #83 "TINE ROOM"
+at 0.0  note C3 vel 100 len 1.5
+at 2.0  chord C3 E3 G3 vel 100
+at 3.0  morph 0 127 over 3
+at 6.5  aftertouch 0 127 over 2
+at 9.0  release
+tail 3
+measure 0.0 9.0
+expect close
+
+test WAVE-24  WAVE #24 REESE BASS
+mode STEREO
+load patch 1 #24 "REESE BASS"
+at 0.0  note C3 vel 100 len 1.5
+at 2.0  chord C3 E3 G3 vel 100
+at 3.0  morph 0 127 over 3
+at 6.5  aftertouch 0 127 over 2
+at 9.0  release
+tail 3
+measure 0.0 9.0
+expect close
+
+test WAVE-61  WAVE #61 EVOLVING PAD
+mode STEREO
+load patch 1 #61 "EVOLVING PAD"
+at 0.0  note C3 vel 100 len 1.5
+at 2.0  chord C3 E3 G3 vel 100
+at 3.0  morph 0 127 over 3
+at 6.5  aftertouch 0 127 over 2
+at 9.0  release
+tail 3
+measure 0.0 9.0
+expect close
+
+test WHEEL-18  WHEEL #18 PEDAL BASS
+mode STEREO
+load patch 1 #18 "PEDAL BASS"
+at 0.0  note C3 vel 100 len 1.5
+at 2.0  chord C3 E3 G3 vel 100
+at 3.0  morph 0 127 over 3
+at 6.5  aftertouch 0 127 over 2
+at 9.0  release
+tail 3
+measure 0.0 9.0
+expect close
+
+test WHEEL-87  WHEEL #87 JAZZ CLUB
+mode STEREO
+load patch 1 #87 "JAZZ CLUB"
+at 0.0  note C3 vel 100 len 1.5
+at 2.0  chord C3 E3 G3 vel 100
+at 3.0  morph 0 127 over 3
+at 6.5  aftertouch 0 127 over 2
+at 9.0  release
+tail 3
+measure 0.0 9.0
+expect close
+
+# ---- DUEL: the MONO DUEL pair #15 BREADBIN (part 1, left) + #27 SQUARE LEAD (part 2, right), a bass line and a lead line (no factory slot holds a DUEL multi on T0229)
+test DUEL-SCENE  DUEL: #15 BREADBIN bass line (channel 1) + #27 SQUARE LEAD (channel 2)
+mode DUEL
+load patch 1 #15 "BREADBIN"
+load patch 2 #27 "SQUARE LEAD"
+
+at 0.0  note C2 vel 100 len 0.8 ch 1
+at 1.0  note C2 vel 100 len 0.8 ch 1
+at 2.0  note G2 vel 100 len 0.8 ch 1
+at 3.0  note C2 vel 100 len 0.8 ch 1
+at 4.0  note Eb2 vel 100 len 0.8 ch 1
+at 5.0  note C2 vel 100 len 0.8 ch 1
+at 6.0  note G2 vel 100 len 0.8 ch 1
+at 7.0  note Bb2 vel 100 len 0.8 ch 1
+at 8.0  note C2 vel 100 len 0.8 ch 1
+at 9.0  note C2 vel 100 len 0.8 ch 1
+at 10.0  note G2 vel 100 len 0.8 ch 1
+at 11.0  note C2 vel 100 len 0.8 ch 1
+at 12.0  note Eb2 vel 100 len 0.8 ch 1
+at 13.0  note C2 vel 100 len 0.8 ch 1
+at 14.0  note G2 vel 100 len 0.8 ch 1
+at 15.0  note Bb2 vel 100 len 0.8 ch 1
+at 0.50  note C4 vel 90 len 1.0 ch 2
+at 1.75  note Eb4 vel 90 len 1.0 ch 2
+at 3.00  note G4 vel 90 len 1.0 ch 2
+at 4.25  note Bb4 vel 90 len 1.0 ch 2
+at 5.50  note G4 vel 90 len 1.0 ch 2
+at 6.75  note Eb4 vel 90 len 1.0 ch 2
+at 8.00  note C5 vel 90 len 1.0 ch 2
+at 9.25  note Bb4 vel 90 len 1.0 ch 2
+at 10.50  note G4 vel 90 len 1.0 ch 2
+at 11.75  note Eb4 vel 90 len 1.0 ch 2
+at 13.00  note D4 vel 90 len 1.0 ch 2
+at 14.25  note C4 vel 90 len 1.0 ch 2
+tail 4
+measure 0.5 16.0
+expect exact
+
+# ---- matrix extremes on a held #61 EVOLVING PAD: the spare slot 8 set during the test only (the clicks are the point)
+test MATRIX-SH-CUT  #61 EVOLVING PAD held, slot 8: LFO2 S&H to CUT +63, fast
+mode STEREO
+load patch 1 #61 "EVOLVING PAD"
+matrix 1 slot 8 LFO2 S&H CUT +63 rate 100
+at 0.0  chord C3 G3 D4 vel 90
+at 10.0 release
+tail 2
+measure 1.0 10.0
+expect report
+
+test MATRIX-SQR-PAN  #61 EVOLVING PAD held, slot 8: LFO2 SQR to PAN +63, fast
+mode STEREO
+load patch 1 #61 "EVOLVING PAD"
+matrix 1 slot 8 LFO2 SQR PAN +63 rate 90
+at 0.0  chord C3 G3 D4 vel 90
+at 10.0 release
+tail 2
+measure 1.0 10.0
+expect report
+
+test MATRIX-SH-LEVEL  #61 EVOLVING PAD held, slot 8: LFO2 S&H to LEVEL +63, fast
+mode STEREO
+load patch 1 #61 "EVOLVING PAD"
+matrix 1 slot 8 LFO2 S&H LEVEL +63 rate 100
+at 0.0  chord C3 G3 D4 vel 90
+at 10.0 release
+tail 2
+measure 1.0 10.0
+expect report
+
+test MATRIX-SQR-SAT  #61 EVOLVING PAD held, slot 8: LFO2 SQR to SAT +63, fast
+mode STEREO
+load patch 1 #61 "EVOLVING PAD"
+matrix 1 slot 8 LFO2 SQR SAT +63 rate 90
+at 0.0  chord C3 G3 D4 vel 90
+at 10.0 release
+tail 2
+measure 1.0 10.0
+expect report
+
+# ---- WAVE run: a chromatic run C2 to C6 and back at 30 ms a note, legato
+test WAVE-RUN  WAVE #24 REESE BASS, run C2 to C6 and back, 30 ms a note, legato
+mode STEREO
+load patch 1 #24 "REESE BASS"
+at 0.5  run C2 C6 step 0.03 legato
+tail 11
+measure 0.5 6.0
+expect exact
+
+# ---- a flash write while playing: a settings save with unchanged values at 3 s (the owner's decision 5; no patch or multi is written)
+test FLASH-WRITE  a chord held on M07 FINAL REEL, a settings save at 3 s
+load multi 7 "FINAL REEL"
+mode LAYER
+at 0.0  chord C3 E3 G3 B3 vel 90
+at 3.0  save-test
+at 10.0 release
+tail 5
+expect report
+
+# ---- the soaks (the owner's decision 8: both): 10 minutes each, the RAM check and the counters read every 60 s
+cycle M07-CYCLE period 20
+at 0.0  chord C3 E3 G3 B3 vel 90
+at 4.0  release
+at 4.0  chord A2 C3 E3 G3 vel 90
+at 8.0  release
+at 8.0  chord F2 A2 C3 E3 vel 90
+at 12.0 release
+at 12.0 chord G2 B2 D3 F3 vel 90
+at 14.0 morph 0 127 over 2
+at 16.0 release
+at 16.0 chord C3 E3 G3 B3 vel 90
+at 16.0 aftertouch 0 127 over 2
+at 18.0 morph 127 0 over 1
+at 19.0 aftertouch 127 0 over 0.9
+at 19.9 release
+end
+
+test SOAK-M07  10 minutes of M07 FINAL REEL: a chord change every 4 s, MORPH and aftertouch moves every 20 s
+load multi 7 "FINAL REEL"
+mode LAYER
+soak 600 repeat M07-CYCLE
+check 60
+tail 3
+expect report
+
+cycle STRESS-HOLD period 600
+at 0.0  chord C3 E3 G3 B3 D4 F4 A4 C5 vel 64 ch 1
+at 0.0  chord G3 B3 D4 F#4 A4 C5 E5 G5 vel 64 ch 2
+end
+
+test SOAK-STRESS  10 minutes of the heavy 8 + 8 DUEL scene (the old STRESS 10M), the NOTES budget held open
+scene "HVY DUEL 8+8"
+soak 600 repeat STRESS-HOLD
+check 60
+tail 3
+expect report

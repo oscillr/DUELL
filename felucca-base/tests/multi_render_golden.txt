@@ -1,44 +1,148 @@
 # tests/multi_render_test.c: FNV-1a 64 of each factory multi's output (3-note chords on both parts, fader 0 / 63 / 127).
 # Written on 0.2.16's sounds (114): the 14 new factory sounds of 0.2.17 must not change it.
-M01 f0 f35064e28466c042
-M01 f63 cbc87957f6c5c1ec
-M01 f127 3a3f90e25feab573
-M02 f0 0c643fd3c39dcd9f
-M02 f63 bd4e6429c282e32f
-M02 f127 20e0a2e553fc309d
-M03 f0 8163efbdd32c7d5c
-M03 f63 deaf761e82c3d183
-M03 f127 e257c4188a52422b
-M04 f0 d0270fd5501b5917
-M04 f63 cac2c33e5bf1d284
-M04 f127 0ed32e7fd7a16645
-M05 f0 e9a2ca5eb645e140
-M05 f63 cfd96a289ae41271
-M05 f127 3f14cd318a1cb40d
-M06 f0 c28c72f7e75c9d9d
-M06 f63 4e8ac7147cf2e615
-M06 f127 80653313f1bcf53c
-M07 f0 74550bd72e0be7f4
-M07 f63 19853bb86cd7d3f3
-M07 f127 79faf9b21f907fdf
-M08 f0 123d4271cf1108c7
-M08 f63 142722501173fe96
-M08 f127 6e50e5cff7317aa3
-M09 f0 9884617d30387c10
-M09 f63 620cd73919dde472
-M09 f127 b8b23608740f0bcb
-M10 f0 cac6117731848fd4
-M10 f63 19ff84c5459ed659
-M10 f127 ec95050ecd12200c
-M13 f0 5997b3b9a74a2bc9
-M13 f63 bfc8b517b213ef7f
-M13 f127 8f14f6eab1fc8079
-M14 f0 b1a8560ca2a267a5
-M14 f63 fb66df32ef3d60a2
-M14 f127 01da11437ed7b87c
-M15 f0 df2e90a698dd18fa
-M15 f63 b7d55ea029688ef8
-M15 f127 50d7fde37d3e1218
-M16 f0 50d1d13d57423cb8
-M16 f63 e0cd0bf22612b6a2
-M16 f127 043166a51bf6f105
+# Re-baselined on purpose in 0.2.22: the reverb LOW CUT's new range (20 Hz .. 2 kHz) and default (75 = 299 Hz; the factory multis carry it): 40 of the 42 renders; with LOCUT 0 all 42 are the 0.2.21 ones.
+# 0.2.23: M01..M16 the sixteen factory multis of 0.2.23 (new); Snn_NAME the test scenes (tests/scenes.h): the 0.2.22 hashes of Mnn, unchanged.
+# 0.2.24: the owner's COLD CHAPEL, ACID ETHER, GARGLE ACID back (M06, M09, M14 = the S07, S06, S08 records, loaded with recall), FINAL REEL M08 -> M07,
+# MONO DUEL M09 -> M08, M03 PAD SPLIT's pad CUT opened; Xnn_NAME the spare multis of 0.2.23 (tests/scenes/spare): their 0.2.23 hashes as M06 / M07 / M14.
+# 0.2.24: BASS MONO is a unit setting, ON at 200 Hz on a new unit: the factory multis render with it (their STEREO / LAYER hashes re-made once); the test scenes set it OFF (hashes as before).
+# 0.2.25: the part EQ in 32-bit multiplies with its rounding carried (fx.c eq_run): the 33 renders of the multis and scenes with an EQ re-made once (M12, M13, M15, M16, S05, S13..S16, X07, X14).
+# 0.2.25: each EQ band on its own; the HIGH band runs whenever its gain is set (0.2.24 ran it only with MID Q off its middle): M02, M03, M08, M13, M16, S13..S16 re-made once.
+# 0.2.25: SHIM's PITCH BOTH removed (owner): M16 STRESS TEST, the one multi that stored it, plays UP: its three renders re-made once.
+# 0.2.25: M02..M06 are the owner's edited multis (his backup of 2026-10-17): their 15 hashes re-made once; the others are unchanged.
+# 0.2.25: M13 is the owner's original COLD CHAPEL (= S07's record) in the slot of BASILDON: M13's three hashes re-made once; X13_BASILDON the old M13 record as a spare scene (loaded as a test scene, BASS MONO off: not the hashes it had as M13).
+# 0.2.29: the HALL's quiet lines round to the nearest (fx.c hall_end: its tail no longer gated near -50 dBFS): the 51 renders of the multis and scenes with REVERB TYPE HALL
+# re-made once (M07, M09..M13, S03..S07, S10, S13, S14, S16, X07, X14); the others are unchanged.
+# 0.2.25: the SAT follower takes the matrix-modulated SAT (fx.c dist_follow, wip/satmod0230): M12, S05 re-made once.
+# 0.2.25: M07 is the owner's refined FINAL REEL (his multi file of 2026-10-17): its three hashes re-made once.
+# 0.2.25: M08 is the owner's HAZY TENSOR (his multi file of 2026-10-17) in the slot of MONO DUEL: M08's three hashes re-made once; X08_MONO_DUEL the old M08 record as a spare scene.
+# 0.2.25 matrix round (release_drafts/MATRIX_DESTINATIONS.md): the source slew (mod.c mx_slew) M01 M02 M03 M05 M07 M08 M09 M12 M13 M14 M16, S01 S02 S05 S07 S08 S09 S10 S15,
+# X06 X07 X14; the in-block mix ramps and SAT's blend ramp (fx.c mix_ramp, track_dist_ramp) M08 M09 M10 M12 S05: 66 of 105 renders re-made once; the others are unchanged.
+# Job 3 (cloud/partstate2), on purpose, 7 of the 102: (1) one-sided ducking (DUCK SRC PART on one part only, the other part's ducker forced OFF, the key a block old):
+# M02, whose part 1 had a PUMP ducker beside part 2's PART, loses that ducker and hears part 1's key a block later: its three renders re-made once. (2) each part its own
+# random generator in the voice stage (part 2 no longer draws from the shared one): S13_TEST_1_BASE and S14_TEST_2_PHASE, the test scenes whose two parts both read the
+# matrix's S&H source, at fader 63 and 127: four renders re-made once. Every other render is unchanged.
+# hunt1 (release_drafts/CLICK_HUNT1.md): the fader's steps of the sends, PATCH LEVEL and PAN are ramped inside the block (mod.c mod_mixmv counts the open morph window): M08 f127,
+# M09 f63 f127, M12 f63 f127 re-made once (2 to 16 samples in the first 12 ms differ, by at most 15 of a peak of 17,000: the step of the fader set at the start).
+# hunt1: SAT out of 0 and back into 0 without a step (fx.c track_dist_ramp): M12 f127 and S05_DEAD_BUFFER f127 re-made once (their matrix route lets the followed SAT run down
+# through the integer 0 at 1.43 s, 9 blocks; from there on the render differs by at most 89 of a peak of 12,900 / 19,700, 0.5 ). The other 103 renders are unchanged.
+# hunt1: the SPREAD mix's gains in a line while a route or the MORPH window moves them, SAT's blend ramp on a SPREAD part (fx.c spread_run / spread_post): M03 f63 f127, M05 f0 f63 f127,
+# M06 f63 f127, M07 f0 f63 f127, M10 f63 f127, M11 f63 f127 re-made once (14 of 105; the start of the render, the stored PAN's follower and the fader's first steps on SPREAD parts:
+# the largest difference is 266 of a peak of 17,000 (M10 f127), most 4 to 95). The other 91 renders are unchanged.
+# hunt1: LFO 1 and LFO 2 for their own depths glide at most MX_SLEW a block (voice.c track_render): 82 of 105 renders re-made once. Counted with a probe: in each of them the slew clamps a
+# used LFO value (a note's restart of the LFO, a saw's / square's edge, an S&H step); in 10 more it clamps one that no output uses and the render is bit for bit as before (M02 f0, M07 f0,
+# M10 f63 f127, M14 f63 f127, S04 f63 f127, S08 f63 f127); the other 13 never clamp. A pitched sound's samples differ by up to its peak after such a step (the pitch step comes a few
+# ms later, so the phase differs from there on); that is not a click.
+# pedal hunt (release_drafts/PEDAL_BASS_HUNT.md): the ducker keeps 2 more bits of every ducked sample (fx.c duck_run), and PHASE slews a jumping DCW / ENV / SUB (eng_phase.c pd_sl):
+# the renders listed as CHANGED by the test before this commit were re-made once (the multis and scenes with a working ducker or a moving PHASE shape).
+
+# hunt4 (release_drafts/HUNT4.md): PHASE's moving DCW no longer steps at the block seams (eng_phase.c phase_render_0): S14 TEST 2 PHASE, S15 TEST 3 HEAVY and X14 SEVENOAKS re-made.
+
+# 1.0: the owner's duell-multis-13 file (13 records, byte for byte) is the factory M01..M05 and M08..M15 (M06, M07, M16 unchanged): their 39 renders re-made once; the test scenes are unchanged.
+# 1.0 volume check (release_drafts/VOLUME_CHECK_V1.md): the TRIM of both parts of M01 M02 M04 M05 M06 M07 M08 M13 M15 moved by the same dB (tools/multi_trim.py): their 27 renders are made again (one re-base for 1.0 in all).
+# 1.0 MORPH B (release_drafts/MORPH_B_ROLL_V1.md): End B of M01..M15 rolled again with the firmware's ROLL B (tools/morph_b_roll.py, fixed seeds): their fader 63 and 127 renders (30) made again; fader 0 (End A) is unchanged.
+# 1.0 owner's answers: M04 DUB CHORD's TRIM one more step down (peak ceiling) and its seed k = 20: its three renders made again. M05 / M11 name VOICE sounds by their closed-up factory indices (CROONER left the bank): same sound, same hashes.
+M01 f0 3ec7e3e3c1f62b63
+M01 f63 1e5136f71a2fe70e
+M01 f127 fdab6c0ed44ec5ba
+M02 f0 4a4139abd1cffd34
+M02 f63 c76f9b27c4a795a7
+M02 f127 6b68179a204d2940
+M03 f0 fc53d764c68587ee
+M03 f63 3405250dc8f74840
+M03 f127 3a69adbac956d63c
+M04 f0 97b96f5bb82abf27
+M04 f63 bfaf7e5648df3012
+M04 f127 bb99f91a3400471c
+M05 f0 7e90d4a1fb2418e9
+M05 f63 608ebebfb8eb7eb5
+M05 f127 325371eca581d8f5
+M06 f0 9e0969169414261b
+M06 f63 038dc98b79532c56
+M06 f127 ecc1300339041614
+M07 f0 2451516527948a4a
+M07 f63 754bf833e5a6bfba
+M07 f127 a37a2de85160aa21
+M08 f0 95832935277155be
+M08 f63 a375e367dcf1b878
+M08 f127 e7fd77b6d6af67d8
+M09 f0 7fae9ca3fc505569
+M09 f63 9277d1a348ce08ea
+M09 f127 82a72f4d1ddb537e
+M10 f0 15c5e5e49b240d74
+M10 f63 195283e1623cc01b
+M10 f127 2b929456921277dd
+M11 f0 78de8e8510ccdb4c
+M11 f63 919400be3a73a0e4
+M11 f127 46792e4b7ae1cb34
+M12 f0 0b12a7e28cc4ba6e
+M12 f63 b9de38f55488d5bb
+M12 f127 230b14f622bf3b22
+M13 f0 d93739eaf27738ff
+M13 f63 dc2501922057f2c1
+M13 f127 6b7facd0110f9cf8
+M14 f0 d576007cfcdf3806
+M14 f63 65f6c50b919bf7db
+M14 f127 08c2bfd83c90fdf8
+M15 f0 cfa067bfac4b8f1e
+M15 f63 470720308cfc2756
+M15 f127 64773c5268958ab0
+M16 f0 35091915d08bc4fe
+M16 f63 f5754bbe5c83b479
+M16 f127 54d121925144dfb4
+S01_REESE_SWAMP f0 09754f0b2fe3e258
+S01_REESE_SWAMP f63 bd75eff447462681
+S01_REESE_SWAMP f127 3d3a196e17bece2c
+S02_WHISPER_TIDE f0 17c20e0713a76ab0
+S02_WHISPER_TIDE f63 167d0254aaae6038
+S02_WHISPER_TIDE f127 9b90753dab9c2692
+S03_EERIE_SIGNAL f0 9f31c6d16a6d5cb3
+S03_EERIE_SIGNAL f63 9cebf0bb1fac88cc
+S03_EERIE_SIGNAL f127 4430dfd4139ffe1f
+S04_WIRED_SNAIL f0 8b52aebe62036d5c
+S04_WIRED_SNAIL f63 38d3e7e9440fa318
+S04_WIRED_SNAIL f127 53c206142b8594f9
+S05_DEAD_BUFFER f0 0eb377a9bfb68b51
+S05_DEAD_BUFFER f63 2db755eb94d3fd0e
+S05_DEAD_BUFFER f127 38807ea17051a518
+S06_ACID_ETHER f0 34880122a3bae724
+S06_ACID_ETHER f63 f1b7631e45238222
+S06_ACID_ETHER f127 987ea9dd491da430
+S07_COLD_CHAPEL f0 e189cdbe698c52f6
+S07_COLD_CHAPEL f63 b2b0681937703bf6
+S07_COLD_CHAPEL f127 9389a7a6a3b1df51
+S08_GARGLE_ACID f0 6d96d05e870e5cbe
+S08_GARGLE_ACID f63 8c40163c7f2a61aa
+S08_GARGLE_ACID f127 923e05ba1734cd19
+S09_NIGHT_ORGAN f0 703e9903ba9256f6
+S09_NIGHT_ORGAN f63 d0afdcdaac479577
+S09_NIGHT_ORGAN f127 7c9f5f5d162efa30
+S10_FINAL_REEL f0 e856f9585811b1fd
+S10_FINAL_REEL f63 54508a0cfcf510bd
+S10_FINAL_REEL f127 5a9dccfe98a093a0
+S13_TEST_1_BASE f0 53ee880c9636ed47
+S13_TEST_1_BASE f63 92f0efe30baad6b5
+S13_TEST_1_BASE f127 7cbda360f2a80c56
+S14_TEST_2_PHASE f0 54694934e2303a90
+S14_TEST_2_PHASE f63 86e683597854ba2b
+S14_TEST_2_PHASE f127 e41dcc3b7df625cf
+S15_TEST_3_HEAVY f0 55a68c85e5366930
+S15_TEST_3_HEAVY f63 6b77c73a7df4b8ee
+S15_TEST_3_HEAVY f127 476dc3b08052f391
+S16_TEST_4_MIX f0 d6ecaf4536cca695
+S16_TEST_4_MIX f63 760a0a9c8bb1a81c
+S16_TEST_4_MIX f127 3f5db3ac7c314c70
+X06_TINE_STRINGS f0 86cfecc0f0a43eba
+X06_TINE_STRINGS f63 1cb61dffc3bc1f65
+X06_TINE_STRINGS f127 52db1fd3edb5d1be
+X07_BOWL_AND_WIND f0 8d5679af028161b9
+X07_BOWL_AND_WIND f63 045e9b7c4880a389
+X07_BOWL_AND_WIND f127 46edb7d6a1704370
+X14_SEVENOAKS f0 b163cb1ca1fad797
+X14_SEVENOAKS f63 dfab37284d150ed6
+X14_SEVENOAKS f127 653ab8408d38d387
+X13_BASILDON f0 34288a9531b2acf1
+X13_BASILDON f63 f983ceebc41e0a2c
+X13_BASILDON f127 5d8374a420d301eb
+X08_MONO_DUEL f0 a24b4f68a832319e
+X08_MONO_DUEL f63 67d6b2c72f448431
+X08_MONO_DUEL f127 31392da40b54ec14

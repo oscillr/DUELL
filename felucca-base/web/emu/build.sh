@@ -7,7 +7,7 @@
 # Run after one ./build.sh (build/gen: the tables, the fonts, the factory sounds and multis).
 # -ffp-contract=off: no fused multiply-adds, as the host build. EMU_OPT replaces -O2, EMU_CFLAGS adds flags
 # (EMU_CFLAGS=-msimd128: let the compiler vectorise; every browser with AudioWorklet has wasm SIMD).
-# DUELL_TEST_MODE=1 builds in the CPU TEST screen and the test multis M13..M16 (default 0, the release; build/gen/duell_multis.h must come from the same
+# DUELL_TEST_MODE=1 builds in the CPU TEST screen (default 0, the release; since 0.2.23 both hold the same sixteen factory multis; build/gen/duell_multis.h must come from the same
 # switch: DUELL_TEST_MODE=1 python3 tools/gen_duell_multis.py build/gen/duell_multis.h, or DUELL/gen_only.py with it set; multi.c refuses a mismatch).
 # The page shows the version (DUELL_VERSION_STR, from the VERSION file) marked "(preview)" before its release; EMU_PREVIEW=0 drops the mark.
 set -e

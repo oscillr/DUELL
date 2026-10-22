@@ -4,6 +4,25 @@
  * guards; then LCD, input (TIMER5 IRQ, 10 kHz), audio (ALNK0 IRQ). */
 extern uint32_t _data_start[], _data_end[], _data_load[], _bss_start[], _bss_end[];
 extern uint32_t _pool_start[], _pool_end[], _rt_start[], _rt_end[], _rt_load[];
+#if DUELL_BENCH
+extern char _ustack_top[];                       /* core 0's user and exception stacks (the linker scripts; the others: hal/fm1_guard.h) */
+static void c0_stack_bounds(uint32_t **b)
+{
+    b[0] = (uint32_t *)(uintptr_t)_ustack_lo; b[1] = (uint32_t *)(uintptr_t)_ustack_top;
+    b[2] = (uint32_t *)(uintptr_t)_sstack_lo; b[3] = (uint32_t *)(uintptr_t)_sstack_top;
+}
+/* developer builds only: core 0's stack high-water marks (bench.c c0_stack_peak, the BENCH,INFO line's c0stack). fm1_cstart paints both stacks below its own frame; the 32 KB of
+ * core 0's stacks were never measured (memory audit, option J). The painted words are the not-yet-used part. */
+static void c0_stack_paint(void)
+{
+    uint32_t here, *p, *b[4], *e = (uint32_t *)((uintptr_t)&here - 256u);
+    c0_stack_bounds(b);
+    for (p = b[0]; p < e && p < b[1]; p++)
+        *p = C0_STK_FILL;
+    for (p = b[2]; p < b[3]; p++)
+        *p = C0_STK_FILL;
+}
+#endif
 
 
 /* TIMER5 outranks ALNK0, so the scan keeps its 100 us pace while a half buffer renders: before,
@@ -106,13 +125,13 @@ static void felucca_init(void)
     for (i = 0; i < NTRK; i++) {
         track_t *t = &trk[i];
         track_defaults(t);
-        set_engine_of(t, TRK_DEF[i][0]);
+        init_engine_of(t, TRK_DEF[i][0]);            /* (0.2.24: the full INIT: defaults + the first preset; set_engine_of keeps the common settings now) */
         apply_preset_to(t, TRK_DEF[i][1]);    /* with its sends */
         t->engine = t->eng_req;
         eng_mem_claim(t);                     /* (zeros already: no note can come before) */
         track_defaults_steps(t);              /* (a sound load never touches them) */
         if (TRK_DEF[i][2])
-            load_pat16(t, PATTERNS[TRK_DEF[i][2] - 1u].note, PATTERNS[TRK_DEF[i][2] - 1u].flags);
+            pat_load_def(t, TRK_DEF[i][2] - 1u);
         pat_sig[i] = steps_sig(t);            /* a default pattern, not the user's */
         pat_last[i] = TRK_DEF[i][2];
     }
@@ -171,8 +190,15 @@ static void fm1_main(void)
     fm1_adc_init();
     panel_init();
     felucca_init();
+#if DUELL_VELO
+    sense_cal_restore();                      /* the stored key calibration (velo_cal_load) */
+#endif
     master_boot();
     kb_boot_hold = 1;                         /* #137: no notes from the keys before the UI (seq.c keyboard_block) */
+#if DUELL_TWOCORE
+    tc_boot(fm1_boot.p3_rst, fm1_crash.magic == FM1_CRASH_MAGIC && fm1_crash.count != crash_seen, bootguard.failed != 0);   /* (an armed start
+                                               * of core 1, at the stock supplies, before the audio: twocore.c; crash_seen is boot_leds' below) */
+#endif
     audio_init();
     usb_start();
 #if FELUCCA_UART
@@ -204,11 +230,20 @@ static void fm1_main(void)
             bootguard.failed = 0;
         }
         {
+#if DUELL_VELO
+            static uint32_t seen;                       /* battery: read in the scan tick's slot (there is one converter, the tick owns it: after Velo's method) */
+            int32_t b = fm1_an.batt_n != seen ? fm1_an.batt : 0;   /* (a new reading only, once) */
+            seen = fm1_an.batt_n;
+#else
             int32_t b = fm1_adc_read(FM1_ADC_BATT);     /* battery: slow IIR */
+#endif
             if (b > 0)
                 song.batt_raw = song.batt_raw ? song.batt_raw + (b - song.batt_raw) / 32 : b;
         }
         master_poll();
+#if DUELL_VELO
+        sense_service(fm1_ms, !fm1_in.notes);           /* the key calibration, stored when due and no key is held (never from the tick) */
+#endif
         {   /* OCT- + OCT+ held 5 s: enter UBOOT with RAM intact (debug / update); a countdown
              * shows from 2 s over the whole screen (the menu and the dialogs too: ui_draw), letting
              * go cancels it */
@@ -245,6 +280,9 @@ static void fm1_main(void)
             usb.ota_req = 0;
             panic_req = (1u << NTRK) - 1u;               /* every track (bit per track) */
             scr_wake_now();                             /* (its progress on the screen) */
+#if DUELL_TWOCORE
+            tc_hold_clean();                            /* (core 1 held before an update) */
+#endif
             if (flash_ok)
                 ota_session();                          /* returns only if nothing was committed */
             lcd_fill(0, 0, 240, 240, T_BG);
@@ -271,6 +309,11 @@ static void fm1_main(void)
         ui_input();
         wave_service();                               /* DUELL WAVE: a frame of a table build, if one waits (eng_wave.c) */
         vcap_poll();                                  /* DUELL 0.2.11: the parts' VOICE CAP (voice.c) */
+        budget_poll();                                /* DUELL: the parts' NOTES budget (budget.c; the stricter of it and the VOICE CAP holds) */
+#if DUELL_TWOCORE
+        tc_watch(fm1_ms);                             /* the second core's safety net (twocore.c) */
+        tc_trim_poll();                               /* (the jobs paused or core 1 stopped: notes above a part's number fade at once: twocore_run.c) */
+#endif
         settings_poll();                              /* queued settings save: only while stopped */
         autosave_poll();                              /* (1.2) the music, stopped and idle: project.c */
         felucca_dbg.stage = 2;
@@ -290,6 +333,13 @@ static void fm1_main(void)
 void fm1_cstart(void)
 {
     uint32_t *s, *d, p3, src, wdt;
+#if DUELL_TWOCORE
+    fm1_cpu1_halt();                           /* (after Felucca 1.6.1: a second core still running from before this reset would read the
+                                                * RAM cleared below; hal/fm1_sys.h) */
+#endif
+#if DUELL_BENCH
+    c0_stack_paint();
+#endif
     fm1_time_init();
     fm1_reset_reason();
     p3 = fm1_boot.p3_rst;
@@ -309,6 +359,10 @@ void fm1_cstart(void)
         bootguard.pending = 0;
         fm1_enter_uboot();
     }
+#if DUELL_RAMPLACE
+    ramplace_copy();                            /* the RAM ranges X and Z before anything can call them (memset, memcpy are in Z; ramplace.c);
+                                                 * after the boot guard: a start that dies here counts as a failed one (2: the update mode) */
+#endif
     fm1_irq_init();
     for (d = _bss_start; d < _bss_end; d++)
         *d = 0;
@@ -318,6 +372,9 @@ void fm1_cstart(void)
         *d = *s;
     for (s = _rt_load, d = _rt_start; d < _rt_end; s++, d++)
         *d = *s;                                /* flash driver code that must run from RAM */
+#if DUELL_RAMPLACE
+    ramplace_boot();                            /* X and Z compared with their load images (the update mode if they stay wrong) */
+#endif
     fm1_mailbox_clear();
     fm1_guard_enable(FM1_GUARD_STACK | FM1_GUARD_WRITE | FM1_GUARD_BUS | FM1_GUARD_PC);
     fm1_boot.p3_rst = (uint8_t)p3;

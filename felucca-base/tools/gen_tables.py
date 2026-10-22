@@ -68,9 +68,9 @@ def main(path):
     # filter cutoff 30 Hz .. 16 kHz
     fc = [30.0 * ((16000 / 30) ** (v / 127)) for v in range(128)]
     L += arr("CUTOFF_HZ", "uint16_t", [int(round(f)) for f in fc])
-    # REVERB LOW CUT (0.2.14): 0 off, 1..127 = 20 Hz .. 450 Hz exponential; the one-pole's coefficient k = 1 - a, Q15, with the pole a put so that
+    # REVERB LOW CUT (0.2.14): 0 off, 1..127 = 20 Hz .. 450 Hz exponential (0.2.22: 20 Hz .. 2 kHz, 3.7 % a step, the same 127 values; default 75 = 299 Hz); the one-pole's coefficient k = 1 - a, Q15, with the pole a put so that
     # the filter y = x - lp (lp += k (x - lp)), H = a (1 - 1/z) / (1 - a / z), is -3 dB at exactly f (pre-warped: k = 1 - exp(-2 pi f / FS) puts it 7 % high at 450 Hz)
-    lo = [0.0] + [20.0 * (22.5 ** ((v - 1) / 126)) for v in range(1, 128)]
+    lo = [0.0] + [20.0 * (100 ** ((v - 1) / 126)) for v in range(1, 128)]
     L += arr("LOCUT_HZ", "uint16_t", [int(round(f)) for f in lo])
     L += arr("LOCUT_K", "uint16_t", [locut_k(f) for f in lo])
     # trapezoidal (Simper) SVF: g = tan(pi fc / FS), Q12; stable at any cutoff/resonance

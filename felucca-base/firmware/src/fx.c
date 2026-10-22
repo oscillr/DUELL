@@ -47,6 +47,8 @@ typedef struct {
     int32_t sp_lp, sp_hp, sp_he, sp_size;   /* .. its loop low-pass, low cut (and its remainder), the loop
                                              * length (Q8, glides) */
     uint32_t sp_ph;                      /* .. the output tap's wobble */
+    uint16_t cho_z;                      /* 0.2.21 (fx_bus.c cho_zrun): the chorus line's run of zero samples written (saturates at CHO_LEN: the whole line is 0) */
+    uint8_t cho_zs;                      /* .. 1: this block's chorus input is all 0 and the whole line was 0 before it: fx_buses_m leaves the chorus out (its output is 0) */
 } fxs_t;
 static fxs_t fx;
 static int32_t lo_buf[CTL];             /* the reverb low cut's output block (fx_bus.c rev_locut; bus A and B run one after the other) */
@@ -131,7 +133,6 @@ _Static_assert(sizeof rev_comb / 2u >= SP_LEN && sizeof rev_u.sp / 4u >= 4u * (S
  * (JIANT's CLOUD, a 32 KB granular wash, is not ported: see the report / LICENSING.md) */
 #define SH_AMT 13100                     /* SHIM's feedback, Q15 (0.4: JIANT's MOD at 69 of 127; at most 0.74 there) */
 #define SH_GATE 24                       /* the return's soft gate (-62 dBFS): a halo under it dies instead of ringing on for ever */
-#define SH_BDEV 300                      /* BOTH: both returns this much sharp, Q16 of a sample a sample (7.9 cents) */
 #define SH_FADE 74                       /* PITCH changed (0.2.19): the return fades out and in, 32767 / 74 = 443 samples, 10 ms each way */
 #define SH_L1 28243u                     /* MOD's two sines, the phase a sample: 0.29 Hz and 0.47 Hz at 44.1 kHz (they never line up: no steady vibrato) */
 #define SH_L2 45774u
@@ -155,16 +156,15 @@ static uint32_t scale_mask(const track_t *t);           /* seq.c */
  * order 8: every line feeds the 7 others, +-1 each, none itself: no flutter at a line's own length), with
  * the send added. Stereo: left lines 0 3 4 -7, right 1 2 5 6 (sums spread over the matrix's rows); the wet
  * bus (mono) gets left + right, rev_side left - right, which mix_block adds to the left and takes from the
- * right (rev_side_mix). Back to 44.1 kHz between samples. Rounding: a loud line's gain rounds to the nearest
- * (the tail decays as it should), a quiet one's towards zero (it ends in exact silence: no limit cycle), and
- * the low-passes keep their steps' remainders (no offset). */
+ * right (rev_side_mix). Back to 44.1 kHz between samples. Rounding: the lines' gains round to the nearest (0.2.29: the
+ * quiet lines too, hall_end: the tail decays as it should down to the lines' last LSB and then ends in exact silence),
+ * and the low-passes keep their steps' remainders (no offset). */
 #define HL_NL 8u                         /* lines */
 #define HL_NAP 2u                        /* diffusers */
 #define HL_NC (CTL / 2u)                 /* a block at half the rate */
 #define HL_MOD 8                         /* the taps' swing, samples (read 2 .. 18 samples short of the end) */
 #define HL_LPM 0x69u                     /* the lines with a low-pass */
 #define HL_KD(d) (32767 - (d) * 180)     /* its coefficient (Q15) for DAMP d: none at 0 .. ~1 kHz at 127 */
-#define HL_LOUD 32                       /* a line this loud (two samples' sum) rounds its gain to the nearest */
 #define HL_OUT 4                         /* the outputs' gain: the level of ROOM's tail */
 static const uint16_t HL_LEN[HL_NL] = {467, 509, 547, 593, 631, 673, 709, 743};   /* (+1 each: the mirror) */
 static const uint16_t HL_AP[HL_NAP] = {131, 307};
@@ -230,27 +230,45 @@ static void track_dist(track_t *t, int32_t *b, uint32_t n)
  * get quieter instead of crushed. */
 #define LIM_T 18000
 static int32_t lim_env = LIM_T;
-/* MENU > USB LEVEL FIXED (for #42: record over USB with the speaker turned down): the mix goes to master_out at the
- * reference level MASTER_USB_REF (the default knob position, song.master_q12 = 2048, gain 0.5), exactly what MASTER mode
- * gives at that knob, so the limiter and soft clip see the same signal whatever the knob says. USB audio takes that
- * (audio.c uac_tap), and only then does MASTER scale what the DAC gets (usb_fixed_dac): out * master_q12 / MASTER_USB_REF,
- * unity at the default knob, above it a boost, below it an attenuation, saturated to int16 (never wrapped).
- * (Before the fix FIXED entered master_out at MASTER_FULL, 4096: +6 dB and more into the limiter, which crackled
- * on held chords.) MASTER (0, the default): MASTER before master_out, as always (USB follows the knob) */
-static volatile uint8_t fx_usb_fixed;
+/* The mix is always made at the reference level MASTER_USB_REF (the default knob position, song.master_q12 = 2048, gain 0.5), whatever the MASTER
+ * knob says: the limiter and the soft clip see the same signal, and USB audio takes it (audio.c uac_tap) at that fixed level. MASTER is a volume on what
+ * the DAC gets, after the USB tap: audio.c master_dac (a per-sample glide, 24-bit result). (Up to DUELL 0.2.24 MENU > USB LEVEL chose between this
+ * "FIXED" and MASTER before master_out, where MASTER's level stepped once per block; the row is removed, FIXED is the only way.) */
 #define MASTER_FULL 4096                /* main.c: the MASTER knob's top, Q12 */
-#define MASTER_USB_REF 2048             /* USB LEVEL FIXED: the level master_out gets (Q12), the default master_q12 */
-/* the MASTER pot (ADC 0..1023, smoothed in main.c) to its level, square law: 0 .. 4088 (Q12) */
-static inline uint32_t master_of_pot(uint32_t k10) { return (k10 * k10) >> 8; }
-static __attribute__((noinline)) void usb_fixed_dac(int32_t *out, uint32_t n)   /* audio ISR, after uac_tap */
+#define MASTER_USB_REF 2048             /* the level master_out gets (Q12), the default master_q12 */
+/* The level mix_block makes the mix at (Q12). The device: always MASTER_USB_REF. HOST TESTS ONLY (-DHOST_MIX_FOLLOWS_MASTER=1, host_tests.sh): the level is song.master_q12 unless
+ * a test clears host_mix_follows_master, as every host test rendered before 0.2.25 (hostsim.c sets master_q12 = 4096, the renders and their pinned fingerprints are at that level;
+ * a few tests set another value on purpose). tests/audio_test.c, click_test.c and master_hunt.c clear it: they run the device's own path (audio_block). The device build
+ * never defines the macro: no variable, no branch, the constant. */
+#ifdef HOST_MIX_FOLLOWS_MASTER
+int host_mix_follows_master = 1;
+#define MIX_MG() (host_mix_follows_master ? (int32_t)song.master_q12 : (int32_t)MASTER_USB_REF)
+#else
+#define MIX_MG() ((int32_t)MASTER_USB_REF)
+#endif
+/* the MASTER pot (ADC 0..1023, smoothed in main.c) to its level, square law: 0 .. 2048 (Q12). DUELL 0.2.30 (owner decision 2026-10-20): the TOP of the knob is unity (0 dB, 2048 = the
+ * level the knob's default position gave until 0.2.29, MASTER_USB_REF); there is no gain above it (no boost, so no push into the limiter and no clip after it). The old law (k^2 >> 8, 0 .. 4088,
+ * 2048 at 71 % of the knob) is halved and lifted by 1/64 so the top reaches 2048 a hair below the pot's physical end (pot 1016 of 1023: a pot that does not quite reach 1023 still gets 0 dB),
+ * and held there. The quiet end keeps the square law's fine steps (master_g16 below has 4 more bits) and the 11.6 ms glide of audio.c master_dac */
+#define MASTER_TOP 2048u
+static inline uint32_t master_of_pot(uint32_t k10)
 {
-    uint32_t i;
-    int32_t m = (int32_t)song.master_q12;
-    for (i = 0; i < 2u * n; i++) {
-        int32_t v = (out[i] * m) >> 11;             /* (m / MASTER_USB_REF; |out| <= 32767, m <= 4096: fits int32) */
-        out[i] = v > 32767 ? 32767 : (v < -32768 ? -32768 : v);   /* (a boost above the default knob saturates) */
-    }
+    uint32_t g = (k10 * k10) >> 8;
+    g = (g + (g >> 6)) >> 1;
+    return g > MASTER_TOP ? MASTER_TOP : g;
 }
+/* DUELL 0.2.25: the same law at 4 more bits, from the smoothed knob (main loop: master.c, the pot x16): the level in Q16 (0 .. 32,768 since 0.2.30; was 65,412). song.master_q12 is its upper 12 bits (the
+ * whole-step value everything else reads); master_g16 is the whole value, which only audio.c master_dac uses: at the quiet end of the knob one whole Q12 step is 33 % (3 -> 4), a
+ * step of 10 dB in the volume that no glide can make fine; with the fraction the volume moves in 1/16 steps of that. The main loop writes master_g16 first and song.master_q12
+ * after it, one 32-bit store each; the ISR uses master_g16 only while its upper 12 bits equal song.master_q12 (otherwise the whole-step value alone: a torn pair, or a test
+ * or another writer that set song.master_q12 only, is read as the whole step, never as a mix of the two) */
+static inline uint32_t master_of_knob16(uint32_t k16)
+{
+    uint32_t g = (k16 * k16) >> 12;
+    g = (g + (g >> 6)) >> 1;                            /* (0.2.30: the top of the knob is unity, see master_of_pot) */
+    return g > MASTER_TOP * 16u ? MASTER_TOP * 16u : g;
+}
+static volatile uint32_t master_g16;
 static int32_t dc_l, dc_r, dce_l, dce_r;
 
 /* DC blocker (~2 Hz), always on: a leaky integrator of the input (Q6 state) subtracted from it.
@@ -378,37 +396,30 @@ static inline void hall_ap(int16_t *q, int32_t g, int32_t *x, uint32_t n)
     }
 }
 /* a line's end over y[0 .. n) from b (no wrap; b[n] is still the line's: its mirror at the end): between b[i]
- * and b[i + 1], f / 256 of the way (rounded to the nearest: it stays between the two), times its gain g (Q14).
- * The gain's product: rounded to the nearest while the line is loud (lo 0: the tail decays as it should; a
- * truncation would make it die early, the sooner the quieter), towards zero once it is quiet (lo 1: the last
- * steps of the tail, which then ends in exact silence) */
-static inline void hall_end(const int16_t *b, int32_t f, int16_t *y, uint32_t n, int32_t g, int lo)
+ * and b[i + 1], f / 256 of the way (rounded to the nearest: it stays between the two), times its gain g (Q14), rounded to the nearest.
+ * DUELL 0.2.29 (owner, T0226: M07 FINAL REEL's hall tail "cut like a noise gate"): until 0.2.28 a quiet line (two samples' sum under 32,
+ * HL_LOUD) rounded its gain's product towards zero instead, so that the tail would end in exact silence; at a line of a few LSB that is a
+ * loss of up to 1 / 6 a pass (0.374 x 15 = 5.6 -> 5), and the tail fell from its natural ~15..22 dB/s to ~200 dB/s once it was ~50 dB down
+ * (the wet bus at -53 dBFS, the output at -60 with MASTER at the default; tests/hall_tail_test.c). Rounded to the nearest everywhere, the tail
+ * decays at its own rate to ~-75 dBFS and still ends in exact silence: the products of a line of 1 LSB round to 0 (0.374 < 0.5), the
+ * diffusers' states and the low-passes' remainders go towards zero, and no limit cycle was found (288 renders: SIZE 0..150, DAMP 0..127,
+ * noise / 100 Hz / 5 kHz / an impulse at 0 .. -60 dBFS: all silent within 12 s) */
+static inline void hall_end(const int16_t *b, int32_t f, int16_t *y, uint32_t n, int32_t g)
 {
     uint32_t i;
-    if (lo)
-        for (i = 0; i < n; i++)
-            y[i] = (int16_t)sh_tz((b[i] + (((b[i + 1u] - b[i]) * f + 128) >> 8)) * g, 14);
-    else
-        for (i = 0; i < n; i++)
-            y[i] = (int16_t)(((b[i] + (((b[i + 1u] - b[i]) * f + 128) >> 8)) * g + 8192) >> 14);
+    for (i = 0; i < n; i++)
+        y[i] = (int16_t)(((b[i] + (((b[i + 1u] - b[i]) * f + 128) >> 8)) * g + 8192) >> 14);
 }
 /* a line's end over y[0 .. n) from b (no wrap), through the low-pass (kd, Q15; the state *lp and its step's
  * remainder *le), times its gain g (rounded as hall_end's) */
-static inline void hall_end_lp(const int16_t *b, int16_t *y, uint32_t n, int32_t g, int lo, int32_t *lp, int32_t *le,
-                               int32_t kd)
+static inline void hall_end_lp(const int16_t *b, int16_t *y, uint32_t n, int32_t g, int32_t *lp, int32_t *le, int32_t kd)
 {
     uint32_t i;
     int32_t l = *lp, r = *le, e;
-    if (lo)
-        for (i = 0; i < n; i++) {
-            e = (b[i] - l) * kd + r, r = e & 32767, l += e >> 15;
-            y[i] = (int16_t)sh_tz(l * g, 14);
-        }
-    else
-        for (i = 0; i < n; i++) {
-            e = (b[i] - l) * kd + r, r = e & 32767, l += e >> 15;
-            y[i] = (int16_t)((l * g + 8192) >> 14);
-        }
+    for (i = 0; i < n; i++) {
+        e = (b[i] - l) * kd + r, r = e & 32767, l += e >> 15;
+        y[i] = (int16_t)((l * g + 8192) >> 14);
+    }
     *lp = l;
     *le = r;
 }
@@ -515,15 +526,48 @@ typedef struct {
     dlyev_v_t v[2];
 } dlyev_t;
 static dlyev_t dlyev;
-static void dlyev_clear(void) { memset(&dlyev, 0, sizeof dlyev); }   /* the lines are cleared (SENDS OFF, STOP ALL, a mode change of the mix): from rest */
-static void dlyev_start(void) { dlyev.sync = 1; }                    /* PLAY: the clock edges count from the top (seq.c seq_start, as the DUCK's PUMP) */
-static int32_t mix_l[CTL], mix_r[CTL];   /* (the dry mix: defined here for the delay's modulation, which adds its side to it) */
-
-static int32_t part_buf[CTL];                            /* a part's block (mix_part); the fade of a model change */
+static dlyev_t dlyev_b __attribute__((section(".pool")));                  /* 0.2.22: DUEL's bus B (part 2) has its own copy: the event modes run per part, mono (fx_bus.c; 76 bytes) */
+/* DUELL 0.2.25 OVERLOAD GUARD (SPEC 6.3; automatic, always on, nothing stored). When the audio is near its limit, by the voice shedding's own
+ * measure (audio.c shed_check: two halves in a row over 85 % of their time), the delay's RANDOM / OCT UP runs as the plain delay it
+ * cross-fades from (fx_buses, split_buses: the events' ~11.6 ms crossfade; the delay's modulation is not run in their place). (The other
+ * dear effect it was built for, SHIM's PITCH BOTH, was removed in 0.2.25 by the owner.) Back after the meter's load (song.cpu_q8, the CPU bar's figure) has stayed under 70 % for ~3 s,
+ * the same way. Nothing changes while it is not engaged: the stored values are never touched, ovl_lite only steers the delay's switches below
+ * (tests/ovl_test.c renders bit for bit with it compiled out, -DOVL_NOGUARD). Shown on ABOUT (LIGHT FX); flash code only */
+static uint8_t ovl_lite;                 /* 1: the guard is engaged */
+static uint16_t ovl_calm;                /* halves in a row with the meter's load under 70 % while engaged */
+static uint32_t ovl_count;               /* times it engaged since power-on (the console) */
+#ifdef OVL_NOGUARD
+#define OVL_LITE 0u                      /* (the test's reference build: the guard compiled out) */
+#else
+#define OVL_LITE ovl_lite
+#endif
+#define OVL_CALM_Q8 179u                 /* 70 % in the meter's Q8 (256 = the whole half): the bar's amber */
+#define OVL_CALM_HALVES ((3u * FS + HALF_FRAMES / 2u) / HALF_FRAMES)   /* ~3 s of halves (1034) */
+/* once a half (audio.c shed_check): over = the 85 % rule held (two halves in a row), q8 = the meter's load */
+static __attribute__((noinline)) void ovl_step(uint32_t over, uint32_t q8)
+{
+    if (over) {
+        ovl_count += !ovl_lite;
+        ovl_lite = 1;
+        ovl_calm = 0;
+        return;
+    }
+    if (!ovl_lite)
+        return;
+    ovl_calm = q8 < OVL_CALM_Q8 ? (uint16_t)(ovl_calm + 1u) : 0u;
+    if (ovl_calm >= OVL_CALM_HALVES)
+        ovl_lite = 0, ovl_calm = 0;
+}
+static void dlyev_clear(void) { memset(&dlyev, 0, sizeof dlyev); memset(&dlyev_b, 0, sizeof dlyev_b); }   /* the lines are cleared (SENDS OFF, STOP ALL, a mode change of the mix): from rest, both buses */
+static void dlyev_start(void) { dlyev.sync = 1; dlyev_b.sync = 1; }  /* PLAY: the clock edges count from the top (seq.c seq_start, as the DUCK's PUMP) */
+static struct { int32_t r[CTL], l[CTL]; } mixlr HOTG_BSS;   /* the pair in one pinned object (core.h HOTG_BSS): the hot PERFORM / delay code reaches the left as the right + 128 */
+#define mix_r (mixlr.r)
+#define mix_l (mixlr.l)   /* (the dry mix: defined here for the delay's modulation, which adds its side to it) */
 
 /* the buses (fx_bus.c): bus A on the globals they always had, bus B (SPLIT, part 2) on its own */
 static uint8_t dm_split;                /* (below: the mix runs SPLIT; RESO reads the part its bus carries) */
 #define BUS_FX fx
+#define BUS_EV dlyev
 #define BUS_SHIM shim
 #define BUS_SPLITB 0u                   /* bus A: part 1 (all the parts when not SPLIT); B: part 2 */
 #define BUS_HL hl
@@ -534,6 +578,7 @@ static uint8_t dm_split;                /* (below: the mix runs SPLIT; RESO read
 #define BUS_FN(f) f
 #include "fx_bus.c"
 #undef BUS_FX
+#undef BUS_EV
 #undef BUS_SHIM
 #undef BUS_SPLITB
 #undef BUS_HL
@@ -543,6 +588,7 @@ static uint8_t dm_split;                /* (below: the mix runs SPLIT; RESO read
 #undef BUS_DLY
 #undef BUS_FN
 #define BUS_FX fx_b
+#define BUS_EV dlyev_b
 #define BUS_SHIM shim_b
 #define BUS_SPLITB 1u
 #define BUS_HL hl_b
@@ -553,6 +599,7 @@ static uint8_t dm_split;                /* (below: the mix runs SPLIT; RESO read
 #define BUS_FN(f) f##_b
 #include "fx_bus.c"
 #undef BUS_FX
+#undef BUS_EV
 #undef BUS_SHIM
 #undef BUS_SPLITB
 #undef BUS_HL
@@ -570,20 +617,23 @@ static uint8_t dly_plain_pp;            /* 1: the plain delay that ran last was 
 static void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const int32_t *rev_in, int32_t *wet, uint32_t n)
 {
     uint32_t dm = (uint32_t)song.g[G_DMODE];            /* (0.2.16: the delay's mode; DIGITAL, PING-PONG and a value past OCT UP: the paths below, bit for bit as 0.2.15's PING off / on) */
-    uint32_t ev = dm == DMD_RAND || dm == DMD_OCTUP;
+    uint32_t evm = dm == DMD_RAND || dm == DMD_OCTUP;   /* (the mode is an event mode) */
+    uint32_t ev = evm && !OVL_LITE;                     /* (0.2.25: the overload guard runs it as the plain delay it cross-fades from) */
     uint32_t pp = dm == DMD_PING;                       /* (DUELL, SPEC 5c.2: the repeats alternate left and right) */
-    if (!ev)
+    cho_zrun(cho_in, n);                                /* (0.2.21: the chorus line's zero run, before any path writes it) */
+    if (!evm)
         dly_plain_pp = (uint8_t)pp;                     /* (the plain delay the events cross-fade from: the last one that ran) */
     else
         pp = dly_plain_pp;
     if (ev || dlyev.x) {                                /* an event mode, or the crossfade back to the plain delay still running */
         dly_side = 1;                                   /* (the events' side goes the PING-PONG's way: dly_sd, SPREAD) */
         fx_buses_ev(pp ? delay_split() : delay_samples(), delay_split(), cho_in, dly_in, rev_in, wet, n,
-                    ev ? dm - DMD_RAND + 1u : 0u, pp, dly_sd);   /* (dly_ev: 1 RANDOM, 2 OCT UP) */
+                    ev ? dm - DMD_RAND + 1u : 0u, pp, dly_sd, DLY_LEN);   /* (dly_ev: 1 RANDOM, 2 OCT UP) */
+        fx.cho_zs = 0;
         return;
     }
     dly_side = (uint8_t)pp;
-    uint32_t md = song.g[G_DMDEP] > 0 || fx.dm_dev;    /* (the delay's modulation: fx_bus.c dly_mod) */
+    uint32_t md = !evm && (song.g[G_DMDEP] > 0 || fx.dm_dev);   /* (the delay's modulation: fx_bus.c dly_mod; an event mode's DEPTH is its CHANCE, not run as a modulation under the guard) */
     if (pp) {                                           /* (the loop is 2 x the time: a time that does not fit halves, as in SPLIT) */
         if (md)
             fx_buses_mod(DLY_LEN - 1u, delay_split(), cho_in, dly_in, rev_in, wet, n, 1u, dly_sd);
@@ -593,6 +643,7 @@ static void fx_buses(const int32_t *cho_in, const int32_t *dly_in, const int32_t
         fx_buses_mod(DLY_LEN - 1u, delay_samples(), cho_in, dly_in, rev_in, wet, n, 0u, dly_sd);
     else
         fx_buses_m(DLY_LEN - 1u, delay_samples(), cho_in, dly_in, rev_in, wet, n, 0u, dly_sd);
+    fx.cho_zs = 0;                                      /* (fx_bus.c cho_zrun: the flag is for this block only) */
 }
 
 /* after the buses: HALL's stereo difference to the left and from the right of the dry mix (the wet bus adds the
@@ -713,10 +764,18 @@ static __attribute__((noinline)) void ins_drive(ins_t *s, const track_t *t, int3
 {
     uint32_t i, ty = s->type, crush = ty == IT_CRUSH, sh = ins_bits_step(t->p[P_IA]);
     uint32_t hold = INS_HOLD[clamp(t->p[P_IB], 0, 127) >> 3];
-    int32_t a = t->p[P_IA], g = 4096 + a * a * 3;       /* DRIVE, Q12: 1x .. 12.8x, gentle at first */
-    int32_t k = ins_lpk(crush ? t->p[P_IC] : t->p[P_IB]), lvl = crush ? 4096 : LEVEL_Q12[t->p[P_IC] & 127];
+    int32_t a = t->p[P_IA], g1 = 4096 + a * a * 3;      /* DRIVE, Q12: 1x .. 12.8x, gentle at first */
+    int32_t k = ins_lpk(crush ? t->p[P_IC] : t->p[P_IB]), l1 = crush ? 4096 : LEVEL_Q12[t->p[P_IC] & 127];
+    int32_t g0 = s->u.lo.wa ? s->u.lo.wa : g1, l0 = s->u.lo.wa ? s->u.lo.wb : l1;   /* hunt3: DRIVE and LEVEL go from the block before's value to this block's in a line (a morph or a route that moved */
+    int32_t gq = g0 << 11, lq = l0 << 11, dg = (g1 - g0) << 6, dl = (l1 - l0) << 6;   /* A or C by a step was a click: #23 KICK BASS, #7 FM BASS 2); Q11, CTL = 32 samples; still: the old code bit for bit */
+    s->u.lo.wa = g1;
+    s->u.lo.wb = l1;
     for (i = 0; i < n; i++) {
-        int32_t x = b[i], y, v;
+        int32_t x = b[i], y, v, g, lvl;
+        gq += dg;
+        lq += dl;
+        g = gq >> 11;
+        lvl = lq >> 11;
         s->w += clamp(tw - s->w, -SL_SLOPE, SL_SLOPE);
         if (crush) {
             if (!s->cnt) {
@@ -964,22 +1023,26 @@ static __attribute__((noinline)) void track_insert(track_t *t, int32_t *b, uint3
  * per part like them (SPLIT's isolation holds; SPREAD's side signal gets the same filter, its own state). Three RBJ biquads in
  * a row: LOW shelf, MID peaking (a bell), HIGH shelf; GAIN -12..+12 dB in whole dB, FREQ a semitone step around the band's centre
  * (core.h eq_hz_q8), MID's Q 0.25 .. 4. A band at 0 dB is not run; all three at 0 (the default): the call is not made, the
- * block is not touched (bit for bit, no cost). The coefficients (Q28, 64-bit; a division each) are made when one of the part's
- * seven values changed; the filter is a transposed direct form II with 64-bit states and the output carried with 8 more bits into
- * the feedback (no limit cycle on a quiet tail). A band switched on starts from rest; all switched off, or the part silent and its
+ * block is not touched (bit for bit, no cost). The coefficients (Q28; made in 64 bit, a division each, then stored in 32 bit) are made
+ * when one of the part's seven values changed; the filter is a transposed direct form II with 64-bit states and the output carried
+ * with 8 more bits into the feedback. 0.2.25: the loop multiplies in 32 bit only (eq_run: the chip has a 32 x 32 -> 64
+ * multiply-accumulate, no 64 x 64 multiply) and carries the output's rounding remainder into the next sample, so a quiet tail
+ * comes back to exactly 0 (no stuck DC, no limit cycle). A band switched on starts from rest; all switched off, or the part silent and its
  * tail run out (eq_rest), the states are cleared. Changing a value moves the coefficients at once (no glide: a click is possible
  * on a loud, low band). */
 typedef struct {
-    int64_t b0, b1, b2, a1, a2;          /* Q28, divided by a0 */
+    int32_t b0, b1, b2, a1, a2;          /* Q28, divided by a0 (0.2.25: 32 bit; every setting fits, the largest is |b1| 5.94: tests/eq32_test.c) */
 } eqc_t;
 typedef struct {
     int8_t key[7];                       /* LOW gain, freq, MID gain, freq, Q, HIGH gain, freq: the values the coefficients are of */
     uint8_t on;                          /* bit k: band k runs (gain not 0) */
+    uint8_t dr[3];                       /* 0.2.25, per band: blocks run flat since its gain read 0 (the switch OFF, or the gain turned to 0) while its states held a signal: they ring out through the band's own poles, then the band rests (0.2.24: all three at once, when the last gain read 0) */
     eqc_t c[3];
-    int64_t s[2][3][2];                  /* the states: [0] the part's signal, [1] SPREAD's side; band; s1 s2 */
+    int64_t s[2][3][2];                  /* the states (Q36): [0] the part's signal, [1] SPREAD's side; band; s1 s2 */
 } eq_t;
 static eq_t eqs[NLIVE];
-static uint8_t eq_live;                  /* bit p: part p's states may hold a signal (eq_rest clears them) */
+#define EQ_DRAIN 16u                             /* blocks the bands ring out flat before they rest (23 ms) */
+/* eq_live: t->eqlv (0 / 1), the part's EQ states may hold a signal (eq_rest clears them) */
 #define EQ_ONE (1ll << 28)
 static const uint32_t EQ_A[25] = {      /* 10^(dB / 40), dB -12 .. 12, Q28: the shelf / bell amplitude A */
     134536424, 142508208, 150952350, 159896839, 169371322, 179407204, 190037749, 201298194, 213225862, 225860289,
@@ -995,21 +1058,31 @@ static const uint32_t EQ_K[25] = {      /* 2^(-r / 6), r -12 .. 12: 1 / Q */
     106528681, 94906266, 84551870, 75327153, 67108864};
 #define EQ_HK ((int64_t)(3.14159265358979 * 1073741824.0 / FS))   /* pi / FS, Q30: the half angle of a frequency in Hz */
 
+/* a coefficient b / a0 in Q28, saturated to 32 bit (never reached: every setting's fits, tests/eq32_test.c) */
+static __attribute__((noinline)) int32_t eq_q28(int64_t b, int64_t a0)
+{
+    int64_t v = (b << 28) / a0;
+    return v > 2147483647ll ? 2147483647 : v < -2147483648ll ? (int32_t)-2147483648ll : (int32_t)v;
+}
+/* sin h / h and cos h by the Taylor sum to h^9, Horner's way: t = 1 - h2 t / d for the divisors d (sin: 72 42 20 6, cos: 56 30 12 2), the first step on t = 1
+ * (h2 * 1 >> 28 is h2 itself). One loop, not eight inlined 64-bit constant divisions (range Z, 418 B; the same integer arithmetic as before, bit for bit) */
+static const uint8_t EQ_TS[4] = {72, 42, 20, 6}, EQ_TC[4] = {56, 30, 12, 2};
+static __attribute__((noinline)) int64_t eq_taylor(int64_t h2, const uint8_t *dv)
+{
+    int64_t t = EQ_ONE;
+    uint32_t k;
+    for (k = 0; k < 4u; k++)
+        t = EQ_ONE - (h2 * t >> 28) / dv[k];
+    return t;
+}
 /* band bd (0 LOW shelf, 1 MID bell, 2 HIGH shelf) at gain g dB, semitone step fr, MID's Q step q -> c */
 static __attribute__((noinline)) void eq_design(eqc_t *c, uint32_t bd, int32_t g, int32_t fr, int32_t q)
 {
     int64_t h = ((int64_t)eq_hz_q8(bd, fr) * EQ_HK) >> 10;              /* pi f / FS, Q28 (at most 1.15) */
-    int64_t h2 = (h * h) >> 28, t, sn, cs, sw, cw, a0, b0, b1, b2, a1, a2;
+    int64_t h2 = (h * h) >> 28, sn, cs, sw, cw, a0, b0, b1, b2, a1, a2;
     int64_t A = EQ_A[g + 12], SA = EQ_SA[g + 12], AM = A - EQ_ONE, AP = A + EQ_ONE, T, P1, P2;
-    t = EQ_ONE - h2 / 72;                                               /* sin h, cos h (Taylor to h^9: 1e-7 at 1.15) */
-    t = EQ_ONE - (h2 * t >> 28) / 42;
-    t = EQ_ONE - (h2 * t >> 28) / 20;
-    t = EQ_ONE - (h2 * t >> 28) / 6;
-    sn = h * t >> 28;
-    t = EQ_ONE - h2 / 56;
-    t = EQ_ONE - (h2 * t >> 28) / 30;
-    t = EQ_ONE - (h2 * t >> 28) / 12;
-    cs = EQ_ONE - (h2 * t >> 28) / 2;
+    sn = h * eq_taylor(h2, EQ_TS) >> 28;
+    cs = eq_taylor(h2, EQ_TC);
     sw = 2 * sn * cs >> 28;                                             /* sin w, w = 2 pi f / FS */
     cw = EQ_ONE - (2 * sn * sn >> 28);                                  /* cos w (1 - cos w kept to its own bits) */
     if (bd == 1u) {                                                     /* peaking: alpha = sin w / (2 Q) */
@@ -1028,31 +1101,42 @@ static __attribute__((noinline)) void eq_design(eqc_t *c, uint32_t bd, int32_t g
             a0 = AP - P1 + T, a1 = 2 * (AM - P2), a2 = AP - P1 - T;
         }
     }
-    c->b0 = (b0 << 28) / a0;
-    c->b1 = (b1 << 28) / a0;
-    c->b2 = (b2 << 28) / a0;
-    c->a1 = (a1 << 28) / a0;
-    c->a2 = (a2 << 28) / a0;
+    c->b0 = eq_q28(b0, a0);
+    c->b1 = eq_q28(b1, a0);
+    c->b2 = eq_q28(b2, a0);
+    c->a1 = eq_q28(a1, a0);
+    c->a2 = eq_q28(a2, a0);
 }
 
-/* one band over a block, state s (s1 s2) */
+/* one band over a block, state s (s1 s2). 0.2.25: 32 x 32 -> 64 multiplies only (0.2.24 multiplied 64 x 64: ~85 device instructions a sample
+ * a band, now ~32). The sample in Q8 (x 256: 32 bit), the coefficients Q28, the sums and states Q36 (the five coefficients' sizes sum to under 16
+ * at every setting and |x|, |y| <= 2^31: the 64-bit sums cannot wrap at full scale). y, the output with 8 more bits (Q8), is the sum's bits 28..59:
+ * its high word clamped (24-bit full scale, as before), and the 28 bits below it, the rounding remainder, go into the next sample's sum
+ * (first-order error feedback: the rounding error is not left to circulate through the poles, so a quiet tail ends at exactly 0). The
+ * output rounded to 24 bit. Within 1 LSB of the ideal filter at -20 dBFS (0.2.24's: up to ~400 LSB on a low LOW band); tests/eq32_test.c */
 static __attribute__((noinline)) void eq_run(const eqc_t *c, int64_t *s, int32_t *b, uint32_t n)
 {
     uint32_t i;
     int64_t s1 = s[0], s2 = s[1];
+    const int32_t b0 = c->b0, b1 = c->b1, b2 = c->b2, a1 = c->a1, a2 = c->a2;
     for (i = 0; i < n; i++) {
-        int64_t x = clamp(b[i], -8388608, 8388607), y = c->b0 * x + s1;   /* Q28 */
-        y = y >> 20;                                                    /* Q8 */
-        y = y > 2147483647ll ? 2147483647ll : y < -2147483647ll ? -2147483647ll : y;
-        s1 = c->b1 * x - ((c->a1 * y) >> 8) + s2;
-        s2 = c->b2 * x - ((c->a2 * y) >> 8);
-        b[i] = (int32_t)((y + 128) >> 8);
+        int32_t x = clamp(b[i], -8388608, 8388607) * 256, y, hi;   /* Q8 */
+        int64_t a = s1 + (int64_t)b0 * x;                           /* Q36 */
+        hi = clamp((int32_t)(a >> 32), -(1 << 27), (1 << 27) - 1);
+        y = (int32_t)(((uint32_t)hi << 4) | ((uint32_t)a >> 28));  /* Q8: a >> 28, clamped */
+        s1 = s2 + ((uint32_t)a & 0x0FFFFFFFu) + (int64_t)b1 * x - (int64_t)a1 * y;
+        s2 = (int64_t)b2 * x - (int64_t)a2 * y;
+        b[i] = (y >> 8) + ((y >> 7) & 1);                           /* (y + 128) >> 8 without the overflow */
     }
     s[0] = s1, s[1] = s2;
 }
 
 /* part t's EQ on its block b (side 0: the part's signal; 1: SPREAD's side signal); not called while all three gains are 0
- * and no state is live */
+ * and no state is live. 0.2.25: each band on its own: a band whose gain is 0 is not run (it costs nothing; one band set: that band only),
+ * a band turned to 0 rings out flat (EQ_DRAIN blocks) and then rests, a band whose values moved is designed again (the others are not).
+ * (0.2.24 tested band k's gain at key[2 k]: for HIGH that was MID's Q, so HIGH ran only with Q off its middle: fixed) */
+static const uint8_t EQ_GK[3] = {0u, 2u, 5u};           /* band k's gain in key[]; its values: EQ_GK[k] .. EQ_GK[k] + EQ_KN[k] - 1 */
+static const uint8_t EQ_KN[3] = {2u, 3u, 2u};
 static __attribute__((noinline)) void track_eq(track_t *t, int32_t *b, uint32_t n, uint32_t side)
 {
     uint32_t p = (uint32_t)(t - trk) % NLIVE, k, on = 0;
@@ -1064,25 +1148,37 @@ static __attribute__((noinline)) void track_eq(track_t *t, int32_t *b, uint32_t 
     key[2] = (int8_t)clamp(t->p[P_EQMG], -12, 12), key[3] = (int8_t)clamp(t->p[P_EQMF], -24, 24);
     key[4] = (int8_t)clamp(t->p[P_EQMQ], -12, 12);
     key[5] = (int8_t)clamp(t->p[P_EQHG], -12, 12), key[6] = (int8_t)clamp(t->p[P_EQHF], -24, 12);
-    for (k = 0; k < 3u; k++)
-        on |= (uint32_t)(key[2u * k] != 0) << k;
-    if (!on) {                                          /* all off: rest */
-        memset(e->s, 0, sizeof e->s);
-        e->on = 0;
-        eq_live &= (uint8_t)~(1u << p);
+    for (k = 0; k < 3u; k++) {
+        uint32_t gk = EQ_GK[k], was = (e->on >> k) & 1u;
+        if (key[gk]) {                                  /* the band is in use */
+            if (!was)                                   /* (newly on: from rest) */
+                memset(e->s[0][k], 0, sizeof e->s[0][k]), memset(e->s[1][k], 0, sizeof e->s[1][k]);
+            if (!was || e->dr[k] || memcmp(key + gk, e->key + gk, EQ_KN[k])) {
+                eq_design(&e->c[k], k, key[gk], key[gk + 1u], k == 1u ? key[4] : 0);
+                memcpy(e->key + gk, key + gk, EQ_KN[k]);
+            }
+            e->dr[k] = 0;
+            on |= 1u << k;
+        } else if (was && t->eqlv && e->dr[k] < EQ_DRAIN) {   /* turned to 0: ring out flat, then rest */
+            if (!e->dr[k]) {
+                eq_design(&e->c[k], k, 0, e->key[gk + 1u], k == 1u ? e->key[4] : 0);
+                e->key[gk] = 0;
+            }
+            if (!side)
+                e->dr[k]++;
+            on |= 1u << k;
+        } else if (was) {                               /* rung out (or the part's tail ended): the band rests */
+            memset(e->s[0][k], 0, sizeof e->s[0][k]), memset(e->s[1][k], 0, sizeof e->s[1][k]);
+            e->key[gk] = 0;
+            e->dr[k] = 0;
+        }
+    }
+    e->on = (uint8_t)on;
+    if (!on) {                                          /* every band at rest: nothing runs, the part's EQ is not called again until a gain is set */
+        t->eqlv = 0;
         return;
     }
-    if (memcmp(key, e->key, sizeof key) || on != e->on) {   /* a value moved: the coefficients; a band newly on starts from rest */
-        for (k = 0; k < 3u; k++)
-            if (((on ^ e->on) >> k) & 1u)               /* (a band switched on or off) */
-                memset(e->s[0][k], 0, sizeof e->s[0][k]), memset(e->s[1][k], 0, sizeof e->s[1][k]);
-        eq_design(&e->c[0], 0u, key[0], key[1], 0);
-        eq_design(&e->c[1], 1u, key[2], key[3], key[4]);
-        eq_design(&e->c[2], 2u, key[5], key[6], 0);
-        memcpy(e->key, key, sizeof key);
-        e->on = (uint8_t)on;
-    }
-    eq_live |= (uint8_t)(1u << p);
+    t->eqlv = 1;
     for (k = 0; k < 3u; k++)
         if ((on >> k) & 1u)
             eq_run(&e->c[k], e->s[side][k], b, n);
@@ -1093,13 +1189,33 @@ static __attribute__((noinline)) void eq_rest(track_t *t)
 {
     uint32_t p = (uint32_t)(t - trk) % NLIVE;
     memset(eqs[p].s, 0, sizeof eqs[p].s);
-    eq_live &= (uint8_t)~(1u << p);
+    t->eqlv = 0;
 }
 /* does part t's EQ do anything now (a gain not 0) or hold a signal still */
-#define EQ_ON(t) ((t)->p[P_EQLG] | (t)->p[P_EQMG] | (t)->p[P_EQHG] | ((eq_live >> ((uint32_t)((t) - trk) % NLIVE)) & 1u))
+#define EQ_ON(t) (((t)->p[P_DKNOTE] == 0 && ((t)->p[P_EQLG] | (t)->p[P_EQMG] | (t)->p[P_EQHG])) | (t)->eqlv)   /* (0.2.25 layout round: the EQ switch
+                                                         * is gone, its id 106 is free and always reads 0 (params.c PFREE); the test stays only so the hot RAM code (mix_spread) is byte for byte as it was) */
 
 /* one block of the whole mix (shared with hostsim.c): events -> each part (with its modulation matrix)
  * -> dist -> INSERT -> EQ -> mute -> DUCK -> level / pan / sends -> buses -> master; out: stereo Q15 */
+/* MIXSPLIT job 2: the block's shared control state, read ONCE per block (blk_snap, in mix_block after the event stage and PERFORM's begin) into
+ * this struct. The parts' stages (part_voice .. part_mix, mix_spread, pfx_*, perf_mute*) and mix_gather receive it by pointer and only read it:
+ * the two parts then see the same values whatever order, or on whichever core, they run, and a value the UI or the key scan writes (mods_off,
+ * perf_*, mix_bal: volatile) cannot change between the parts. Nothing in it is written by a part. mix_sends and mix_master (after the parts) still
+ * read the live variables: nothing writes them between the parts and those stages.
+ *   dm_*          the MODE (dm_split: the mix runs SPLIT)    snd_st  MODULES SENDS state    mods_off  MODULES switches    sp_tap  SPACE's tap
+ *   perf_*, pf_*  PERFORM: the knobs, the effects running, the parts whose mute is on (pf_mute) and the mute's goal gain Q15 (mute_tg: 0 held, 32768 free)
+ *   mix_bal       BALANCE
+ *   (the voice budget, voice.c voices_busy / voice_room, is not in it: only the event stage uses it, live, a note-on changes it inside the block; counting it
+ *   every block costs 10 host instructions a sample for a value no part stage reads) */
+typedef struct {
+    int32_t dm_g, mix_bal;
+    uint32_t pf_act;
+    int32_t mute_tg[NLIVE];
+    int32_t duck_key[NLIVE];     /* each part's DUCK key follower at the snapshot (the block before's final): the ducked part's input (duck_part) */
+    uint8_t dm_cur, dm_split, dm_hold, dm_clr;
+    int8_t dm_dir, perf_space, perf_filt, perf_depth;
+    uint8_t snd_st, mods_off, sp_tap, pf_mute;
+} blockstate_t;
 #include "perform.c"                                 /* DUELL 0.2.5 PERFORM: the white keys' master effects and mutes */
 
 /* K2 SPACE a block (sv above): SPACE glides, its values from the stored ones; in the middle and at rest: off (the buses read song.g) */
@@ -1177,8 +1293,21 @@ static __attribute__((noinline)) void space_sends(int32_t *c, int32_t *d, int32_
     }
 }
 
-static void events_block(uint32_t n);                    /* seq.c */
+static __attribute__((noinline)) void events_block(uint32_t n);   /* seq.c (a function of its own: mix_events) */
 static int32_t send_c[CTL], send_d[CTL], send_r[CTL], wet[CTL];
+/* MIXSPLIT job 2: each part adds its block into ITS OWN accumulators (pacc[pp]: the dry mix l / r, the three sends sc / sd / sr, SPACE's
+ * floors fc / fd / fr). A part ASSIGNS its block into them (no clear, no read-modify-write; a send at 0 is left alone and flagged off in pacc_on[pp]);
+ * a silent part writes nothing. mix_gather then sums the parts' that are on into the globals above (mix_l,
+ * mix_r, send_*, sp_f*) in a fixed order, after both parts and before mix_sends: plain 32-bit integer adds, so the sum is the same in
+ * whatever order the parts ran. In SPLIT (DUEL) part 1's sends and floors go to bus A's arrays (sa_*, sp_f*_a), the others' to bus B's */
+typedef struct {
+    int32_t l[CTL], r[CTL];
+    int32_t sc[CTL], sd[CTL], sr[CTL];
+    int32_t fc[CTL], fd[CTL], fr[CTL];
+} part_acc_t;
+_Static_assert(sizeof(part_acc_t) == 8u * CTL * sizeof(int32_t), "part_acc_t is eight arrays of CTL (mix_gather indexes them as one)");
+static part_acc_t pacc[NLIVE];
+static uint8_t pacc_on[NLIVE];                          /* the part wrote its accumulators this block: bit 0 l / r, bits 1..3 the sends sc / sd / sr that are not 0, bit 4 the floors fc / fd / fr (a silent part writes none: mix_gather skips it) */
 
 /* SPACE's STEREO WIDTH (0.2.9, the owner: "SPACE should decrease the stereo space to completely mono, and widen it on the plus side"), STEREO and
  * LAYER only, on the mix before the master (mix_l / mix_r with the buses' return, wet folded in): mid M = (L + R) / 2, side S = (L - R) / 2,
@@ -1328,7 +1457,259 @@ static __attribute__((noinline)) void bass_mono(uint32_t n)
     bm.z0 = a || sel ? z0 : 0;                           /* (faded out: at rest, the state dropped) */
     bm.z1 = a || sel ? z1 : 0;
 }
+/* MASTER STEREO WIDTH (DUELL 0.2.23, the page WIDTH; the owner's request). A mid / side width on the mix, STEREO and LAYER: WIDTH 0..200 %, 100 = as it is (the stage
+ * is not run: bit for bit), 0 = mono, 200 = the side twice as loud. The mid (L + R) is never touched, so the mono sum stays exactly what it was at every setting; only the side
+ * (L - R) moves, by k = (WIDTH - 100) / 100 of itself: L + d, R - d with d = k x side / 2.
+ *   wider (k > 0): only the side above the crossover, 125 Hz (a 2-pole Butterworth high-pass of the side: BASS MONO's filter and its 125 Hz coefficients, BM_C[WD_XO]),
+ *                  so the bass is never made wider;
+ *   narrower (k < 0): the whole side (no filter): toward mono it narrows the bass too, which is always safe.
+ * Where: after the MODE's dip and before BASS MONO, so BASS MONO, when it is on, still has the last word below its corner (a wide mix stays mono there), then COMP sees the
+ * mix as it will be heard. The wet bus (mono: the same on both sides) has no side, so it is not read. Not in DUEL (its sides are part 1 and part 2, dual mono: mix_block never
+ * calls it there and dm_lines_clear drops its state). k glides WD_GLIDE a sample (0 -> +-100 % in 23 ms): no click; back at 100 % k ends at 0 exactly, the crossover's
+ * states are dropped and the gate shuts */
+#define WD_XO 5u                                        /* the crossover: BM_HZ[5] = 125 Hz */
+#define WD_GLIDE 32                                     /* k's step a sample, Q15 */
+static volatile uint8_t wd_sel = 100;                   /* the setting (ui_input copies it every frame): 0..200 %, 100 = neutral */
+static struct { int32_t k, z0, z1; } wdn;               /* k now (Q15: -32768 .. 32768), the crossover's states */
+static __attribute__((noinline)) void width_stage(uint32_t n)
+{
+    uint32_t i, w = wd_sel <= 200u ? wd_sel : 100u;
+    int32_t kt = ((int32_t)w - 100) * 32768 / 100, k = wdn.k, z0 = wdn.z0, z1 = wdn.z1, s, x, v1, v2, v3, low, d;
+    const int32_t a1 = BM_C[WD_XO][0], a2 = BM_C[WD_XO][1], a3 = BM_C[WD_XO][2];
+    if (k == kt && k < 0) {                              /* steady, narrower: the whole side */
+        for (i = 0; i < n; i++) {
+            d = (int32_t)(((int64_t)(mix_l[i] - mix_r[i]) * k) >> 16);
+            mix_l[i] += d;
+            mix_r[i] -= d;
+        }
+        z0 = z1 = 0;
+    } else if (k == kt) {                                /* steady, wider: the side above the crossover */
+        for (i = 0; i < n; i++) {
+            s = mix_l[i] - mix_r[i];
+            x = clamp(s, -BM_XMAX, BM_XMAX) << BM_SH;
+            BM_STEP;
+            d = (int32_t)(((int64_t)(s - low) * k) >> 16);
+            mix_l[i] += d;
+            mix_r[i] -= d;
+        }
+    } else {                                             /* k gliding (the filter runs on both sides of 100 %: no seam where k changes sign) */
+        for (i = 0; i < n; i++) {
+            k += clamp(kt - k, -WD_GLIDE, WD_GLIDE);
+            s = mix_l[i] - mix_r[i];
+            x = clamp(s, -BM_XMAX, BM_XMAX) << BM_SH;
+            BM_STEP;
+            d = (int32_t)(((int64_t)(k < 0 ? s : s - low) * k) >> 16);
+            mix_l[i] += d;
+            mix_r[i] -= d;
+        }
+    }
+    wdn.k = k;
+    wdn.z0 = k ? z0 : 0;                                 /* (back at 100 %: at rest, the states dropped) */
+    wdn.z1 = k ? z1 : 0;
+}
 #undef BM_STEP
+
+/* MASTER COMPRESSOR (DUELL 0.2.21, the page COMP; the owner's request). A stereo-linked feed-forward compressor at the end of the master chain: after PERFORM, SPACE's width and BASS MONO, before the MASTER gain,
+ * the DC blocker, the limiter and the soft clip. It works on the mix as it is before MASTER, and its dB are those of the OUTPUT at the default MASTER (gain 0.5: 0 dB = a pre-MASTER amplitude of 65536); turning MASTER is a volume after it and never changes what is compressed; the wet bus's mono return is folded
+ * into the mix when the stage runs.
+ *   detector   every 8th sample (a hop, 0.18 ms): the peak of the hop's L and R (max(|L|, |R|): the link, both channels get one gain), held: the peak of the last 8 blocks of 64 samples and the one running
+ *              (the hold, 11.6 .. 13 ms: a bass does not ripple the gain). pk (Q12 of the amplitude) moves toward the hold with the ATTACK's coefficient up and the RELEASE's down: pk += d x m >> sh, a product of the
+ *              step and a coefficient of 8 bits shifted down (m / 2^sh, nearest to the printed time: core.h CMP_ATK_US / CMP_REL_MS; tools/comp_tables.py), a state with 12 fractional bits, so it does not
+ *              stall short of its target (a Q16 coefficient on a small state does: about 2 dB). RELEASE is the time to cover 63 % of a fall, the hold included (so the 20 ms setting is a 12 ms hold and a pole of 8).
+ *   gain       at each hop: the level in Q8 octaves of amplitude (256 = 6.02 dB; a leading-zero count and a 128-entry table); over = level - threshold;
+ *              gain reduction gr = slope x over above the knee, slope x (over + knee / 2)^2 / (2 knee) inside it (the knee fixed at 6.02 dB), slope = 1 - 1 / ratio; the gain 2^((makeup - gr) / 256)
+ *              (a table, a half step of interpolation), a straight line over the hop's 8 samples. An upward branch for an OTT mode would go in cmp_gr (a second, lower threshold): not built.
+ *   makeup     fixed, from the threshold and the ratio: the gain reduction the same curve gives a level of -8 dB (CMP_REF), at most +12 dB. A level of -8 dB leaves the stage as loud as it came in,
+ *              quieter signals are raised by the makeup, louder ones are brought down by what the curve takes less the makeup.
+ *   knobs      threshold and slope glide to a new setting (8 and 1024 a hop: a 40 dB threshold sweep in 38 ms; the makeup is made from the gliding pair, so it is always one setting's curve); the effect's share `a`
+ *              (Q15) fades in or out over 15 ms (CMP_A_STEP a hop): RATIO 1:1 is no code at all (cmp_cfg's ratio 0 with the share at 0 is mix_block's whole gate: the mix is bit for bit what it was)
+ *              and 1:1 <-> a ratio is no click.
+ *   not in DUEL (mix_block's gate; dm_lines_clear drops the state): its sides are the two parts, a linked gain would pump part 2 from part 1. */
+#define CMP_RATIOS 9u                                   /* 1:1 (off), 1.5, 2, 3, 4, 6, 8, 12, INF */
+#define CMP_KNEE 256                                    /* the knee, Q8 octaves (6.02 dB) */
+#define CMP_AMAX 262144                                 /* the detector's ceiling (8 x full scale: pk <= 2^30) */
+#define CMP_REF 3756                                    /* -8 dB in Q8 octaves (4096 - 8 x 42.52): the level the makeup keeps at unity */
+#define CMP_MKMAX 510                                   /* the makeup's ceiling: +12 dB */
+#define CMP_A_STEP 384                                  /* the share's step a hop: 85 hops, 15.5 ms */
+static const uint32_t CMP_SLOPE[CMP_RATIOS] = {0, 21845, 32768, 43691, 49152, 54613, 57344, 60075, 65536};   /* 1 - 1 / ratio, Q16 */
+static const uint8_t CMP_LG[128] = {   /* 256 log2(1 + (i + 1/2) / 128): the fraction of an octave of an amplitude, i = the top 7 bits after the leading 1 */
+    1, 4, 7, 10, 13, 16, 18, 21, 24, 26, 29, 32, 34, 37, 40, 42,
+    45, 47, 50, 52, 55, 57, 60, 62, 65, 67, 69, 72, 74, 77, 79, 81,
+    84, 86, 88, 90, 93, 95, 97, 99, 102, 104, 106, 108, 110, 112, 114, 117,
+    119, 121, 123, 125, 127, 129, 131, 133, 135, 137, 139, 141, 143, 145, 147, 149,
+    151, 153, 155, 156, 158, 160, 162, 164, 166, 168, 169, 171, 173, 175, 177, 178,
+    180, 182, 184, 185, 187, 189, 191, 192, 194, 196, 198, 199, 201, 203, 204, 206,
+    208, 209, 211, 212, 214, 216, 217, 219, 220, 222, 224, 225, 227, 228, 230, 231,
+    233, 234, 236, 238, 239, 241, 242, 244, 245, 247, 248, 249, 251, 252, 254, 255,
+};
+static const uint16_t CMP_EX[129] = {   /* 32768 2^(-i / 128): the gain of i / 128 octave of reduction, Q15 */
+    32768, 32591, 32415, 32240, 32066, 31893, 31720, 31549, 31379, 31209, 31041, 30873,
+    30706, 30541, 30376, 30212, 30048, 29886, 29725, 29564, 29405, 29246, 29088, 28931,
+    28774, 28619, 28464, 28311, 28158, 28006, 27855, 27704, 27554, 27406, 27258, 27110,
+    26964, 26818, 26674, 26530, 26386, 26244, 26102, 25961, 25821, 25681, 25543, 25405,
+    25268, 25131, 24995, 24860, 24726, 24593, 24460, 24328, 24196, 24066, 23936, 23806,
+    23678, 23550, 23423, 23296, 23170, 23045, 22921, 22797, 22674, 22552, 22430, 22309,
+    22188, 22068, 21949, 21831, 21713, 21595, 21479, 21363, 21247, 21133, 21019, 20905,
+    20792, 20680, 20568, 20457, 20347, 20237, 20127, 20019, 19911, 19803, 19696, 19590,
+    19484, 19379, 19274, 19170, 19066, 18963, 18861, 18759, 18658, 18557, 18457, 18357,
+    18258, 18160, 18061, 17964, 17867, 17770, 17674, 17579, 17484, 17390, 17296, 17202,
+    17109, 17017, 16925, 16834, 16743, 16652, 16562, 16473, 16384,
+};
+/* the time of a setting as the detector's coefficient (0.2.24: ATTACK and RELEASE are fine, 40 steps a decade (core.h CMP_ATK_US / CMP_REL_MS), so the coefficient is computed
+ * when the setting changes, not looked up): k = 1 - exp(-1 / tau), tau the time in hops of 8 samples (the release less the hold's 544 samples: the printed release is the time
+ * to cover 63 % of a fall, the hold included), as Q24 (pk += d x k >> 24, the same product as the old m >> sh). tau >= 4 hops: the series 1/tau - 1/(2 tau^2) + 1/(6 tau^3)
+ * (under 0.1 % off); shorter (attacks under 0.73 ms): 2^(-x log2 e) from CMP_EX with a straight line between its entries. tests/comp_test.c measures the times that come out */
+static uint32_t cmp_coef(uint32_t samples)
+{
+    uint64_t tau32 = (uint64_t)(samples < 1u ? 1u : samples) * 4u;   /* tau in hops, Q5 (samples / 8 x 32) */
+    uint64_t inv = ((uint64_t)1 << 29) / tau32;         /* 1 / tau, Q24 */
+    if (tau32 >= 4u * 32u) {
+        uint64_t i2 = (inv * inv) >> 24, i3 = (i2 * inv) >> 24;
+        return (uint32_t)(inv - i2 / 2u + i3 / 6u);
+    } else {                                            /* exp(-x) = 2^(-x log2 e): y Q24 */
+        uint64_t y = (inv * 24204406u) >> 24;           /* log2 e in Q24 = 24204406 */
+        uint32_t n = (uint32_t)(y >> 24), i = (uint32_t)((y >> 17) & 127u), r = (uint32_t)(y & 0x1FFFFu);
+        uint32_t e = (uint32_t)(((uint64_t)CMP_EX[i] * (0x20000u - r) + (uint64_t)CMP_EX[i + 1u] * r) >> 17);   /* Q15 */
+        e = n < 15u ? e >> n : 0u;
+        return (32768u - e) << 9;
+    }
+}
+#define CMP_HOLD_SAMPLES 544u                           /* the hold's mean delay (a window of 8 blocks of 64 and the one running) */
+static uint32_t cmp_atk_coef(uint32_t i) { return cmp_coef((uint32_t)(((uint64_t)CMP_ATK_US(i % CMP_ATK_N) * FS + 500000u) / 1000000u)); }
+static uint32_t cmp_rel_coef(uint32_t i)
+{
+    uint32_t smp = (uint32_t)(((uint64_t)CMP_REL_MS(i % CMP_REL_N) * FS + 500u) / 1000u);
+    return cmp_coef(smp > CMP_HOLD_SAMPLES + 8u ? smp - CMP_HOLD_SAMPLES : 8u);
+}
+static volatile uint32_t cmp_cfg;                       /* the setting (ui_input copies it every frame): threshold index 0..40 | ratio << 8 | attack << 16 | release << 24 */
+static struct {
+    int32_t pk;                                         /* the smoothed level, Q12 of the amplitude */
+    int32_t sm, hr, ring[8];                            /* the peak of this block of 64 samples so far, of the last 8 whole ones, and each of those */
+    int32_t g, st;                                      /* the gain now and its step a sample, Q16 */
+    int32_t a;                                          /* the effect's share, Q15 (0: at rest, the stage is not run) */
+    int32_t thr, slope, mk;                             /* the threshold (Q8 octaves), the slope (Q16) and the makeup (Q8 octaves) now: they glide to the setting's */
+    uint32_t cfg;                                       /* the setting the targets below were made from (0: none yet) */
+    int32_t tthr, tslope;                               /* the setting's threshold and slope */
+    uint32_t am, as, rm, rs;                            /* the attack's and the release's coefficients m, sh */
+    uint32_t hc;                                        /* hops counted: a block of 64 samples ends every 8th */
+} cmp;
+/* 256 x log2 of an amplitude >= 1: the leading one by clz, the next 7 bits into the table (+-0.03 dB) */
+static inline int32_t cmp_lg(uint32_t a)
+{
+    uint32_t n = 31u - (uint32_t)__builtin_clz(a);
+    uint32_t f = n >= 7u ? (a >> (n - 7u)) & 127u : (a << (7u - n)) & 127u;
+    return (int32_t)(n << 8) + CMP_LG[f];
+}
+/* 65536 x 2^(-e / 256), e in Q8 octaves of reduction (negative: a boost, down to -510); a half step of interpolation */
+static inline int32_t cmp_exp2(int32_t e)
+{
+    int32_t n = e >> 8, f = e & 255, i = f >> 1, y = CMP_EX[i];
+    y -= ((y - (int32_t)CMP_EX[i + 1]) * (f & 1)) >> 1;
+    return n >= 0 ? (n > 16 ? 0 : (y << 1) >> n) : (y << 1) << -n;
+}
+/* the gain reduction (Q8 octaves) of a level `over` the threshold, the soft knee and the slope (Q16) */
+static inline int32_t cmp_gr(int32_t over, int32_t slope)
+{
+    if (over <= -CMP_KNEE / 2)
+        return 0;
+    if (over >= CMP_KNEE / 2)
+        return (over * slope) >> 16;
+    over += CMP_KNEE / 2;
+    return (((over * over) >> 9) * slope) >> 16;
+}
+/* the makeup of a threshold and a slope: the reduction at CMP_REF, at most CMP_MKMAX */
+static inline int32_t cmp_mk(int32_t thr, int32_t slope)
+{
+    int32_t m = cmp_gr(CMP_REF - thr, slope);
+    return m > CMP_MKMAX ? CMP_MKMAX : m;
+}
+/* the threshold index 0..40 = -40 .. 0 dB in Q8 octaves (10886 / 256 = 42.52 per dB; 4096 = 0 dB: a pre-MASTER amplitude of 65536, the output's full scale at the default MASTER) */
+static inline int32_t cmp_thr_q8(uint32_t ti) { return 4096 - (int32_t)((40u - (ti > 40u ? 40u : ti)) * 10886u >> 8); }
+static __attribute__((noinline)) void cmp_big(int32_t *l, int32_t *r)   /* (apart, so the loop keeps a branch it never takes) */
+{
+    *l = clamp(*l, -524287, 524287);
+    *r = clamp(*r, -524287, 524287);
+}
+/* PERFORM's master stage (perf_master) has put MASTER's gain into the mix already (mg / 1024: x 2 at the default knob, x 4 at the top), so then the stage sees the level the idle path
+ * would, times that: poff is the correction in Q8 octaves, log2(1024 / mg) x 256 (0 when PERFORM is idle: the mix is pre-MASTER). Without it THRESH would move with the MASTER knob and
+ * with PERFORM. mg is the Q12 level mix_block uses (the reference MASTER_USB_REF) */
+static inline int32_t cmp_poff(int32_t mg) { return 2560 - cmp_lg((uint32_t)(mg > 1 ? mg : 1)); }
+static __attribute__((noinline)) void comp_stage(uint32_t n, int32_t poff)
+{
+    uint32_t cfg = cmp_cfg, rat = (cfg >> 8) & 15u, i, hop, j, hc;
+    int32_t at = 0, a = cmp.a, pk = cmp.pk, g = cmp.g, st, sm = cmp.sm, hr = cmp.hr, thr, slope, mk, tthr, tslope;
+    uint32_t am, as, rm, rs;
+    if (rat - 1u < CMP_RATIOS - 1u) {                    /* ON: the setting's targets (OFF: the ones now, the share on its way out) */
+        if (cfg != cmp.cfg) {
+            cmp.cfg = cfg;
+            cmp.tthr = cmp_thr_q8(cfg & 255u);
+            cmp.tslope = (int32_t)CMP_SLOPE[rat];
+            cmp.am = cmp_atk_coef((cfg >> 16) & 255u), cmp.as = 24u, cmp.rm = cmp_rel_coef((cfg >> 24) & 255u), cmp.rs = 24u;   /* (0.2.24: fine times, computed) */
+        }
+        at = 32768;
+    }
+    tthr = cmp.tthr, tslope = cmp.tslope;
+    if (!a) {                                           /* from rest: the detector starts at this block's peak (no boost on the first sound), the gain at unity */
+        int32_t m = 0;
+        for (i = 0; i < n; i++) {
+            int32_t x = mix_l[i] + wet[i], y = mix_r[i] + wet[i];
+            x = x < 0 ? -x : x;
+            y = y < 0 ? -y : y;
+            m = x > m ? x : m;
+            m = y > m ? y : m;
+        }
+        m = m > CMP_AMAX ? CMP_AMAX : m;
+        cmp.thr = tthr, cmp.slope = tslope, cmp.mk = cmp_mk(tthr, tslope);
+        pk = m << 12, sm = 0, hr = m, g = 65536;
+        for (j = 0; j < 8u; j++)
+            cmp.ring[j] = m;
+    }
+    thr = cmp.thr, slope = cmp.slope, mk = cmp.mk, hc = cmp.hc;
+    am = cmp.am, as = cmp.as, rm = cmp.rm, rs = cmp.rs;
+    for (hop = 0; hop < n; hop += 8u) {
+        int32_t gt = cmp_exp2(cmp_gr(cmp_lg((uint32_t)(pk >> 12) + 1u) + poff - thr, slope) - mk), hm = 0, d;   /* the gain computer */
+        a += clamp(at - a, -CMP_A_STEP, CMP_A_STEP);
+        if (a != 32768)
+            gt = 65536 + ((((gt - 65536) >> 3) * a) >> 12);
+        st = (gt - g) >> 3;
+        if (thr != tthr || slope != tslope) {           /* gliding to a new setting */
+            thr += clamp(tthr - thr, -8, 8);
+            slope += clamp(tslope - slope, -1024, 1024);
+            mk = cmp_mk(thr, slope);
+        }
+        for (j = 0; j < 8u; j++) {
+            int32_t w = wet[hop + j], l = mix_l[hop + j] + w, r = mix_r[hop + j] + w, x = l < 0 ? -l : l, y = r < 0 ? -r : r;   /* (the wet bus into the mix here: this stage is after the sends, MASTER after it) */
+            x = x > y ? x : y;
+            if (__builtin_expect(x > CMP_AMAX, 0)) {    /* (8 x full scale: the detector's ceiling; the audio's is space_width's, 16 x) */
+                cmp_big(&l, &r);
+                x = CMP_AMAX;
+            }
+            hm = x > hm ? x : hm;
+            g += st;
+            mix_l[hop + j] = ((l >> 2) * (g >> 4)) >> 10;
+            mix_r[hop + j] = ((r >> 2) * (g >> 4)) >> 10;
+            wet[hop + j] = 0;
+        }
+        sm = hm > sm ? hm : sm;                         /* the hold and the detector, once a hop */
+        if (!(++hc & 7u)) {                             /* a block of 64 samples ends: its peak into the ring, the hold is the ring's */
+            cmp.ring[(hc >> 3) & 7u] = sm;
+            sm = 0;
+            hr = cmp.ring[0];
+            for (j = 1; j < 8u; j++)
+                hr = cmp.ring[j] > hr ? cmp.ring[j] : hr;
+        }
+        d = ((sm > hr ? sm : hr) << 12) - pk;
+        if (d > 0)
+            pk += (int32_t)(((int64_t)d * am) >> as);
+        else
+            pk -= (int32_t)(((int64_t)(-d) * rm) >> rs);
+    }
+    if (!at && !a) {
+        memset(&cmp, 0, sizeof cmp);                    /* faded out: at rest, the state dropped (the next ON starts from the peak) */
+        return;
+    }
+    cmp.pk = pk, cmp.sm = sm, cmp.hr = hr, cmp.g = g, cmp.a = a, cmp.thr = thr, cmp.slope = slope, cmp.mk = mk, cmp.hc = hc;
+}
 
 /* DUELL step 5 (SPEC 5b.1): the mix's MODE. dm_cur follows duell_mode (core.h; seq.c mode_apply) and dm_split is this
  * block's: SPLIT mixes part 1 (trk[0]) to the left only and every other part to the right only, with
@@ -1372,6 +1753,8 @@ static __attribute__((noinline)) void dm_lines_clear(void)
     sw_a = 4096, sw_b = 0, sw_em = sw_es = 0, sw_g = 4096;   /* (SPACE's width from rest: DUEL has none) */
     lim_env = lim_env_r = LIM_T;                        /* the limiters from rest (they held the old mix's levels; at the silent point nothing to glide from) */
     memset(&bm, 0, sizeof bm);                          /* (BASS MONO from rest: it does not run in DUEL, the share fades in again) */
+    memset(&cmp, 0, sizeof cmp);                        /* (the compressor too: from rest, its detector starts at the first block's peak) */
+    memset(&wdn, 0, sizeof wdn);                        /* (0.2.23 WIDTH too: it does not run in DUEL, it starts from rest again) */
     perf_lines_clear();                                 /* PERFORM's lines and states (they hold the old mix: a part on the other side) */
 }
 
@@ -1529,42 +1912,36 @@ static __attribute__((noinline)) void snd_fade(uint32_t n)
     snd_x = x;
 }
 
-/* SPLIT: part 1's sends (mix_part put them into send_*) to bus A's, send_* cleared for the other parts (bus B) */
-static __attribute__((noinline)) void split_stash(uint32_t n)
-{
-    uint32_t i;
-    for (i = 0; i < n; i++) {
-        sa_c[i] = send_c[i];
-        sa_d[i] = send_d[i];
-        sa_r[i] = send_r[i];
-        send_c[i] = send_d[i] = send_r[i] = 0;
-    }
-    if (sp_tap)                                         /* (SPACE's floors: part 1's to bus A's) */
-        for (i = 0; i < n; i++) {
-            sp_fc_a[i] = sp_fc[i], sp_fd_a[i] = sp_fd[i], sp_fr_a[i] = sp_fr[i];
-            sp_fc[i] = sp_fd[i] = sp_fr[i] = 0;
-        }
-}
-
 /* SPLIT: bus A on part 1's sends, its return (the mid) to the left; bus B on part 2's, to the right; wet stays 0 */
 static __attribute__((noinline)) void split_buses(uint32_t n)
 {
     uint32_t i, dl = delay_split();
-    if (song.g[G_DMDEP] > 0 || fx.dm_dev)
+    uint32_t dm = (uint32_t)song.g[G_DMODE];            /* (0.2.22: the delay's mode in DUEL, all mono per part: DIGI and PING the plain delay (a ping-pong needs two sides), RAND and OCT+ the events, centred) */
+    uint32_t evm = dm == DMD_RAND || dm == DMD_OCTUP, ev = evm && !OVL_LITE;   /* (0.2.25: the overload guard, as in fx_buses) */
+    uint32_t emode = ev ? dm - DMD_RAND + 1u : 0u;
+    cho_zrun(sa_c, n);
+    if (ev || dlyev.x) {                                /* an event mode, or the crossfade back to the plain delay still running */
+        fx_buses_ev(dl, dl, sa_c, sa_d, sa_r, wet, n, emode, 0u, 0, DLY_HALF);
+    } else if (!evm && (song.g[G_DMDEP] > 0 || fx.dm_dev))
         fx_buses_mod(DLY_HALF - 1u, dl, sa_c, sa_d, sa_r, wet, n, 0u, 0);
     else
         fx_buses_m(DLY_HALF - 1u, dl, sa_c, sa_d, sa_r, wet, n, 0u, 0);
+    fx.cho_zs = 0;
     for (i = 0; i < n; i++)
         mix_l[i] += wet[i];
-    if (mod_gon) {                                      /* (0.2.7: the matrix's bus values: bus B takes part 2's, mod.c mod_bus) */
+    if (mod_gon_any()) {                                /* (0.2.7: the matrix's bus values: bus B takes part 2's, mod.c mod_bus) */
         mod_bus(~1u);
         if (sv.on)
             space_vals();                               /* (SPACE's values from bus B's own) */
     }
-    if (song.g[G_DMDEP] > 0 || fx_b.dm_dev)
+    cho_zrun_b(send_c, n);
+    if (ev || dlyev_b.x)
+        fx_buses_ev_b(dl, dl, send_c, send_d, send_r, wet, n, emode, 0u, 0, DLY_HALF);
+    else if (!evm && (song.g[G_DMDEP] > 0 || fx_b.dm_dev))
         fx_buses_mod_b(DLY_HALF - 1u, dl, send_c, send_d, send_r, wet, n, 0u, 0);
     else
         fx_buses_m_b(DLY_HALF - 1u, dl, send_c, send_d, send_r, wet, n, 0u, 0);
+    fx_b.cho_zs = 0;
     for (i = 0; i < n; i++) {
         mix_r[i] += wet[i];
         wet[i] = 0;
@@ -1587,21 +1964,21 @@ static __attribute__((noinline)) void split_master(int32_t *out, uint32_t n, int
 /* SPREAD (#148): a POLY or UNISON part whose SPRD is above 0. Its voices start left and right of PAN in turn (voice.c
  * voice_start; UNISON's detuned voices alternate), at PAN -/+ SPRD / 2 (SPRD 127: hard left and right), with the pan
  * law PAN has (the far side down, the near one as it is). track_render gives every voice (b, as always) and the left
- * ones (spread_buf); here d = left - right, the side signal, so for a pair of pans L = b (gla + glb) / 2 + d (gla - glb)
+ * ones (the part's pscr sbuf); here d = left - right, the side signal, so for a pair of pans L = b (gla + glb) / 2 + d (gla - glb)
  * / 2 (R alike): the mono sum is b's, the level of a centre pan less by SPRD / 256 at most. b goes through DIST as always; d passes DIST by (the spread of a distorted chord is its voices' clean difference). The sends
  * take b, mono, as before. SPRD 0, MONO or LEGATO: mix_part's own loop, bit for bit as before. The cost: a block's
- * clear and sum of spread_buf, the side and a wider mix loop, per part; per voice none (it picks its buffer) */
+ * clear and sum of sbuf, the side and a wider mix loop, per part; per voice none (it picks its buffer) */
 static void duck_run(track_t *t, int32_t *b, int32_t *d, uint32_t n);
 /* SPACE to the right (sp_tap; 0.2.9, the owner: SPACE adds space also when the sends are 0): each send of the part at least its floor. The
  * effective send is a soft max of the part's own (x SPACE's gain) and the floor (sv.ac / ad / ar, SV_ADD_*: SHIM's reverb SV_SHIM_ADD of it,
  * RESO's SV_RESO_ADD): the floor adds max(0, floor - send) with a quadratic knee of SV_KNEE either side (no kink); a send above floor + knee
- * gets nothing added (SPACE's x 1.6 as before), a send of 0 gets the floor. Its dry signal at its level x that, into sp_fc / fd / fr. The
+ * gets nothing added (SPACE's x 1.6 as before), a send of 0 gets the floor. Its dry signal at its level x that, into the part's accumulators fc / fd / fr (pacc). The
  * values are the last block's (SPACE glides 0.25 % a block: a step under -50 dB), as a send's knob */
 static int32_t sp_knee(int32_t dd)
 {
     return dd <= -SV_KNEE ? 0 : dd >= SV_KNEE ? dd : (int32_t)(((int64_t)(dd + SV_KNEE) * (dd + SV_KNEE)) / (4 * SV_KNEE));
 }
-static __attribute__((noinline)) void space_tap(const int32_t *b, int32_t lvl, int32_t c, int32_t d, int32_t r, uint32_t n)
+static __attribute__((noinline)) void space_tap(const int32_t *b, int32_t lvl, int32_t c, int32_t d, int32_t r, uint32_t n, part_acc_t *ac, uint8_t *on)
 {
     uint32_t i;
     int32_t g = sv.sg, rg = song.g[G_RTYPE] == 4 && g > 32768 ? 32768 : g, fr = sv.ar, kc, kd, kr;
@@ -1612,11 +1989,12 @@ static __attribute__((noinline)) void space_tap(const int32_t *b, int32_t lvl, i
     kr = sp_knee(fr - (int32_t)(((int64_t)r * rg) >> 15));
     if (!(kc | kd | kr))
         return;
+    *on |= 16u;                                         /* (the floors are written: bit 4; with nothing to add they are not, and mix_gather reads none) */
     for (i = 0; i < n; i++) {
         int32_t x = clamp(((b[i] >> 2) * lvl) >> 10, -109000, 109000);   /* (as the sends take it; x k fits 32 bits) */
-        sp_fc[i] += (x * kc) >> 15;
-        sp_fd[i] += (x * kd) >> 15;
-        sp_fr[i] += (x * kr) >> 15;
+        ac->fc[i] = (x * kc) >> 15;
+        ac->fd[i] = (x * kd) >> 15;
+        ac->fr[i] = (x * kr) >> 15;
     }
 }
 /* The part's gain, Q12 (DUELL 0.2.19, owner 2026-10-15): the sound's PATCH TRIM times the MIXER LEVEL, as a real synth does: both are the same
@@ -1624,16 +2002,16 @@ static __attribute__((noinline)) void space_tap(const int32_t *b, int32_t lvl, i
  * at its trim as the one old LEVEL played. The product is held to the top of the table (+7.5 dB: LEVEL_Q12[127]), the headroom the stages after it were made for
  * (a loud chord x gain stays inside 32 bits); it binds only where the trim and the mixer together are above +7.5 dB. 0 in either = silent. One call a block, out of
  * line (the hot mix functions keep their size) */
-static __attribute__((noinline)) int32_t part_lvl(const track_t *t)
+static inline int32_t lvl_of(int32_t trim, int32_t level)
 {
-    int32_t g = ((int32_t)LEVEL_Q12[t->p[P_TRIM] & 127] * (int32_t)LEVEL_Q12[t->p[P_LEVEL] & 127]) >> 12;
+    int32_t g = ((int32_t)LEVEL_Q12[trim & 127] * (int32_t)LEVEL_Q12[level & 127]) >> 12;
     return g > (int32_t)LEVEL_Q12[127] ? (int32_t)LEVEL_Q12[127] : g;
 }
+static __attribute__((noinline)) int32_t part_lvl(const track_t *t) { return lvl_of(t->p[P_TRIM], t->p[P_LEVEL]); }
 /* BALANCE (core.h mix_bal, the MODE page): part 1's level 1 for BALANCE <= 0, else 1 - bal / 100; part 2's 1 for >= 0, else
  * 1 + bal / 100 (linear; turning right fades part 1 out). 0: lvl untouched. In every mode, at the part's level stage */
-static int32_t bal_lvl(const track_t *t, int32_t lvl)
+static int32_t bal_lvl(const track_t *t, int32_t lvl, int32_t b)
 {
-    int32_t b = mix_bal;
     if (t == trk) {
         if (b > 0)
             lvl = lvl * (100 - b) / 100;
@@ -1649,7 +2027,6 @@ static int32_t bal_lvl(const track_t *t, int32_t lvl)
  * of a dip; a SRC PUMP keeps its place in the beat). A silent part takes the new state at once (nothing to fade). The stored values of
  * the four are never touched (the morph, the matrix, CCs still change them: they act again when ON) */
 static int32_t pfx_x[NLIVE];
-static int32_t pfx_dry[CTL], pfx_dryd[CTL];   /* PFX_FADE: the part's dry block (and SPREAD's side) */
 enum { PFX_RUN, PFX_FADE, PFX_SKIP };
 static __attribute__((noinline)) void pfx_restart(track_t *t)
 {
@@ -1663,10 +2040,10 @@ static __attribute__((noinline)) void pfx_restart(track_t *t)
     k->ph = k->on = 0;
 }
 /* the part's PART FX this block: PFX_RUN (as ever), PFX_FADE (the four run and pfx_mix crossfades) or PFX_SKIP (none run) */
-static uint32_t pfx_mode(track_t *t)
+static uint32_t pfx_mode(track_t *t, const blockstate_t *bs)
 {
     uint32_t p = (uint32_t)(t - trk) % NLIVE;
-    int32_t want = (mods_off & MODS_PFX) ? 32768 : 0;
+    int32_t want = (bs->mods_off & MODS_PFX) ? 32768 : 0;
     if (pfx_x[p] == want)
         return want ? PFX_SKIP : PFX_RUN;
     if (!want && pfx_x[p] == 32768)
@@ -1674,10 +2051,10 @@ static uint32_t pfx_mode(track_t *t)
     return PFX_FADE;
 }
 /* a silent part (mix_part's early way out): the state asked for at once; OFF: the DUCK at rest too (the matrix's DUCK source reads 0) */
-static __attribute__((noinline)) void pfx_snap(track_t *t)
+static __attribute__((noinline)) void pfx_snap(track_t *t, const blockstate_t *bs)
 {
     uint32_t p = (uint32_t)(t - trk) % NLIVE;
-    int32_t want = (mods_off & MODS_PFX) ? 32768 : 0;
+    int32_t want = (bs->mods_off & MODS_PFX) ? 32768 : 0;
     if (pfx_x[p] == want)
         return;
     if (want) {
@@ -1687,19 +2064,20 @@ static __attribute__((noinline)) void pfx_snap(track_t *t)
         pfx_restart(t);
     pfx_x[p] = want;
 }
-/* PFX_FADE: b (and SPREAD's side d) = the processed block toward the dry one (pfx_dry, pfx_dryd), a sample at a time; at the end of a fade
+/* PFX_FADE: b (and SPREAD's side d) = the processed block toward the dry one (the part's pscr dry, dryd), a sample at a time; at the end of a fade
  * out the DUCK at rest (as pfx_snap) */
-static __attribute__((noinline)) void pfx_mix(track_t *t, int32_t *b, int32_t *d, uint32_t n)
+static __attribute__((noinline)) void pfx_mix(track_t *t, int32_t *b, int32_t *d, uint32_t n, const blockstate_t *bs)
 {
     uint32_t p = (uint32_t)(t - trk) % NLIVE, i;
-    int32_t x = pfx_x[p], st = (mods_off & MODS_PFX) ? MF_STEP : -MF_STEP;
+    int32_t x = pfx_x[p], st = (bs->mods_off & MODS_PFX) ? MF_STEP : -MF_STEP;
+    const int32_t *dry = pscr[p].dry, *dryd = pscr[p].dryd;
     for (i = 0; i < n; i++) {
         uint32_t g;
         x = clamp(x + st, 0, 32768);
         g = (uint32_t)x << 1;                           /* (Q16: the dry share) */
-        b[i] += mulq16(pfx_dry[i] - b[i], g);
+        b[i] += mulq16(dry[i] - b[i], g);
         if (d)
-            d[i] += mulq16(pfx_dryd[i] - d[i], g);
+            d[i] += mulq16(dryd[i] - d[i], g);
     }
     pfx_x[p] = x;
     if (x == 32768) {
@@ -1708,39 +2086,215 @@ static __attribute__((noinline)) void pfx_mix(track_t *t, int32_t *b, int32_t *d
     }
 }
 /* PERFORM's MUTE during a PART FX fade: the same ramp on the processed block and on the dry one (its gain run twice from the same start) */
-static __attribute__((noinline)) void pfx_mute(uint32_t k, int32_t *b, int32_t *d, uint32_t n)
+static __attribute__((noinline)) void pfx_mute(uint32_t k, int32_t *b, int32_t *d, uint32_t n, int32_t tg)
 {
     int32_t g0 = pf.mg[k];
     if (d) {
-        perf_mute_sd(k, b, d, n);
+        perf_mute_sd(k, b, d, n, tg);
         pf.mg[k] = g0;
-        perf_mute_sd(k, pfx_dry, pfx_dryd, n);
+        perf_mute_sd(k, pscr[k].dry, pscr[k].dryd, n, tg);
     } else {
-        perf_mute(k, b, n);
+        perf_mute(k, b, n, tg);
         pf.mg[k] = g0;
-        perf_mute(k, pfx_dry, n);
+        perf_mute(k, pscr[k].dry, n, tg);
     }
 }
-static __attribute__((noinline)) void mix_spread(track_t *t, int32_t *b, uint32_t n, uint32_t fxm)
+/* PAN without a zipper (DUELL 0.2.24, owner: a PAN turned from the editor or the knob crackled). The part's STORED pan is followed in Q8 (pan_x, pan x 256) a block at a
+ * time: 5/16 of what is left each block, the rest snapped under 1/16 of a step (a step of the knob is smooth within ~13 ms, a jump across the whole range within ~30 ms);
+ * a silent part takes the new pan at once (nothing to click). The matrix's offset on PAN (mod_begin writes the modulated value for the block) is added on top as it was:
+ * a modulated pan steps per block exactly as before, so every render of before is bit for bit the same while the stored pan does not move. In the plain (no SPREAD) mix
+ * the gains of a moving block go in a straight line from the block before's gains (pan_g) to this block's; mix_spread (hot) takes the Q8 pan and steps once a block
+ * (its gains are the Q8 pan >> 2: the same numbers as pan x 64). pan_follow is not hot code */
+static int32_t pan_x[NLIVE];                            /* the stored PAN as the mix has it, Q8 */
+static int32_t pan_g[NLIVE][2];                         /* the plain mix's gains the last block ended at (gl, gr; Q12) */
+static uint8_t pan_gv[NLIVE];                           /* .. valid (the block before was a plain sounding block) */
+static __attribute__((noinline)) int32_t pan_follow(uint32_t p, int32_t stored, int silent, int fine)
 {
-    int32_t *d = spread_buf;
+    int32_t tg = stored << 8, d = tg - pan_x[p];
+    if (silent || (d > -16 && d < 16)) {
+        pan_x[p] = tg;
+        return 0;
+    }
+    pan_x[p] += fine ? d >> 3 : (d * 5) >> 4;           /* (fine: the SPREAD mix, whose gains step once a block (hot code, no ramp): 1/8 of what is left, ~30 ms for a knob step) */
+    return 1;
+}
+/* SAT (the part's DIST drive) without a zipper (DUELL 0.2.25, owner: a SAT changed on an FM part crackled: track_dist read the drive once a block and its gain, tone, make-up
+ * and wet blend stepped at the block boundary). The part's SAT (the stored value plus the matrix's offset, clamped: what mod_begin leaves in t->p) is followed in Q8 (dist_x, SAT x 256) a block at a time, 1/4 of what is left but at most 1.5 steps (snapped under 1/16 of a
+ * step: a knob step lands within ~10 ms, the whole range within ~140 ms), and track_dist (hot) gets the followed value as an integer in t->p[P_DIST] for the block (put back after
+ * it). A jump of the modulated SAT (an LFO restarted by a note, a fast LFO, an envelope) ramps the same way; a SAT that does not move is bit for bit as before. A part that was
+ * silent takes the new SAT at once (dist_live: nothing to click, the first sounding block is at the SAT). dist_follow is not hot code */
+#define DIST_SLEW 384                                   /* at most 1.5 steps of SAT a block (1 step of the blend below 12 is 8 % of the wet / dry difference) */
+static int32_t dist_x[NLIVE];                           /* the stored SAT as track_dist has it, Q8 */
+static uint8_t dist_live[NLIVE];                        /* the block before was a sounding one */
+static __attribute__((noinline)) int32_t dist_follow(uint32_t p, int32_t now, int silent)
+{
+    int32_t tg = now << 8, d = tg - dist_x[p];
+    if (silent || !dist_live[p] || (d > -16 && d < 16))
+        dist_x[p] = tg;
+    else
+        dist_x[p] += (d >> 2) > DIST_SLEW ? DIST_SLEW : ((d >> 2) < -DIST_SLEW ? -DIST_SLEW : d >> 2);
+    dist_live[p] = (uint8_t)!silent;
+    d = (dist_x[p] + 128) >> 8;
+    return d < 0 ? 0 : (d > 127 ? 127 : d);
+}
+/* SAT's blend zone without a step (DUELL 0.2.25, the matrix round; release_drafts/MATRIX_DESTINATIONS.md "SAT"): below SAT 12 track_dist blends dry and wet by
+ * SAT / 12, and the follower's 1.5 steps a block are 12 % of the wet / dry difference at a block boundary (a modulated or turned SAT ticked there). While the
+ * followed SAT (dist_x, Q8) moves and either end of the block is in that zone, this copy of track_dist's loop takes the blend in a straight line from the
+ * block before's dist_x (w0) to this block's (w1) inside the block; the drive, tone and make-up are the integer SAT's, as in track_dist. At rest, and above
+ * the zone, track_dist (hot) runs as ever: bit for bit as before. Flash code */
+static __attribute__((noinline)) void track_dist_ramp(track_t *t, int32_t *b, uint32_t n, int32_t w0, int32_t w1)
+{
+    int32_t d = t->p[P_DIST], i, g, k, mk, bias = 2400, b0, q0, q1, acc = 0, st;
+    if (!d && (w0 > 0 || w1 > 0))
+        d = 1;                                           /* (hunt1: the followed SAT is between 0 and the integer 1, which it reaches at 128 / 256: the wet runs at SAT 1's drive from the first block and the blend goes
+                                                          * from / to 0 in the line below. With the integer 0 as the bypass, the wet came in at the first block with the integer 1 from a cold start at a blend of 4 %:
+                                                          * a click out of SAT 0 (PHASE #31, FM6 #83, WAVE #61 in the bench), and a step into 0 on the way back. CLICK_HUNT1.md) */
+    if (!d) {
+        t->dist_hp = DIST_OFF;                           /* (as track_dist: the bypass) */
+        return;
+    }
+    if (!n)
+        return;
+    if (t->dist_hp == DIST_OFF) {
+        t->dist_hp = b[0];
+        t->dist_lp1 = t->dist_lp2 = 0;
+    }
+    q0 = w0 >= 12 * 256 ? 32768 : (w0 < 0 ? 0 : w0 * 32 / 3);   /* the blend in Q15: SAT / 12 (w Q8: w * 32768 / 3072) */
+    q1 = w1 >= 12 * 256 ? 32768 : (w1 < 0 ? 0 : w1 * 32 / 3);
+    st = ((q1 - q0) << 10) / (int32_t)n;
+    g = 4096 + d * d * 2;
+    k = 32000 - d * 95;
+    mk = 30000 - d * 120;
+    b0 = softclip(bias);
+    for (i = 0; i < (int32_t)n; i++) {
+        int32_t x = b[i], dry = x, y, q;
+        t->dist_hp += (x - t->dist_hp + 64) >> 7;
+        x = clamp(x - t->dist_hp, -230000, 230000);
+        y = softclip((((x >> 2) * g) >> 10) + bias) - b0;
+        t->dist_lp1 += mulq15(y - t->dist_lp1, k);
+        t->dist_lp2 += mulq15(t->dist_lp1 - t->dist_lp2, k);
+        y = mulq15(t->dist_lp2, mk);
+        acc += st;
+        q = i == (int32_t)n - 1 ? q1 : q0 + (acc >> 10);      /* (the last sample on w1 exactly) */
+        b[i] = q >= 32768 ? y : dry + (int32_t)(((int64_t)(y - dry) * q) >> 15);
+    }
+}
+
+/* the one part's block context, built by part_voice and handed on by pointer. Nothing here is state across blocks (that lives in track_t
+ * and in the per-part arrays indexed by pp: pan_x / pan_g / pan_gv, dist_x / dist_live, pfx_x, duck_st, ins[], the EQ states, pf.mg).
+ *   t, n, pp      the part (trk[]), the block's samples, its index (0..NLIVE-1)
+ *   b             the part's block: pscr[pp].buf (core.h), mono, Q15 x voices (written by part_voice, in place through part_fx, read by part_mix)
+ *   acc           the part's own accumulators (pacc[pp]): part_mix and mix_spread add into these, mix_gather sums the parts' later
+ *   scr           the part's scratch (pscr[pp])
+ *   bs            the block's shared control state, read once (blockstate_t above): the stages only read it
+ *   pan_st        the STORED pan before the matrix writes the block's (pan_follow);  dist_st  the stored SAT likewise (dist_follow)
+ *   pan_mv        the pan is on its way (part_fx -> part_mix: the gains ramp)  pq  the pan this block mixes at, Q8
+ *   fxm           PART FX mode (PFX_RUN / PFX_FADE / PFX_SKIP)  spread  SPREAD runs for this part (pscr[pp].spread_on) */
+typedef struct {
+    track_t *t;
+    int32_t *b;
+    part_acc_t *acc;
+    part_scr_t *scr;
+    const blockstate_t *bs;
+    uint32_t n, pp, fxm;
+    int32_t pan_st, dist_st, pan_mv, pq, dist_rw0;
+    uint8_t spread;
+} mixpart_t;
+
+/* the part's accumulators, before its mix loop (part_fx for SPREAD, part_mix): marks them written (pacc_on bit 0) and which sends the loop will assign (bits 1..3: a
+ * send at 0, or all of them with SENDS OFF, is not assigned and not read by mix_gather); space_tap sets bit 4 when it assigns the floors.
+ * Out of line, once a block, so the loops (mix_spread is hot) do not carry it */
+static __attribute__((noinline)) void acc_prep(const mixpart_t *m)
+{
+    const track_t *t = m->t;
+    uint32_t sn = m->bs->snd_st != SND_OFF;
+    pacc_on[m->pp] = (uint8_t)(1u | (sn && t->p[P_CHOR] ? 2u : 0u) | (sn && t->p[P_DLY] ? 4u : 0u) | (sn && t->p[P_REV] ? 8u : 0u));
+}
+
+/* PAN, PATCH LEVEL and the sends moved by the MATRIX without a step (DUELL 0.2.25, the matrix round; the study's PAN 613 -> 19, PATCH LEVEL 575 -> 17, DLY send
+ * 385 -> 11 thousandths of the peak): mod_begin writes the modulated values once a block, so the plain mix's gains (left / right, the level, the three sends)
+ * stepped at the block boundary, a click on a jump and a 1.4 kHz zipper under an LFO. While a matrix route moves one of them (mod.c mod_mixmv[pp]), and one block
+ * after it stops (the step back to the stored value), the plain mix takes all six in a straight line from the values the block before ended at to this
+ * block's. A part with no such route mixes as ever (bit for bit); the stored pan's own follower (pan_follow) is unchanged. Not the SPREAD mix (mix_spread is
+ * hot code: its gains still step a block, as before). 1 .. 15 host instructions a sample while the values move; flash code */
+static int32_t mx_lv[NLIVE] MXR_BSS, mx_sd[NLIVE][3] MXR_BSS;   /* the level and the sends the plain mix's last block ended at (mod.c MXR_BSS: a section of their own) */
+static uint8_t mx_ok[NLIVE] MXR_BSS;                    /* .. valid (the block before was a plain or SPREAD sounding block) */
+#define SPG_N 9
+static int32_t sp_cur[NLIVE][SPG_N] MXR_BSS;            /* hunt1: SPREAD's mix of this block, as spread_run notes it for spread_post: P_TRIM, P_LEVEL, the CHORUS / DELAY / REVERB sends (0..127), P_SPRD, the Q8 pan, BALANCE, SENDS OFF (1) */
+static int32_t sp_prv[NLIVE][SPG_N] MXR_BSS;            /* .. and the SPREAD block before's */
+static uint8_t sp_go[NLIVE] MXR_BSS;                    /* .. 1: this block was a SPREAD one (bit 1: a route or the MORPH moves the gains); the plain mix and a silent part write 0 */
+static uint8_t sp_ok[NLIVE] MXR_BSS;                    /* .. sp_prv holds the block before's (the block before was a SPREAD one) */
+static uint8_t mx_was[NLIVE] MXR_BSS;                   /* per part (0 / 1): mod_mixmv[pp] of the block before (the ramp back after a route stops). A byte each, not bits of one byte: join0233,
+                                                         * the two parts' stages may run on two cores */
+/* the ramped plain mix (join0233: A's mix_ramp on the two-core line's per-part accumulators): the part's block m->b into m->acc (assigned, not added: part_mix's
+ * way), the sends whose pacc_on bit acc_prep set (a send that ramps down to 0 from a value has its bit set by part_mix before the call) */
+static __attribute__((noinline)) int32_t mix_ramp(const mixpart_t *m, int32_t pk, int32_t gl, int32_t gr, int32_t lvl, int32_t c, int32_t d, int32_t r)
+{
+    const int32_t *b = m->b;
+    part_acc_t *ac = m->acc;
+    uint32_t n = m->n, pp = m->pp;
+    uint32_t on = pacc_on[pp];
+    int32_t gl0 = pan_gv[pp] ? pan_g[pp][0] : gl, gr0 = pan_gv[pp] ? pan_g[pp][1] : gr, ni = (int32_t)n, i, xmax = 1;
+    int32_t glq = gl0 << 16, grq = gr0 << 16, dgl = ((gl - gl0) << 16) / ni, dgr = ((gr - gr0) << 16) / ni;
+    int32_t lq = mx_lv[pp] << 8, dl = ((lvl - mx_lv[pp]) << 8) / ni;
+    int32_t cq = mx_sd[pp][0] << 8, dq = mx_sd[pp][1] << 8, rq = mx_sd[pp][2] << 8;
+    int32_t dc = ((c - mx_sd[pp][0]) << 8) / ni, dd = ((d - mx_sd[pp][1]) << 8) / ni, dr = ((r - mx_sd[pp][2]) << 8) / ni;
+    for (i = 0; i < 3; i++)                             /* (sends: the largest of either end, as the plain loop's guard) */
+        xmax = mx_sd[pp][i] > xmax ? mx_sd[pp][i] : xmax;
+    xmax = c > xmax ? c : xmax;
+    xmax = d > xmax ? d : xmax;
+    xmax = r > xmax ? r : xmax;
+    xmax = 0x7FFFFFFF / (xmax | 1);
+    for (i = 0; i < ni; i++) {
+        int32_t x, a, xs, l, sc, sd, sr, gli, gri;
+        lq += dl; cq += dc; dq += dd; rq += dr; glq += dgl; grq += dgr;
+        if (i == ni - 1) {                              /* (the last sample on this block's values exactly) */
+            l = lvl, sc = c, sd = d, sr = r, gli = gl, gri = gr;
+        } else {
+            l = lq >> 8, sc = cq >> 8, sd = dq >> 8, sr = rq >> 8, gli = glq >> 16, gri = grq >> 16;
+        }
+        x = ((b[i] >> 2) * l) >> 10;
+        a = x < 0 ? -x : x;
+        xs = clamp(x, -xmax, xmax);
+        if (a > pk)
+            pk = a;
+        if (on & 2u)
+            ac->sc[i] = mulq15(xs, sc);
+        if (on & 4u)
+            ac->sd[i] = mulq15(xs, sd);
+        if (on & 8u)
+            ac->sr[i] = mulq15(xs, sr);
+        ac->l[i] = (x * gli) >> 12;
+        ac->r[i] = (x * gri) >> 12;
+    }
+    return pk;
+}
+
+/* SPREAD's part (the mix too): the part t's block b (n samples), fxm the PART FX mode, pan the Q8 pan this block mixes at; m: the part's stage context
+ * (its accumulators, the block's snapshot, its index) */
+static __attribute__((noinline)) void mix_spread(track_t *t, int32_t *b, uint32_t n, uint32_t fxm, int32_t pan, const mixpart_t *m)
+{
+    part_acc_t *ac = m->acc;
+    const blockstate_t *bs = m->bs;
+    part_scr_t *sc = m->scr;
+    int32_t *d = sc->sbuf;
     uint32_t i;
-    int32_t lvl = bal_lvl(t, part_lvl(t)), pan = t->p[P_PAN], s = (t->p[P_SPRD] + 1) >> 1;
-    int32_t pa = clamp(pan - s, -64, 63), pb = clamp(pan + s, -64, 63);
-    int32_t gla = 4096 - (pa > 0 ? pa * 64 : 0), gra = 4096 + (pa < 0 ? pa * 64 : 0);
-    int32_t glb = 4096 - (pb > 0 ? pb * 64 : 0), grb = 4096 + (pb < 0 ? pb * 64 : 0);
+    int32_t lvl = bal_lvl(t, part_lvl(t), bs->mix_bal), s = (t->p[P_SPRD] + 1) >> 1 << 8;   /* (pan, s: Q8) */
+    int32_t pa = clamp(pan - s, -64 * 256, 63 * 256), pb = clamp(pan + s, -64 * 256, 63 * 256);
+    int32_t gla = 4096 - (pa > 0 ? pa >> 2 : 0), gra = 4096 + (pa < 0 ? pa >> 2 : 0);
+    int32_t glb = 4096 - (pb > 0 ? pb >> 2 : 0), grb = 4096 + (pb < 0 ? pb >> 2 : 0);
     int32_t glm = (gla + glb) >> 1, grm = (gra + grb) >> 1, gld = (gla - glb) >> 1, grd = (gra - grb) >> 1;
     int32_t c = t->p[P_CHOR] * 258, dl = t->p[P_DLY] * 258, r = t->p[P_REV] * 258, pk = t->peak;
     int32_t xmax;
-    if (snd_st == SND_OFF)
+    if (bs->snd_st == SND_OFF)
         c = dl = r = 0;                                 /* (0.2.14 MODULES SENDS OFF: nothing sent) */
     xmax = c > dl ? c : dl;
     xmax = 0x7FFFFFFF / ((xmax > r ? xmax : r) | 1);
     for (i = 0; i < n; i++)
         d[i] = (d[i] << 1) - b[i];                      /* left - right */
     if (fxm == PFX_FADE) {                              /* (0.2.14 MODULES PART FX: the dry block kept for the crossfade) */
-        memcpy(pfx_dry, b, n * sizeof b[0]);
-        memcpy(pfx_dryd, d, n * sizeof d[0]);
+        memcpy(sc->dry, b, n * sizeof b[0]);
+        memcpy(sc->dryd, d, n * sizeof d[0]);
     }
     if (fxm != PFX_SKIP) {
         track_dist(t, b, n);
@@ -1751,39 +2305,160 @@ static __attribute__((noinline)) void mix_spread(track_t *t, int32_t *b, uint32_
             track_eq(t, d, n, 1u);
         }
     }
-    if ((pf.mute >> (t - trk)) & 1u) {                  /* PERFORM: MUTE 1 / 2 held (perform.c) */
+    if ((bs->pf_mute >> m->pp) & 1u) {                  /* PERFORM: MUTE 1 / 2 held (perform.c) */
         if (fxm == PFX_FADE)
-            pfx_mute((uint32_t)(t - trk), b, d, n);
+            pfx_mute(m->pp, b, d, n, bs->mute_tg[m->pp]);
         else
-            perf_mute_sd((uint32_t)(t - trk), b, d, n);
+            perf_mute_sd(m->pp, b, d, n, bs->mute_tg[m->pp]);
     }
     if (fxm != PFX_SKIP && duck_st[(uint32_t)(t - trk) % NTRK].ph)
         duck_run(t, b, d, n);                           /* the DUCK (DUELL): the sum and the side alike */
     if (fxm == PFX_FADE)
-        pfx_mix(t, b, d, n);
+        pfx_mix(t, b, d, n, bs);
     for (i = 0; i < n; i++) {
         int32_t x = ((b[i] >> 2) * lvl) >> 10, a = x < 0 ? -x : x, y = ((d[i] >> 2) * lvl) >> 10;
         int32_t xs = clamp(x, -xmax, xmax);
         if (a > pk)
             pk = a;
         if (c)
-            send_c[i] += mulq15(xs, c);
+            ac->sc[i] = mulq15(xs, c);
         if (dl)
-            send_d[i] += mulq15(xs, dl);
+            ac->sd[i] = mulq15(xs, dl);
         if (r)
-            send_r[i] += mulq15(xs, r);
-        mix_l[i] += ((x * glm) >> 12) + ((y * gld) >> 12);
-        mix_r[i] += ((x * grm) >> 12) + ((y * grd) >> 12);
+            ac->sr[i] = mulq15(xs, r);
+        ac->l[i] = ((x * glm) >> 12) + ((y * gld) >> 12);
+        ac->r[i] = ((x * grm) >> 12) + ((y * grd) >> 12);
     }
     t->peak = pk;
-    if (sp_tap)
-        space_tap(b, lvl, c, dl, r, n);
+    if (bs->sp_tap)
+        space_tap(b, lvl, c, dl, r, n, ac, &pacc_on[m->pp]);
 }
 
-/* DUELL DUCK (SPEC 5c.4): the part's sidechain; the trigger is ONE setting, SRC (P_DKSRC: 0 PUMP, 1 PART, 2..17 CH1..16; two pages,
- * DUCK 1: SRC, the context knob RATE / THR / NOTE of the SRC (params.c duck_ctx_id), DEPTH, ATK; DUCK 2: RLS, CURVE EXP / LIN).
- * With SRC a channel (CHn): a note-on on that MIDI channel whose note is DUCK
- * NOTE (P_DKNOTE: 0 ANY, n the note n: 1..127) starts the envelope (duck_st, mod.c): the gain goes down by DEPTH % in ATK ms (a
+/* SPREAD's mix without a step (hunt1, release_drafts/CLICK_HUNT1.md). mix_spread (hot code) runs SAT at its integer and mixes a block at one set of gains: PATCH LEVEL, the
+ * pan gains (mid and side) and the three sends step at the block boundary, and so does SAT's blend zone (SAT 0..12): a click on every jump (the MORPH fader's steps, an S&H
+ * or a square LFO on the matrix), a 1.4 kHz zipper under an LFO. T0229 ramped them for the plain mix (mix_ramp, track_dist_ramp) and only for the matrix. Two pieces, neither touches
+ * mix_spread (hot RAM keeps its 232 B):
+ *   spread_run   (part 2's chain: range X, with mix_ramp) around mix_spread: SAT moving in its blend zone (the plain mix's test): track_dist_ramp runs on the mid before
+ *                mix_spread, whose own track_dist is switched off for the call (SAT 0; dist_hp, which that resets, put back), and the side d, which mix_spread forms as 2 d - b
+ *                from the mid after SAT, gets half of SAT's change of the mid in advance so that it is still 2 d - b of the mid before SAT (at most 1 LSB of the side off, only in a
+ *                block where SAT moves in its blend zone with SPREAD on; not in a PART FX fade, where the dry block is copied inside mix_spread). Then it notes the block's level,
+ *                SPREAD, pan, BALANCE for the post-pass.
+ *   spread_post  (core 0, flash, from mix_gather, both parts' chains done) when a matrix route or the MORPH window moves one of the gains (mod_mixmv: mix_ramp's test) and the
+ *                block before was a SPREAD block too: the part's block is mixed again from b and d (the mid and the side after every stage) with the gains going in a straight line
+ *                from the block before's to this block's, and that replaces mix_spread's accumulators. At rest it compares nine words with the block before's and copies them: nothing else runs (bit for bit) */
+static void spread_post(uint32_t pp, uint32_t n, const blockstate_t *bs);
+static __attribute__((noinline)) void spread_run(mixpart_t *m, uint32_t fxm, int32_t pan)
+{
+    track_t *t = m->t;
+    uint32_t pp = m->pp, n = m->n, i;
+    int32_t *b = m->b, hp = 0, di = t->p[P_DIST];
+    volatile int sat = fxm == PFX_RUN && m->dist_rw0 != dist_x[pp] && (m->dist_rw0 < 12 * 256 || dist_x[pp] < 12 * 256);   /* (volatile: the test below is not made into a second copy of the call) */
+    if (sat) {
+        int32_t *d = m->scr->sbuf, *dry = m->scr->dry;  /* (dry: unused outside a PART FX fade) */
+        for (i = 0; i < n; i++)
+            dry[i] = b[i];
+        track_dist_ramp(t, b, n, m->dist_rw0, dist_x[pp]);
+        for (i = 0; i < n; i++)
+            d[i] += (b[i] - dry[i]) >> 1;
+        hp = t->dist_hp;
+        t->p[P_DIST] = 0;                               /* (mix_spread's track_dist: the bypass, which resets dist_hp) */
+    }
+    mix_spread(t, b, n, fxm, pan, m);
+    if (sat) {
+        t->p[P_DIST] = (int16_t)di;
+        t->dist_hp = hp;
+    }
+    {
+        int32_t *q = sp_cur[pp];
+        q[0] = t->p[P_TRIM], q[1] = t->p[P_LEVEL], q[2] = t->p[P_CHOR], q[3] = t->p[P_DLY], q[4] = t->p[P_REV], q[5] = t->p[P_SPRD];
+        q[6] = pan, q[7] = m->bs->mix_bal, q[8] = m->bs->snd_st == SND_OFF;
+    }
+    sp_go[pp] = (uint8_t)(1u | ((mod_mixmv[pp] | mx_was[pp]) & 1u) << 1);
+    pan_gv[pp] = 0;
+    mx_ok[pp] = 0;                                      /* (the plain mix starts again from its own block's values) */
+}
+/* the mix's gains of a noted block (flash, core 0): g[0] the level, g[1..3] the three sends (Q15 gains), g[4] g[5] the mid pan gains (left, right), g[6] g[7] the side gains; as mix_spread's */
+static void spread_gains(uint32_t pp, const int32_t *q, int32_t *g)
+{
+    int32_t s = (q[5] + 1) >> 1 << 8, pa = clamp(q[6] - s, -64 * 256, 63 * 256), pb = clamp(q[6] + s, -64 * 256, 63 * 256);
+    int32_t gla = 4096 - (pa > 0 ? pa >> 2 : 0), gra = 4096 + (pa < 0 ? pa >> 2 : 0);
+    int32_t glb = 4096 - (pb > 0 ? pb >> 2 : 0), grb = 4096 + (pb < 0 ? pb >> 2 : 0);
+    g[0] = bal_lvl(&trk[pp], lvl_of(q[0], q[1]), q[7]);
+    g[1] = q[8] ? 0 : q[2] * 258, g[2] = q[8] ? 0 : q[3] * 258, g[3] = q[8] ? 0 : q[4] * 258;
+    g[4] = (gla + glb) >> 1, g[5] = (gra + grb) >> 1, g[6] = (gla - glb) >> 1, g[7] = (gra - grb) >> 1;
+}
+/* core 0, flash (mix_gather): see the comment above. At rest (the notes equal the block before's, or no route and no morph window) this is a comparison of nine words and a copy */
+static __attribute__((noinline)) void spread_post(uint32_t pp, uint32_t n, const blockstate_t *bs)
+{
+    int32_t *q = sp_cur[pp], *pq = sp_prv[pp];
+    uint32_t go = sp_go[pp], k, mv = 0;
+    (void)bs;
+    if (!go) {
+        sp_ok[pp] = 0;
+        return;
+    }
+    sp_go[pp] = 0;
+    for (k = 0; k < SPG_N; k++)
+        mv |= (uint32_t)(q[k] != pq[k]);
+    if (mv && sp_ok[pp] && (go & 2u)) {
+        int32_t cur[8], prv[8];
+        spread_gains(pp, q, cur);
+        spread_gains(pp, pq, prv);
+        for (k = 0, mv = 0; k < 8u; k++)
+            mv |= (uint32_t)(cur[k] != prv[k]);
+        if (mv) {
+            part_acc_t *ac = &pacc[pp];
+            const int32_t *b = pscr[pp].buf, *d = pscr[pp].sbuf;
+            int32_t ni = (int32_t)n, xmax = 1, i, pm;
+            int32_t lq = prv[0] << 8, dlq = ((cur[0] - prv[0]) << 8) / ni;   /* the level, the three sends (Q8), the four pan gains (Q16): each a line from the block before's to this block's */
+            int32_t cq = prv[1] << 8, dcq = ((cur[1] - prv[1]) << 8) / ni, eq = prv[2] << 8, deq = ((cur[2] - prv[2]) << 8) / ni, rq = prv[3] << 8, drq = ((cur[3] - prv[3]) << 8) / ni;
+            int32_t aq = prv[4] << 16, daq = ((cur[4] - prv[4]) << 16) / ni, bq = prv[5] << 16, dbq = ((cur[5] - prv[5]) << 16) / ni;
+            int32_t gq = prv[6] << 16, dgq = ((cur[6] - prv[6]) << 16) / ni, hq = prv[7] << 16, dhq = ((cur[7] - prv[7]) << 16) / ni;
+            uint32_t on = pacc_on[pp] | (prv[1] ? 2u : 0u) | (prv[2] ? 4u : 0u) | (prv[3] ? 8u : 0u);   /* (a send ramping down to 0 still has samples to write) */
+            for (k = 1; k < 4u; k++) {
+                xmax = prv[k] > xmax ? prv[k] : xmax;
+                xmax = cur[k] > xmax ? cur[k] : xmax;
+            }
+            pacc_on[pp] = (uint8_t)on;
+            xmax = 0x7FFFFFFF / (xmax | 1);
+            pm = cur[4] != prv[4] || cur[5] != prv[5] || cur[6] != prv[6] || cur[7] != prv[7];   /* (the pan gains stand still unless the stored PAN, the matrix or SPREAD moves them: then four more lines) */
+            for (i = 0; i < ni; i++) {
+                int32_t x, y, l = cur[0], ga = cur[4], gb = cur[5], gc = cur[6], gd = cur[7];
+                lq += dlq, cq += dcq, eq += deq, rq += drq;
+                if (i != ni - 1) {                      /* (the last sample on this block's values exactly, as mix_ramp) */
+                    l = lq >> 8;
+                    if (pm) {
+                        aq += daq, bq += dbq, gq += dgq, hq += dhq;
+                        ga = aq >> 16, gb = bq >> 16, gc = gq >> 16, gd = hq >> 16;
+                    }
+                } else {
+                    cq = cur[1] << 8, eq = cur[2] << 8, rq = cur[3] << 8;
+                }
+                x = ((b[i] >> 2) * l) >> 10;
+                y = ((d[i] >> 2) * l) >> 10;
+                if (on & 14u) {
+                    int32_t xs = clamp(x, -xmax, xmax);
+                    if (on & 2u)
+                        ac->sc[i] = mulq15(xs, cq >> 8);
+                    if (on & 4u)
+                        ac->sd[i] = mulq15(xs, eq >> 8);
+                    if (on & 8u)
+                        ac->sr[i] = mulq15(xs, rq >> 8);
+                }
+                ac->l[i] = ((x * ga) >> 12) + ((y * gc) >> 12);
+                ac->r[i] = ((x * gb) >> 12) + ((y * gd) >> 12);
+            }
+        }
+    }
+    for (k = 0; k < SPG_N; k++)
+        pq[k] = q[k];
+    sp_ok[pp] = 1;
+}
+
+/* DUELL DUCK (SPEC 5c.4): the part's sidechain; the trigger is ONE setting, SRC (P_DKSRC: 0 PUMP, 1 PART, 2 MIDI; two pages,
+ * DUCK 1: SRC, the context knob RATE / THR of the SRC (params.c duck_ctx_id; MIDI has none), DEPTH, ATK; DUCK 2: RLS, CURVE EXP / LIN).
+ * With SRC MIDI: a note-on on the part's SIDECHAIN channel (sc_midi, GLO > SIDECHAIN: a device setting, not part of the sound) whose note is the
+ * part's SIDECHAIN NOTE (0 ANY, n the note n: 1..127) starts the envelope (duck_st, mod.c): the gain goes down by DEPTH % in ATK ms (a
  * ramp), then comes back to full in RLS ms: CURVE EXP (the default, a pump's release: a share of what is left of the reduction
  * every sample, fast at first and settling smoothly, 3 time constants in RLS) or LIN (a straight line in the gain, the earlier
  * curve). There is no HOLD (its legacy id is the PATCH TRIM since 0.2.19, core.h P_TRIM); a new note-on goes down again from where the gain is. Note-offs are
@@ -1793,21 +2468,23 @@ static __attribute__((noinline)) void mix_spread(track_t *t, int32_t *b, uint32_
  * and runs on while the part is silent. Which notes play: a note matching a part's trigger is a trigger and no more when
  * NOTE is one note, or when the channel plays no part (midi_event: `plays`); with NOTE ANY on a channel that plays a part
  * (its own, or part 1's in LAYER, or any under SEL routing) the notes also play and trigger. Each part has its own
- * settings, so one channel can duck both parts, or two channels one part each. */
+ * setup, so one channel can duck both parts, or two channels one part each. */
+/* The sidechain's MIDI setup (core.h SC_CH_DEF): per part its channel (0..15) and its note (0 ANY, 1..127), the device's, read from the settings bytes by ui_input.c sc_sync */
+static uint8_t sc_midi[4] = {SC_CH_DEF, SC_NOTE_DEF, SC_CH_DEF, SC_NOTE_DEF};   /* P1 channel, P1 note, P2 channel, P2 note */
 static uint32_t duck_note(uint32_t ch, uint32_t note, uint32_t on, uint32_t plays)
 {
     uint32_t i, swallow = 0;
     for (i = 0; i < NSHOWN; i++) {
-        int32_t c = trk[i].p[P_DKSRC], n = trk[i].p[P_DKNOTE];
-        if (c != (int32_t)ch + 2 || (n && note != (uint32_t)n))   /* (SRC 2..17 = CH1..16) */
+        uint32_t n = sc_midi[2u * i + 1u];
+        if (trk[i].p[P_DKSRC] != 2 || sc_midi[2u * i] != ch || (n && note != n))   /* (SRC 2 = MIDI) */
             continue;
-        if (on && (trk[i].p[P_DKDEP] > 0 || ((mod_dk >> i) & 1u)))   /* (0.2.7: or the matrix moves DEPTH) */
+        if (on && (trk[i].p[P_DKDEP] > 0 || trk[i].mdk))   /* (0.2.7: or the matrix moves DEPTH) */
             duck_st[i].ph = 1;
         swallow |= (uint32_t)(n != 0) | (plays ^ 1u);
     }
     return swallow;
 }
-/* SRC, the trigger source. CHn: the notes above, NOTE. PUMP (stored 0, the default): no notes, a duck starts
+/* SRC, the trigger source. MIDI: the notes above. PUMP (stored 0, the default): no notes, a duck starts
  * on every RATE division (N_DIV, 1/4 = four on the floor) of the tempo, the same envelope (ATK, HOLD, RLS). It counts the
  * samples as the arp does (events_block: seq.c arp_step): CLK INT: n a block, free-running, the transport or not, on
  * div_samples (BPM); CLK USB / TRS: the samples the incoming MIDI clock advances (midi_clock_advance), so it follows
@@ -1819,7 +2496,7 @@ static uint32_t duck_note(uint32_t ch, uint32_t note, uint32_t on, uint32_t play
  * never key each other round; attack ~2 ms, release ~60 ms), the part just rendered's, or the last block's of the part
  * still to come (one block of latency). The reduction asked = DEPTH x clamp((key - THR) / (full - THR)), the full level
  * DUCK_KEY_FS (a part's x at 16384 of 32768); the gain goes down by ATK (the DEPTH-wide slope) and up by RLS (CURVE). The cost: nothing but a test of SRC in mix_part; a part used as a key, one
- * pass over its block's abs; a keyed part, a few multiplies a block and duck_run. MIDI notes do not trigger a part whose SRC is not a CHn. */
+ * pass over its block's abs; a keyed part, a few multiplies a block and duck_run. MIDI notes do not trigger a part whose SRC is not MIDI. */
 #define DUCK_KEY_FS 16384
 static void duck_start(void)
 {
@@ -1832,7 +2509,7 @@ static __attribute__((noinline)) void duck_pump(uint32_t adv)
     uint32_t i;
     for (i = 0; i < NSHOWN; i++) {
         duck_t *k = &duck_st[i];
-        uint32_t period, on = trk[i].p[P_DKDEP] > 0 || ((mod_dk >> i) & 1u);   /* (0.2.7: or the matrix moves DEPTH) */
+        uint32_t period, on = trk[i].p[P_DKDEP] > 0 || trk[i].mdk;   /* (0.2.7: or the matrix moves DEPTH) */
         if (trk[i].p[P_DKSRC] != 0) {
             k->run = 0;
             continue;
@@ -1856,11 +2533,15 @@ static __attribute__((noinline)) void duck_pump(uint32_t adv)
         }
     }
 }
-/* t's block b (0: silent), n samples: the key follower for the other part, and this part's reduction asked by it */
-static __attribute__((noinline)) void duck_part(track_t *t, const int32_t *b, uint32_t n)
+/* t's block b (0: silent), n samples: the key follower for the other part, and this part's reduction asked by it.
+ * DUCK SRC PART is on ONE part only (job 3; params.c duck_set_part): the ducked part D has SRC = PART, the other part K has none (SRC OFF) and only keys: K's
+ * stage updates its own follower k->key (above), D's stage reads K's follower of the BLOCK BEFORE from the block's snapshot (bs->duck_key, filled by blk_snap before
+ * either part runs). One direction, no waiting, whichever stage runs first or on which core. Before job 3 a ducked part 2 read part 1's key of THIS block: 0.73 ms
+ * (one block) earlier than now, the ducker's fastest attack is 1 ms; a ducked part 1 read part 2's of the block before, as now (bit for bit) */
+static __attribute__((noinline)) void duck_part(track_t *t, const int32_t *b, uint32_t n, const blockstate_t *bs)
 {
     uint32_t id = (uint32_t)(t - trk) % NTRK, o = id ^ 1u, i;
-    duck_t *k = &duck_st[id], *ok = &duck_st[o];
+    duck_t *k = &duck_st[id];
     if (trk[o].p[P_DKSRC] == 1) {                       /* the other part is keyed by this one */
         int32_t pk = 0, c;
         if (b)
@@ -1875,7 +2556,7 @@ static __attribute__((noinline)) void duck_part(track_t *t, const int32_t *b, ui
         k->key += ((pk - k->key) * c) >> 15;
     }
     if (t->p[P_DKSRC] == 1 && t->p[P_DKDEP] > 0) {
-        int32_t thr = clamp(t->p[P_DKTHR], 0, 100) * (DUCK_KEY_FS / 100), kv = ok->key, raw = 0;
+        int32_t thr = clamp(t->p[P_DKTHR], 0, 100) * (DUCK_KEY_FS / 100), kv = bs->duck_key[o], raw = 0;   /* (the other part's key of the block before) */
         int32_t top = (int32_t)((uint32_t)clamp(t->p[P_DKDEP], 0, 100) << 16) / 100;
         if (kv > thr && thr < DUCK_KEY_FS) {
             int32_t f = ((kv - thr) << 12) / (DUCK_KEY_FS - thr);
@@ -1929,104 +2610,421 @@ static __attribute__((noinline)) void duck_run(track_t *t, int32_t *b, int32_t *
             }
         }
         if (b && k->dn) {
-            int32_t g = (65536 - k->dn) >> 4;
-            b[i] = ((b[i] >> 4) * g) >> 8;
+            int32_t g = (65536 - k->dn) >> 4;           /* (pedal hunt: >> 2 first, not >> 4: the 4 low bits cut off a ducked sample were a hiss of up to 15 LSB that pulsed with every duck
+                                                         * and was gone between ducks, about 2 LSB rms at a PUMP DEPTH 14, and a DC wobble; |b| may now reach 2^21 = 64 x full scale, the corpus peaks at 0.8 x) */
+            b[i] = ((b[i] >> 2) * g) >> 10;
             if (d)
-                d[i] = ((d[i] >> 4) * g) >> 8;
+                d[i] = ((d[i] >> 2) * g) >> 10;
         }
     }
 }
 
-/* one synth part into the dry mix and the sends; a part with no voice sounding costs
- * the LFO tick and a cleared buffer only (after the DIST tail has run out) */
-static void mix_part(track_t *t, uint32_t n)
+/* ------------------------------------------------------------------------------------------------------------------------------
+ * MIXSPLIT (0.2.25 test line, job 1 of the second-core work; docs/MIXSPLIT_NOTES.md has the table of what is shared). mix_block is a
+ * chain of stages with explicit inputs and outputs, each a function of its own (noinline), the arithmetic of each exactly what was inline
+ * in mix_block (renders bit for bit; tests/mixsplit_test.c):
+ *   mix_events    EVENTS  notes, sequencer, arp, MIDI, clock, the MODE and SENDS state machines. Control: writes the voices' note state, the
+ *                         parts' parameters and the mode/sends flags; reads and writes no audio buffer. Runs before the parts, never between
+ *   per part, in this order (mix_part below), the data in a mixpart_t:
+ *   part_voice    VOICES  the part's voices into its pscr buf (mod_begin first: the matrix's values into t->p), or the silent way out
+ *   part_rest     (silent part) the effects' state at rest, the pan and SAT taken at once; mod_end; nothing is mixed
+ *   part_fx       EFFECTS PAN / SAT follow, DUCK key, SAT (track_dist), INSERT, EQ, PERFORM's MUTE, the DUCK, PART FX crossfade (or
+ *                         mix_spread, which also mixes: SPREAD); in place on the part's buf
+ *   part_mix      LEVEL, BALANCE, PAN into the part's own accumulators pacc[pp] (dry mix, sends, SPACE's floors) and the part's peak
+ *   mix_gather    GATHER  the parts' accumulators summed, in a fixed order, into mix_l / mix_r / send_* / sp_f* (SPLIT: part 1's to bus A's sa_*)
+ *   mix_sends     SENDS   the shared buses (chorus, delay, reverb; DUEL's A and B) take both parts' sends and add the return (wet)
+ *   mix_master    MASTER  PERFORM's master, SPACE's width, the MODE's dip, WIDTH, BASS MONO, COMP, the level, the DC blocker, limiter and soft
+ *                         clip (master_out), or DUEL's split_master. Reads mix_l / mix_r / wet, writes out
+ * The parts' stages share nothing but the scratch and accumulators named in each stage's comment; two parts today run one after the other
+ * in one core and the order matters only where the comments say so (DUCK SRC PART: the other part's key, one block old for part 1).
+ * ------------------------------------------------------------------------------------------------------------------------------ */
+
+/* VOICE stage. Reads: t (voices, parameters, envelope and LFO state), the matrix and MORPH values (morph_begin has already written the
+ * block's values into t->p; mod_begin adds the matrix's), song.g's shared voice settings (tune, MIDI bend, vage), dm_split. Writes: the part's buf
+ * (via b), t's voices / envelopes / LFOs / tail, mod (the part in its window: shared scratch, one part at a time), the SPREAD scratch
+ * (pscr[pp].spread_on and sbuf, the part's own), the FM6 operator buses (on fm6_render's stack), the engine memory of the part (eng_mem[pp], its own).
+ * Returns 1 when the part sounds (a voice, or the DIST / INSERT / EQ tail running out), 0 when silent (part_rest then follows) */
+static __attribute__((noinline)) int part_voice(mixpart_t *m, track_t *t, uint32_t n, const blockstate_t *bs)
 {
-    int32_t *b = part_buf;
-    uint32_t i, fxm;
+    int32_t *b = pscr[PART_OF(t)].buf;
+    m->t = t;
+    m->n = n;
+    m->b = b;
+    m->pp = (uint32_t)(t - trk) % NLIVE;
+    m->acc = &pacc[m->pp];
+    m->scr = &pscr[m->pp];
+    m->bs = bs;
+    pacc_on[m->pp] = 0;                                 /* (the part has not written its accumulators: part_mix / mix_spread do, a silent part not) */
+    m->pan_st = t->p[P_PAN];                             /* (0.2.24: the STORED pan before the matrix writes the block's; pan_follow) */
+    m->dist_st = t->p[P_DIST];                           /* (0.2.25: the STORED SAT likewise; dist_follow) */
     mod_begin(t);                                       /* the matrix's per-block values into t->p (mod.c) */
-    spread_on = t->p[P_SPRD] > 0 && (trk_vmode(t) == V_POLY || trk_vmode(t) == V_UNISON) && !dm_split;   /* (SPREAD,
+    m->spread = pscr[m->pp].spread_on = t->p[P_SPRD] > 0 && (trk_vmode(t) == V_POLY || trk_vmode(t) == V_UNISON) && !bs->dm_split;   /* (SPREAD,
                                                          * mix_spread; SPLIT: none, the part is mono on its side) */
     if (track_render(t, b, n))
         t->tail = t->p[P_ITYPE] ? 64 : 16;              /* blocks of DIST / INSERT state to run out after the last
                                                          * voice (the INSERT's: 46 ms, a flanger's feedback) */
     else if (!t->tail || !(t->p[P_DIST] | t->p[P_ITYPE] | t->p[P_EQLG] | t->p[P_EQMG] | t->p[P_EQHG]) ||
-             pfx_x[(uint32_t)(t - trk) % NLIVE] == 32768 || !--t->tail) {   /* (0.2.14 MODULES PART FX OFF: no DIST / INSERT tail to run out) */
-        if (eq_live)
-            eq_rest(t);                                 /* (the EQ's states clear with the tail) */
-        pfx_snap(t);                                    /* (PART FX: what is asked, at once: nothing sounds) */
-        if (!(mods_off & MODS_PFX)) {
-            if (t->p[P_DKSRC] == 1 || trk[(uint32_t)(t - trk) ^ 1u].p[P_DKSRC] == 1)
-                duck_part(t, 0, n);                     /* (SRC PART: a silent key, and the part keyed by the other) */
-            if (duck_st[(uint32_t)(t - trk) % NTRK].ph)
-                duck_run(t, 0, 0, n);                   /* (the DUCK's envelope runs on) */
-        }
-        if (t->ins_run && !t->p[P_ITYPE])
-            ins_rest(t);                                /* TYPE OFF while silent: no fade-out left for the next note */
-        if ((pf.mute >> (t - trk)) & 1u)
-            perf_mute_rest((uint32_t)(t - trk));        /* (PERFORM's MUTE: silent, its gain where it goes) */
-        if (mod.on)
-            mod_end(t);
-        return;
+             pfx_x[(uint32_t)(t - trk) % NLIVE] == 32768 || !--t->tail)   /* (0.2.14 MODULES PART FX OFF: no DIST / INSERT tail to run out) */
+        return 0;
+    return 1;
+}
+
+/* SILENT part (part_voice returned 0): a part with no voice sounding costs the LFO tick and a cleared buffer only (after the DIST tail has run
+ * out). Reads: t, the other part's DUCK source (P_DKSRC), the block's snapshot (mods_off, pf_mute, mute_tg). Writes: t's EQ / INSERT / PART FX / DUCK state at rest,
+ * pan_x[pp], dist_x[pp], dist_live[pp], pan_gv[pp], pf.mg[pp] (PERFORM's MUTE gain), duck_st[pp] and, for DUCK SRC PART, duck_st[pp].key
+ * (the key follower the other part reads), t->p[P_PAN / P_DIST] as stored again (mod_end). No audio buffer is touched */
+static __attribute__((noinline)) void part_rest(mixpart_t *m)
+{
+    track_t *t = m->t;
+    uint32_t n = m->n, pp = m->pp;
+    int32_t pan_st = m->pan_st;
+    if (t->eqlv)
+        eq_rest(t);                                     /* (the EQ's states clear with the tail) */
+    pfx_snap(t, m->bs);                                 /* (PART FX: what is asked, at once: nothing sounds) */
+    if (!(m->bs->mods_off & MODS_PFX)) {
+        if (t->p[P_DKSRC] == 1 || trk[(uint32_t)(t - trk) ^ 1u].p[P_DKSRC] == 1)
+            duck_part(t, 0, n, m->bs);                  /* (SRC PART: a silent key, and the part keyed by the other) */
+        if (duck_st[(uint32_t)(t - trk) % NTRK].ph)
+            duck_run(t, 0, 0, n);                       /* (the DUCK's envelope runs on) */
     }
-    fxm = pfx_mode(t);                                  /* (0.2.14 MODULES PART FX: PFX_RUN as ever, PFX_FADE, PFX_SKIP) */
+    if (t->ins_run && !t->p[P_ITYPE])
+        ins_rest(t);                                    /* TYPE OFF while silent: no fade-out left for the next note */
+    if ((m->bs->pf_mute >> pp) & 1u)
+        perf_mute_rest(pp, m->bs->mute_tg[pp]);         /* (PERFORM's MUTE: silent, its gain where it goes) */
+    pan_follow(pp, pan_st, 1, 0);                       /* (silent: the pan at once) */
+    dist_follow(pp, t->p[P_DIST], 1);                   /* (.. and the SAT: what mod_begin left in t->p, as A's mix_part) */
+    pan_gv[pp] = 0;
+    mx_ok[pp] = 0;                                      /* (0.2.25: the matrix's mix ramp starts again from this block's values) */
+    sp_go[pp] = 0;
+    mx_was[pp] = mod_mixmv[pp];
+    if (MODW(t).on)
+        mod_end(t);
+}
+
+/* EFFECT stage (the part's insert chain), on the part's block b in place. Reads: t's parameters (SAT, INSERT, EQ, DUCK, PAN), the block's snapshot (mods_off for PART FX,
+ * pf_mute, mute_tg), the OTHER part's DUCK source and its key follower (duck_st[pp ^ 1].key: DUCK SRC PART, the other part's level of this block or the
+ * block before), the morph's / matrix's values already in t->p. Writes: b (the part's buf), t's INSERT / EQ / SAT states, pan_x[pp], dist_x[pp],
+ * dist_live[pp], pfx_x[pp], pscr[pp].dry / dryd (the part's own), pscr[pp].sbuf (SPREAD), duck_st[pp] (its own key follower: read by
+ * the other part), pf.mg[pp], t->p[P_DIST] (the SAT of the block; part_end puts the stored back), and with SPREAD the whole mix (mix_spread:
+ * the part's pacc, t->peak: see part_mix). Fills m->fxm, m->pan_mv, m->pq for part_mix */
+static __attribute__((noinline)) void part_fx(mixpart_t *m)
+{
+    track_t *t = m->t;
+    int32_t *b = m->b;
+    uint32_t n = m->n, pp = m->pp, fxm;
+    int32_t pan_mv, pq;
+    pan_mv = pan_follow(pp, m->pan_st, 0, m->spread);
+    pq = pan_x[pp] + ((t->p[P_PAN] - m->pan_st) << 8);  /* the pan this block mixes at, Q8: the smoothed stored pan plus the matrix's offset as it was */
+    {
+        int32_t dw0 = dist_x[pp], dlv = dist_live[pp];  /* (0.2.25: the followed SAT before and after this block's step, for the blend ramp) */
+        t->p[P_DIST] = (int16_t)dist_follow(pp, t->p[P_DIST], 0);   /* the SAT this block runs at (put back below; mod_end puts the stored back too) */
+        m->dist_rw0 = dlv ? dw0 : dist_x[pp];           /* (in the part's own context: with two cores the parts' stages overlap) */
+    }
+    fxm = pfx_mode(t, m->bs);                           /* (0.2.14 MODULES PART FX: PFX_RUN as ever, PFX_FADE, PFX_SKIP) */
     if (fxm != PFX_SKIP && (t->p[P_DKSRC] == 1 || trk[(uint32_t)(t - trk) ^ 1u].p[P_DKSRC] == 1))
-        duck_part(t, b, n);                             /* DUCK SRC PART: this block's level for the other part, its key for this */
-    if (spread_on)
-        mix_spread(t, b, n, fxm);
-    else {
+        duck_part(t, b, n, m->bs);                      /* DUCK SRC PART: this block's level for the other part, its key for this */
+    if (m->spread) {
+        acc_prep(m);
+        spread_run(m, fxm, pq);
+        mx_was[pp] = mod_mixmv[pp];
+    } else {
         if (fxm == PFX_FADE)
-            memcpy(pfx_dry, b, n * sizeof b[0]);        /* (PART FX changing: the dry block for the crossfade) */
+            memcpy(pscr[pp].dry, b, n * sizeof b[0]);   /* (PART FX changing: the dry block for the crossfade) */
         if (fxm != PFX_SKIP) {
-            track_dist(t, b, n);
+            if (m->dist_rw0 != dist_x[pp] && (m->dist_rw0 < 12 * 256 || dist_x[pp] < 12 * 256))
+                track_dist_ramp(t, b, n, m->dist_rw0, dist_x[pp]);   /* (0.2.25: SAT moving in its blend zone: the blend ramps inside the block) */
+            else
+                track_dist(t, b, n);
             if (t->p[P_ITYPE] | t->ins_run)
                 track_insert(t, b, n);                  /* the INSERT (1.5): off, nothing */
             if (EQ_ON(t))
                 track_eq(t, b, n, 0u);                  /* the EQ (DUELL): all bands at 0 dB, nothing */
         }
-        if ((pf.mute >> (t - trk)) & 1u) {              /* PERFORM: MUTE 1 / 2 held (perform.c) */
+        if ((m->bs->pf_mute >> pp) & 1u) {              /* PERFORM: MUTE 1 / 2 held (perform.c) */
             if (fxm == PFX_FADE)
-                pfx_mute((uint32_t)(t - trk), b, 0, n);
+                pfx_mute(pp, b, 0, n, m->bs->mute_tg[pp]);
             else
-                perf_mute((uint32_t)(t - trk), b, n);
+                perf_mute(pp, b, n, m->bs->mute_tg[pp]);
         }
         if (fxm != PFX_SKIP && duck_st[(uint32_t)(t - trk) % NTRK].ph)
             duck_run(t, b, 0, n);                       /* the DUCK (DUELL): before the level, pan and the sends */
         if (fxm == PFX_FADE)
-            pfx_mix(t, b, 0, n);
+            pfx_mix(t, b, 0, n, m->bs);
     }
-    if (!spread_on) {                                   /* (the mix's values read after the calls: none is held over
+    m->fxm = fxm;
+    m->pan_mv = pan_mv;
+    m->pq = pq;
+}
+
+/* MIX stage (the plain, no SPREAD, part: with SPREAD part_fx's mix_spread has done this). The part's block into the dry mix and the sends.
+ * Reads: b (the part's buf), t's LEVEL / TRIM / CHOR / DLY / REV / PEAK, mix_bal (BALANCE), snd_st, dm_split, sp_tap, the pan state (pan_g[pp],
+ * pan_gv[pp]). Writes (assigns, into the part's OWN accumulators pacc[pp]): l, r, sc, sd, sr, fc / fd / fr (SPACE's floors, via space_tap, which adds),
+ * pan_g[pp], pan_gv[pp], t->peak. Nothing is shared with the other part: mix_gather sums the parts' accumulators */
+static __attribute__((noinline)) void part_mix(const mixpart_t *m)
+{
+    track_t *t = m->t;
+    int32_t *b = m->b;
+    part_acc_t *ac = m->acc;
+    const blockstate_t *bs = m->bs;
+    uint32_t n = m->n, pp = m->pp, i;
+    int32_t pq = m->pq;
+    int32_t pan_mv = m->pan_mv;
+    if (!m->spread) {                                   /* (the mix's values read after the calls: none is held over
                                                          * them, no spill in the loop: the ISR's cost as before 1.5) */
-        int32_t lvl = bal_lvl(t, part_lvl(t)), pan = t->p[P_PAN];
-        int32_t gl = 4096 - (pan > 0 ? pan * 64 : 0), gr = 4096 + (pan < 0 ? pan * 64 : 0);
+        int32_t lvl = bal_lvl(t, part_lvl(t), bs->mix_bal);
+        int32_t gl = 4096 - (pq > 0 ? pq >> 2 : 0), gr = 4096 + (pq < 0 ? pq >> 2 : 0);   /* (pq Q8: pq >> 2 = pan x 64, the gains of before) */
         int32_t c = t->p[P_CHOR] * 258, d = t->p[P_DLY] * 258, r = t->p[P_REV] * 258, pk = t->peak;
-        if (snd_st == SND_OFF)
+        int ramp = 0;
+        if (bs->snd_st == SND_OFF)
             c = d = r = 0;                              /* (0.2.14 MODULES SENDS OFF: nothing sent) */
-        if (dm_split) {                                 /* SPLIT: part 1 left, the others right, PAN not heard */
+        if (bs->dm_split) {                             /* SPLIT: part 1 left, the others right, PAN not heard */
             gl = t == trk ? 4096 : 0;
             gr = 4096 - gl;
+        } else if (pan_mv) {                            /* (0.2.24: the stored pan on its way: the gains in a straight line from the block before's) */
+            ramp = pan_gv[pp] && (pan_g[pp][0] != gl || pan_g[pp][1] != gr);
         }
         int32_t xmax = c > d ? c : d;
         xmax = 0x7FFFFFFF / ((xmax > r ? xmax : r) | 1);   /* sends: loud chords at a high LEVEL */
+        acc_prep(m);
+        if ((((uint32_t)mod_mixmv[pp] | mx_was[pp]) & 1u) && mx_ok[pp] &&   /* (0.2.25: the matrix moves PAN, PATCH LEVEL or a send: all six in a line inside the block) */
+            (mx_lv[pp] != lvl || mx_sd[pp][0] != c || mx_sd[pp][1] != d || mx_sd[pp][2] != r || (pan_gv[pp] && (pan_g[pp][0] != gl || pan_g[pp][1] != gr)))) {
+            pacc_on[pp] |= (uint8_t)((mx_sd[pp][0] ? 2u : 0u) | (mx_sd[pp][1] ? 4u : 0u) | (mx_sd[pp][2] ? 8u : 0u));   /* (a send ramping down to 0 still has samples to write) */
+            pk = mix_ramp(m, pk, gl, gr, lvl, c, d, r);
+        } else if (ramp) {
+            int32_t glq = pan_g[pp][0] << 16, grq = pan_g[pp][1] << 16, dgl = ((gl - pan_g[pp][0]) << 16) / (int32_t)n, dgr = ((gr - pan_g[pp][1]) << 16) / (int32_t)n;
+            for (i = 0; i < n; i++) {
+                int32_t x = ((b[i] >> 2) * lvl) >> 10, a = x < 0 ? -x : x;
+                int32_t xs = clamp(x, -xmax, xmax);
+                if (a > pk)
+                    pk = a;
+                if (c)
+                    ac->sc[i] = mulq15(xs, c);
+                if (d)
+                    ac->sd[i] = mulq15(xs, d);
+                if (r)
+                    ac->sr[i] = mulq15(xs, r);
+                glq += dgl;
+                grq += dgr;
+                ac->l[i] = (x * (glq >> 16)) >> 12;
+                ac->r[i] = (x * (grq >> 16)) >> 12;
+            }
+        } else
         for (i = 0; i < n; i++) {
             int32_t x = ((b[i] >> 2) * lvl) >> 10, a = x < 0 ? -x : x;   /* pre-shift: 8 loud voices */
             int32_t xs = clamp(x, -xmax, xmax);         /* sends: mulq15 would overflow */
             if (a > pk)
                 pk = a;
             if (c)
-                send_c[i] += mulq15(xs, c);
+                ac->sc[i] = mulq15(xs, c);
             if (d)
-                send_d[i] += mulq15(xs, d);
+                ac->sd[i] = mulq15(xs, d);
             if (r)
-                send_r[i] += mulq15(xs, r);
-            mix_l[i] += (x * gl) >> 12;
-            mix_r[i] += (x * gr) >> 12;
+                ac->sr[i] = mulq15(xs, r);
+            ac->l[i] = (x * gl) >> 12;
+            ac->r[i] = (x * gr) >> 12;
         }
+        pan_g[pp][0] = gl;
+        pan_g[pp][1] = gr;
+        pan_gv[pp] = (uint8_t)!bs->dm_split;
+        mx_lv[pp] = lvl, mx_sd[pp][0] = c, mx_sd[pp][1] = d, mx_sd[pp][2] = r;
+        mx_ok[pp] = 1;
+        sp_go[pp] = 0;
+        mx_was[pp] = mod_mixmv[pp];
         t->peak = pk;
-        if (sp_tap)
-            space_tap(b, lvl, c, d, r, n);              /* (SPACE right: the part's send floors) */
+        if (bs->sp_tap)
+            space_tap(b, lvl, c, d, r, n, ac, &pacc_on[pp]);  /* (SPACE right: the part's send floors) */
     }
-    if (mod.on)
-        mod_end(t);                                     /* the stored values back */
+}
+
+/* the end of a sounding part's window: the stored SAT back (mod_end below also does), then the matrix's stored values */
+static inline void part_end(const mixpart_t *m)
+{
+    m->t->p[P_DIST] = (int16_t)m->dist_st;              /* (the stored SAT back; mod_end below also does) */
+    if (MODW(m->t).on)
+        mod_end(m->t);                                  /* the stored values back */
+}
+
+/* one synth part into the dry mix and the sends: its stages in order (a part with no voice sounding costs the LFO tick and a cleared buffer only).
+ * The callers' morph_begin / morph_end bracket it (mix_block); this function is the one place that fixes the order of a part's stages */
+static void mix_part(track_t *t, uint32_t n, const blockstate_t *bs)
+{
+    mixpart_t m;
+    if (!part_voice(&m, t, n, bs)) {
+        part_rest(&m);
+        return;
+    }
+    part_fx(&m);
+    part_mix(&m);
+    part_end(&m);
+}
+
+#if DUELL_TWOCORE
+#include "twocore_run.c"                             /* DUELL TWO-CORE stage 1: the job core 1 plays (part 2) and the runner (docs/TWOCORE_STAGE1.md) */
+#endif
+
+/* GATHER stage, after the last part and before mix_sends: the parts' accumulators that were written this block (pacc_on; in the order pacc[0], pacc[1] ..) summed
+ * into the globals the send stage and the master read: mix_l, mix_r, send_*, and with sp_tap SPACE's floors sp_f*. A silent part wrote nothing and costs nothing
+ * here; with no part on the arrays are 0, as the clear at the head of a block used to leave them. SPLIT (DUEL, sends on): part 1's sends and floors go to bus
+ * A's arrays (sa_*, sp_f*_a), the others' sum to bus B's (send_*, sp_f*). Integer adds: the sum does not depend on the order the parts ran in */
+static void acc_sum(int32_t *d, part_acc_t *const *u, uint32_t nu, uint32_t k, uint32_t n)
+{
+    uint32_t i, j;
+    if (!nu) {
+        for (i = 0; i < n; i++)
+            d[i] = 0;
+    } else if (nu == 1u) {
+        const int32_t *a = &u[0]->l[0] + k * CTL;
+        for (i = 0; i < n; i++)
+            d[i] = a[i];
+    } else if (nu == 2u) {
+        const int32_t *a = &u[0]->l[0] + k * CTL, *b = &u[1]->l[0] + k * CTL;
+        for (i = 0; i < n; i++)
+            d[i] = a[i] + b[i];
+    } else {
+        for (i = 0; i < n; i++) {
+            int32_t x = 0;
+            for (j = 0; j < nu; j++)
+                x += (&u[j]->l[0] + k * CTL)[i];
+            d[i] = x;
+        }
+    }
+}
+/* the general case: the lists of the parts that wrote each array, bus A's (SPLIT: part 1) and the others' */
+static void gather_general(uint32_t n, uint32_t st, uint32_t sp, uint32_t sends)
+{
+    part_acc_t *all[NLIVE], *ba[3][NLIVE], *bb[3][NLIVE], *fa[NLIVE], *fb[NLIVE];
+    uint32_t p, k, nl = 0, na[3] = {0, 0, 0}, nb[3] = {0, 0, 0}, nfa = 0, nfb = 0;
+    for (p = 0; p < NLIVE; p++) {
+        uint32_t on = pacc_on[p];
+#if DUELL_TWOCORE
+        if (p == 1u && tcr.skip2)
+            continue;                                   /* (part 2 is silent this block and core 1 may still be writing it: not even read) */
+#endif
+        if (!on)
+            continue;
+        all[nl++] = &pacc[p];
+        for (k = 0; k < 3u; k++)
+            if ((on >> (k + 1u)) & 1u) {
+                if (st && p == 0u)
+                    ba[k][na[k]++] = &pacc[p];
+                else
+                    bb[k][nb[k]++] = &pacc[p];
+            }
+        if (on & 16u) {
+            if (st && p == 0u)
+                fa[nfa++] = &pacc[p];
+            else
+                fb[nfb++] = &pacc[p];
+        }
+    }
+    if (sends) {
+        acc_sum(mix_l, all, nl, 0u, n);
+        acc_sum(mix_r, all, nl, 1u, n);
+        if (st) {                                       /* (SPLIT: part 1 is bus A) */
+            acc_sum(sa_c, ba[0], na[0], 2u, n);
+            acc_sum(sa_d, ba[1], na[1], 3u, n);
+            acc_sum(sa_r, ba[2], na[2], 4u, n);
+        }
+        acc_sum(send_c, bb[0], nb[0], 2u, n);
+        acc_sum(send_d, bb[1], nb[1], 3u, n);
+        acc_sum(send_r, bb[2], nb[2], 4u, n);
+    }
+    if (sp) {
+        if (st) {
+            acc_sum(sp_fc_a, fa, nfa, 5u, n);
+            acc_sum(sp_fd_a, fa, nfa, 6u, n);
+            acc_sum(sp_fr_a, fa, nfa, 7u, n);
+        }
+        acc_sum(sp_fc, fb, nfb, 5u, n);
+        acc_sum(sp_fd, fb, nfb, 6u, n);
+        acc_sum(sp_fr, fb, nfb, 7u, n);
+    }
+}
+static __attribute__((noinline)) void mix_gather(uint32_t n, const blockstate_t *bs)
+{
+    const part_acc_t *a = 0, *b = 0, *fl0 = 0, *fl1 = 0;   /* the first two parts that wrote l / r, and the floors */
+    uint32_t p, i, nl = 0, nf = 0, am = 15u, om = 0, st = bs->dm_split && bs->snd_st != SND_OFF, sp = bs->sp_tap;
+    for (p = 0; p < NLIVE; p++) {
+        uint32_t on = pacc_on[p];
+#if DUELL_TWOCORE
+        if (p == 1u && tcr.skip2)
+            continue;                                   /* (part 2 is silent this block and core 1 may still be writing it: not even read) */
+#endif
+        spread_post(p, n, bs);                          /* (hunt1: SPREAD's gains in a line while a route or the MORPH moves them; changes pacc_on) */
+        on = pacc_on[p];
+        if (!on)
+            continue;
+        am &= on;
+        om |= on;
+        if (!nl)
+            a = &pacc[p];
+        else if (nl == 1u)
+            b = &pacc[p];
+        nl++;
+        if (on & 16u) {
+            if (!nf)
+                fl0 = &pacc[p];
+            else if (nf == 1u)
+                fl1 = &pacc[p];
+            nf++;
+        }
+    }
+    uint32_t fast = !st && nl < 3u && ((am & 15u) == 15u || !(om & 14u)), flfast = sp && !st && nf < 3u;
+    if (fast) {   /* the common blocks in one loop each: nothing sounding (the clear of before), one part, two; the sends all there or all 0 */
+        uint32_t snd = nl && (am & 15u) == 15u;
+        if (!nl) {
+            for (i = 0; i < n; i++)
+                send_c[i] = send_d[i] = send_r[i] = mix_l[i] = mix_r[i] = 0;
+        } else if (nl == 1u && snd) {
+            for (i = 0; i < n; i++) {
+                mix_l[i] = a->l[i];
+                mix_r[i] = a->r[i];
+                send_c[i] = a->sc[i];
+                send_d[i] = a->sd[i];
+                send_r[i] = a->sr[i];
+            }
+        } else if (nl == 1u) {
+            for (i = 0; i < n; i++) {
+                mix_l[i] = a->l[i];
+                mix_r[i] = a->r[i];
+                send_c[i] = send_d[i] = send_r[i] = 0;
+            }
+        } else if (snd) {
+            for (i = 0; i < n; i++) {
+                mix_l[i] = a->l[i] + b->l[i];
+                mix_r[i] = a->r[i] + b->r[i];
+                send_c[i] = a->sc[i] + b->sc[i];
+                send_d[i] = a->sd[i] + b->sd[i];
+                send_r[i] = a->sr[i] + b->sr[i];
+            }
+        } else {
+            for (i = 0; i < n; i++) {
+                mix_l[i] = a->l[i] + b->l[i];
+                mix_r[i] = a->r[i] + b->r[i];
+                send_c[i] = send_d[i] = send_r[i] = 0;
+            }
+        }
+    }
+    if (!fast || (sp && !flfast))
+        gather_general(n, st, sp && !flfast, !fast);   /* (everything else: SPLIT, three parts or more, mixed sends) */
+    if (flfast) {                         /* SPACE's floors: only the parts whose space_tap ran wrote them; none: 0, as the clear left them */
+        if (!nf) {
+            for (i = 0; i < n; i++)
+                sp_fc[i] = sp_fd[i] = sp_fr[i] = 0;
+        } else if (nf == 1u) {
+            for (i = 0; i < n; i++) {
+                sp_fc[i] = fl0->fc[i];
+                sp_fd[i] = fl0->fd[i];
+                sp_fr[i] = fl0->fr[i];
+            }
+        } else {
+            for (i = 0; i < n; i++) {
+                sp_fc[i] = fl0->fc[i] + fl1->fc[i];
+                sp_fd[i] = fl0->fd[i] + fl1->fd[i];
+                sp_fr[i] = fl0->fr[i] + fl1->fr[i];
+            }
+        }
+    }
 }
 
 /* the HOME oscilloscope (ui_graph.c graph_scope): every other sample of the left channel. MENU > DISPLAY > SCOPE (1.2,
@@ -2073,7 +3071,7 @@ static __attribute__((noinline)) void meter_scan(uint32_t n)
 static __attribute__((noinline)) void perf_master(uint32_t n)
 {
     uint32_t i;
-    int32_t mg = fx_usb_fixed ? MASTER_USB_REF : (int32_t)song.master_q12;   /* (USB LEVEL FIXED: the default level, MASTER after) */
+    int32_t mg = MIX_MG();                              /* (the device: the default level, MASTER scales the DAC after: audio.c master_dac; host tests: see MIX_MG) */
     if ((pf.act & PF_BIT(PF_DRV)) || pf.dw) {           /* DRIVE: before the level (MASTER scales what it gives) */
         for (i = 0; i < n; i++) {
             mix_l[i] += wet[i];
@@ -2094,36 +3092,32 @@ static __attribute__((noinline)) void perf_master(uint32_t n)
     }
 }
 
-static void mix_block(int32_t *out, uint32_t n)
+/* EVENT stage: everything that is not audio and runs at the head of a block. events_block (seq.c: MIDI in, notes, the sequencer, the arp, the
+ * clocks, the PUMP DUCK's beat count), then the MODE's step (the dip, dm_step) and MODULES SENDS' (snd_step). Reads: the MIDI / USB queues,
+ * the transport, song.*. Writes: the voices' note state (t->v, envelopes, midi_bend), the parts' parameters (t->p, via the sequencer, CCs
+ * and the morph's queue), duck_st[].ph / run / pos, dm_*, snd_st, mod_dk. It touches NO audio buffer (mix_l, send_*, pscr[].buf, ...), so it
+ * can run on the core that owns the events while the other core renders: its outputs are the parts' and the buses' controls the
+ * render stages then read (see MIXSPLIT_NOTES.md). Takes and gives no audio data */
+static __attribute__((noinline)) void mix_events(uint32_t n)
 {
-    uint32_t i;
-    int perf;
-    int32_t mg = fx_usb_fixed ? MASTER_USB_REF : (int32_t)song.master_q12;   /* (USB LEVEL FIXED: the default level, MASTER after) */
-    for (i = 0; i < n; i++)
-        send_c[i] = send_d[i] = send_r[i] = mix_l[i] = mix_r[i] = 0;
+    duck_src_norm();                                    /* DUCK SRC PART on one part only (params.c): a pair that breaks the rule (a multi, a project) is mended here */
     events_block(n);
     if (dm_cur != duell_mode || dm_g != DM_ONE || dm_clr)
         dm_step();                                      /* DUELL step 5: the MODE changing (the dip) */
     if (snd_st != SND_ON || (mods_off & MODS_SENDS) || snd_panic)
         snd_step();                                     /* DUELL 0.2.14 MODULES SENDS: OFF, fading, clearing its lines */
-    sp_tap = snd_st != SND_OFF && (perf_space > 0 || sv.spc > 0);   /* (SPACE right of the middle, or gliding there: the parts' dry mix for its floor) */
-    if (sp_tap)
-        memset(sp_fc, 0, sizeof sp_fc), memset(sp_fd, 0, sizeof sp_fd), memset(sp_fr, 0, sizeof sp_fr);
-    if (perf_idle()) {                                  /* PERFORM (perform.c) idle: nothing but its 1/16's clock */
-        perf_tick(n);
-        perf = 0;
-    } else {
-        perf = perf_begin(n);
-    }
-    for (i = 0; i < NLIVE; i++) {                      /* (DUELL: tracks 3..4 do not render) */
-        int mo = morph_begin(&trk[i], 1);               /* DUELL MORPH: the fader's values into t->p (morph.c) */
-        mix_part(&trk[i], n);
-        if (mo)
-            morph_end(&trk[i]);                         /* .. and the stored ones back */
-        if (!i && dm_split && snd_st != SND_OFF)
-            split_stash(n);                             /* (SPLIT: part 1's sends to bus A) */
-    }
-    if (mod_gon)                                        /* 0.2.7: the parts' matrix offsets on the bus values (mod.c mod_bus): DUEL bus A part 1's, */
+}
+
+/* SEND stage: the shared buses. Takes both parts' sends (send_c / send_d / send_r, summed from the parts' accumulators by mix_gather; in DUEL part 1's are
+ * sa_*) and SPACE's floors (sp_f*), gives the effect return wet[] and the side
+ * returns added to mix_l / mix_r (HALL, PING-PONG), and in DUEL each bus's return into its side. Reads: song.g (the bus settings), sv (SPACE),
+ * snd_st, dm_*, hl / dly_side, the matrix's bus values (mod_gon / mod_goff: both parts' offsets). Writes: wet, mix_l, mix_r (the side
+ * returns), snd_dl / snd_dr (a SENDS fade's dry copy), the buses' delay lines / reverb / chorus states (the pool: the one owner of each),
+ * sv.*, mod_gkeep / mod_gw (the bus values written over for the block and put back at its end) */
+static __attribute__((noinline)) void mix_sends(uint32_t n)
+{
+    uint32_t i;
+    if (mod_gon_any())                                  /* 0.2.7: the parts' matrix offsets on the bus values (mod.c mod_bus): DUEL bus A part 1's, */
         mod_bus(dm_split ? 1u : ~0u);                   /* (split_buses: bus B part 2's), STEREO / LAYER the shared buses both parts' added */
     sv.spc0 = sv.spc;                                   /* (the width's ramp starts where the last block ended) */
     if (space_goal() || sv.spc) {                       /* PERFORM's K2 SPACE (above; in the middle and at rest: nothing; SENDS OFF: to the middle) */
@@ -2158,13 +3152,18 @@ static void mix_block(int32_t *out, uint32_t n)
         snd_fade(n);                                    /* (MODULES SENDS: the buses' share of the mix toward OFF or ON) */
     if (mod_gw)
         mod_bus_end();                                  /* (the stored bus values back: the main loop never sees a modulated one) */
-    if (meter_on) {
-        meter_on--;
-        if (dm_split)
-            meter_scan(n);                              /* (GLO's page shows: SPLIT's two buses) */
-    }
-    if (scope_mix)
-        scope_take_mix(n);
+}
+
+/* MASTER stages, after the buses: PERFORM's master (when held), SPACE's width, the MODE's dip, WIDTH, BASS MONO, COMP, then the level and
+ * master_out's DC blocker, limiter and soft clip (DUEL: split_master, each side apart). Takes mix_l / mix_r (the dry mix with the side returns) and
+ * wet (the return), gives out[2n] (interleaved L R). mg: the master level Q12 (the reference MASTER_USB_REF; mix_block);
+ * perf: PERFORM at work this block. Reads: song.* (master, WIDTH, BASS MONO, COMP settings), the pf.* / sv.* / dm_* state. Writes: mix_l, mix_r,
+ * wet (PERFORM's stage), the stages' own states (bm, wdn, cmp, the limiter's envelope and DC states: only these stages touch them) and out.
+ * Nothing of the parts' states is touched, so this is the one stage that must see the sum of both parts */
+static __attribute__((noinline)) void mix_master(int32_t *out, uint32_t n, int perf, int32_t mg)
+{
+    uint32_t i;
+    int32_t mg0 = mg;
     if (perf) {
         perf_master(n);                                 /* (then the dip and master_out as ever, the level done) */
         mg = PERF_MG;
@@ -2173,8 +3172,12 @@ static void mix_block(int32_t *out, uint32_t n)
         space_width(n);                                 /* SPACE's stereo width (STEREO, LAYER; never DUEL: its sides are the two parts) */
     if (dm_g != DM_ONE || dm_dir)
         dm_ramp(n);
+    if (!dm_split && (wd_sel != 100u || wdn.k))
+        width_stage(n);                                 /* DUELL 0.2.23 WIDTH, the master stereo width (STEREO, LAYER; not in DUEL; 100 %: this test only) */
     if (!dm_split && (bm_sel || bm.a))
         bass_mono(n);                                   /* DUELL 0.2.19 BASS MONO (STEREO, LAYER; not in DUEL; OFF: this test only) */
+    if (!dm_split && ((cmp_cfg & 0xF00u) || cmp.a))
+        comp_stage(n, perf ? cmp_poff(mg0) : 0);        /* DUELL 0.2.21 COMP, the master compressor (STEREO, LAYER; not in DUEL; RATIO 1:1: this test only; PERFORM's stage has applied MASTER: poff) */
     if (dm_split) {
         split_master(out, n, mg);
         return;
@@ -2186,4 +3189,78 @@ static void mix_block(int32_t *out, uint32_t n)
         out[2u * i] = l;
         out[2u * i + 1u] = r;
     }
+}
+
+/* the block's snapshot (blockstate_t): called once, after EVENTS and PERFORM's begin, before the first part; plain reads of the variables the parts'
+ * stages used to read themselves (the UI-written ones are volatile) */
+static __attribute__((noinline)) void blk_snap(blockstate_t *bs, uint32_t sp)
+{
+    uint32_t k;
+    bs->dm_g = dm_g;
+    for (k = 0; k < NLIVE; k++)
+        bs->duck_key[k] = duck_st[k].key;
+    bs->mix_bal = mix_bal;
+    bs->pf_act = perf_act;
+    for (k = 0; k < NLIVE; k++)
+        bs->mute_tg[k] = (perf_held >> (PF_M1 + k)) & 1u && !perf_kill ? 0 : 32768;
+    bs->dm_cur = dm_cur;
+    bs->dm_split = dm_split;
+    bs->dm_hold = dm_hold;
+    bs->dm_clr = dm_clr;
+    bs->dm_dir = dm_dir;
+    bs->perf_space = perf_space;
+    bs->perf_filt = perf_filt;
+    bs->perf_depth = perf_depth;
+    bs->snd_st = snd_st;
+    bs->mods_off = mods_off;
+    bs->sp_tap = (uint8_t)sp;
+    bs->pf_mute = pf.mute;
+}
+
+/* One block, in the stages above: EVENTS, the PARTS (voices, effects, mix), GATHER, SENDS, the meters, MASTER. The order is the data flow: each part
+ * clears and adds into its own accumulators (pacc), mix_gather sums them into mix_l / mix_r / send_*, the sends read them, the master reads the sum. The block's frame setup (SPACE's tap, PERFORM's begin) stays here: a few tests and the PERFORM calls */
+static void mix_block(int32_t *out, uint32_t n)
+{
+#if !DUELL_TWOCORE
+    uint32_t i;
+#endif
+    int perf;
+    blockstate_t bs;
+    int32_t mg = MIX_MG();                              /* (the device: the default level, MASTER scales the DAC after: audio.c master_dac; host tests: see MIX_MG) */
+    mix_events(n);
+    sp_tap = snd_st != SND_OFF && (perf_space > 0 || sv.spc > 0);   /* (SPACE right of the middle, or gliding there: the parts' dry mix for its floor) */
+    if (perf_idle()) {                                  /* PERFORM (perform.c) idle: nothing but its 1/16's clock */
+        perf_tick(n);
+        perf = 0;
+    } else {
+        perf = perf_begin(n);
+    }
+    blk_snap(&bs, sp_tap);                              /* the shared control state, once: the parts only read it */
+#if DUELL_TWOCORE
+    tcr_begin(&bs, n);                                  /* DUELL TWO-CORE stage 1: part 2 goes to core 1 (twocore_run.c), part 1 stays here */
+    {
+        int mo = morph_begin(&trk[0], 1);
+        mix_part(&trk[0], n, &bs);
+        if (mo)
+            morph_end(&trk[0]);
+    }
+    tcr_part2(&bs, n);                                  /* (core 1's part 2 awaited, or core 0 plays it, or it is silent) */
+#else
+    for (i = 0; i < NLIVE; i++) {                      /* (DUELL: tracks 3..4 do not render) */
+        int mo = morph_begin(&trk[i], 1);               /* DUELL MORPH: the fader's values into t->p (morph.c) */
+        mix_part(&trk[i], n, &bs);
+        if (mo)
+            morph_end(&trk[i]);                         /* .. and the stored ones back */
+    }
+#endif
+    mix_gather(n, &bs);                                 /* the parts' accumulators into mix_l / mix_r / send_* (SPLIT: part 1's sends to bus A) */
+    mix_sends(n);
+    if (meter_on) {
+        meter_on--;
+        if (dm_split)
+            meter_scan(n);                              /* (GLO's page shows: SPLIT's two buses) */
+    }
+    if (scope_mix)
+        scope_take_mix(n);
+    mix_master(out, n, perf, mg);
 }

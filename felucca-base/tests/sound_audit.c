@@ -43,6 +43,8 @@
  *                                            (smallest loudness change): copy one into tools/duell_sounds.py ("bseed": n)
  *   SOUND_BALL=1                             with SOUND_BSEED: also the candidates that fail, in [ ]
  *   SOUND_ONLY=NAME                          only that sound
+ *   SOUND_DUMP=DIR                           also writes each sound's End A render (STEREO, the one note) to DIR/E<engine>_<index>.i32: int32 left / right pairs, the mix before
+ *                                            MASTER, as measured (the proof renders of cloud job J: tools/convert_twin_report.py compares two builds')
  *   SOUND_WIN=1                              also the windows (loudest 1.5 s, 0.5 s, the 1.5 s before key-off) and when the
  *                                            peak came */
 #define main hostsim_main
@@ -128,6 +130,13 @@ static void au_run(au_t *a, lz_t *L, uint32_t n, const char *only)
         lz_job_t jb[AUDIT_JOBS];
         for (j = i; j < n && j < i + AUDIT_JOBS; j++)
         {
+            static char dn[256];
+            const char *dd = getenv("SOUND_DUMP");
+            lz_dump_name = 0;
+            if (dd && !a[j].b && a[j].mode == DM_STEREO && !a[j].chord && !a[j].tap) {
+                snprintf(dn, sizeof dn, "%s/E%u_%u.i32", dd, (unsigned)a[j].e, (unsigned)a[j].k);
+                lz_dump_name = dn;
+            }
             lz_hold = a[j].tap ? 1.0 : AUDIT_HOLD;
             jb[j - i] = only && !str_eq(ds_get(a[j].e, a[j].k)->name, only) ? (lz_job_t){-1, -1} :
                         lz_spawn(au_setup, &a[j], CH, a[j].chord ? 3u : 1u);

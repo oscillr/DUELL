@@ -36,7 +36,7 @@ int main(void)
     setvbuf(stdout, NULL, _IONBF, 0);
     expect("the default theme is VIOLET", UI_DEFAULT_INDEX == 0u && !strcmp(UI_PALETTES[UI_DEFAULT_INDEX].name, "VIOLET"));
     expect("a fresh unit (settings blank) starts in VIOLET", (settings.magic = 0, settings_init(), settings.palette == UI_DEFAULT_INDEX));
-    expect("the version is DUELL " DUELL_VERSION " beta (the VERSION file)", !strcmp(FELUCCA_VERSION, "DUELL " DUELL_VERSION " beta") && !strcmp(FELUCCA_VERSION, DUELL_VERSION_STR));
+    expect("the version is DUELL " DUELL_VERSION " (the VERSION file)", !strcmp(FELUCCA_VERSION, DUELL_VERSION_STR) && !strcmp(FELUCCA_VERSION, DUELL_VERSION_STR));
 
     ui_power_on();
     ui_prefs2 |= (uint8_t)(PREF_GUIDE_SEEN >> 16);     /* (DUELL 0.2.11: the GUIDE seen, so the splash is the plain one; the first start's: guide_test.c) */

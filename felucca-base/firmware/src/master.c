@@ -7,10 +7,18 @@
 static int32_t master_knob = 512 * 16;
 static void master_poll(void)
 {
+#if DUELL_VELO
+    static uint32_t seen;                               /* the pot: read in the scan tick's slot (there is one converter, the tick owns it: after Velo's method); */
+    int32_t a = fm1_an.pot_n != seen ? fm1_an.pot : -1; /* a new reading is smoothed in once, not once a pass */
+    seen = fm1_an.pot_n;
+#else
     int32_t a = fm1_adc_read(FM1_ADC_MASTER);
+#endif
     if (a >= 0) {
         master_knob += (a * 16 - master_knob) / 8;
-        song.master_q12 = master_of_pot((uint32_t)(master_knob / 16));
+        uint32_t g = master_of_knob16((uint32_t)master_knob);
+        master_g16 = g;                                 /* (first: master_dac reads the pair only while they agree, fx.c) */
+        song.master_q12 = g >> 4;
     }
 }
 /* power-on (main.c), before audio_init: the knob as it stands, no glide */
@@ -22,7 +30,8 @@ static void master_boot(void)
         int32_t a = fm1_adc_read(FM1_ADC_MASTER);
         if (a >= 0) {
             master_knob = a * 16;
-            song.master_q12 = master_of_pot((uint32_t)a);
+            master_g16 = master_of_knob16((uint32_t)a * 16u);   /* (= master_of_pot(a) x 16 + its fraction) */
+            song.master_q12 = master_g16 >> 4;
             return;
         }
     }                                                   /* (no reading: felucca_init's level, the loop glides on) */

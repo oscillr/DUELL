@@ -2,18 +2,17 @@
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
 /* Host test of 1.5's sound items (Discussions #104, #175), same sources as the firmware (hostsim.c):
  *   build/host/sound15_test [DEMO_DIR]      (run_tests.sh builds and runs it; demos in build/sound15_demo/)
- * 1. ANALOG's filter TYPE (P_FTYPE, eng_analog.c analog_tap): the parameter (LP BP HP, default LP, not recordable, on
- *    EDIT > FILTER), LP untouched (the golden renders: regress.c) and TYPE ignored by every other engine (bit for bit),
- *    the responses (sines through a 1 kHz cutoff: LP falls above it, HP below, BP peaks at it; the three alike at the
- *    cutoff; RES raises BP's peak), bounded and without DC at the corners (RES and DRV 127, low and high notes, every
- *    WAVE, SYNC and SUB too), a TYPE change while a note sounds stays bounded.
+ * 1. ANALOG's filter TYPE (1.5, #104: LP BP HP on id 101) is RETIRED (cloud job B, the TWIN FILTER plan): id 101 is the TWIN FILTER's BLEND (P_FTYPE below stands for it),
+ *    the engine is a low-pass whatever the id holds. Checked: the descriptor and the VCF page (CUT RES KTR), the value ignored by every engine (bit for bit, ANALOG too),
+ *    the low-pass response (sines through a 1 kHz cutoff), bounded and without DC at the corners (RES and DRV 127, low and high notes, every WAVE, SYNC and SUB too), the
+ *    value changed while a note sounds stays bounded. (The BP / HP responses, the demos analog_bp and analog_hp went with the switch.)
  * 2. ENV SYNC (P_ESYNC, voice.c esync_coef): the parameter (OFF / ON, default OFF, not recordable, ENV DEST's KNOB 4);
  *    OFF takes the tables whatever esync_k holds (bit for bit); ON: ATK DEC REL show note values (1/64T .. 4BAR, 25
  *    names over 0..127, a knob detent each), and the attack reaches the top, the decay and the release -40 dB, after
  *    that note value at 60 / 120 / 173 BPM and on the external clock's measured tempo (within a block / 2 %).
  * 3. the cost: ANALOG 8 voices LP / BP / HP, ENV SYNC on / off (instructions per sample).
- * 4. demos (DEMO_DIR): analog_bp, analog_hp (TYPE BP / HP, the cutoff swept), env_sync (the same phrase at 90 and
- *    150 BPM: ATK 1/8, REL 1/4 follow the tempo). */
+ * 4. demos (DEMO_DIR): env_sync (the same phrase at 90 and 150 BPM: ATK 1/8, REL 1/4 follow the tempo). */
+#define P_FTYPE P_BLEND                              /* (the retired TYPE's id: BLEND now, which the ANALOG engine ignores) */
 #define main hostsim_main
 #include "hostsim.c"
 #undef main
@@ -75,8 +74,8 @@ static void fresh(uint32_t e, uint32_t pi)        /* the boot state (no FX tails
     rng_state = 0x1234567u;
     mod_seed = 0x2545F491u;
     memset(trk, 0, sizeof trk);
-    memset(&mod, 0, sizeof mod);
-    memset(esync_k, 0, sizeof esync_k);
+    memset(&trk[0].mdw, 0, sizeof trk[0].mdw);
+    memset(trk[0].esk, 0, sizeof trk[0].esk);
     host_tracks_init();
     for (k = 0; k < NPART; k++)
         host_preset(&trk[k], k ? 0u : e, k ? 0u : pi);
@@ -192,29 +191,25 @@ static void test_filter(void)
     char msg[200];
     track_t *t = &trk[0];
 
-    check("TYPE: a track parameter LP BP HP, default LP (as before), not recordable (a setting)",
-          d->fmt == F_ENUM && d->min == 0 && d->max == 2 && d->def == 0 && str_eq(d->label, "TYPE") &&
-          str_eq(d->names[0], "LP") && str_eq(d->names[1], "BP") && str_eq(d->names[2], "HP") && !motion_param(P_FTYPE));
+    check("id 101 is the TWIN FILTER's BLEND now (-64 .. +63, default 0), ANALOG's TYPE (LP BP HP) is gone",
+          d->fmt == F_BIPCT && d->min == -64 && d->max == 63 && d->def == 0 && str_eq(d->label, "BLEND") && P_FTYPE == 101 && motion_param(P_FTYPE));
     {
-        uint32_t i, k = 0;
-        for (i = 0; i < NPAGES; i++)
-            if (str_eq(PAGES[i].title, "VCF"))
+        uint32_t i, k = 0, gone = 1;
+        for (i = 0; i < NPAGES; i++) {
+            if (str_eq(PAGES[i].title, "MULTI FILTER 1/2"))
                 k = i + 1u;
-        check("EDIT > VCF: TYPE CUT RES KTR (ANALOG's own filter), after EDIT 2 and the multimode FILTER",
-              k && PAGES[k - 1u].fam == FAM_EDIT && PAGES[k - 1u].id[0] == P_FTYPE && PAGES[k - 1u].id[1] == P_E4 &&
-              PAGES[k - 1u].id[2] == P_E5 && PAGES[k - 1u].id[3] == P_E7 && str_eq(PAGES[k - 2u].title, "MULTI FILTER") && str_eq(PAGES[k - 3u].title, "EDIT 2"));
+            gone &= !str_eq(PAGES[i].title, "VCF") && !str_eq(PAGES[i].title, "TRIO FILTER") && !str_eq(PAGES[i].title, "NOISE FILT");
+        }
+        check("cloud job J: the engines' own filter pages (VCF, TRIO FILTER, NOISE FILT) are gone; MULTI FILTER 1/2, 2/2 follow SUB OSC",
+              gone && k && str_eq(PAGES[k - 2u].title, "SUB OSC") && str_eq(PAGES[k].title, "MULTI FILTER 2/2"));
     }
-    /* every engine but ANALOG ignores TYPE; ANALOG's LP is the golden renders' (regress.c) */
-    for (e = 1; e < NENGINES; e++) {
-        if (ENGINES[e] == ENGINES[0] || !ENGINES[e]->npresets)
+    /* no engine reads id 101 (ANALOG's low-pass is the golden renders': regress.c) */
+    for (e = 0; e < NENGINES; e++) {
+        if (!ENGINES[e]->npresets)
             continue;
-        same &= phrase_child(e, 0, 0) == phrase_child(e, 0, type_hp);
+        same &= phrase_child(e, 0, 0) == phrase_child(e, 0, type_hp) && phrase_child(e, 0, 0) == phrase_child(e, 0, type_bp);
     }
-    check("TYPE BP / HP on every other engine: its phrase bit for bit (only ANALOG reads it)", same);
-    {
-        uint64_t h0 = phrase_child(0, 0, 0), h1 = phrase_child(0, 0, type_bp), h2 = phrase_child(0, 0, type_hp);
-        check("ANALOG SAW LEAD: BP and HP sound other than LP (and each other)", h0 != h1 && h0 != h2 && h1 != h2);
-    }
+    check("id 101 set (the retired TYPE's BP / HP values) on every engine, ANALOG too: its phrase bit for bit", same);
     /* the responses: sines (WAVE SIN) at 65 Hz .. 8.4 kHz through a cutoff at C6 (1047 Hz), RES 0 */
     for (n = 1; n < 128u; n++)
         if (abs((int)CUTOFF_HZ[n] - 1047) < abs((int)CUTOFF_HZ[cut] - 1047))
@@ -224,24 +219,19 @@ static void test_filter(void)
             r[ft][n] = analog_note(3, ft, (int32_t)cut, 0, 0, NOTE[n]);
     for (ft = 0; ft < 3u; ft++) {
         snprintf(msg, sizeof msg, "  %s (CUT %u = %u Hz): rms at 65 262 1047 4186 8372 Hz %.0f %.0f %.0f %.0f %.0f",
-                 ft == 0 ? "LP" : ft == 1 ? "BP" : "HP", cut, CUTOFF_HZ[cut], r[ft][0].rms, r[ft][1].rms, r[ft][2].rms,
+                 ft == 0 ? "LP" : ft == 1 ? "id 101 = 1 (was BP)" : "id 101 = 2 (was HP)", cut, CUTOFF_HZ[cut], r[ft][0].rms, r[ft][1].rms, r[ft][2].rms,
                  r[ft][3].rms, r[ft][4].rms);
         printf("sound15: %s\n", msg);
     }
     check("LP: flat below the cutoff, falling above it (12 dB / octave)",
           fabs(r[0][0].rms / r[0][1].rms - 1) < 0.1 && r[0][3].rms < r[0][1].rms * 0.12 && r[0][4].rms < r[0][3].rms * 0.4);
-    check("HP: flat above the cutoff, falling below it (12 dB / octave)",
-          fabs(r[2][4].rms / r[2][3].rms - 1) < 0.1 && r[2][1].rms < r[2][3].rms * 0.12 && r[2][0].rms < r[2][1].rms * 0.4);
-    check("BP: its peak at the cutoff, falling both ways (6 dB / octave)",
-          r[1][2].rms > r[1][1].rms * 2 && r[1][2].rms > r[1][3].rms * 2 && r[1][0].rms < r[1][1].rms * 0.4 &&
-          r[1][4].rms < r[1][3].rms * 0.7);
-    check("at the cutoff the three alike (within 25 %): TYPE keeps the level",
-          fabs(r[1][2].rms / r[0][2].rms - 1) < 0.25 && fabs(r[2][2].rms / r[0][2].rms - 1) < 0.25);
+    check("the same sine rms at every note with the retired BP / HP values of id 101 as with 0 (the low-pass)",
+          r[0][2].rms == r[1][2].rms && r[0][2].rms == r[2][2].rms && r[0][0].rms == r[2][0].rms && r[0][4].rms == r[1][4].rms);
     {
-        stats_t q = analog_note(3, 1, (int32_t)cut, 100, 0, 84);
-        snprintf(msg, sizeof msg, "BP: RES raises the peak (RES 100 %.0f vs RES 0 %.0f at the cutoff), bounded", q.rms,
-                 r[1][2].rms);
-        check(msg, q.rms > r[1][2].rms * 1.3 && q.peak < 32000);
+        stats_t q = analog_note(3, 0, (int32_t)cut, 100, 0, 84);
+        snprintf(msg, sizeof msg, "LP: RES raises the peak (RES 100 %.0f vs RES 0 %.0f at the cutoff), bounded", q.rms,
+                 r[0][2].rms);
+        check(msg, q.rms > r[0][2].rms * 1.3 && q.peak < 32000);
     }
     /* the corners: every WAVE (SYNC, SUB too), RES and DRV at 127, low / high notes and cutoffs: bounded, no DC */
     {
@@ -258,7 +248,7 @@ static void test_filter(void)
                             dc = fabs(s.mean) / s.rms > dc ? fabs(s.mean) / s.rms : dc;
                         okc &= s.peak < 32767 && (s.rms < 500 || fabs(s.mean) < s.rms * 0.05);
                     }
-        snprintf(msg, sizeof msg, "BP / HP at the corners (7 waves, RES DRV 127): bounded (peak %.0f), no DC (%.3f of rms)",
+        snprintf(msg, sizeof msg, "LP at the corners (7 waves, RES DRV 127; id 101 = 1, 2 ignored): bounded (peak %.0f), no DC (%.3f of rms)",
                  worst, dc);
         check(msg, okc);
         okc = 1;
@@ -267,7 +257,7 @@ static void test_filter(void)
                 stats_t s = analog_note(w, ft, (int32_t)cut, 30, 0, 57);
                 okc &= s.rms > 200;
             }
-        check("SYNC / SUB through BP and HP: they sound", okc);
+        check("SYNC / SUB through the low-pass: they sound", okc);
     }
     /* TYPE turned while a resonant note sounds: the filter's state carries over, bounded */
     {
@@ -286,7 +276,7 @@ static void test_filter(void)
         }
         trk_note_off(t, 45);
         blocks(FS / CTL);
-        snprintf(msg, sizeof msg, "TYPE switched every 29 ms under a resonant ACID note: bounded (peak %d)", pk);
+        snprintf(msg, sizeof msg, "id 101 changed every 29 ms under a resonant ACID note: bounded (peak %d)", pk);
         check(msg, pk < 32767);
     }
 }
@@ -295,9 +285,9 @@ static void test_filter(void)
 static void esync_garbage(track_t *t)
 {
     (void)t;
-    esync_k[0] = 0x123456u;
-    esync_k[1] = 999u;
-    esync_k[2] = 77u;
+    trk[0].esk[0] = 0x123456u;
+    trk[0].esk[1] = 999u;
+    trk[0].esk[2] = 77u;
 }
 static int32_t value_of(const char *name)        /* the first value 0..127 ENV SYNC shows as name */
 {
@@ -526,7 +516,7 @@ static void test_cost(void)
     printf("sound15: cost: ANALOG 8 voices SAW LP %.0f, BP %.0f (%+.1f %%), HP %.0f (%+.1f %%); SYNC LP %.0f, HP %.0f "
            "(%+.1f %%) instructions / sample\n", lp, bp, (bp - lp) * 100 / lp, hp, (hp - lp) * 100 / lp, slp, shp,
            (shp - slp) * 100 / slp);
-    check("cost: BP / HP within 10 % of LP", bp < lp * 1.10 && hp < lp * 1.10 && shp < slp * 1.10);
+    check("cost: id 101 set costs nothing (BP / HP = LP)", bp < lp * 1.10 && hp < lp * 1.10 && shp < slp * 1.10);
     e0 = cost(0, 0, 0);
     e1 = cost(0, 0, 1);
     printf("sound15: cost: ENV SYNC on an 8-voice part %.0f -> %.0f (%+.2f %%)\n", e0, e1, (e1 - e0) * 100 / e0);
@@ -561,46 +551,6 @@ static int demos(const char *dir)
     uint32_t n = 0, k, j;
     FILE *f;
     track_t *t = &trk[0];
-    /* BP: an ACID line, the band swept up and back over 8 s (two bars of 1/16 at 120 BPM, four times) */
-    fresh(0, preset_by_name(0, "ACID"));
-    t->p[P_FTYPE] = 1;
-    t->p[P_E5] = 105;
-    t->p[P_E6] = 50;                                      /* some drive: the band's edge */
-    t->p[P_TRIM] = 112;
-    if ((f = demo_open(dir, "analog_bp", 9u * FS / CTL * CTL))) {
-        uint32_t st = FS / 8u / CTL;                      /* a 1/16 at 120 BPM */
-        for (k = 0; k < 64u; k++) {
-            t->p[P_E4] = (int16_t)(55 + (k < 32u ? k : 63u - k) * 60 / 31);
-            trk_note_on(t, LINE[k & 15u], (k & 3u) ? 90 : 120);
-            demo_blocks(f, st / 2u);
-            trk_note_off(t, LINE[k & 15u]);
-            demo_blocks(f, st - st / 2u);
-        }
-        demo_blocks(f, 9u * FS / CTL - 64u * st);
-        fclose(f);
-        n++;
-    }
-    /* HP: STRINGS chords, the high-pass rising over each (thinning to air), then falling */
-    fresh(0, preset_by_name(0, "STRINGS"));
-    t->p[P_FTYPE] = 2;
-    t->p[P_E5] = 50;
-    if ((f = demo_open(dir, "analog_hp", 9u * FS / CTL * CTL))) {
-        for (j = 0; j < 2u; j++) {
-            const uint8_t *c = j ? PAD2 : PAD;
-            for (k = 0; k < 4u; k++)
-                trk_note_on(t, c[k], 100);
-            for (k = 0; k < 4u * FS / CTL; k++) {
-                uint32_t q = k * 2u < 4u * FS / CTL ? k : 4u * FS / CTL - k;
-                t->p[P_E4] = (int16_t)(20 + q * 95u / (2u * FS / CTL));
-                demo_blocks(f, 1);
-            }
-            for (k = 0; k < 4u; k++)
-                trk_note_off(t, c[k]);
-        }
-        demo_blocks(f, FS / CTL);
-        fclose(f);
-        n++;
-    }
     /* ENV SYNC: a plucked chord on every beat, ATK 1/8 REL 1/4 (SUS 50 %), two bars at 90 BPM then two at 150 */
     fresh(0, preset_by_name(0, "SAW LEAD"));
     t->p[P_VOICE] = V_POLY;
@@ -636,8 +586,8 @@ static int demos(const char *dir)
             n++;
         }
     }
-    printf("sound15: %u demos in %s (analog_bp, analog_hp, env_sync)\n", n, dir);
-    return n == 3u;
+    printf("sound15: %u demos in %s (env_sync)\n", n, dir);
+    return n == 1u;
 }
 
 int main(int argc, char **argv)
