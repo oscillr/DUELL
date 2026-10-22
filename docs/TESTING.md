@@ -1,6 +1,6 @@
 # What to test: DUELL 1.0
 
-Thank you for testing. You can test, at your own risk, on an FM-1 with DUELL 1.0 (see [INSTALL.md](INSTALL.md)). Web emulator: coming soon. It has been run on one real unit only, the author's, so reports from other units are especially welcome.
+Thank you for testing. You can test, at your own risk, on an FM-1 with DUELL 1.0 (see [INSTALL.md](INSTALL.md)). Web emulator: [https://oscillr.github.io/DUELL/emu/](https://oscillr.github.io/DUELL/emu/). It has been run on one real unit only, the author's, so reports from other units are especially welcome.
 
 ## What to test
 
