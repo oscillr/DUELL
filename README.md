@@ -5,6 +5,8 @@
 
 **Two synths in one small box.** DUELL is free, open-source firmware (GPL-3.0) for the M-VAVE FM-1. It turns the FM-1 into a bitimbral instrument: two complete parts, three ways to play them together, and a morph that glides between two versions of every sound. This is **DUELL 1.0**.
 
+**Try it in your browser, no FM-1 needed:** <https://oscillr.github.io/DUELL/emu/>
+
 <p align="left"><img src="docs/duell-deck.png" alt="DUELL" width="720"></p>
 
 > **Install at your own risk.** DUELL has been flashed to and run on **one real FM-1, the author's**. The way back to the official firmware (V15) has worked on that unit; it has not been tried on others. The FM-1 has a single copy of its firmware and no known rollback. Back up first. Read [docs/RECOVERY.md](docs/RECOVERY.md) and [docs/KNOWN_LIMITS.md](docs/KNOWN_LIMITS.md). No warranty. DUELL is not affiliated with M-VAVE.
