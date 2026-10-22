@@ -33,7 +33,7 @@ Hardware checklist:
 - [ ] **CLK AUTO** (GLO > TEMPO, KNOB 4): start and stop a DAW or a Circuit Tracks clock on USB, then on TRS: does DUELL switch (header CLOCK USB / TRS), follow, and go back to its own tempo about 1 s after the clock stops, without stopping or stumbling?
 - [ ] **USB audio input** (0.2.14): on macOS 15 or older (and on Windows, Linux, iOS if you have them), with MENU > SYSTEM > USB SERIAL OFF, is DUELL listed as an audio input and does it record? MIDI still there? (The computer may set the unit up as a new device once.)
 - [ ] **LEDs during a save** (0.2.14): save a patch while LEDs are lit: the keys and buttons should go dark for a moment, not flash bright.
-- [ ] **Mod wheel** (CC1) moves the morph; CC 20 to 25 and 111 to 118 behave.
+- [ ] **Mod wheel** (CC1) moves the morph; CC 70, 102, 103 and 114 to 118 behave.
 - [ ] **Sidechain / ducker**: sources PUMP, PART and MIDI channel/note; depth, attack, release; no clicks.
 - [ ] **Stability**: play for a while with an arp running and many effects on; report any freeze, reboot or screen glitch.
 

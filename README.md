@@ -144,7 +144,7 @@ One map for the whole unit. A CC on a part's channel moves that part; "both part
 | 118 | CYCLE SYNC | Undefined | the part of the channel |
 
 
-**Input numbers** (read as performance controls for the modulation matrix): CC1 mod wheel (it also moves the morph fader), CC11 expression, CC64 sustain pedal. **CC2 (breath) and CC4 (foot)** are reserved as matrix sources but are **not read yet**.
+**Input numbers** (read as performance controls for the modulation matrix): CC1 mod wheel (it also moves the morph fader), CC11 expression, CC64 sustain pedal. **CC2 (breath) and CC4 (foot)** are reserved as matrix sources.
 
 **Locked numbers** (the MIDI standard's own): 0 and 32 bank select, 6 and 38 data entry, 96 to 101 data increment / decrement and NRPN / RPN select, 120 to 127 the channel mode messages (all sound off, reset all controllers, local control, all notes off, omni, mono, poly).
 

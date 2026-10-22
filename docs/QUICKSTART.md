@@ -66,7 +66,7 @@ Hold **HOME**. Four tabs: **DISPLAY** (COLOR, LEDS, SCALE LEDS, ANIMATION, SCREE
 **Piano roll (editor, new in 0.2.20).** In the web editor each part has a PIANO ROLL tab for its step pattern, and a ROLL button that opens it across the whole window. See [EDITOR_ROLL.md](EDITOR_ROLL.md).
 
 ## MIDI
-Part 1 listens on channel 1 and part 2 on channel 2 (editable). On the device: clock in, program change and bank select, the mod wheel (CC1) moves the MORPH fader and is also a matrix source. CC 20 morph, 21 roll A, 22 roll B, 23 undo, 25 amount, 111 morph target, 112 mode. In LAYER, program change 0 to 15 on part 1's channel recalls MULTIs M01 to M16. Not yet tested with a range of real MIDI devices.
+Part 1 listens on channel 1 and part 2 on channel 2 (editable). On the device: clock in, program change and bank select, the mod wheel (CC1) moves the MORPH fader and is also a matrix source. CC 70 morph, 102 roll (0 to 42 rolls End A, 85 to 127 rolls End B), 103 amount. In LAYER, program change 0 to 15 on part 1's channel recalls MULTIs M01 to M16. Not yet tested with a range of real MIDI devices.
 
 ## Next
 [TESTING.md](TESTING.md) lists what to try and report. [TROUBLESHOOTING.md](TROUBLESHOOTING.md) if something misbehaves.

@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>DUELL cheat sheet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,600;0,700;1,400;1,700&family=Krona+One&family=Oswald:wght@600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0e0c1b;--panel:#1e1330;--fg:#f2eefa;--mute:#b9b0d0;--line:#2e1b4e;--pink:#fe8cc1;--vio:#8a3ebf;--vio2:#6545b7;--acc:#fe8cc1;--chip:#2e1b4e;--chipfg:#f2eefa}
+*{box-sizing:border-box}
+body{margin:0;background:radial-gradient(1200px 600px at 85% -10%,#2a1650 0,transparent 60%),var(--bg);color:var(--fg);font:14px/1.45 "DM Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:1100px;margin:0 auto;padding:20px 16px}
+header{padding:18px 0 10px;border-bottom:2px solid var(--vio2)}
+header h1{margin:0;font:400 clamp(40px,9vw,72px)/1 "Krona One","DM Sans",sans-serif;letter-spacing:.01em;color:var(--fg)}
+header .tag{margin:10px 0 0;font-size:clamp(16px,3.4vw,22px);text-transform:uppercase;color:var(--fg)}
+header .tag i{font-weight:400}header .tag b{font-weight:700}
+header .by{margin:6px 0 0;font-size:clamp(15px,3vw,18px);letter-spacing:.22em;color:var(--pink)}
+header .sub{margin:8px 0 0;color:var(--mute)}
+header .stamp{margin:4px 0 0;font-size:12px;color:var(--mute)}
+.bar{margin:12px 0 4px}
+button{font:inherit;font-family:"Oswald","DM Sans",sans-serif;font-weight:600;letter-spacing:.08em;padding:6px 18px;border:0;background:var(--pink);color:#0e0c1b;border-radius:10px;cursor:pointer}
+button:hover{background:#ffa6d0}
+.cols{columns:2 420px;column-gap:24px}
+section{break-inside:avoid;margin:0 0 14px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:4px 14px 10px}
+h2{font:600 16px/1.2 "Oswald","DM Sans",sans-serif;margin:10px 0 4px;padding-bottom:3px;border-bottom:2px solid var(--vio);color:var(--pink);text-transform:uppercase;letter-spacing:.1em}
+.row{display:grid;grid-template-columns:42% 1fr;gap:8px;padding:4px 0;border-bottom:1px solid var(--line);break-inside:avoid}
+.g{font-weight:600}
+.g b{display:inline-block;padding:0 6px;border-radius:5px;background:var(--chip);color:var(--chipfg);border:1px solid var(--vio2);font-size:.92em}
+.e{color:var(--fg)}
+ul{margin:4px 0 0;padding-left:18px}
+li{margin:3px 0;break-inside:avoid}
+li::marker{color:var(--pink)}
+footer{margin-top:10px;font-size:12px;color:var(--mute)}
+@media (max-width:560px){.row{grid-template-columns:1fr;gap:2px}section{padding:4px 12px 10px}}
+@media print{
+ @page{size:A4;margin:8mm}
+ :root{--bg:#fff;--panel:#fff;--fg:#000;--mute:#333;--line:#bbb;--acc:#b0206a;--pink:#d6247f;--vio:#6a2c9a;--vio2:#6a2c9a;--chip:#fff;--chipfg:#000}
+ body{font-size:9pt;line-height:1.25;background:#fff;color:#000}
+ main{max-width:none;padding:0}
+ header{padding:0 0 1.5mm;border-bottom:1.5px solid var(--vio)}
+ header h1{font-size:20pt;color:#000}
+ header .tag{font-size:10pt;margin-top:1mm;color:#000}
+ header .by{font-size:9pt;margin-top:.5mm;color:var(--pink)}
+ header .sub{margin-top:1mm}
+ header .sub,header .stamp,footer{font-size:9pt}
+ .bar{display:none}
+ .cols{columns:2;column-gap:5mm}
+ section{margin:0 0 1.2mm;border:0;border-radius:0;padding:0;background:#fff}
+ h2{font-size:10pt;margin:2mm 0 1mm;color:var(--vio);border-bottom-color:var(--pink)}
+ .row{padding:.3px 0;gap:4px;grid-template-columns:42% 1fr}
+ .g b{border-color:var(--vio)}
+ li{margin:0}
+}
+</style>
+</head>
+<body>
+<main>
+<header>
+ <h1>DUELL</h1>
+ <p class="tag"><i>Multi</i><b>Morphing</b> Bitimbral Synthesizer</p>
+ <p class="by">by OSCILL/R</p>
+ <p class="sub">cheat sheet for the M-VAVE FM-1</p>
+ <p class="stamp">checked against DUELL 1.0 &middot; community-style quick reference; full details in SPEC.md and docs/QUICKSTART.md</p>
+ <p class="bar"><button type="button" onclick="window.print()">Print</button></p>
+</header>
+
+<div class="cols">
+
+<section>
+<h2>Getting around</h2>
+<div class="row"><div class="g">Turn <b>SELECT</b></div><div class="e">Previous / next sub-page; in lists and the menu it moves the row.</div></div>
+<div class="row"><div class="g">Tap <b>HOME</b></div><div class="e">MORPH page (HOME's round: MORPH, MORPH SET, MODE).</div></div>
+<div class="row"><div class="g">Hold <b>HOME</b></div><div class="e">Opens the menu. SELECT moves row to row; any knob or <b>OCT+</b> / <b>OCT-</b> changes the value; HOME closes it.</div></div>
+<div class="row"><div class="g">Press <b>ALGORITHM</b></div><div class="e">Selects the part you edit (1 or 2). On the MORPH page and on PERFORM: PART 1, BOTH, PART 2.</div></div>
+<div class="row"><div class="g">Tap <b>GLO</b>, then turn <b>SELECT</b></div><div class="e">Steps through the GLO pages, first MIXER.</div></div>
+<div class="row"><div class="g">Hold <b>EDIT</b> / <b>LFO</b> / <b>ENV</b> / <b>ARP</b> / <b>GLO</b></div><div class="e">Quick edit: the four knobs become performance controls. The keys still play. Let go and you are back on your page.</div></div>
+<div class="row"><div class="g">Hold <b>OCT-</b> + turn a knob</div><div class="e">Resets that knob's card to its default.</div></div>
+<div class="row"><div class="g"><b>OCT-</b> / <b>OCT+</b> in a dialog or menu</div><div class="e">OCT- means back / no, OCT+ means do it / yes.</div></div>
+<div class="row"><div class="g">MENU &gt; SYSTEM &gt; GUIDE</div><div class="e">Shows the first-start guide again.</div></div>
+</section>
+
+<section>
+<h2>Playing</h2>
+<div class="row"><div class="g">Tap <b>OCT-</b> / <b>OCT+</b></div><div class="e">Octave down / up of the keys. Both together reset the octave to 0.</div></div>
+<div class="row"><div class="g">Tap <b>REC</b> (not on sequencer pages)</div><div class="e">HOLD switch for the part(s) the keys play; bright light = HOLD on. Tap again to release.</div></div>
+<div class="row"><div class="g">Tap <b>PLAY/STOP</b></div><div class="e">Stopped: starts when you let go. Running: stops at once.</div></div>
+<div class="row"><div class="g">Hold <b>PLAY/STOP</b> 0.6 s, or press it twice</div><div class="e">STOP ALL: silences everything, delay, chorus and reverb tails too.</div></div>
+<div class="row"><div class="g">Hold <b>GLO</b> + keys / knobs</div><div class="e">Keys play; knob 1 LEVEL 1, knob 2 PAN 1, knob 3 LEVEL 2, knob 4 PAN 2. <b>OCT-</b> mutes / unmutes part 1, <b>OCT+</b> part 2.</div></div>
+<div class="row"><div class="g"><b>ARP</b> (tap / hold)</div><div class="e">Arpeggiator of the selected part. Hold: QUICK ARP.</div></div>
+<div class="row"><div class="g">Mod wheel (CC1)</div><div class="e">Moves the MORPH fader.</div></div>
+</section>
+
+<section>
+<h2>Sound</h2>
+<div class="row"><div class="g">Tap <b>HOME</b>, turn knob 1</div><div class="e">MORPH: glide from End A to End B (MIDI: CC70).</div></div>
+<div class="row"><div class="g">MORPH page, knob 2</div><div class="e">ROLL: a new random end (turn left = A, right = B; MIDI: CC102, 0 to 42 rolls End A, 85 to 127 rolls End B).</div></div>
+<div class="row"><div class="g">MORPH page, knob 3</div><div class="e">UNDO the last roll of A or B.</div></div>
+<div class="row"><div class="g">MORPH page, knob 4</div><div class="e">AMOUNT: how far a roll may go (MIDI: CC103).</div></div>
+<div class="row"><div class="g">Turn BLEND on the TWIN FILTER</div><div class="e">Reads MULTI, BOTH or TWIN.</div></div>
+<div class="row"><div class="g">Tap <b>SCL</b></div><div class="e">SCALE page (whole instrument). Second page CHORD (selected part).</div></div>
+</section>
+
+<section>
+<h2>Sequencer / patterns</h2>
+<div class="row"><div class="g">Tap <b>SEQ</b></div><div class="e">Opens the 16-step pattern (32 patterns, P01 to P32) of the arp's SEQUENCER mode.</div></div>
+<div class="row"><div class="g">Tap <b>REC</b> on STEP / AUTOMATION or in the SEQ layer</div><div class="e">Arms recording on the selected part. A red dot and REC show in the bottom row of every page.</div></div>
+<div class="row"><div class="g">Tap <b>SAVE</b> on STEP / GRID / AUTOMATION</div><div class="e">Opens PATTERNS (32 patterns, P01 to P32).</div></div>
+<div class="row"><div class="g">Hold <b>SAVE</b> on PATTERNS</div><div class="e">"SAVE OVER &lt;name&gt;?" for the slot picked; <b>OCT+</b> says yes.</div></div>
+</section>
+
+<section>
+<h2>Effects</h2>
+<div class="row"><div class="g">Tap <b>FX</b> (again)</div><div class="e">The part's own pages. Tap again for the next sub-page.</div></div>
+<div class="row"><div class="g">SEND FX page, turn knob 1 / 2 / 3</div><div class="e">Jumps to the CHORUS, DELAY 1/2 or REVERB page of GLO.</div></div>
+<div class="row"><div class="g">Hold <b>FX</b> (or hold FX + a white key)</div><div class="e">PERFORM page. Tap FX to leave.</div></div>
+<div class="row"><div class="g">PERFORM: hold white keys</div><div class="e">REPEAT 1/8, REPEAT 1/16, REPEAT 1/32, REVERSE; TAPE STOP, FREEZE, OCT UP, OCT DN; FLANGER, PHASER, DRIVE, PUMP; ROLL A, ROLL B, MUTE 1, MUTE 2.</div></div>
+<div class="row"><div class="g">GLO &gt; COMPRESSOR, knob 1 RATIO</div><div class="e">Starts at OFF. Turn up and THRESH, ATTACK, RELEASE appear.</div></div>
+</section>
+
+<section>
+<h2>Saving &amp; loading</h2>
+<div class="row"><div class="g">Tap <b>SAVE</b></div><div class="e">Opens the page that fits: PATTERNS on a sequencer page, otherwise MULTIS in LAYER and PATCHES in DUEL and STEREO. SELECT moves between PATCHES, PATTERNS, MULTIS, TOOLS.</div></div>
+<div class="row"><div class="g">Hold <b>SAVE</b></div><div class="e">Asks to overwrite the slot your sound came from. Knob 1 picks another slot, knob 2 RENAME, <b>OCT+</b> yes, <b>OCT-</b> no.</div></div>
+<div class="row"><div class="g">Hold <b>SAVE</b> on MORPH page, TARGET BOTH</div><div class="e">"OVERWRITE BOTH PATCHES?", each part over its own slot.</div></div>
+<div class="row"><div class="g">Hold <b>SAVE</b> on MULTIS</div><div class="e">"SAVE OVER &lt;name&gt;?"; <b>OCT+</b> yes. An empty multi slot asks for a name first.</div></div>
+<div class="row"><div class="g">SAVE &gt; TOOLS, RESTORE ALL</div><div class="e">Every patch slot gets its factory sound.</div></div>
+<div class="row"><div class="g">Backup (installer page or editor Backup page)</div><div class="e">Saves patches, multis, patterns, user wavetables and settings. Back up before every flash.</div></div>
+</section>
+
+<section>
+<h2>Good to know</h2>
+<ul>
+<li>The <b>PATCH LEVEL</b> is saved with the patch; the <b>PART LEVEL</b> on the mixer is yours.</li>
+<li><b>AFTERTOUCH</b> is on by default; <b>KEY VELOCITY</b> default is OFF; switch it ON to play dynamically.</li>
+<li>BASS MONO, WIDTH and COMPRESSOR belong to the unit, not to a patch or multi.</li>
+<li>Teach a CC with MIDI LEARN on the unit. CC1 mod wheel, CC11 expression, CC64 sustain pedal are inputs.</li>
+</ul>
+</section>
+
+</div>
+<footer>DUELL &middot; MultiMorphing Bitimbral Synthesizer &middot; by OSCILL/R &middot; checked against DUELL 1.0.</footer>
+</main>
+</body>
+</html>
