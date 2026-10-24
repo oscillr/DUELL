@@ -1,5 +1,5 @@
 {
-  "what": "A MULTIMORPHING bitimbral synth: two complete parts, three ways to play them together, and a morph that glides between two versions of every sound. Ten engines including wavetables, twin filters, effects and a mod matrix. Layer, dual or stereo mode.Velocity sensitivity and aftertouch. Dual core.",
+  "what": "A MULTIMORPHING bitimbral synth: two complete parts, three ways to play them together, and a morph that glides between two versions of every sound. Ten engines including wavetables, twin filters, effects and a mod matrix. Layer, dual or stereo mode. Velocity sensitivity and aftertouch. Dual core.",
   "kinds": ["synth"],
   "play": "https://oscillr.github.io/DUELL/emu/",
   "editor": "https://oscillr.github.io/DUELL/editor/"
