@@ -32,7 +32,7 @@ CATS = ["", "BASS", "LEAD", "PAD", "PLUCK", "KEYS", "PERC", "FX", "OTHER"]      
 PTF = dict(PAT=1, TR=2, FM6=4, MB=8, XB=16, AK=32, BM=64, CB=128)
 AK_IDS = ["P_AMODE", "P_ARATE", "P_AOCT", "P_AGATE", "P_ASWING", "P_APROB", "P_AHOLD", "P_AORDER", None, "P_CHRD", "P_VOIC", "P_SLEN", "P_SDIV", "P_SSWING", "P_SGATE", "P_SQNT"]
 STORE_ZERO = ["P_KTRK", "P_FREEA", "P_FREED", "P_L2TRIG", "P_LTRIG", "P_DKCRV", "P_DKSRC"]     # upreset.c up_def
-TRACK_ONLY = {"LEVEL", "PAN", "MUTE", "QUANT", "TRANS", "SLEN", "SDIV", "SSWING", "SGATE", "SQNT"}
+TRACK_ONLY = {"LEVEL", "PAN", "MUTE", "QUANT", "SLEN", "SDIV", "SSWING", "SGATE", "SQNT"}   # (DUELL 1.1: TRANS, the TRANSPOSE, is the sound's: gen_duell_sounds TRACK_ONLY)
 XB_WIDE = 128
 
 
@@ -273,6 +273,10 @@ def main(argv):
     ap.add_argument("file", nargs="?", default=str(DEFAULT_FILE))
     ap.add_argument("--write", action="store_true")
     a = ap.parse_args(argv)
+    if a.write:
+        sys.exit("import_bank: --write is switched off. tools/duell_sounds.py holds the pre-loaded patches' End B as exact values now (bend / bpin / bfm, tools/endb.py), "
+                 "which the old bank file (PT_VER 3 records) cannot give; writing it again would erase them. Change a pre-loaded patch with tools/import_owner_edits.py "
+                 "(the editor's exports). Without --write this tool only reports.")
     ctx = Ctx()
     j = json.loads(Path(a.file).read_text())
     if j.get("format") != "duell-patches" or j.get("version") != 1:

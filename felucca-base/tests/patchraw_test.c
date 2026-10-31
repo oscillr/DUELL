@@ -564,7 +564,7 @@ int main(void)
         ck("a damaged block (L, XV, a tag changed, a value byte 200, an edit id twice) is refused at COMMIT with rc 1; the slot is not written", same_n >= 5u);
         ok = pr_begin(23, PT_WORST + 1u, 0) == 1u && pr_begin(23, PT_FIX - 1u, 0) == 1u && pr_begin(23, PT_WORST, 0) == 0u;
         pr_end(23, 5);
-        ck("the length limit follows PT_WORST (534): BEGIN takes PT_WORST, refuses one byte more and a record shorter than the fixed part", ok && PT_WORST == 534u);
+        ck("the length limit follows PT_WORST (558): BEGIN takes PT_WORST, refuses one byte more and a record shorter than the fixed part", ok && PT_WORST == 558u);   /* (item 138: 534 + 2 x 12, NX 16 -> 28 in DUELL 1.1) */
         /* the biggest record the store can write (all 16 slots off default, 32 edits, FM6, SEQ arp) through PATCH_RAW into all 128 slots was section 6 above */
         up_xb_in = 0; up_xb_nin = 0;
     }

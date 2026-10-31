@@ -74,7 +74,7 @@ static int compact_project(void)
 {
     int bad = 0; ui_power_on(); track_t *t = &trk[0];
     t->step[3] = (step_t){{60, 67}, 2, ST_NOTE, SF_ACCENT, 110, 0x81, 0x80, 0};
-    step_set_chance(&t->step[3], 25); t->p[P_M5AMT] = 40; t->p[P_ED_FLT] = -50;   /* (DUELL: a matrix slot 5 value on Felucca's OP ENV id) */
+    step_set_chance(&t->step[3], 25); t->p[P_M5SRC] = MS_LFO; t->p[P_M5DST] = MD_PAN; t->p[P_M5AMT] = 40; t->p[P_ED_FLT] = -50;   /* (DUELL: a matrix slot 5 value on Felucca's OP ENV id; item 138: a whole route, a load packs away a slot whose SRC is OFF) */
     motion_set_event(t, 3, P_REV, 110);
     project_t before, after; project_store_t packed, corrupt;
     project_capture(&before);
@@ -92,8 +92,17 @@ static int compact_project(void)
     bad += check("invalid probability is refused even with a correct hash", !proj_import(&after, &corrupt, sizeof corrupt));
     project_save(1); motion_clear(t); t->p[P_M5AMT] = 0; step_set_chance(&t->step[3], 100);
     project_load(1);
-    bad += check("actual project save/load restores motion, chance and operator settings", motion_count(t) == 1u &&
-        step_chance(&t->step[3]) == 25u && t->p[P_M5AMT] == 40);
+    {   /* item 138: DUELL 1.1 project load (project.c project_restore_runtime): the matrix is packed and the retired DEST card's route (ED_FLT -50) moves into a free slot
+         * (mod.c mod_legacy_move): the same sound, so the routes are looked for by SRC / DST, not by their slot */
+        uint32_t k, r5 = 0, rf = 0;
+        for (k = 0; k < NMSLOT; k++) {
+            const int16_t *q = &t->p[MSLOT_ID(k)];
+            r5 += q[0] == MS_LFO && q[1] == MD_PAN && q[2] == 40;
+            rf += q[0] == MS_ENV && q[1] == MD_CUT && q[2] == -50;
+        }
+        bad += check("actual project save/load restores motion, chance and operator settings", motion_count(t) == 1u &&
+            step_chance(&t->step[3]) == 25u && r5 == 1u && rf == 1u && t->p[P_ED_FLT] == 0);
+    }
     return bad;
 }
 /* a project of 89 parameters (before the chord keys P_CHRD / P_VOIC; Felucca's FUN10 frame, "FUNA"): DUELL 0.2.14 reads no such
@@ -689,17 +698,17 @@ static int auto_list(void)
         motion_set_event(&trk[1], i % NSTEP, i < NSTEP ? P_REV : P_DLY, 10);
     turn(EN_K1, 5);
     press(B_OCTUP);
-    bad += check("  the 128 used: OCT+ adds nothing, AUTOMATION FULL", motion_count(t) == 1u &&
-        str_eq(ui.msg, "AUTOMATION FULL") && !act_ready());
+    bad += check("  the 128 used: OCT+ adds nothing, PARAMETER LOCKS FULL", motion_count(t) == 1u &&
+        str_eq(ui.msg, "PARAMETER LOCKS FULL") && !act_ready());
     motion_clear(&trk[1]);
     for (i = 0; i < P_COUNT; i++)                        /* names: an id each, none of DIGITAL's, lanes on DRUM only */
         if (ev_id_ok(t, i) && !motion_param(i))
             break;
     bad += check("  KNOB 3's list: what motion records and the sound has", i == P_COUNT);
     {
-        char a[20], b[20], c[20];
+        char a[32], b[32], c[32];
         ev_name(t, P_ED_FLT, a); ev_name(t, P_LD_FLT, b); ev_name(t, P_E2ATK, c);
-        bad += check("  names (T0227: in full): AMP ENV CUTOFF / LFO 1 CUTOFF / FILT ENV ATTACK", str_eq(a, "AMP ENV CUTOFF") && str_eq(b, "LFO 1 CUTOFF") && str_eq(c, "FILT ENV ATTACK"));
+        bad += check("  names (T0227: in full): AMP ENV MULTI CUTOFF / LFO 1 MULTI CUTOFF / FILTER ENV ATTACK", str_eq(a, "AMP ENV MULTI CUTOFF") && str_eq(b, "LFO 1 MULTI CUTOFF") && str_eq(c, "FILTER ENV ATTACK"));
     }
     return bad;
 }

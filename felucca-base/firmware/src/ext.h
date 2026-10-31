@@ -11,10 +11,10 @@
 #define DUELL_EXT_H_CONST
 
 /* --- extension slots: 15 stored values that have no old parameter id (EXTENSION_BLOCK_PLAN 2A) --------------------------------- */
-#define NX 16                   /* slots in a part's value list: X0 .. X14 used, X15 spare */
+#define NX 28                   /* slots in a part's value list: X0 .. X27 used (DUELL 1.1: X15 .. X26 are the DEST cards and the LFO LEVELs, X27 the chord keys' STRUM) */
 #define XW_BASE 128             /* wide id of slot 0: wide ids 0..126 are the old ids, 127 is reserved (the motion escape), 128.. the slots */
-#define XWID(k) (XW_BASE + (k)) /* the wide id of slot k (X_ROUTE 128 .. X_CYSYNC 142) */
-#define EXT_P_LEN (XW_BASE + NX)    /* length of track_t.p[]: 144 (index 127 stays empty); P_COUNT stays 127, every store and format counts that */
+#define XWID(k) (XW_BASE + (k)) /* the wide id of slot k (X_ROUTE 128 .. X_LFO2LVL 154) */
+#define EXT_P_LEN (XW_BASE + NX)    /* length of track_t.p[]: 156 (index 127 stays empty); P_COUNT stays 127, every store and format counts that */
 #define XV(t, k) ((t)->p[XW_BASE + (k)])    /* extension value k of part t */
 /* MX_AMT (1.0, owner 2026-10-21; since 0.2.32 also the direct depth cards ENV / LFO to PIT, FLT, SHP and TWIN ENV 2 / LFO 1 / LFO 2): a depth at the top of its knob is a true 100 %: +63 acts as 64 (the whole range, as the shifts take 64), so the +100 % shown is what happens.
  * Below 0 and at 0 nothing changes (-64 was already 100 %); +32 .. +63 grow by one step (63 -> 64 is +1.6 %, 32 -> 33 +3.1 %), +1 .. +31 are unchanged */
@@ -36,9 +36,27 @@ enum {                          /* slot numbers (the wide id is 128 + slot) */
     X_CYRISE,                   /* X11 139  CYCLE RISE: 0..127 */
     X_CYFALL,                   /* X12 140  CYCLE FALL: 0..127 */
     X_CYCURVE,                  /* X13 141  CYCLE CURVE: -64..+63 (0 = straight) */
-    X_CYSYNC                    /* X14 142  CYCLE SYNC: OFF, ON = 0..1 (OFF); X15 (143) is spare */
+    X_CYSYNC,                   /* X14 142  CYCLE SYNC: OFF, ON = 0..1 (OFF) */
+    /* DUELL 1.1 (owner, DEST pages): per-source depth cards that run through the matrix's smooth path (mod.c mod_vr, the virtual routes), and the LFOs' LEVEL. All depths -64..+63 (0) */
+    X_ESAT,                     /* X15 143  AMP ENV to SATURATION */
+    X_E2BLD,                    /* X16 144  FILTER ENV to FILTER BLEND */
+    X_E2DRV,                    /* X17 145  FILTER ENV to FILTER DRIVE */
+    X_E2RES,                    /* X18 146  FILTER ENV to MULTI RES */
+    X_CYCUT2,                   /* X19 147  CYCLE to TWIN CUTOFF */
+    X_CYPAN,                    /* X20 148  CYCLE to PAN */
+    X_CYPIT,                    /* X21 149  CYCLE to PITCH */
+    X_L2RES2,                   /* X22 150  LFO 2 to TWIN RES */
+    X_L2FMODE,                  /* X23 151  LFO 2 to MULTI MODE */
+    X_L2BLD,                    /* X24 152  LFO 2 to FILTER BLEND */
+    X_LFO1LVL,                  /* X25 153  LFO 1 LEVEL (its master depth): 0..127, default 127 = as before the card existed */
+    X_LFO2LVL,                  /* X26 154  LFO 2 LEVEL: 0..127, default 127 */
+    /* X27: STRUM (DUELL 1.1 item 144, owner 2026-10-27): the CHORD page's K3, the time between the tones of a chord one key (or one MIDI note) plays, low to high: 0 = OFF (all
+     * tones at once, as before), 1..100 ms (seq.c strum_block). STORED WITH THE PATCH (no core id is free: P_COUNT is 127 and every store counts it; this slot was already in every record,
+     * multi, project and the editor protocol at its default 0, so no format changes). DUELL 1.1 had the patch's KEY OFFSET here for a while (removed 2026-10-27, item 141) and then a spare;
+     * an older save that left a value here plays it as a STRUM time (no-backcompat rule) */
+    X_STRUM                     /* X27 155  STRUM: 0..100 ms (0 OFF) */
 };
-_Static_assert(X_CYSYNC == 14 && X_CYSYNC < NX && XWID(X_ROUTE) == 128 && XWID(X_CYSYNC) == 142, "ext slots: X0..X14, wide ids 128..142");
+_Static_assert(X_CYSYNC == 14 && X_LFO2LVL == 26 && X_STRUM == NX - 1 && XWID(X_ROUTE) == 128 && XWID(X_STRUM) == 155, "ext slots: X0..X27 used (X27 STRUM), wide ids 128..155");
 
 /* --- the matrix: new destinations 51..55 and source 15 (mod.c keeps its own lists until job B appends them; append-only) --------- */
 #define EXT_MD_CUT2   51        /* destination CUTOFF 2 (per note) */

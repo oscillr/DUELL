@@ -2,8 +2,8 @@
 /* DUELL 0.2.2: ERASE DATA (src/erase_data.c, MENU > SYSTEM > ERASE DATA; the editor's ERASE_ALL, cmd 80) against simulated NOR flash:
  *   1. the dialog: OCT+ on the row opens it, OCT- / a page button / HOME cancel and write NOTHING (the flash image is identical);
  *      YES while playing is refused (nothing written); the dialog's lines fit the card;
- *   2. YES erases the settings, favourites, autosave, patches (+ shadow copies), multis, pattern slots; the user sample
- *      slots and the FM6 voice bank sector are untouched; the restart is due ~0.7 s later (the main loop reboots); nothing is
+ *   2. YES erases the settings, favourites, autosave, patches (+ shadow copies), multis, pattern slots, user wavetables and (DUELL 1.1, item 91)
+ *      the FM6 voice bank sector (the velocity calibration is KEPT, item 103: the unit's, not user data); the stock firmware's regions are untouched; the restart is due ~0.7 s later (the main loop reboots); nothing is
  *      written meanwhile (settings_poll / autosave);
  *   3. the next start is a fresh unit: VIOLET, LAYER, factory multi M01 (0.2.13: REESE SWAMP), no patches, the 32 default patterns and the factory multis back;
  *   4. a power cut after any number of erases: every object whole or empty, the settings still valid until the very last
@@ -13,6 +13,9 @@
 #define UI_TEST_NO_MAIN 1
 #define FELUCCA_FLASH 1
 #include "ui_test.c"
+#if !DUELL_TEST_MODE
+#define MI_TEST MI_GUIDE                              /* (a release build has no TEST row: the menu page check below takes GUIDE) */
+#endif
 
 static uint8_t nor[0x100000];
 static int dead, erase_cut = -1;                    /* the power goes at the (erase_cut+1)th erase */
@@ -131,7 +134,7 @@ static int all_gone(void)                             /* after a boot: no stored
     static uint8_t buf[ST_PAYLOAD_MAX];
     uint32_t o;
     for (o = 0; o < OBJ_COUNT; o++)
-        if (!OBJ_RETIRED(o) && st_load(o, buf, sizeof buf) >= 0)
+        if (!OBJ_RETIRED(o) && o != OBJ_VELO && st_load(o, buf, sizeof buf) >= 0)   /* (item 103: the velocity calibration stays) */
             return 0;
     return 1;
 }
@@ -139,10 +142,19 @@ static int kept_ok(void)
 {
     uint32_t i;
     for (i = 0; i < 4096u; i++)
-        if (nor[0xEA000u + i] != (uint8_t)(i ^ 0x5Au) || nor[0xF0000u + i] != (uint8_t)(i ^ 0xA5u) || nor[0xE7000u + i] != (uint8_t)(i * 3u))
+        if (nor[0xEA000u + i] != (uint8_t)(i ^ 0x5Au) || nor[0xF0000u + i] != (uint8_t)(i ^ 0xA5u))
             return 0;
     return 1;
 }
+static int vbank_gone(void)                           /* DUELL 1.1 (item 91): the FM6 voice bank sector is erased too */
+{
+    uint32_t i;
+    for (i = 0; i < 4096u; i++)
+        if (nor[0xE7000u + i] != 0xFFu)
+            return 0;
+    return 1;
+}
+static int velo_kept(void) { uint8_t v[160]; uint32_t j; if (velo_cal_load(v, sizeof v) != 128) return 0; for (j = 1; j < 128u; j++) if (v[j] != (uint8_t)(j * 5u + 1u)) return 0; return v[0] == 0u; }   /* (item 103) as fill() saved it: v[0] = 1 ^ 1 */
 static void open_dialog(void)
 {
     hold(B_HOME);                                     /* HOME held: the menu */
@@ -188,7 +200,7 @@ int main(void)
     for (i = 0; i < 5u; i++)
         if (text_w(&AF_S, ERASE_LINES[i]) > 200)
             break;
-    ck("the dialog's five lines fit the card (200 px)", i == 5u);
+    ck("the dialog's five lines fit the card (200 px, S 15; item 119)", i == 5u && sizeof ERASE_LINES / sizeof ERASE_LINES[0] == 5u);
     e0 = n_erase;
     w0 = n_prog;
     open_dialog();
@@ -294,7 +306,7 @@ int main(void)
     ck("YES: everything stored is gone (settings, autosave, patches, multis, pattern slots), the restart pending", ui.confirm == CF_ERASE_ALL);
     press(B_OCTUP);
     ck("  the dialog closes with ERASED, RESTARTING; every storage object reads empty", !ui.confirm && msg_is("ERASED, RESTARTING") && erase_busy() && all_gone());
-    ck("  the old sample region (0xA8000, 0xB4000: free; 0xA0000..0xA5FFF are the user wavetables, erased with the rest) and the FM6 voice bank are untouched", kept_ok());
+    ck("  the stock firmware's regions (0xEA000, 0xF0000) are untouched; the FM6 voice bank sector is erased, the velocity calibration is KEPT (item 103)", kept_ok() && velo_kept() && vbank_gone());
     ck("  the restart is not due at once (the message is seen), nothing is written meanwhile", !erase_restart_due());
     {
         uint32_t p0 = n_prog, e1 = n_erase;
@@ -333,11 +345,9 @@ int main(void)
                 for (j = 0; j < 4096u; j++)
                     blank &= nor[b + j] == 0xFFu;
             }
-        for (i = 0; i < 2u; i++)
-            for (o = 0; o < 4096u; o++)
-                blank &= nor[st_sector(OBJ_VELO, i) + o] == 0xFFu;
-        ck("  all 22 patch chunks (44 sectors, 0xA6000..0xC5FFF among them) and both sectors of the velocity store are blank (the six new chunks and OBJ_VELO are in the erase order)",
-           blank && kept_ok() && ({ uint8_t v[160]; velo_cal_load(v, sizeof v) < 0; }));
+        ck("  all 22 patch chunks (44 sectors, 0xA6000..0xC5FFF among them) are blank; the velocity store (0xC6000 / 0xC7000) is byte for byte as before (item 103: KEPT)",
+           blank && kept_ok() && velo_kept() &&
+           !memcmp(nor + st_sector(OBJ_VELO, 0), snap + st_sector(OBJ_VELO, 0), 4096u) && !memcmp(nor + st_sector(OBJ_VELO, 1), snap + st_sector(OBJ_VELO, 1), 4096u));
     }
     ck("  the factory multis M01..M16 show again (nothing stored in the slots; M05 and M12 were saved over)",
        project_factory(0) && project_factory(3) && project_factory(4) && project_factory(9) && project_factory(11) && project_factory(15));

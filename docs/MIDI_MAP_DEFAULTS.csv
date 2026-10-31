@@ -1,11 +1,16 @@
 # THE FINAL MAP (docs/design/MIDI_MAP_FINAL.md, owner's answers of 2026-10-20): 70 direct lines, 23 locked (the 18 standard numbers 0 6 32 38 96..101 120..127
-# and the 5 inputs 1 2 4 11 64), 35 unused. SPDX-License-Identifier: GPL-3.0-only
+# and the 5 numbers 1 2 4 11 64: CC 1, 2, 4, 11 and 64 are inputs (mod wheel, breath, foot, expression, sustain pedal) that you can use as sources in the mod matrix; they cannot be assigned to parameters), 35 unused. SPDX-License-Identifier: GPL-3.0-only
 # columns: cc = the CC number 0..127; target = a name from the fixed list of tools/gen_midi_map.py (the P_ and G_ names of core.h,
 # the X_ slots of ext.h, the actions); part_rule = P (the part the CC's channel plays) or G (global, any channel); tag = SHIPPED or LOCKED
-# (REMOVED: a statement about one of today's 24 CCs that has no line any more, learn-only now: 21 22 23 and 111..118)
+# REMOVED rows: each says "the OLD job of this number is gone" (the old morph numbers 21 22 23 and 111..118 of the earlier builds).
+#  The build tool needs one such row for each old number; a REMOVED row is not a line of the map and never decides what a number does now.
+#  What each of those numbers does now:
+#   21 CUTOFF 2 (TWIN), 22 RES 2 (TWIN), 23 ENV 2        (their own lines further down)
+#   111 112 113  no job: free for MIDI LEARN
+#   114 CYCLE MODE, 115 CYCLE RISE, 116 CYCLE FALL, 117 CYCLE CURVE, 118 CYCLE SYNC   (their own lines further down; these are the real jobs)
 # built by: python3 tools/gen_midi_map.py build/gen/midi_map_defaults.h. A change of the map is a change of this file.
 # The morph fader is on 70; ROLL is ONE CC on 102 (0..42 rolls End A, 43..84 nothing, 85..127 rolls End B); AMOUNT on 103. UNDO, the four morph switches
-# (TARGET, SMART, ARP, PITCH), BALANCE, XFADE, SPLIT and MODE have no number (learn-only). CC8 is unused; 56..63 are free (the LFO rows beyond the vibrato are learn-only).
+# (TARGET, SMART, ARP, PITCH), BALANCE, XFADE, SPLIT and MODE have no number (learn-only). CC8 is unused; 111..113 are free; 56..63 are free (the LFO rows beyond the vibrato are learn-only).
 cc,target,part_rule,tag
 21,REMOVED,P,SHIPPED
 22,REMOVED,P,SHIPPED

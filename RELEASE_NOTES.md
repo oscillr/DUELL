@@ -1,54 +1,58 @@
-# DUELL 1.0
+# DUELL 1.1
 
-Text for the GitHub release page. Tag `v1.0`, title `DUELL 1.0`. Paste everything below the line.
-
----
 **DUELL**
 **MultiMorphing Bitimbral Synthesizer**
 **by OSCILL/R**
 
-**Two synths in one small box.** DUELL is free, open-source firmware (GPL-3.0) for the M-VAVE FM-1, a fork of Felucca: a bitimbral synthesizer with two independent parts, playable in three modes (DUEL, STEREO, LAYER), with a morph that glides between two versions of every sound. This release is the device package, the web installer and the web editor.
+DUELL 1.1 is an update for the M-VAVE FM-1. The MORPH rolls on from where it is, a chord can be strummed, parameter locks are recorded by turning a knob, and many pages have been redrawn so you see more at a glance.
 
-## What is in 1.0
-- **128 factory patches**, levelled by their TRIM, including the new **#25 DRIVEN SAW** (a driven lead that uses both filters). **15 factory multis** and the CPU test M16, **32 patterns** in one list.
-- **Two filters on every engine:** the **MULTI FILTER** and the **TWIN FILTER** (types OFF, LP, BP, HP, NOTCH, LADDER, COMB; DRIVE, SERIES or PARALLEL, BLEND, LINK with the offset in whole semitones). A **SUB OSC** layer, **WAVE STEPS** and a **CYCLE** envelope.
-- **Two cores:** part 2 plays on the chip's second core from every power-on, with an automatic fallback to one core if it does not answer or misbehaves.
-- **The update screen:** while the firmware is written the unit shows DUELL over moving wave lines, WRITING, the percent, a bar of 20 segments and DO NOT SWITCH OFF.
-- **MIDI CC map** with 70 direct CCs (list in the README), MIDI LEARN for the rest.
-- **Key velocity and aftertouch** (menu: AFTERTOUCH on, KEY VELOCITY off by default).
-- **Web editor** with the ENGINE selector, the patch library, the multis, a piano roll, wavetable files, DX7 `.syx` import and a Backup page.
-- Morph: ROLL, UNDO and AMOUNT, an End B you can set by hand.
-- Effects: per part distortion, INSERT, EQ, ducker; chorus, a delay with four modes, six reverbs, BASS MONO, a master compressor and a stereo WIDTH.
+## What is new
 
-## Changed since the 0.2.20 beta (the last public one)
-Everything of the 0.2.21 to 0.2.33 test builds is in [CHANGELOG.md](https://github.com/oscillr/DUELL/blob/main/CHANGELOG.md). The ones you will notice first:
-- The bank is new (128 patches); **patch numbers changed**, a slot you never saved shows the factory sound at its place.
-- The two filters are called MULTI FILTER and TWIN FILTER everywhere.
-- The MENU > SYSTEM > TEST screen is not in this release; M16 STRESS TEST stays as a multi you may overwrite.
+**LAYER, SPLIT, STEREO**
+- The part selector starts on BOTH on a new unit.
+- SPLIT starts on the middle key: turn it up from OFF and the first step lands on F#4.
+- PERFORM SELECT is a balance between the two parts. The middle is exactly the levels you set, turning to one side lowers the other part, and turning back returns to the middle. The position is kept after you leave PERFORM.
+- TRANSPOSE is one setting, from -24 to +24 semitones, saved with the patch (VOICE 1 / 2, K4).
 
-## Read this before you flash
-- DUELL has run on **only one FM-1, the author's**. Other units are untested. The way back to the official firmware (V15) has worked on that unit; it is not tested elsewhere. The FM-1 has a single copy of its firmware and no known rollback.
-- **You install at your own risk. No warranty** (GPL-3.0). Use a data USB cable straight into the computer and never interrupt the write.
-- DUELL is **not affiliated with M-VAVE**. M-VAVE's firmware is **not distributed here**: to go back you download V15 yourself from <https://www.m-vave.com/download>.
-- Recovery notes: [docs/RECOVERY.md](https://github.com/oscillr/DUELL/blob/main/docs/RECOVERY.md).
+**MORPH and the smart randomizer**
+- ROLL is chained: each roll continues from the sound that end has now. UNDO goes back up to two rolls.
+- End B is saved and loaded exactly as it sounds. You can edit B and it is saved with the patch.
+- SMART never rolls a switch (slope, engine choices, ARP mode, octaves and rate, LFO shapes, whole-note pitch values, TWIN link). In the mod matrix SMART rolls the amounts that are already set; WILD may wake the zero ones.
+- SMART now also rolls smooth values that sit at zero, such as SUB level, key tracking and the TWIN FILTER depths.
 
-## Assets
-| File | What |
-|---|---|
-| `duell-1.0.fwsc` | the device package (the installer page loads this one) |
-| `SHA256SUMS` | checksums |
+**Modulation**
+- The matrix and the CYCLE, SUB and TWIN MOD cards show each value as it sounds at the current morph position.
+- Matrix names are written out in full, with SPACE as its own category.
 
-```
-SHA256: f0fd3b46ec013febc8585fa153f782a7414a0b84e9bfe4f1da8147cfe83ba462  duell-1.0.fwsc   (size: 614,666 bytes)
-```
+**Effects**
+- The new SENDS page shows each send in big values, without a gap before the unit, and shows which sends are inactive.
+- The new MODULES page is a 2 by 2 page for the modules of your sound.
+- REVERB, CHORUS, SHIMMER, DELAY, DUCK, VOICE and TEMPO are drawn as big cells that fill the screen.
 
-## How to install
-Open the installer page in **Chrome or Edge**: <https://oscillr.github.io/DUELL/install/>. Save a backup, connect the FM-1, press Install and wait for Done; then switch the unit off and on once. Steps: [docs/INSTALL.md](https://github.com/oscillr/DUELL/blob/main/docs/INSTALL.md). The page shows the package's SHA-256 so you can compare it with the one above.
+**MIDI and play**
+- Program change shows "#NN NAME" in the header, in the colour of the part.
+- The header capsule shows the available voices in POLY, and M, L or U in MONO, LEGATO and UNISON.
+- The quick pages GLO, SEQ, REC, ENV, LFO and EDIT look and behave the same in PERFORM as outside it. While you hold one, the white keys follow that page.
+- STRUM on the CHORD page (K3): OFF, or 1 to 100 ms between the notes of a chord, saved with the patch.
+- On SCALE and CHORD a keyboard shows the notes. In chord mode the chord lights on the screen and on the key LEDs, and the notes of the scale are dimmer so the chord stands out.
+
+**Sequencer**
+- Parameter locks are recorded by turning a knob while REC is armed. The PARAMETER LOCKS page is the list where you change, delete and switch what was recorded.
+- New tools TRANS + and TRANS - move the whole pattern by one semitone. SHIFT < and SHIFT > move it in time.
+- Swing runs from 50 to 75 percent on ARP, QUICK SEQ and TEMPO.
+- QUICK REC has four cells: CLICK, COUNT, LEVEL and CLEAR.
+
+**The rest**
+- New area pages and card layouts for ARP, SCALE, CHORD, PERFORM, TOOLS, PATCHES, MULTIS and PATTERNS.
+- A page with nothing to adjust is skipped.
+- Choice cards show a segment line at the place of the chosen option.
+- Units are written without a gap: 12dB, 40%, 400Hz.
+- PATCHES, MULTIS and PATTERNS have a SAVE knob.
+
+## Install
+Open the installer page in **Chrome or Edge** on a computer: <https://oscillr.github.io/DUELL/install/>. Tick the checklist, save a backup, connect the FM-1, press Install and wait for Done; then unplug and replug the unit. Make a new backup with 1.1. Steps and details: [docs/INSTALL.md](https://github.com/oscillr/DUELL/blob/main/docs/INSTALL.md).
 
 The web editor (Chrome or Edge, unit connected over USB): <https://oscillr.github.io/DUELL/editor/>.
 
-## Known limits
-Tested on one unit only; 11 pattern slots share one storage object of 3,584 bytes; some LFO depth destinations are hidden; KEY VELOCITY is off by default; MIDI is not tested with many devices. The whole list: [docs/KNOWN_LIMITS.md](https://github.com/oscillr/DUELL/blob/main/docs/KNOWN_LIMITS.md) and [docs/KNOWN_ISSUES.md](https://github.com/oscillr/DUELL/blob/main/docs/KNOWN_ISSUES.md). Bugs: the [report form](https://github.com/oscillr/DUELL/issues/new/choose).
-
 ## Credits
-Special thanks to: Felucca and its author Leo Kuroshita, JIANT (reverbs), CHOMPI Club (plate reverb and delay ideas), Emilie Gillet of Mutable Instruments (reverb design), Charles Vestal (Velo, the method for key velocity and aftertouch, and X0X), aquanodemusic (a CC0 FM voice), Baud Girl (for starting it all), keremimo (Melodee), Quixotic7 (ChoralRoot), zvenson (zp12), isod89 (SLOOP), and the whole community. Every third-party part and its licence: [CREDITS.md](https://github.com/oscillr/DUELL/blob/main/CREDITS.md), [NOTICE.md](https://github.com/oscillr/DUELL/blob/main/NOTICE.md).
+Special thanks to: Felucca and its author Leo Kuroshita, JIANT (reverbs), CHOMPI Club (plate reverb and delay ideas), Emilie Gillet of Mutable Instruments (reverb design), aquanodemusic (a CC0 FM voice), Baud Girl (for starting it all), Charles Vestal (X0X, Velo), keremimo (Melodee), Quixotic7 (ChoralRoot), zvenson (zp12), isod89 (SLOOP), and the whole community.

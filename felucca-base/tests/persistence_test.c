@@ -437,7 +437,7 @@ static int defaults_0214_test(void)
     ok = st_save(OBJ_SETTINGS, &p, sizeof p) == 0;
     d14_boot();
     ok &= first_boot_pending == 0u && d14_new() && (ui_prefs & 8u) && rp_get(RP_COUNTIN) == 2u &&
-          (ui_prefs2 & 0x42u) == 0x42u && ui_idle == 1u && ui_prefs == (8u | PREF_ACCEL | PREF_SERIAL_OFF);
+          (ui_prefs2 & 0x42u) == 0x42u && ui_idle == (1u | 0x40u) && ui_prefs == (8u | PREF_ACCEL | PREF_SERIAL_OFF);   /* (item 138: bit 6 is KEY VELOCITY's 1.1 default, settings_defaults 0x40; as modules_test's older-record check, item 127) */
     e0 = erases;
     settings_save(); settings_poll();
     ok &= erases == e0 && !persist_pending;              /* (no save at boot: the record as read, changed in RAM, is the saved copy) */
@@ -480,6 +480,20 @@ static int defaults_0214_test(void)
     return bad;
 }
 
+/* item 138: End B as saved against End B restored: every value equal, except the matrix slots' SRC / DST that were empty (OFF / OFF) before: the restore
+ * (project.c project_restore_runtime, DUELL 1.1) fills empty slots with the preselected pairs at amount 0 (mod.c mod_preselect: the same sound); the amounts must be equal */
+static int endb_same(const int8_t *a, const int8_t *b)
+{
+    uint32_t i, k;
+    for (i = 0; i < P_COUNT; i++) {
+        int pre = 0;
+        for (k = 0; k < NMSLOT; k++)
+            pre |= (i == MSLOT_ID(k) || i == MSLOT_ID(k) + 1u) && !a[MSLOT_ID(k)] && !a[MSLOT_ID(k) + 1u] && !a[MSLOT_ID(k) + 2u] && !b[MSLOT_ID(k) + 2u];
+        if (a[i] != b[i] && !pre)
+            return 0;
+    }
+    return 1;
+}
 /* cloud job G (EDITABLE B): End B, as saved, survives a power cycle through the autosave (PROJ_REV 7's block), and so do the values set by hand */
 static int editb_power_test(void)
 {
@@ -515,7 +529,7 @@ static int editb_power_test(void)
     ok &= autosave_boot(1) == 1;
     morph_ready(0);                                         /* (the first use of the morph) */
     bad += check("EDITABLE B: a power cycle (autosave): End B comes back as it was (the seed, the whole end)",
-                 ok && morph_seed_of(0, 1) == seed0 && !memcmp(b0, morph_cur(&mph[0], 1), P_COUNT) && !memcmp(bx0, morph_curx(&mph[0], 1), NX) && mph[0].fader == 0u);
+                 ok && morph_seed_of(0, 1) == seed0 && endb_same(b0, morph_cur(&mph[0], 1)) && !memcmp(bx0, morph_curx(&mph[0], 1), NX) && mph[0].fader == 0u);
     ok = morph_edits(0, ed) == 2u && ed[0].wid == ed0[0].wid && ed[0].val == ed0[0].val && ed[1].wid == ed0[1].wid && ed[1].val == ed0[1].val;
     bad += check("  .. and the two values set by hand with it", ok);
     as_run(300000u);

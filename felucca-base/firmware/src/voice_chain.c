@@ -26,7 +26,7 @@ static __attribute__((noinline)) void chain_f1(const engine_t *e, track_t *t, vo
     uint32_t i;
     if (!e->ufilt)
         return;
-    if (uc < UF_TOP || t->p[P_FREEC] > 0) {             /* the filter runs */
+    if ((uc < UF_TOP || t->p[P_FREEC] > 0) && !BYP(t, BY_MULTI)) {   /* the filter runs (DUELL 1.1: not while the BYPASS switch is on) */
         if (v->uft == UF_BYP) {                         /* out of the bypass while sounding: from rest, faded in over the block */
             for (i = 0; i < n; i++)
                 dry[i] = tmp[i];
@@ -63,7 +63,7 @@ static __attribute__((noinline)) void chain_stages(const engine_t *e, track_t *t
     chain_sub(t, v, tmp, n, m);
     chain_f2_pre(t, v, tmp, dry, n);
     chain_f1(e, t, v, tmp, n, uc);
-    chain_f2(t, v, tmp, dry, n, m, uc);
+    chain_f2(t, v, tmp, dry, n, m, m->ucn);   /* (filter 1's cutoff without the accent: filter 2 adds the lift the way its own TYPE opens) */
     for (i = 0; i < n; i++)
         dst[i] += chain_amp(tmp[i], amp_at(m, i));       /* the real amp ramp */
 }
@@ -100,7 +100,8 @@ static int32_t chain_uc(const engine_t *e, track_t *t, voice_t *v, vmod_t *m, in
     v->msl = (uint16_t)msl;
     kt = p[P_KTRK] ? UF_KT(p[P_KTRK], v->pitch_cur) : 0;
     uc = clamp(ucut0 + m->cutoff + kt, 0, UF_TOP);
-    m->cutoff = v->vel > 110 ? (m->envq15 * 24) >> 7 : 0;
+    m->ucn = clamp(ucut0 + m->cutoff - m->acc1 + kt, 0, UF_TOP);
+    m->cutoff = accent_lift(v->vel, m->envq15);
     m->ucut = uc;                                       /* (NOISE's loudness make-up reads it) */
     return uc;
 }
@@ -118,6 +119,8 @@ static inline uint32_t chain_f1_on(const engine_t *e, const track_t *t, const vo
     const int16_t *p = t->p;
     if (!e->ufilt || !(CHAIN_ALL || ACCENT_BOTH(e)))
         return 0;
+    if (BYP(t, BY_MULTI))
+        return 0;                                       /* (DUELL 1.1 BYPASS: the filter does not run) */
     if (p[P_FREEC] > 0)
         return 1;
     return clamp(ucut0 + m->cutoff + (p[P_KTRK] ? UF_KT(p[P_KTRK], v->pitch_cur) : 0), 0, UF_TOP) < UF_TOP;

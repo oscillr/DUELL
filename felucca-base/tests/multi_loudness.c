@@ -41,7 +41,7 @@ static void ml_setup(void *v)
     morph_set_target(1);
     morph_set_fader(getenv("ML_FADER") ? (uint32_t)atoi(getenv("ML_FADER")) : 0u);
     if (getenv("ML_INFO"))
-        fprintf(stderr, "M%02u LEVEL %d/%d TRIM %d/%d PAN %d/%d BAL %d XF %u CHRD %d/%d VOICE %d/%d\n", slot + 1u, trk[0].p[P_LEVEL], trk[1].p[P_LEVEL], trk[0].p[P_TRIM], trk[1].p[P_TRIM], trk[0].p[P_PAN], trk[1].p[P_PAN], (int)mix_bal, (unsigned)mix_xf, trk[0].p[P_CHRD], trk[1].p[P_CHRD], trk[0].p[P_VOICE], trk[1].p[P_VOICE]);
+        fprintf(stderr, "M%02u LEVEL %d/%d TRIM %d/%d PAN %d/%d XF %u CHRD %d/%d VOICE %d/%d\n", slot + 1u, trk[0].p[P_LEVEL], trk[1].p[P_LEVEL], trk[0].p[P_TRIM], trk[1].p[P_TRIM], trk[0].p[P_PAN], trk[1].p[P_PAN], (unsigned)mix_xf, trk[0].p[P_CHRD], trk[1].p[P_CHRD], trk[0].p[P_VOICE], trk[1].p[P_VOICE]);
     if (getenv("ML_K")) {                          /* tools/morph_b_roll.py: End B rolled again with the ML_K-th seed of the slot's fixed sequence (as tests/morph_b_roll.c draws it) */
         uint32_t k, seed = 1, pi;
         morph.gen = 1717u + 7u * (slot + 1u);

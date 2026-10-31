@@ -223,34 +223,68 @@ export function buildSettings(app, wrap) {
 export function buildMidi(app, wrap, globalCell, card, sidechain) {
   const u = app.unit;
   const shown = (id, label, p) => longDesc(descOf(p, id), id >= P_E0 ? `e:${engineLabel(p.eng)}` : id)?.label ?? label;   // (T0229: the editor's names, never the unit's short codes)
-  wrap.append(h("div", { class: "tabbody" }, card("MIDI IN", [globalCell(ID.G_ROUTE)], { tip: "OWN CHANNEL: part 1 listens on its channel and part 2 on its channel (set on the unit: GLO > MIDI). SELECTED PART: every channel plays the part ALGORITHM selected." }), sidechain));
-  const where = new Map(); for (const pg of L.PAGES) pg.ids.forEach((id) => { if (id >= 0 && !where.has(id) && pg.scope === "TRACK") where.set(id, pg.title); });
-  const tbl = h("div", { class: "lrows" }), note = h("p", { class: "warn small" });
-  const cc = h("input", { type: "number", min: 0, max: 127, value: 74, "aria-label": "CC number" }), part = h("select", { "aria-label": "Part" }, h("option", { value: 0, text: "PART 1" }), h("option", { value: 1, text: "PART 2" }));
-  const pid = h("select", { "aria-label": "Parameter" });
-  const fillIds = () => {
-    clear(pid); const p = u.parts[+part.value];
-    for (let id = 0; id < L.P_COUNT; id++) {
-      const d = descOf(p, id); if (!d || d.label[0] === "-" || d.max <= d.min || !(where.has(id) || id >= P_E0)) continue;
-      pid.append(h("option", { value: id, text: `${where.get(id) ?? engineLabel(p.eng)} · ${shown(id, d.label, p)}` }));
-    }
+  wrap.append(h("div", { class: "tabbody" }, card("MIDI", [globalCell(ID.G_ROUTE)], { tip: "PART CHANNEL: part 1 listens on its channel and part 2 on its channel (PART 1 CHANNEL and PART 2 CHANNEL are set on the unit: GLO > MIDI). ANY CHANNEL: every channel plays the part ALGORITHM selected." }), sidechain));
+}
+
+// ---------------------------------------------------------------- MIDI MAP (DUELL 1.1, owner item 15): the CC assignments (the unit's MIDI learn map, up to 16) shown and changed on the computer.
+// One row per assignment: CC number (click, type, Enter), PART, DESTINATION (a drop-down with the box as heading and the destination's name under it, as in the matrix). The unit has no MIDI MAP page.
+const BOX_OF = { "AMP ENV": [1, 2, 3, 4, 6, 7, 102], "FILTER ENV": [73, 74, 75, 76, 114], "LFO 1": [10, 9, 91, 12, 92, 11, 93, 13, 14, 15, 16], "LFO 2": [78, 77, 83, 80, 84, 79, 85],
+  "MULTI FILTER": [45, 46, 47, 48, 27], "TWIN FILTER": [43, 25, 26, 101, 106], "SATURATOR": [33], "SENDS": [34, 35, 36], MIXER: [0, 39] };
+const DEST_LABEL = { 6: "PITCH", 7: "TIMBRE", 102: "ENV SYNC", 114: "MULTI CUTOFF", 13: "PITCH", 14: "MULTI CUTOFF", 15: "TIMBRE", 16: "AMP", 33: "SATURATION" };
+const TITLE_BOX = { "INSERT 1/2": "INSERT", "INSERT 2/2": "INSERT", "EQ 1/2": "EQUALIZER", "EQ 2/2": "EQUALIZER", "DUCK 1/2": "DUCKING", "DUCK 2/2": "DUCKING", "VOICE 1/2": "VOICE", "VOICE 2/2": "VOICE",
+  "ARP 1/3": "ARPEGGIATOR", "ARP 2/3": "ARPEGGIATOR", "ARP 3/3": "ARPEGGIATOR", CHORD: "CHORD", "MULTI FILTER 1/2": "MULTI FILTER", "MULTI FILTER 2/2": "MULTI FILTER", "AMP DEST": "AMP ENV", "ENV 2": "FILTER ENV", "ENV 2 DEST": "FILTER ENV" };
+export function buildMidiMap(app, wrap, card) {
+  const u = app.unit;
+  const boxOf = new Map(); for (const [b, ids] of Object.entries(BOX_OF)) ids.forEach((id) => boxOf.set(id, b));
+  const pageOf = new Map(); for (const pg of L.PAGES) pg.ids.forEach((id) => { if (id >= 0 && !pageOf.has(id) && pg.scope === "TRACK") pageOf.set(id, TITLE_BOX[pg.title] ?? pg.title); });
+  const destOf = (p, id) => {   // { box, name } of a parameter of part p
+    const d = descOf(p, id), box = boxOf.get(id) ?? (id >= P_E0 ? engineLabel(p.eng) : pageOf.get(id) ?? "PART");
+    return { box, name: DEST_LABEL[id] ?? (d ? (longDesc(d, id >= P_E0 ? `e:${engineLabel(p.eng)}` : id)?.label ?? d.label) : String(id)) };
   };
-  part.addEventListener("change", fillIds); fillIds();
-  wrap.firstElementChild.append(h("section", { class: "card learn" }, h("h3", {}, h("span", { class: "ttl", text: "MIDI LEARN", title: "A learned CC sets one parameter of one part over its whole range, on any channel MIDI IN lets through. Up to 16; the unit keeps the map in its settings. The unit does not say when it learns a CC itself: press Reload." })), note, tbl,
-    h("div", { class: "row" }, h("span", { text: "CC" }), cc, part, pid, h("button", { class: "small", text: "Assign", onclick: assign }), h("button", { class: "ghost small danger", text: "Clear all...", onclick: clearAll }), h("button", { class: "ghost small", text: "Reload", onclick: load }))));
+  const options = (p) => {
+    const groups = new Map();
+    for (let id = 0; id < L.P_COUNT; id++) {
+      const d = descOf(p, id); if (!d || d.label[0] === "-" || d.max <= d.min || !(pageOf.has(id) || id >= P_E0 || boxOf.has(id))) continue;
+      if (id >= ID.P_M1SRC && id <= 72 && id !== 0) continue;   // (the matrix's own rows are not MIDI destinations of their own)
+      const { box, name } = destOf(p, id);
+      if (!groups.has(box)) groups.set(box, []);
+      groups.get(box).push([id, name.startsWith(box) ? name : `${box} ${name}`]);   // (the full name: the box, then the destination, as item 55 asks where no category is shown)
+    }
+    return groups;
+  };
+  const fillSelect = (sel, p, value) => {
+    clear(sel);
+    for (const [box, items] of options(p)) sel.append(h("optgroup", { label: box }, items.map(([id, name]) => h("option", { value: id, text: name }))));
+    if (value != null) sel.value = value;
+  };
+  const note = h("p", { class: "warn small" }), count = h("span", { class: "small" }), rows = h("div", { class: "mmrows" });
+  const cc = h("input", { type: "number", min: 0, max: 127, value: 74, "aria-label": "CC number" }), part = h("select", { "aria-label": "Part" }, h("option", { value: 0, text: "PART 1" }), h("option", { value: 1, text: "PART 2" }));
+  const pid = h("select", { "aria-label": "Destination" });
+  part.addEventListener("change", () => fillSelect(pid, u.parts[+part.value])); fillSelect(pid, u.parts[0]);
+  const head = h("div", { class: "mmrow mmhead", "aria-hidden": "true" }, h("span", { text: "CC" }), h("span", { text: "PART" }), h("span", { text: "DESTINATION" }), h("span"));
+  const box = card("MIDI MAP", [], { reset: false, tip: "A CC that arrives on any channel MIDI IN lets through sets one parameter of one part over its whole range. Up to 16 assignments; the unit keeps the map in its settings. The unit does not say when it learns a CC itself: press Reload." });
+  box.grid.replaceWith(h("div", { class: "mmwrap" }, note, head, rows, h("div", { class: "mmrow mmadd" }, cc, part, pid, h("button", { class: "small", text: "Assign", onclick: assign })),
+    h("div", { class: "row" }, count, h("span", { class: "grow" }), h("button", { class: "ghost small", text: "Reload", onclick: load }), h("button", { class: "ghost small danger", text: "Clear all...", onclick: clearAll }))));
+  box.classList.add("mmcard");
+  wrap.append(h("div", { class: "tabbody" }, box));
   async function load() { try { draw(await u.readLearn()); } catch (e) { app.fail(e); } }
   function draw(map) {
-    clear(tbl);
-    if (map == null) { note.textContent = "This firmware has no MIDI learn map."; return; }
-    note.textContent = "";
+    clear(rows);
+    if (map == null) { note.textContent = "This firmware has no MIDI learn map."; count.textContent = ""; return; }
+    note.textContent = ""; count.textContent = `${map.length} of 16 assignments`;
     for (const e of map) {
-      const p = u.parts[Math.min(e.track, 1)], d = e.track < 2 ? descOf(p, e.id) : null;
-      tbl.append(h("div", { class: "lrow" }, h("b", { text: `CC ${e.cc}` }), h("span", { text: `PART ${e.track + 1}` }), h("span", { text: `${where.get(e.id) ?? engineLabel(p.eng)} · ${d ? shown(e.id, d.label, p) : e.id}` }),
-        h("button", { class: "ghost small", text: "Clear", onclick: async () => { await app.run("Clearing", () => u.learnClear(e.cc)); draw(u.learn); } })));
+      const pi = Math.min(e.track, 1), ccIn = h("input", { type: "number", min: 0, max: 127, value: e.cc, "aria-label": "CC number" });
+      const ps = h("select", { "aria-label": "Part" }, h("option", { value: 0, text: "PART 1" }), h("option", { value: 1, text: "PART 2" })); ps.value = pi;
+      const ds = h("select", { "aria-label": "Destination" }); fillSelect(ds, u.parts[pi], e.id);
+      const change = async () => { await app.run("Changing", async () => { if (+ccIn.value !== e.cc) await u.learnClear(e.cc); await u.learnSet(+ccIn.value, +ps.value, +ds.value); }); draw(u.learn); };
+      ccIn.addEventListener("change", change); ds.addEventListener("change", change);
+      ps.addEventListener("change", async () => { fillSelect(ds, u.parts[+ps.value], ds.value); await change(); });
+      rows.append(h("div", { class: "mmrow" }, ccIn, ps, ds, h("button", { class: "ghost small", text: "Clear", onclick: async () => { await app.run("Clearing", () => u.learnClear(e.cc)); draw(u.learn); } })));
     }
+    if (!map.length) rows.append(h("p", { class: "small", text: "No assignment yet. Pick a CC, a part and a destination, then press Assign." }));
   }
   async function assign() { await app.run("Assigning", () => u.learnSet(+cc.value, +part.value, +pid.value)); draw(u.learn); }
-  async function clearAll() { if (await ask("Clear MIDI learn", ["Every learned CC is cleared (the unit saves the empty map)."], "Clear all", true)) { await app.run("Clearing", () => u.learnClear(null)); draw(u.learn); } }
+  async function clearAll() { if (await ask("Clear MIDI map", ["Every assignment is cleared (the unit saves the empty map)."], "Clear all", true)) { await app.run("Clearing", () => u.learnClear(null)); draw(u.learn); } }
   load();
 }
 

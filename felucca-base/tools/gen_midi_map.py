@@ -37,10 +37,10 @@ SRC = HERE.parent / "firmware" / "src"
 DOCS_CSV = HERE.parents[1] / "docs" / "MIDI_MAP_DEFAULTS.csv"
 
 # the actions (firmware/src/midi_map.h MAP_T_*), the fixed part of the list of targets
-ACTIONS = ["MORPH", "ROLL_A", "ROLL_B", "UNDO", "ROLL", "AMOUNT", "TARGET", "SMART", "ARP", "PITCH", "MODE", "BALANCE", "XFADE", "SPLIT",
-           "CUTOFF_SMART", "RES_SMART"]
+ACTIONS = ["MORPH", "ROLL_A", "ROLL_B", "UNDO", "ROLL", "AMOUNT", "TARGET", "SMART", "ARP", "PITCH", "MODE", "SPARE_BAL", "XFADE", "SPLIT",
+           "CUTOFF_SMART", "RES_SMART"]   # (item 157: SPARE_BAL is BALANCE's retired code, kept so no later code moves; no csv line may name it)
 SPECIAL = ["LOCKED", "REMOVED"]
-GLOBAL_ONLY = {"MODE", "BALANCE", "XFADE", "SPLIT"}            # act on any channel, before the MIDI IN routing
+GLOBAL_ONLY = {"MODE", "XFADE", "SPLIT"}            # act on any channel, before the MIDI IN routing
 EITHER = {"TARGET", "SMART", "ARP", "PITCH"}                   # global in effect, but heard only on a channel the routing hears (as today)
 LOCKED_CC = [0, 1, 2, 4, 6, 11, 32, 38, 64] + list(range(96, 102)) + list(range(120, 128))   # MIDI_MAP_FINAL: 18 standard + the 5 inputs 1 2 4 11 64
 assert len(LOCKED_CC) == 23
@@ -49,7 +49,7 @@ assert len(LOCKED_CC) == 23
 TODAY = {5: "P_GLIDE", 7: "P_LEVEL", 10: "P_PAN", 71: "RES_SMART", 72: "P_REL", 73: "P_ATK", 74: "CUTOFF_SMART", 75: "P_DEC",
          91: "P_REV", 93: "P_CHOR", 94: "P_DLY",
          20: "MORPH", 21: "ROLL_A", 22: "ROLL_B", 23: "UNDO", 25: "AMOUNT", 111: "TARGET", 113: "SMART", 114: "ARP", 115: "PITCH",
-         112: "MODE", 116: "BALANCE", 117: "XFADE", 118: "SPLIT"}
+         112: "MODE", 116: "BALANCE", 117: "XFADE", 118: "SPLIT"}   # (history: BALANCE is no target since item 157; its old CC 116 must be REMOVED)
 assert len(TODAY) == 24
 
 RULES = {"P": 0, "CHANNEL": 0, "PART1": 1, "PART2": 2, "G": 3, "GLOBAL": 3}
@@ -98,7 +98,8 @@ def known_targets():
             raise MapError(f"gen_midi_map: ext.h alias {m.group(1)} names {m.group(2)}, which core.h does not have")
         out[m.group(1)] = m.group(1)
     for a in ACTIONS:
-        out[a] = f"MAP_T_{a}"
+        if not a.startswith("SPARE"):
+            out[a] = f"MAP_T_{a}"
     return out
 
 

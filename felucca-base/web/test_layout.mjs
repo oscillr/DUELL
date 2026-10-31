@@ -18,7 +18,8 @@ const diff = (xs, ys) => xs.map((x, i) => (same(x, ys[i]) ? null : `${i}:${x.lab
 ok(L.P_COUNT === D.P_COUNT && L.G_COUNT === D.G_COUNT && L.P_E0 === D.P_E0 && L.NSTEP === D.NSTEP, "counts: P_COUNT, G_COUNT, P_E0, NSTEP equal descdump's");
 { const d = diff(L.TP, D.TP); ok(d.length === 0, `track parameters: all ${D.P_E0} descriptors equal descdump's ${d.length ? "(differ: " + d.join(" ") + ")" : ""}`); }
 { const d = diff(L.GP, D.GP); ok(d.length === 0, `global parameters: all ${D.G_COUNT} descriptors equal descdump's ${d.length ? "(differ: " + d.join(" ") + ")" : ""}`); }
-{ const d = diff(L.XTP, D.XTP), x = diff(L.XSYNC, D.XSYNC); ok(L.NX === 16 && D.XTP.length === L.NX && d.length === 0 && x.length === 0, `extension slots: all ${D.XTP.length} descriptors and the 2 note-value ones equal descdump's (cloud job I) ${d.length || x.length ? "(differ: " + d.concat(x).join(" ") + ")" : ""}`); }
+// item 138: NX is 28 since DUELL 1.1 (X15 .. X26 the DEST cards and LFO LEVELs, X27 STRUM since item 144 (the KEY OFFSET's until 2026-10-27, then spare); firmware/src/ext.h)
+{ const d = diff(L.XTP, D.XTP), x = diff(L.XSYNC, D.XSYNC); ok(L.NX === 28 && D.XTP.length === L.NX && d.length === 0 && x.length === 0, `extension slots: all ${D.XTP.length} descriptors and the 2 note-value ones equal descdump's (cloud job I) ${d.length || x.length ? "(differ: " + d.concat(x).join(" ") + ")" : ""}`); }
 ok(L.ENG.length === D.ENG.length && L.ENG.every((e, i) => e.name === D.ENG[i].name && JSON.stringify(e.titles) === JSON.stringify(D.ENG[i].titles) && diff(e.edit, D.ENG[i].edit).length === 0), "engines: names, page titles and the 8 EDIT descriptors of all 15 equal descdump's");
 ok(JSON.stringify(L.ORDER.map((e) => L.ENG[e].name)) === JSON.stringify(D.ORDER), "engines: the pickable order equals descdump's ORDER");
 // the knob order of every enum equals descdump's SHOWN (param_turn from the left end)
@@ -227,33 +228,33 @@ async function spacing() {
       // the tab strip: one line at 1280 wide (the stop rule: if it did not fit, nothing is shrunk, the widths are reported)
       const st = JSON.parse(await E(`JSON.stringify((() => { const s = window.__app.cols[0].strip, t = [...s.querySelectorAll('[role=tab]')]; return { sw: s.scrollWidth, cw: s.clientWidth, tops: [...new Set(t.map((x) => Math.round(x.getBoundingClientRect().top)))], keys: t.map((x) => x.dataset.key), w: t.map((x) => Math.round(x.getBoundingClientRect().width)), last: Math.round(t.at(-1).getBoundingClientRect().right), right: Math.round(s.getBoundingClientRect().right) }; })())`));
       ok(st.tops.length === 1 && st.sw <= st.cw && st.last <= st.right && st.keys.join() === "engine,filter,envelope,lfo,matrix,fx,arpseq,roll",
-        `FILTER tab / ${n} 1280 px: the tab strip is one line, ENGINE FILTER ENVELOPE LFO ... in order (${st.keys.length} tabs, ${st.w.reduce((a, b) => a + b, 0)} px of tabs in a strip of ${st.cw} px, the last ends ${st.right - st.last} px before the edge)`);
+        `FILTER tab / ${n} 1280 px: the tab strip is one line, ENGINE FILTER ENV LFO ... in order (${st.keys.length} tabs, ${st.w.reduce((a, b) => a + b, 0)} px of tabs in a strip of ${st.cw} px, the last ends ${st.right - st.last} px before the edge)`);
       if (n === "FM6") console.log(`  tab strip at 1280 px wide (the part column ${st.cw} px): ${st.keys.map((k, i) => k + " " + st.w[i]).join(", ")}`);
       const eng = await cardsOf("engine");
-      ok(!eng.some((x) => x.t === "MULTI FILTER" || x.t === "CUTOFF MOD"), `ENGINE tab / ${n}: no MULTI FILTER and no CUTOFF MOD card any more (${eng.map((x) => x.t).join(" | ")})`);
+      ok(!eng.some((x) => x.t === "MULTI FILTER" || x.t === "MULTI CUTOFF MOD"), `ENGINE tab / ${n}: no MULTI FILTER and no MULTI CUTOFF MOD card any more (${eng.map((x) => x.t).join(" | ")})`);
       const app = await E(`window.__app.cycleTab`);
       ok(labs(eng, "SUB OSC") === "WAVE,OCTAVE,LEVEL" && !eng.some((x) => x.t === "CYCLE ENV") && eng.some((x) => x.t === "VOICE"), `ENGINE tab / ${n}: engine card, SUB OSC (WAVE, OCTAVE, LEVEL), VOICE; CYCLE ENV is on the ${app} tab`);
-      { const ev = await cardsOf(app); ok(labs(ev, "CYCLE ENV") === "MODE,SYNC,RISE,FALL,CURVE" && app === "envelope", `${app.toUpperCase()} tab / ${n}: CYCLE ENV (MODE, SYNC, RISE, FALL, CURVE) after FILTER ENVELOPE`); await cardsOf("engine"); }
+      { const ev = await cardsOf(app); ok(labs(ev, "CYCLE ENV") === "MODE,SYNC,RISE,FALL,CURVE" && app === "envelope", `${app.toUpperCase()} tab / ${n}: CYCLE ENV (MODE, SYNC, RISE, FALL, CURVE) after FILTER ENV`); await cardsOf("engine"); }
       if (n === "WAVE") ok(/^TABLE,POSITION,STEPS,/.test(eng[0].labs.join()) && await E(`!!window.__app.cols[0].body.querySelector('.card .cell input[aria-label="STEPS"][type=range]')`), `WAVE card: STEPS is a slider right beside POSITION (${eng[0].labs.join()})`);
-      // TYPE OFF: TYPE alone, no TWIN MOD, no TWIN CHAIN
+      // TYPE OFF: TYPE alone, no TWIN CUTOFF MOD, no TWIN CHAIN
       let f = await cardsOf("filter");
-      ok(f.map((x) => x.t).join() === "MULTI FILTER,CUTOFF MOD,TWIN FILTER" && labs(f, "TWIN FILTER") === "TYPE",
-         `FILTER tab / ${n}, TYPE OFF: MULTI FILTER, CUTOFF MOD, and TWIN FILTER with the TYPE control only; no TWIN MOD, no TWIN CHAIN (${f.map((x) => x.t + "[" + x.labs.length + "]").join(" ")})`);
-      ok(labs(f, "MULTI FILTER").startsWith("CUTOFF,RESONANCE,MODE,SLOPE") && /FILTER ENV,(KEY TRACK,)?LFO 1,LFO 2/.test(labs(f, "CUTOFF MOD")), `FILTER tab / ${n}: MULTI FILTER CUTOFF RESONANCE MODE SLOPE; CUTOFF MOD FILTER ENV (KEY TRACK) LFO 1 LFO 2`);
+      ok(f.map((x) => x.t).join() === "MULTI FILTER,MULTI CUTOFF MOD,TWIN FILTER" && labs(f, "TWIN FILTER") === "TYPE",
+         `FILTER tab / ${n}, TYPE OFF: MULTI FILTER, MULTI CUTOFF MOD, and TWIN FILTER with the TYPE control only; no TWIN CUTOFF MOD, no TWIN CHAIN (${f.map((x) => x.t + "[" + x.labs.length + "]").join(" ")})`);
+      ok(labs(f, "MULTI FILTER").startsWith("CUTOFF,RESONANCE,MODE,SLOPE") && /FILTER ENV,(KEY TRACK,)?LFO 1,LFO 2/.test(labs(f, "MULTI CUTOFF MOD")), `FILTER tab / ${n}: MULTI FILTER CUTOFF RESONANCE MODE SLOPE; MULTI CUTOFF MOD FILTER ENV (KEY TRACK) LFO 1 LFO 2`);
       // TYPE LP: all the cards, the names, the flow line
       await U(`u.writeParam(0, 43, 1)`); f = await cardsOf("filter");
-      ok(labs(f, "TWIN FILTER") === "TYPE,LINK,OFFSET,RESONANCE" && labs(f, "TWIN MOD") === "FILTER ENV,KEY TRACK,LFO 1,LFO 2" && labs(f, "TWIN CHAIN") === "ROUTE,DRIVE,BLEND",
-         `FILTER tab / ${n}, TYPE LP: TWIN FILTER (TYPE, LINK, OFFSET, RESONANCE), TWIN MOD (FILTER ENV, KEY TRACK, LFO 1, LFO 2), TWIN CHAIN (ROUTE, DRIVE, BLEND) (${labs(f, "TWIN FILTER")} | ${labs(f, "TWIN MOD")} | ${labs(f, "TWIN CHAIN")})`);
+      ok(labs(f, "TWIN FILTER") === "TYPE,LINK,OFFSET,RESONANCE" && labs(f, "TWIN CUTOFF MOD") === "FILTER ENV,KEY TRACK,LFO 1,LFO 2" && labs(f, "TWIN CHAIN") === "ROUTE,DRIVE,BLEND",
+         `FILTER tab / ${n}, TYPE LP: TWIN FILTER (TYPE, LINK, OFFSET, RESONANCE), TWIN CUTOFF MOD (FILTER ENV, KEY TRACK, LFO 1, LFO 2), TWIN CHAIN (ROUTE, DRIVE, BLEND) (${labs(f, "TWIN FILTER")} | ${labs(f, "TWIN CUTOFF MOD")} | ${labs(f, "TWIN CHAIN")})`);
       ok(f.find((x) => x.t === "TWIN CHAIN").flow === "ENGINE > MULTI > DRIVE > TWIN > AMP", "FILTER tab: the flow line of SERIES is ENGINE > MULTI > DRIVE > TWIN > AMP");
       await U(`u.writeX(0, 0, 1)`); f = await cardsOf("filter");
       ok(f.find((x) => x.t === "TWIN CHAIN").flow === "ENGINE > DRIVE > MULTI + TWIN > AMP", "FILTER tab: PARALLEL puts the drive before both filters");
       await U(`u.writeX(0, 0, 0)`);
       await U(`u.writeX(0, 1, 0)`); f = await cardsOf("filter");
-      ok(labs(f, "TWIN FILTER") === "TYPE,LINK,CUTOFF,RESONANCE" && labs(f, "TWIN MOD") === "FILTER ENV,KEY TRACK,LFO 1,LFO 2", "FILTER tab: LINK off renames OFFSET to CUTOFF and hides nothing");
+      ok(labs(f, "TWIN FILTER") === "TYPE,LINK,CUTOFF,RESONANCE" && labs(f, "TWIN CUTOFF MOD") === "FILTER ENV,KEY TRACK,LFO 1,LFO 2", "FILTER tab: LINK off renames OFFSET to CUTOFF and hides nothing");
       await U(`u.writeX(0, 1, 1)`);
       // the DRIVE says OFF at 0; the centre of the bipolar sliders is marked; the controls
       const ctl = JSON.parse(await E(`JSON.stringify((() => { const q = (t, l) => [...window.__app.cols[0].body.querySelectorAll('.card')].find((x) => x.querySelector('h3 .ttl')?.textContent === t)?.querySelectorAll('.cell'); const by = (t, l) => [...q(t)].find((c) => c.querySelector('.lab')?.textContent === l);
-        return { drive: by('TWIN CHAIN', 'DRIVE').querySelector('.val').textContent, blendBi: !!by('TWIN CHAIN', 'BLEND').querySelector('.slider.bipolar'), offBi: !!by('TWIN FILTER', 'OFFSET').querySelector('.slider.bipolar'), ktBi: !!by('TWIN MOD', 'KEY TRACK').querySelector('.slider.bipolar'),
+        return { drive: by('TWIN CHAIN', 'DRIVE').querySelector('.val').textContent, blendBi: !!by('TWIN CHAIN', 'BLEND').querySelector('.slider.bipolar'), offBi: !!by('TWIN FILTER', 'OFFSET').querySelector('.slider.bipolar'), ktBi: !!by('TWIN CUTOFF MOD', 'KEY TRACK').querySelector('.slider.bipolar'),
           resBi: !!by('TWIN FILTER', 'RESONANCE').querySelector('.slider.bipolar'), typeSel: by('TWIN FILTER', 'TYPE').querySelector('select')?.tagName, routeSel: by('TWIN CHAIN', 'ROUTE').querySelector('select')?.tagName, link: [...by('TWIN FILTER', 'LINK').querySelectorAll('.seg')].map((b) => b.textContent).join() }; })())`));
       ok(ctl.drive === "OFF" && ctl.blendBi && ctl.offBi && ctl.ktBi && !ctl.resBi && ctl.typeSel === "SELECT" && ctl.routeSel === "SELECT" && ctl.link === "OFF,ON", `FILTER tab / ${n}: DRIVE shows OFF at 0; BLEND, OFFSET, KEY TRACK are marked at the centre, RESONANCE is not; TYPE and ROUTE are drop-downs, LINK a switch (${JSON.stringify(ctl)})`);
       // TYPE list: COMB not on WAVE and PHYS
@@ -261,8 +262,8 @@ async function spacing() {
       ok(opts.join() === (n === "WAVE" || n === "PHYS" ? "OFF,LOW-PASS,BAND-PASS,HIGH-PASS,NOTCH,LADDER" : "OFF,LOW-PASS,BAND-PASS,HIGH-PASS,NOTCH,LADDER,COMB"), `TYPE list / ${n}: ${opts.join(" ")} (COMB is not offered on WAVE and PHYS)`);
       if (n !== "WAVE" && n !== "PHYS" && n !== "FM6") {
         await U(`u.writeParam(0, 43, 6)`); f = await cardsOf("filter");
-        ok(labs(f, "TWIN FILTER") === "TYPE,TUNE,FEEDBACK" && labs(f, "TWIN MOD") === "FILTER ENV,LFO 1,LFO 2" && labs(f, "TWIN CHAIN") === "ROUTE,DRIVE,BLEND",
-           `FILTER tab / ${n}, COMB: LINK and KEY TRACK are not drawn, the cutoff reads TUNE and the resonance FEEDBACK (${labs(f, "TWIN FILTER")} | ${labs(f, "TWIN MOD")})`);
+        ok(labs(f, "TWIN FILTER") === "TYPE,TUNE,FEEDBACK" && labs(f, "TWIN CUTOFF MOD") === "FILTER ENV,LFO 1,LFO 2" && labs(f, "TWIN CHAIN") === "ROUTE,DRIVE,BLEND",
+           `FILTER tab / ${n}, COMB: LINK and KEY TRACK are not drawn, the cutoff reads TUNE and the resonance FEEDBACK (${labs(f, "TWIN FILTER")} | ${labs(f, "TWIN CUTOFF MOD")})`);
         const tip = await E(`[...window.__app.cols[0].body.querySelectorAll('.card h3 .ttl')].find((x) => x.textContent === 'TWIN FILTER').title`);
         ok(/LINK: the comb follows the played note by itself/.test(tip), "FILTER tab: the card's tooltip says why LINK is not drawn (COMB)");
       }
@@ -278,7 +279,7 @@ async function spacing() {
     await U(`u.writeParam(0, 43, 1)`); await E(`window.__app.setPartTab(0, 'matrix'); true`); await c.sleep(300);
     const mt = JSON.parse(await E(`JSON.stringify((() => { const r = window.__app.cols[0].body.querySelector('.mrow:not(.mhead)'); const sel = r.querySelectorAll('select'); const txt = (s) => [...s.options].filter((o) => !o.hidden && !o.disabled).map((o) => o.textContent);
       return { src: txt(sel[0]), dst: txt(sel[1]) }; })())`));
-    ok(mt.src.includes("CYCLE") && ["TWIN FILTER CUTOFF", "TWIN FILTER RESONANCE", "FILTER DRIVE", "FILTER BLEND", "SUB LEVEL"].every((x) => mt.dst.includes(x)), `MATRIX: the source CYCLE and the destinations TWIN FILTER CUTOFF, TWIN FILTER RESONANCE, FILTER DRIVE, FILTER BLEND, SUB LEVEL are in the lists (TYPE LP)`);
+    ok(mt.src.includes("CYCLE") && ["TWIN CUTOFF", "TWIN FILTER RESONANCE", "FILTER DRIVE", "FILTER BLEND", "SUB LEVEL"].every((x) => mt.dst.includes(x)), `MATRIX: the source CYCLE and the destinations TWIN CUTOFF, TWIN FILTER RESONANCE, FILTER DRIVE, FILTER BLEND, SUB LEVEL are in the lists (TYPE LP)`);
     await U(`u.writeParam(0, 43, 0)`); await c.sleep(200);
     const mt2 = JSON.parse(await E(`JSON.stringify((() => { const sel = window.__app.cols[0].body.querySelector('.mrow:not(.mhead)').querySelectorAll('select'); return [...sel[1].options].filter((o) => !o.hidden && !o.disabled).map((o) => o.textContent); })())`));
     ok(!mt2.some((x) => /^FILTER (2|DRIVE|BLEND)/.test(x)) && mt2.includes("SUB LEVEL"), "MATRIX: with TYPE OFF the TWIN destinations are not offered (SUB LEVEL is)");
@@ -397,9 +398,9 @@ async function structure() {
     const sel = 'select[aria-label="Part 1 engine"]', other = await E(`[...window.__app.cols[0].engSel.options].map((o) => +o.value).find((v) => v !== +window.__app.cols[0].engSel.value)`);
     await E(`(() => { const s = document.querySelector('${sel}'); s.value = ${other}; s.dispatchEvent(new Event('change')); return true; })()`); await c.sleep(600);
     ok((await E(`window.__app.unit.parts[0].eng`)) === other, `ENGINE tab ${screen}: the ENGINE selector still changes the engine`);
-    // the tab strip: all tabs on one line, ENVELOPE written out
+    // the tab strip: all tabs on one line, ENV (the short form)
     const st = JSON.parse(await E(`JSON.stringify([...document.querySelectorAll('.col.part .tabs')].map((s) => ({ sw: s.scrollWidth, cw: s.clientWidth, words: [...s.querySelectorAll('[role=tab]')].map((t) => t.textContent), w: [...s.querySelectorAll('[role=tab]')].map((t) => Math.round(t.getBoundingClientRect().width)) })))`));
-    ok(st.every((x) => x.sw <= x.cw && x.words.join() === "ENGINE,FILTER,ENVELOPE,LFO,MATRIX,FX,ARP,SEQ"), `tab strip ${screen}: ${st[0].words.length} tabs on one line, ENVELOPE in full (strip ${st[0].sw} of ${st[0].cw} px; ${st[0].words.map((t, i) => t + " " + st[0].w[i]).join(", ")})`);
+    ok(st.every((x) => x.sw <= x.cw && x.words.join() === "ENGINE,FILTER,ENV,LFO,MATRIX,FX,ARP,SEQ"), `tab strip ${screen}: ${st[0].words.length} tabs on one line, ENV (the short form) (strip ${st[0].sw} of ${st[0].cw} px; ${st[0].words.map((t, i) => t + " " + st[0].w[i]).join(", ")})`);
     await c.close();
   }
   server.close();
@@ -473,8 +474,8 @@ async function lists() {
   server.close();
 }
 
-// ---- item 11b (task 9): linked controls on both tabs. The cutoff depths of the filter envelope and the two LFOs (CUTOFF MOD; TWIN MOD for the second filter) are on the FILTER tab and on the
-// source's own tab (ENVELOPE / LFO): one stored value, so a change made on one tab is what the other shows
+// ---- item 11b (task 9): linked controls on both tabs. The cutoff depths of the filter envelope and the two LFOs (MULTI CUTOFF MOD; TWIN CUTOFF MOD for the second filter) are on the FILTER tab and on the
+// source's own tab (ENV / LFO): one stored value, so a change made on one tab is what the other shows
 async function linked() {
   const { launch, CHROME } = await import("./cdp.mjs");
   if (!CHROME) { console.log("linked: no Chrome found   skip"); return; }
@@ -490,7 +491,7 @@ async function linked() {
   const val = async (tab, card, label) => { await E(`window.__app.setPartTab(0, '${tab}'); true`); await c.sleep(250); return E(`(() => { const s = [...window.__app.cols[0].body.querySelectorAll('section.card')].find((x) => !x.hidden && x.querySelector('h3 .ttl')?.textContent === '${card}'); const cl = s && [...s.querySelectorAll('.cell')].find((x) => !x.hidden && !x.classList.contains('gone') && x.querySelector('.lab')?.textContent === '${label}'); return cl ? cl.querySelector('.right')?.textContent ?? '' : null; })()`); };
   // move the cell's slider the way a hand does (input + change)
   const move = async (tab, card, label, to) => { await E(`window.__app.setPartTab(0, '${tab}'); true`); await c.sleep(250); await E(`(() => { const s = [...window.__app.cols[0].body.querySelectorAll('section.card')].find((x) => x.querySelector('h3 .ttl')?.textContent === '${card}'); const cl = [...s.querySelectorAll('.cell')].find((x) => x.querySelector('.lab')?.textContent === '${label}'); const i = cl.querySelector('input[type=range]'); const lo = +i.min, hi = +i.max; i.value = String(Math.round(lo + (hi - lo) * ${to})); i.dispatchEvent(new Event('input', { bubbles: true })); i.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`); await c.sleep(300); };
-  const PAIRS = [["CUTOFF MOD", "FILTER ENV", "envelope"], ["CUTOFF MOD", "LFO 1", "lfo"], ["CUTOFF MOD", "LFO 2", "lfo"], ["TWIN MOD", "FILTER ENV", "envelope"], ["TWIN MOD", "LFO 1", "lfo"], ["TWIN MOD", "LFO 2", "lfo"]];
+  const PAIRS = [["MULTI CUTOFF MOD", "FILTER ENV", "envelope"], ["MULTI CUTOFF MOD", "LFO 1", "lfo"], ["MULTI CUTOFF MOD", "LFO 2", "lfo"], ["TWIN CUTOFF MOD", "FILTER ENV", "envelope"], ["TWIN CUTOFF MOD", "LFO 1", "lfo"], ["TWIN CUTOFF MOD", "LFO 2", "lfo"]];
   for (const n of ["ANALOG", "FM6"]) {
     await E(`window.__app.unit.setEngine(0, ${await engIdx(n)}).then(() => window.__app.unit.writeParam(0, 43, 1)).then(() => window.__app.unit.idle()).then(() => true)`); await c.sleep(500);
     for (const [card, label, tab] of PAIRS) {
@@ -502,7 +503,7 @@ async function linked() {
       ok(a0 != null && f0 != null && a0 === f0 && a1 === f1 && a1 !== a0 && a2 === f2 && a2 !== a1, `linked / ${n}: ${card} ${label} on the ${tab.toUpperCase()} tab and on the FILTER tab show one value (${a0} > ${a1} > ${a2})`);
     }
     const t = JSON.parse(await E(`(async () => { const r = {}; for (const tab of ['envelope', 'lfo', 'filter']) { window.__app.setPartTab(0, tab); await new Promise((x) => setTimeout(x, 250)); r[tab] = [...window.__app.cols[0].body.querySelectorAll('section.card')].filter((x) => !x.hidden).map((x) => x.querySelector('h3 .ttl')?.textContent); } return JSON.stringify(r); })()`));
-    ok(t.envelope.join() === "AMP ENVELOPE,FILTER ENVELOPE,CYCLE ENV,CUTOFF MOD,TWIN MOD" && t.lfo.join() === "LFO 1,LFO 2,CUTOFF MOD,TWIN MOD" && /CUTOFF MOD/.test(t.filter.join()), `linked / ${n}: cards ENVELOPE ${t.envelope.join(" > ")} | LFO ${t.lfo.join(" > ")}`);
+    ok(t.envelope.join() === "AMP ENV,FILTER ENV,CYCLE ENV,MULTI CUTOFF MOD,TWIN CUTOFF MOD" && t.lfo.join() === "LFO 1,LFO 2,MULTI CUTOFF MOD,TWIN CUTOFF MOD" && /MULTI CUTOFF MOD/.test(t.filter.join()), `linked / ${n}: cards ENV ${t.envelope.join(" > ")} | LFO ${t.lfo.join(" > ")}`);
   }
   await c.close(); server.close();
 }

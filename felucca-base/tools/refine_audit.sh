@@ -1,6 +1,6 @@
 #!/bin/bash
 # SPDX-License-Identifier: GPL-3.0-only
-# Patch refinement pass (release_drafts/PATCH_REFINE_RECIPE.md): regenerate the sound table from tools/duell_sounds.py, build the sound audit
+# Patch refinement pass (working docs/PATCH_REFINE_RECIPE.md): regenerate the sound table from tools/duell_sounds.py, build the sound audit
 # (tests/sound_audit.c) and print the rows of the named sounds (peak, loudness, End B).
 #   tools/refine_audit.sh "NAME" [trim|bseed|all]
 #     (no mode)  the audit row of that sound (SOUND_ONLY): PEAK LOUD MED TAP, END B dB / brightness (STEREO / SPLIT), VERDICT

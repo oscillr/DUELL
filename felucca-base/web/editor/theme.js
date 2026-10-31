@@ -27,3 +27,21 @@ export function themeVars(i, part) {
   };
 }
 export const isDark = (i) => lum(palette(i).bgl) < 0.4;
+
+// DUELL 1.1 (owner items 47, 48): the editor's look follows the device design: only the ACTIVE part's colour plus greys. part 0 / 1: a part's column, 2: the global column and the page.
+// The part colours are the palette's (VIOLET: part 1 #de38ff, part 2 #ff1c8c; the demo uses the sampled #ff1c8b). The inactive part keeps its own colour with a weaker tint (item 99). A light palette keeps the old themeVars.
+export const GREY = "#737073", GREY_TEXT = "#cfcccf";
+export function look11Vars(i, part, active, partColours = null) {
+  const p = palette(i), col = partColours ?? [p.r[0], p.r[2]];
+  if (lum(p.bgl) >= 0.4) return themeVars(i, part);
+  if (part === 2) {   // DUELL 1.1 (owner, round 2): the global column and the global pages (GLOBAL, PATCHES, MULTIS, PATTERNS, MIDI, MIDI MAP, WAVETABLES, SETTINGS, the OCTAVE view) take NO part colour: white and greys on black, as the unit's global pages (PAGES_V2_glo-a.png)
+    const acc = "#cfcccf", card = "#171719";
+    return { "--bg": card, "--fg": p.text, "--dim": "#a09da0", "--line": "#35343a", "--panel": "#0b0b0d", "--acc": acc, "--accfg": "#000000", "--page": "#08080a", "--warn": "#ff6b81", "--ok": "#62d98a", "--base": "#101012" };
+  }
+  const on = part === active, acc = col[part];   // owner item 99: the inactive part keeps its own colour (only a weaker tint), never grey
+  const base = "#101012", card = mix("#18181b", acc, on ? 9 : 6), panel = mix("#0d0d0f", acc, on ? 5 : 3);
+  return {
+    "--bg": card, "--fg": p.text, "--dim": "#a09da0", "--line": mix(card, acc, on ? 34 : 24), "--panel": part === 2 ? "#0b0b0d" : panel,
+    "--acc": acc, "--accfg": inkOn(acc), "--page": "#08080a", "--warn": "#ff6b81", "--ok": "#62d98a", "--base": base,
+  };
+}

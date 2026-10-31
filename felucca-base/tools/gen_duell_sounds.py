@@ -15,7 +15,11 @@ Values: an int (range-checked against TP / the EDIT table), or a value name of t
 Errors (unknown name, value out of range, unknown value name, a parameter twice, a track-only parameter, MODW in the
 matrix, a name over 12 characters, a bad category or engine, factory indices not 0..n-1 per engine) stop the build.
 
-End B (morph.c morph_rebase_part): 'bamt' (the AMOUNT %, default by category: CAT_BAMT) and 'bseed' (1..65535, chosen by
+End B AS VALUES (owner 2026-10-29: a pre-loaded patch carries its End B exactly like a saved patch, PT_VER 4): 'bend' {label: End B value} (only the values that differ from
+the Original; the labels are bend_labels()'s: a P_ name without P_, E1..E8, "<group> <label>" for an extension slot), 'bpin' [labels] (the values set by hand: the marks),
+'bfm' [65 FM6 bytes of End B] (FM6 only). They are packed into the End B block of the patch record (tools/endb.py = morph.c morph_bv_make's format) and written as
+DS_ENDB / DS_ENDB_AT. The AMOUNT in the block is 'bamt' (the category's if absent). A sound with 'bend' has its End B from the block; one without keeps the seed (below).
+End B by a seed (morph.c morph_rebase_part): 'bamt' (the AMOUNT %, default by category: CAT_BAMT) and 'bseed' (1..65535, chosen by
 tests/sound_audit.c SOUND_BSEED=1 so End B keeps A's loudness and roughly its brightness; absent: the hash of (engine, idx)).
 
 Output (firmware/src/sounds.c reads it): DS_PAIR (2 bytes a pair), DS_SOUNDS (engine-major: sound k of engine e is
@@ -30,6 +34,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "firmware" / "src"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import endb                       # tools/endb.py: the End B block (the firmware's format)
 
 ALIAS = {
     "ENV2 ATK": "E2ATK", "ENV2 DEC": "E2DEC", "ENV2 SUS": "E2SUS", "ENV2 REL": "E2REL",
@@ -50,7 +56,7 @@ ALIAS = {
 # a sound load leaves these to the track (ui.c param_kept), so a sound may not set them (0.2.19: nor the MIXER LEVEL, P_LEVEL: it is the player's);
 # TRIM (the PATCH TRIM, its loudness), the arp (AMODE.. AORDER) and the chord keys (CHRD VOIC) are the exceptions: a factory sound sets its trim
 # and may lend the arp and the keys (ui.c ds_arp, ds_keys)
-TRACK_ONLY = {"LEVEL", "PAN", "MUTE", "QUANT", "TRANS", "SLEN", "SDIV", "SSWING", "SGATE", "SQNT"}   # (ROOT and SCALE are the instrument's, no ids: 25 and 26 are the TWIN FILTER's RES 2 and DRIVE)
+TRACK_ONLY = {"LEVEL", "PAN", "MUTE", "QUANT", "SLEN", "SDIV", "SSWING", "SGATE", "SQNT"}   # (DUELL 1.1, owner 2026-10-27: TRANS, the TRANSPOSE, is the sound's now: a sound may set it; ROOT and SCALE are the instrument's, no ids: 25 and 26 are the TWIN FILTER's RES 2 and DRIVE)
 KEY_IDS = ["CHRD", "VOIC"]               # lent like the arp (ui.c ds_keys): a pad may set chord keys. No SCALE: the scale is the instrument's (core.h)
 ARP_IDS = ["AMODE", "ARATE", "AOCT", "AGATE", "ASWING", "APROB", "AHOLD", "AORDER"]
 CATS = ["BASS", "LEAD", "PAD", "PLUCK", "KEYS", "PERC", "FX", "OTHER"]
@@ -77,7 +83,7 @@ def name_arrays(text):
         body = strip_comments(m.group(2))
         if "#" in body:
             continue
-        out[m.group(1)] = re.findall(r'"((?:[^"\\]|\\.)*)"', body)
+        out[m.group(1)] = [x.replace("\\n", " ") for x in re.findall(r'"((?:[^"\\]|\\.)*)"', body)]   # (DUELL 1.1: a shown name may break at a line: SOFT\nCLIP is SOFT CLIP)
     return out
 
 
@@ -93,7 +99,12 @@ def parse_ids():
 XW_BASE = 128           # ext.h: the extension slots' wide ids (a pair of a factory sound names one as 128 + slot)
 XGROUP = {"ROUTE": "TWIN", "LINK": "TWIN", "KTRK2": "TWIN", "ENV2": "TWIN", "LFO1": "TWIN", "LFO2": "TWIN",
           "SUBLVL": "SUB", "SUBOCT": "SUB", "SUBWAVE": "SUB", "SUBHARM": "SUB",
-          "CYMODE": "CYCLE", "CYRISE": "CYCLE", "CYFALL": "CYCLE", "CYCURVE": "CYCLE", "CYSYNC": "CYCLE"}
+          "CYMODE": "CYCLE", "CYRISE": "CYCLE", "CYFALL": "CYCLE", "CYCURVE": "CYCLE", "CYSYNC": "CYCLE",
+          # DUELL 1.1: the DEST cards, the LFO LEVELs (ext.h X15..X26; X27 is STRUM, item 144: a chord-key setting, no factory sound sets it)
+          "ESAT": "AMPENV", "E2BLD": "FILTERENV", "E2DRV": "FILTERENV", "E2RES": "FILTERENV",
+          "CYCUT2": "CYCLE", "CYPAN": "CYCLE", "CYPIT": "CYCLE", "L2RES2": "LFO2", "L2FMODE": "LFO2", "L2BLD": "LFO2",
+          "LFO1LVL": "LFO1", "LFO2LVL": "LFO2",
+          "STRUM": "CHORD"}       # (item 144: X27, the CHORD page's STRUM; no factory sound sets it)
 
 
 def parse_xtp(names):
@@ -115,6 +126,9 @@ def parse_xtp(names):
         k = slots.index(m.group(1))
         n = names[m.group(3)]
         out[m.group(1)] = (XW_BASE + k, m.group(2), 0, len(n) - 1, int(m.group(4)), n)
+    for m in re.finditer(r"\[(X_\w+)\]\s*=\s*\{\"([^\"]*)\",\s*\w+,\s*(-?\d+),\s*(-?\d+),\s*(-?\d+),", body):   # the brace form (none today; the KEY OFFSET had it)
+        k = slots.index(m.group(1))
+        out[m.group(1)] = (XW_BASE + k, m.group(2), int(m.group(3)), int(m.group(4)), int(m.group(5)), None)
     if len(out) != len(XGROUP):
         die(f"params.c XTP[]: {len(out)} slots read, {len(XGROUP)} expected")
     return out
@@ -209,6 +223,23 @@ def parse_cats():
     return {n[4:]: i for i, n in enumerate(lst) if n != "CAT_N"}
 
 
+def bend_labels(ids, xtp):
+    """{wide id: label} of every wide value End B can differ in (not endb.MBV_NEVER): the P_ name without P_, E1..E8 for the engine's EDIT values,
+    "<group> <label>" for an extension slot (the spelling a sound's 'p' uses). Two wide ids with one label stop the build"""
+    out = {}
+    for n, i in ids.items():
+        if i < endb.E0 and i not in endb.MBV_NEVER and n != "P_COUNT":
+            out[i] = n[2:]
+    for k in range(8):
+        out[endb.E0 + k] = "E%d" % (k + 1)
+    for xn, (wid, label, *_r) in xtp.items():
+        if wid not in endb.MBV_NEVER:
+            out[wid] = "%s %s" % (XGROUP[xn[2:]], label)
+    if len(set(out.values())) != len(out):
+        die("bend labels: two wide values with one label")
+    return out
+
+
 def load_data(path):
     spec = importlib.util.spec_from_file_location("duell_sounds", path)
     mod = importlib.util.module_from_spec(spec)
@@ -261,6 +292,8 @@ def build(data):
     engines, order = parse_engines()
     cats = parse_cats()
     eng_by_name = {e["name"]: i for i, e in engines.items()}
+    wlabel = bend_labels(ids, xtp)
+    wof = {v: k for k, v in wlabel.items()}
     hidden = set()   # (DUELL 0.2.14: DRUM and DIGITAL are retired engines with no name here, so no sound can name them)
     sounds = []
     seen = {}
@@ -269,7 +302,7 @@ def build(data):
         for key in ("engine", "idx", "name", "cat", "p"):
             if key not in s:
                 die(f"{where}: no '{key}'")
-        unknown = set(s) - {"engine", "idx", "name", "cat", "p", "mono", "recipe", "bamt", "bseed"}
+        unknown = set(s) - {"engine", "idx", "name", "cat", "p", "mono", "recipe", "bamt", "bseed", "bend", "bpin", "bfm"}
         if unknown:
             die(f"{where}: unknown keys {sorted(unknown)}")
         name = s["name"]
@@ -366,13 +399,36 @@ def build(data):
         arp = any(ids["P_" + a] in pairs for a in ARP_IDS)
         keys = any(ids["P_" + a] in pairs for a in KEY_IDS)
         bamt, bseed = s.get("bamt", CAT_BAMT[s["cat"]]), s.get("bseed", 0)
-        if not isinstance(bamt, int) or isinstance(bamt, bool) or not 1 <= bamt <= 40:
-            die(f"{where}: bamt {bamt!r}: the End B AMOUNT is 1..40 (%)")
+        if not isinstance(bamt, int) or isinstance(bamt, bool) or not (0 <= bamt <= 100 if "bend" in s else 1 <= bamt <= 40):
+            die(f"{where}: bamt {bamt!r}: the End B AMOUNT is 1..40 (%); 0..100 for a sound with 'bend' (its block holds the knob exactly)")
         if not isinstance(bseed, int) or isinstance(bseed, bool) or not 0 <= bseed <= 65535:
             die(f"{where}: bseed {bseed!r}: 1..65535 (0 / absent: the hash of (engine, idx))")
+        block = None
+        if "bend" in s or "bpin" in s or "bfm" in s:
+            if "bend" not in s:
+                die(f"{where}: 'bpin' / 'bfm' need 'bend' (use bend={{}} for no differing value)")
+            vals = {}
+            for label, v in s["bend"].items():
+                if label not in wof:
+                    die(f"{where}: bend: unknown or never-differing value {label!r}")
+                w = wof[label]
+                lo, hi = endb.rng(e, w)
+                if isinstance(v, bool) or not isinstance(v, int) or not lo <= v <= hi:
+                    die(f"{where}: bend: {label}: {v!r} is not an int in {lo}..{hi}")
+                vals[w] = v
+            marks = []
+            for label in s.get("bpin", []):
+                if label not in wof:
+                    die(f"{where}: bpin: unknown value {label!r}")
+                marks.append(wof[label])
+            fm = s.get("bfm")
+            try:
+                block = endb.encode(e, bamt + 1, vals, None, marks, fm)   # (no Original here: the firmware adds routes at a load, mod.c; tools/convert_endb.py checks against the firmware's own)
+            except ValueError as x:
+                die(f"{where}: {x}")
         sounds.append({"e": e, "idx": idx, "name": name, "cat": s["cat"], "mono": bool(s.get("mono")), "arp": arp,
                        "keys": keys, "pairs": sorted(pairs.items()), "recipe": s.get("recipe", ""), "bamt": bamt,
-                       "bseed": bseed})
+                       "bseed": bseed, "endb": block})
     for e in {x["e"] for x in sounds}:
         got = sorted(x["idx"] for x in sounds if x["e"] == e)
         if got != list(range(len(got))):
@@ -412,6 +468,21 @@ def emit(path, sounds, lst, engines, cats, idname):
                  f"{s['bseed']}u}},"
                  f"   /* {s['cat']}; {s['recipe']} */")
     L += ["};"]
+    L += ["", "/* End B as exact values (tools/endb.py = morph.c's End B block, MBV, as a patch record carries it): DS_ENDB_AT[g]..DS_ENDB_AT[g + 1] are sound g's block bytes",
+          " * in DS_ENDB (g = its DS_SOUNDS index); equal = the sound has no block (its End B is rolled from its seed). Load: morph.c morph_bv_load. */"]
+    at, offs, flat = 0, [], []
+    for s in sounds:
+        offs.append(at)
+        if s["endb"]:
+            flat += list(s["endb"])
+            at += len(s["endb"])
+    offs.append(at)
+    L += [f"#define DS_NENDB {at}u", f"static const uint8_t DS_ENDB[DS_NENDB ? DS_NENDB : 1u] = {{"]
+    for i in range(0, len(flat), 24):
+        L.append("    " + ", ".join(map(str, flat[i:i + 24])) + ",")
+    if not flat:
+        L.append("    0")
+    L += ["};", f"static const uint16_t DS_ENDB_AT[DS_N + 1u] = {{" + ", ".join(map(str, offs)) + "};", ""]
     eng_at = [sum(1 for s in sounds if s["e"] < e) for e in range(NENG_TABLE + 1)]
     L += ["static const uint8_t DS_ENG_AT[DS_NENG + 1u] = {" + ", ".join(map(str, eng_at)) + "};",
           "/* the browse order (BASS LEAD PAD PLUCK KEYS FX OTHER; within one by ENGINE_ORDER, then name): DS_SOUNDS indices */",

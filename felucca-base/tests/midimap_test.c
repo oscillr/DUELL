@@ -28,7 +28,8 @@ static void snap_take(snap_t *s)
     for (i = 0; i < NTRK; i++)
         memcpy(s->p[i], trk[i].p, sizeof s->p[i]);
     memcpy(s->g, song.g, sizeof s->g);
-    s->bal = mix_bal; s->xf = mix_xf; s->split = mix_split; s->mreq = duell_mode_req; s->mode = duell_mode;
+    s->xf = mix_xf;   /* (item 160: no balance value any more; s->bal stays 0) */
+    s->split = mix_split; s->mreq = duell_mode_req; s->mode = duell_mode;
     s->qn = (uint8_t)(mq_w - mq_r);
     for (i = 0; i < s->qn && i < MQ_N; i++)
         s->q[i] = mq_buf[(uint8_t)(mq_r + i) % MQ_N];
@@ -48,7 +49,7 @@ static void scen_reset(uint32_t route, uint32_t mode, uint32_t e0, uint32_t e1)
         trk[i].engine = trk[i].eng_req;
     }
     song.sel = 0;
-    mix_bal = 0; mix_xf = 30; mix_split = 0;                /* (the mix of the MODE page: a CC leaves it, the next run must start equal) */
+    mix_xf = 30; mix_split = 0;                /* (the mix of the MODE page: a CC leaves it, the next run must start equal) */
     mq_r = mq_w = mq_lost = 0;
     memset(midi_morph_fired, 0, sizeof midi_morph_fired);
     memset(ref_midi_morph_fired, 0, sizeof ref_midi_morph_fired);
@@ -199,7 +200,7 @@ static int shipped_equivalence(void)
         for (j = 0; j < MAP_N; j++)
             if (!MAP_IS_EMPTY(MIDI_MAP_SHIPPED[j]) && MAP_TARGET(MIDI_MAP_SHIPPED[j]) == MAP_TARGET(old) && MAP_RULE(MIDI_MAP_SHIPPED[j]) == MAP_RULE(old))
                 nw = j;
-        if (nw == MAP_N) {                  /* (MIDI_MAP_FINAL: 11 of today's 24 have no number any more: ROLL A / B (one centred ROLL on CC102 now), UNDO, the four morph switches, MODE, BALANCE, XFADE, SPLIT: learn-only) */
+        if (nw == MAP_N) {                  /* (MIDI_MAP_FINAL: 10 of today's 24 have no number any more: ROLL A / B (one centred ROLL on CC102 now), UNDO, the four morph switches, MODE, XFADE, SPLIT: learn-only; BALANCE, CC 116, is no target since item 157: the legacy csv says REMOVED, no line) */
             gone += i == 21u || i == 22u || i == 23u || (i >= 111u && i <= 118u);
             if (!(i == 21u || i == 22u || i == 23u || (i >= 111u && i <= 118u))) {
                 printf("midimap: the target of CC %u is nowhere in the shipped map\n", i);
@@ -227,7 +228,7 @@ static int shipped_equivalence(void)
                     }
                 }
     }
-    bad += check("the shipped map: each of today's targets that still has a number, sent on its NEW number, writes what cloud/base3 writes on the old one (13 of 13; the other 11 are learn-only: no line)", ok && pairs == 13u && gone == 11u);
+    bad += check("the shipped map: each of today's targets that still has a number, sent on its NEW number, writes what cloud/base3 writes on the old one (13 of 13; 10 others are learn-only: no line; BALANCE is gone, item 157)", ok && pairs == 13u && gone == 10u);
     return bad;
 }
 
@@ -362,7 +363,7 @@ static int rules_and_learn(void)
         }
     ok &= map_set(128, P_ATK, 0, MAP_W_TYPED, 0, 0) == MAP_E_BAD && map_set(9, 127, 0, MAP_W_TYPED, 0, 0) == MAP_E_BAD &&
           map_set(9, MAP_T_G(G_CRATE), MAP_R_CHANNEL, MAP_W_TYPED, 0, 0) == MAP_E_BAD && map_set(9, P_ATK, MAP_R_GLOBAL, MAP_W_TYPED, 0, 0) == MAP_E_BAD &&
-          map_set(9, MAP_T_MODE, MAP_R_PART1, MAP_W_TYPED, 0, 0) == MAP_E_BAD && map_set(9, XW_BASE + NX - 1u, 0, MAP_W_TYPED, 0, 0) == MAP_E_BAD &&
+          map_set(9, MAP_T_MODE, MAP_R_PART1, MAP_W_TYPED, 0, 0) == MAP_E_BAD && map_set(9, XW_BASE + NX, 0, MAP_W_TYPED, 0, 0) == MAP_E_BAD &&   /* (item 144: the last slot, X27, is STRUM and valid; past the slots is not) */
           map_set(9, P_ATK, 0, MAP_W_SHIPPED, 0, 0) == MAP_E_BAD && map_set(9, P_ATK, 4, MAP_W_LEARNED, 0, 0) == MAP_E_BAD && MAP_IS_EMPTY(midi_map[9]);
     bad += check("the 23 locked numbers are never assigned, with or without force (typed, learned, cleared); a bad number, target or rule is invalid", ok);
     /* learn writes a line, 16 at most; typed lines no cap */
@@ -521,6 +522,27 @@ static int targets_and_values(void)
     t = &trk[0];
     map_target_info(P_ATK, t, &r);
     ok = r.kind == MAP_K_CONTINUOUS && r.saved == MAP_S_PATCH && r.automation == 1u && r.inert == 0u;
+    {   /* DUELL 1.1: a control the setup hides is inert as an unused one (midi_learn.c asks ui_draw.c card_hidden_vp): LOFI's PULSE WIDTH (K4) with WAVE = PLS is a target, with WAVE = SAW it is inert; UNISON DETUNE in POLY is inert */
+        uint32_t e, oe = t->eng_req;
+        for (e = 0; e < NENGINES && ENGINES[e] != &ENG_LOFI; e++)
+            ;
+        t->eng_req = (uint8_t)e;
+        t->p[P_E1] = RW_PLS;
+        map_target_info(P_E2, t, &r);
+        ok &= r.inert == 0u;
+        t->p[P_E1] = RW_SAW;
+        map_target_info(P_E2, t, &r);
+        ok &= r.inert == 1u;
+        t->p[P_VOICE] = V_POLY;
+        map_target_info(P_DETUNE, t, &r);
+        ok &= r.inert == 1u;
+        t->p[P_VOICE] = V_UNISON;
+        map_target_info(P_DETUNE, t, &r);
+        ok &= r.inert == 0u;
+        t->p[P_VOICE] = V_POLY;
+        t->p[P_E1] = RW_PLS;
+        t->eng_req = (__typeof__(t->eng_req))oe;
+    }
     map_target_info(P_LEVEL, t, &r);
     ok &= r.saved == MAP_S_MULTI && r.automation == (uint32_t)motion_param(P_LEVEL);
     map_target_info(P_MUTE, t, &r);
@@ -607,16 +629,29 @@ static int targets_and_values(void)
     ok &= song.g[G_RLOCUT] == GP[G_RLOCUT].min;
     ev(0, 0, 82, 127);
     ok &= song.g[G_DTIME] == GP[G_DTIME].max;
-    ok &= map_set(8, MAP_T_BALANCE, MAP_R_GLOBAL, MAP_W_TYPED, 0, 0) == MAP_OK && map_set(107, MAP_T_TARGET, MAP_R_CHANNEL, MAP_W_TYPED, 0, 0) == MAP_OK &&
+    ok &= map_set(107, MAP_T_TARGET, MAP_R_CHANNEL, MAP_W_TYPED, 0, 0) == MAP_OK &&
           map_set(111, MAP_T_MODE, MAP_R_GLOBAL, MAP_W_TYPED, 0, 0) == MAP_OK && map_set(112, MAP_T_XFADE, MAP_R_GLOBAL, MAP_W_TYPED, 0, 0) == MAP_OK &&
           map_set(113, MAP_T_SPLIT, MAP_R_GLOBAL, MAP_W_TYPED, 0, 0) == MAP_OK;        /* (learn-only in the shipped map: typed here) */
-    ev(0, 9, 8, 127);                                                /* BALANCE (global) */
-    ok &= mix_bal == 100;
     ev(0, 9, 107, 127); ok &= qn() == 0u;                            /* MORPH TARGET needs a channel the routing hears (as today) */
     ev(0, 1, 107, 127); ok &= qn() == 1u;
     ev(0, 9, 111, 0); ev(0, 9, 112, 127); ev(0, 9, 113, 60);         /* MODE, XFADE, SPLIT on any channel */
     ok &= mix_xf == 100 && mix_split == 61u && duell_mode == DM_SPLIT;
-    bad += check("the effects block and (typed lines) BALANCE / MODE / XFADE / SPLIT are global rows: any channel; MORPH TARGET needs a heard channel (as today)", ok);
+    bad += check("the effects block and (typed lines) MODE / XFADE / SPLIT are global rows: any channel; MORPH TARGET needs a heard channel (as today)", ok);
+    {   /* item 157: BALANCE is no target. Its code (MAP_T_SPARE_BAL, 267) stays a spare so no later code moves: a typed line on it is refused, a stored
+         * line holding it is dropped by the sanitizer, its name is "-", the codes after it are where they were */
+        uint16_t keep = midi_map[8];
+        int16_t lv0 = trk[0].p[P_LEVEL], lv1 = trk[1].p[P_LEVEL];   /* (item 160: the balance is the two MIXER LEVELs now: a CC on the spare code moves neither) */
+        ok = map_set(8, MAP_T_SPARE_BAL, MAP_R_GLOBAL, MAP_W_TYPED, 0, 0) == MAP_E_BAD && !map_code_ok(MAP_T_SPARE_BAL);
+        ok &= MAP_T_SPARE_BAL == 267 && MAP_T_XFADE == 268 && MAP_T_SPLIT == 269 && MAP_T_CUTOFF_SMART == 270 && MAP_T_RES_SMART == 271;
+        midi_map[8] = (uint16_t)MAP_LINE(MAP_T_SPARE_BAL, MAP_R_GLOBAL, MAP_W_TYPED);
+        map_sanitize();
+        ok &= MAP_IS_EMPTY(midi_map[8]);
+        ev(0, 9, 8, 127);
+        ok &= trk[0].p[P_LEVEL] == lv0 && trk[1].p[P_LEVEL] == lv1;
+        midi_map[8] = keep;
+        map_sanitize();
+        bad += check("BALANCE's code (267) is a spare: refused, dropped from a stored map, a CC on it changes nothing; XFADE .. RESONANCE keep 268 .. 271", ok);
+    }
     return bad;
 }
 

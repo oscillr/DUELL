@@ -8,7 +8,7 @@
  *   - seated, row pulled up (undriven): the landing depth falls from ~185 (a hit) .. 360 (a gentle press) to the key's rest
  *     level (170 .. 200) over ~30 ms; a soft and a hard HOLD read within a few counts of each other;
  *   - seated, row driven: the pill's resistance. reading = hard + span x (1 - strength): per key the hardest reading is
- *     389 .. 510 and the span 100 .. 150 counts (Velo's table, one key: softest 515 .. 584, hardest 389 .. 448); the strength
+ *     676 .. 706 and the span 280 .. 315 counts (the owner's unit, tests/data/velo_owner_20261026.csv; Velo's unit, before item 123: hardest 389 .. 510, span 100 .. 150); the strength
  *     of the landing relaxes over ~15 ms to a share of itself (the finger rests); a later squeeze adds to it (aftertouch);
  *     noise of a few counts; a slow drift (temperature, age) added to the reading;
  *   - the release: the reading rises to open in ~0.6 ms.
@@ -60,8 +60,8 @@ typedef struct {
 
 static void pill_key_init(pill_key_t *k)
 {
-    k->hard = 389.0 + 121.0 * pl_u();
-    k->span = 100.0 + 50.0 * pl_u();
+    k->hard = 676.0 + 30.0 * pl_u();        /* the owner's unit (item 123): hardest first reading 676 .. 706 on 5 of 6 keys (F3: 770 and up, not modelled) */
+    k->span = 280.0 + 35.0 * pl_u();        /* .. softest 956 .. 1021 */
     k->rest = 170.0 + 30.0 * pl_u();
     k->drift_rate = 0.0;
 }

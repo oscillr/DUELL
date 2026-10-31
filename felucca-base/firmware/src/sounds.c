@@ -120,6 +120,18 @@ static uint32_t ds_seed(uint32_t e, uint32_t k)
     const ds_sound_t *s = ds_get(e, k);
     return s && s->bseed ? s->bseed : ds_hash(e, k);
 }
+#if !DUELL_BENCH
+/* the End B of factory sound (e, k) as exact values: its block (build/gen/duell_sounds.h DS_ENDB, the format of a patch record's End B, morph.c morph_bv_load), 0 = none (rolled from the seed).
+ * The bench builds keep the seed roll (flash) */
+static const uint8_t *ds_endb(uint32_t e, uint32_t k)
+{
+    uint32_t g;
+    if (!ds_get(e, k))
+        return 0;
+    g = DS_ENG_AT[e] + k;
+    return DS_ENDB_AT[g + 1u] > DS_ENDB_AT[g] ? DS_ENDB + DS_ENDB_AT[g] : 0;
+}
+#endif
 /* the End B AMOUNT of factory sound (e, k) (%) */
 static uint32_t ds_amount(uint32_t e, uint32_t k)
 {

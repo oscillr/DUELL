@@ -78,7 +78,7 @@ static int fits_card(const page_t *pg, uint32_t slot, const char *tag)
 {
     int16_t *vp;
     const param_desc_t *d = page_desc(pg, slot, &vp);
-    char val[16], l1[16];
+    char val[PV_LEN], l1[16];
     const char *unit = "", *l2, *lbl;
     int32_t v, uw, lines, ok = 1;
     if (!d || !vp || !d->label || d->label[0] == '-')
@@ -304,7 +304,7 @@ static void test_pages(void)
 static int gauge_filled(uint32_t c, int32_t dx)       /* the pixel of card c's gauge row, dx px from the track's centre: not the track's colour */
 {
     int32_t x = CARD_X(c) + 5 + (CARD_W - 10) / 2 + dx, y = (int32_t)Y_LABEL + 39;
-    return host_screen[y * 240 + x] != swap16(T_BG) && host_screen[y * 240 + x] != swap16(T_SURF);
+    return host_screen[y * 240 + x] != swap16(T_BG);
 }
 static void test_cards(void)
 {
@@ -349,13 +349,13 @@ static void test_cards(void)
     goto_page("TWIN MOD");
     set_twin(TT_LP, 1);
     frames(64);
-    expect("(c) TWIN MOD (LP): KEY TRACK, FILT ENV, LFO 1, LFO 2", cards_are("KEY", "FILT ENV|", "LFO 1|", "LFO 2|"));
+    expect("(c) TWIN MOD (LP): KEY TRACK, FILTER ENV, LFO 1, LFO 2", cards_are("KEY", "FILTER ENV\n|", "LFO 1\nDEPTH|", "LFO 2\nDEPTH|"));
     set_twin(TT_COMB, 1);
     frames(64);
-    expect("(c) TWIN MOD on COMB: KEY TRACK hidden, FILT ENV, LFO 1, LFO 2 move left", cards_are("FILT ENV|", "LFO 1|", "LFO 2|", ""));
+    expect("(c) TWIN MOD on COMB: KEY TRACK hidden, FILTER ENV, LFO 1, LFO 2 move left", cards_are("FILTER ENV\n|", "LFO 1\nDEPTH|", "LFO 2\nDEPTH|", ""));
     turn(EN_K1, 5);
     frames(64);
-    expect("(c) .. K1 is FILT ENV", XV(TSEL, X_ENV2) > 0 && XV(TSEL, X_KTRK2) == 0);
+    expect("(c) .. K1 is FILTER ENV", XV(TSEL, X_ENV2) > 0 && XV(TSEL, X_KTRK2) == 0);
 
     /* TWIN CHAIN */
     goto_page("TWIN CHAIN");
@@ -490,7 +490,7 @@ static void test_quick(void)
     qp = ly_page(LAYER_EDIT);
     ok = ui.layer == LAYER_EDIT && qp->id[0] == P_FREEA && qp->id[1] == P_FREEB && qp->id[2] == P_CUT2 && qp->id[3] == P_RES2;
     expect("(d) filter 2 on and UNLINKED: CUT 1, RES 1, CUT 2, RES 2", ok);
-    expect("(d) .. the cards are CUTOFF, RES, CUTOFF, RES under the group cells MULTI FILTER and TWIN FILTER", cards_are("CUTOFF|", "RES|", "CUTOFF|", "RES|"));
+    expect("(d) .. the cards are MULTI CUTOFF, MULTI RES, TWIN CUTOFF, TWIN RES (DUELL 1.1: two lines; the cache key holds the label cut at 11 letters) under the group cells MULTI FILTER and TWIN FILTER", cards_are("MULTI\nCUTOF|", "MULTI\nRES|", "TWIN\nCUTOFF|", "TWIN\nRES|"));
     {
         int16_t c2 = TSEL->p[P_CUT2], r2 = TSEL->p[P_RES2], c1 = TSEL->p[P_FREEA];
         turn(EN_K3, -2);
@@ -515,6 +515,11 @@ static void test_quick(void)
     open_quick();
     expect("(d) the other QUICK layers are unchanged (LFO, ENV)", ly_page(LAYER_LFO)->id[1] == P_LD_FLT && ly_page(LAYER_ENV)->id[2] == P_E2FLT);
     close_quick();
+    btn_down(B_LFO);                                  /* DUELL 1.1: QUICK LFO's K2 and K4 (each LFO's cutoff depth) are MULTI CUTOFF in two lines; K1 and K3 keep their own names */
+    frames(480);
+    expect("(d) QUICK LFO: K2 and K4 are MULTI CUTOFF (two lines), K1 and K3 RATE", ui.layer == LAYER_LFO && card_is(1, "MULTI\nCUTOF|") && card_is(3, "MULTI\nCUTOF|") && card_is(0, "RATE|") && card_is(2, "RATE|"));
+    btn_up(B_LFO);
+    frames(64);
     /* the filter 2 state changes while the layer is shown: its cards follow */
     set_twin(TT_LP, 1);
     open_quick();
@@ -536,13 +541,13 @@ static void test_names(void)
            str_eq(mod_dst_name(TSEL, MD_CUT2), "TWIN\nCUTOFF") && str_eq(mod_dst_name(TSEL, MD_RES2), "TWIN\nRES") && str_eq(mod_dst_name(TSEL, MD_DRIVE), "FILTER\nDRIVE") &&
            str_eq(mod_dst_name(TSEL, MD_BLEND), "FILTER\nBLEND") && str_eq(mod_dst_name(TSEL, MD_SUBLVL), "SUB\nLEVEL"));
     mod_dst_line(TSEL, MD_CUT2, b, &more);
-    expect("(e) full line TWIN FILTER CUTOFF", str_eq(b, "DEST: TWIN FILTER CUTOFF"));
+    expect("(e) full line TWIN CUTOFF", str_eq(b, "DEST: TWIN CUTOFF"));
     set_twin(TT_COMB, 1);
     mod_dst_line(TSEL, MD_CUT2, b, &more);
-    expect("(e) TWIN CUTOFF reads TUNE on COMB (card and full line)", str_eq(mod_dst_name(TSEL, MD_CUT2), "TWIN\nTUNE") && str_eq(b, "DEST: TWIN FILTER TUNE"));
+    expect("(e) TWIN CUTOFF reads TUNE on COMB (card and full line)", str_eq(mod_dst_name(TSEL, MD_CUT2), "TWIN\nTUNE") && str_eq(b, "DEST: TWIN TUNE"));
     mod_dst_line(TSEL, MD_RES2, b, &more);
-    expect("(e) TWIN / RES reads FEEDBACK on COMB", str_eq(mod_dst_name(TSEL, MD_RES2), "TWIN\nFDBK") && str_eq(b, "DEST: TWIN FILTER FEEDBACK"));
-    expect("(e) the card names fit (every line of the two-line names in the small font, 49 px; the matrix row names MULTI CUT / TWIN CUT / MULTI RES / TWIN RES in 64 px; the longest full line in the 212 px of the DEST line)", text_w(&AF_S, "MULTI") <= COL_W - 8 && text_w(&AF_S, "TWIN") <= COL_W - 8 && text_w(&AF_S, "CUTOFF") <= COL_W - 8 && text_w(&AF_S, "FILTER") <= (int)LBL_W && text_w(&AF_S, "MULTI CUT") <= 64 && text_w(&AF_S, "TWIN CUT") <= 64 && text_w(&AF_S, "MULTI RES") <= 64 && text_w(&AF_S, "TWIN RES") <= 64 && text_w(&AF_M, "DEST: TWIN FILTER FEEDBACK") <= 212 && text_w(&AF_M, "DEST: MULTI FILTER CUTOFF") <= 212);
+    expect("(e) TWIN / RES reads FEEDBACK on COMB", str_eq(mod_dst_name(TSEL, MD_RES2), "TWIN\nFDBK") && str_eq(b, "DEST: TWIN FEEDBACK"));
+    expect("(e) the card names fit (every line of the two-line names in the small font, 49 px; the matrix row names MULTI CUT / TWIN CUT / MULTI RES / TWIN RES in 64 px; the longest full line in the 212 px of the DEST line)", text_w(&AF_S, "MULTI") <= COL_W - 8 && text_w(&AF_S, "TWIN") <= COL_W - 8 && text_w(&AF_S, "CUTOFF") <= COL_W - 8 && text_w(&AF_S, "FILTER") <= (int)LBL_W && text_w(&AF_S, "MULTI CUT") <= 64 && text_w(&AF_S, "TWIN CUT") <= 64 && text_w(&AF_S, "MULTI RES") <= 64 && text_w(&AF_S, "TWIN RES") <= 64 && text_w(&AF_M, "DEST: TWIN FEEDBACK") <= 212 && text_w(&AF_M, "DEST: MULTI FILTER CUTOFF") <= 212);
 }
 
 /* ---------------------------------------------------------------------------------------- (f) graphs --- */
@@ -559,7 +564,7 @@ static uint32_t ink_rows(uint32_t y0, uint32_t y1)    /* the pixels in the panel
     uint32_t n = 0, y, x;
     for (y = y0; y < y1; y++)
         for (x = 12; x < 228u; x++)
-            n += host_screen[y * 240u + x] != swap16(T_SURF) && host_screen[y * 240u + x] != swap16(T_BG);
+            n += host_screen[y * 240u + x] != swap16(T_BG);
     return n;
 }
 static void test_graphs(void)

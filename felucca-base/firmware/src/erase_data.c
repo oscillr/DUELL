@@ -5,9 +5,11 @@
  * What goes (flash objects, storage.c; a stored object is the A/B pair of sectors, both erased by st_wipe):
  *   the autosave (OBJ_AUTOSAVE), the pattern slots (OBJ_PATSLOT0..2), the multis (OBJ_MULTI0..7: M01..M16 are
  *   the factory ones again, ROM), the patch store (OBJ_PATCH0..5 and, DUELL 0.2.15, OBJ_PATCHX0..9, the cloud plan's job A: OBJ_PATCHX0..15 (chunks 6..21): every stored patch and every factory sound's shadow copy),
- *   the user wavetables (OBJ_WTAB0..2, DUELL 0.2.14: USR1..USR3 are EMPTY again), the velocity calibration (OBJ_VELO, the cloud plan's job A),
- *   and the settings (OBJ_SETTINGS: theme, scale, MIDI channels, the favourites, the preferences, the panel table).
- * What stays: the FM6 voice bank and the firmware itself (DUELL 0.2.9: the user sample slots are gone with the SAMPLE engine; the rest of
+ *   the user wavetables (OBJ_WTAB0..2, DUELL 0.2.14: USR1..USR3 are EMPTY again), DUELL 1.1 (item 91, owner: erase EVERYTHING the user stored) the FM6
+ *   voice bank (0xE7000), and the settings (OBJ_SETTINGS: theme, scale, MIDI channels and MIDI MAP / LEARN, the favourites, the preferences). The theme's RAM
+ *   copy (`settings`, .noinit, survives the restart) is reset by persist_boot when no record is found (project.c).
+ * The velocity calibration (OBJ_VELO, 0xC6000..0xC7FFF, sense.c) STAYS (owner, item 103: it belongs to this unit's key sensors, not to the user's data; it is not in the erase list). The button / knob map (`panel`, .noinit and the settings record) is the built-in one again (project.c persist_boot).
+ * What stays: the RAM safety records (crash, boot guard, second core, diagnostics: never user data, gone at power-off) and the firmware itself (DUELL 0.2.9: the user sample slots are gone with the SAMPLE engine; the rest of
  * their flash (0xA6000..0xC5FFF is the patch store's chunks 6..21 and 0xC6000..0xC7FFF OBJ_VELO, above), is not touched; 0xA0000..0xA5FFF is the user wavetables, above).
  *
  * Order and power cuts: the objects in that order, the SETTINGS LAST. Every object is erased copy by copy (st_wipe: the
@@ -42,10 +44,10 @@ static int erase_data_run(void)
                                     OBJ_PATCHX0, OBJ_PATCHX0 + 1, OBJ_PATCHX0 + 2, OBJ_PATCHX0 + 3, OBJ_PATCHX0 + 4,
                                     OBJ_PATCHX0 + 5, OBJ_PATCHX0 + 6, OBJ_PATCHX0 + 7, OBJ_PATCHX0 + 8, OBJ_PATCHX0 + 9,
                                     OBJ_PATCHX0 + 10, OBJ_PATCHX0 + 11, OBJ_PATCHX0 + 12, OBJ_PATCHX0 + 13, OBJ_PATCHX0 + 14,
-                                    OBJ_PATCHX0 + 15, OBJ_VELO,
+                                    OBJ_PATCHX0 + 15,   /* (item 103, owner: OBJ_VELO, the key velocity calibration, is the unit's, not user data: KEPT) */
                                     OBJ_WTAB0, OBJ_WTAB0 + 1, OBJ_WTAB0 + 2,
                                     OBJ_SETTINGS};
-    uint32_t i;
+    uint32_t i, failed = 0;
     if (transport_busy())
         return 3;
     if (!flash_ok || erase_at)
@@ -55,13 +57,20 @@ static int erase_data_run(void)
     as.wrote = 1;                                /* and no autosave for the next 60 s (autosave_poll's gap) */
     as.last = fm1_ms;
     as.err = 0;
-    for (i = 0; i < sizeof ORDER; i++) {
-        if (st_wipe(ORDER[i]))
-            return 4;
+    for (i = 0; i < sizeof ORDER; i++) {           /* DUELL 1.1 (owner, test3: the settings and multis stayed): an object that cannot be wiped no longer stops the erase before the rest and the settings: every object is tried, the */
+        if (ORDER[i] == OBJ_SETTINGS && !st_blank(FVB_HOME) && st_erase(FVB_HOME))   /* DUELL 1.1 (item 91): the FM6 voice bank the editor loaded (0xE7000, fm6_vbank.c; */
+            failed = 1;                             /* its staged copy lives in the autosave's sectors, wiped above) goes too, just before the settings */
+        if (st_wipe(ORDER[i]))                      /* settings last as ever, and the failure is told after all of it (rc 4); the unit restarts when the settings went, so it never comes up half old */
+            failed = 1;
         ERASE_FEED();
     }
+    if (failed) {
+        persist_t pr;
+        if (st_load(OBJ_SETTINGS, &pr, sizeof pr) != (int)sizeof pr)
+            failed = 2;                             /* (the settings are gone: the next start is a new unit; the object that failed is told with rc 4 and can be erased again from the menu) */
+    }
     erase_at = (fm1_ms + ERASE_RESTART_MS) | 1u;
-    return 0;
+    return failed ? 4 : 0;   /* (the unit restarts either way: erase_at is set) */
 }
 #else
 static int erase_busy(void) { return 0; }

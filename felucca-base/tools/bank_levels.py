@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
-"""DUELL 1.0: balance the levels of the 128 factory patches by their TRIM alone (owner, 2026-10-21, item 30; release_drafts/BANK_LEVELS.md).
+"""DUELL 1.0: balance the levels of the 128 factory patches by their TRIM alone (owner, 2026-10-21, item 30; working docs/BANK_LEVELS.md).
 
     tools/bank_levels.py [--passes N] [--md FILE]
 

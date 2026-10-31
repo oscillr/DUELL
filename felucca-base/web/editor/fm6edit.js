@@ -54,18 +54,18 @@ const OPC = [
   ["DET", "DETUNE", "A small offset against the other operators (-7 .. +7).", null, -7],
   ["OL", "OUTPUT LEVEL", "Loudness of a carrier, or brightness of a modulator (0 is silent)."],
   ["KVS", "VELOCITY SENSITIVITY", "How much the key velocity changes the output level."],
-  ["AMS", "AMP MODULATION SENSITIVITY", "How much the LFO's amplitude depth moves this operator."],
-  ["RS", "RATE SCALING", "Higher notes make the envelope faster."],
+  ["AMS", "AMP MOD SENSITIVITY", "How much the LFO's amplitude depth moves this operator."],
+  ["RS", "RATE SCALING", "Higher notes make the ENV faster."],
 ];
 const ENVC = [["R1", "RATE 1 (ATTACK)"], ["R2", "RATE 2"], ["R3", "RATE 3"], ["R4", "RATE 4 (RELEASE)"], ["L1", "LEVEL 1"], ["L2", "LEVEL 2"], ["L3", "LEVEL 3 (HELD)"], ["L4", "LEVEL 4 (END)"]];
 const KLS = [["BP", "BREAK POINT", "The note where the level scaling starts."], ["LD", "LEFT DEPTH", "Level change below the break point."], ["RD", "RIGHT DEPTH", "Level change above the break point."],
   ["LC", "LEFT CURVE", "Shape of the change below the break point.", ["-LINEAR", "-EXPONENTIAL", "+EXPONENTIAL", "+LINEAR"]], ["RC", "RIGHT CURVE", "Shape of the change above the break point.", ["-LINEAR", "-EXPONENTIAL", "+EXPONENTIAL", "+LINEAR"]]];
 const VC = {
-  alg: [["FB", "FEEDBACK", "The feedback operator's loop (0 to 7)."], ["OKS", "OSCILLATOR KEY SYNC", "ON: every note starts the operators at the same phase.", ["OFF", "ON"]],
+  alg: [["FB", "FEEDBACK", "The feedback operator's loop (0 to 7)."], ["OKS", "OSC KEY SYNC", "ON: every note starts the operators at the same phase.", ["OFF", "ON"]],
     ["TRNSP", "TRANSPOSE", "The whole voice in semitones (-24 .. +24).", null, -24]],
   pitch: [["PR1", "RATE 1"], ["PR2", "RATE 2"], ["PR3", "RATE 3"], ["PR4", "RATE 4 (RELEASE)"], ["PL1", "LEVEL 1"], ["PL2", "LEVEL 2"], ["PL3", "LEVEL 3 (HELD)"], ["PL4", "LEVEL 4 (END)"]],
   lfo: [["LFW", "WAVEFORM", "Shape of the voice's LFO.", ["TRIANGLE", "SAW DOWN", "SAW UP", "SQUARE", "SINE", "SAMPLE AND HOLD"]], ["LFS", "SPEED", "Speed of the LFO."],
-    ["LFD", "DELAY", "Time before the LFO starts after a note."], ["LPMD", "PITCH DEPTH", "Vibrato depth."], ["LAMD", "AMP DEPTH", "Tremolo depth (on the operators with AMP MODULATION SENSITIVITY)."],
+    ["LFD", "DELAY", "Time before the LFO starts after a note."], ["LPMD", "PITCH DEPTH", "Vibrato depth."], ["LAMD", "AMP DEPTH", "Tremolo depth (on the operators with AMP MOD SENSITIVITY)."],
     ["LKS", "KEY SYNC", "ON: every note restarts the LFO.", ["OFF", "ON"]], ["LPMS", "PITCH SENSITIVITY", "How much the pitch depth acts (0 to 7)."]],
 };
 
@@ -105,13 +105,13 @@ export function createFm6Editor(app, p, opt = {}) {
   const algCard = card("ALGORITHM AND FEEDBACK", "How the six operators are connected: a CARRIER is heard, a MOD (modulator) shapes the operator it feeds.",
     h("div", { class: "algrow" }, h("div", {}, h("label", { class: "lab", text: "ALGORITHM" }), algSel)),
     grid(VC.alg.map(([f, l, t, n, s]) => mkCell(byte(f), l, t, n, s)), 3));
-  const pitchCard = card("PITCH ENVELOPE", "Moves the pitch of all six operators (50 is no change).", grid(VC.pitch.map(([f, l]) => mkCell(byte(f), l, `Pitch envelope ${l.toLowerCase()}.`))));
+  const pitchCard = card("PITCH ENV", "Moves the pitch of all six operators (50 is no change).", grid(VC.pitch.map(([f, l]) => mkCell(byte(f), l, `Pitch ENV ${l.toLowerCase()}.`))));
   const lfoCard = card("LFO", "The voice's own LFO (vibrato and tremolo).", grid(VC.lfo.map(([f, l, t, n]) => mkCell(byte(f), l, t, n))));
   const opCards = [1, 2, 3, 4, 5, 6].map((op) => {
     const freq = h("span", { class: "small opfreq" }), role = h("span", { class: "state" });
     const el = card(`OPERATOR ${op}`, "",
       grid(OPC.map(([f, l, t, n, s]) => mkCell(byte(f, op), l, t, n, s))),
-      h("h4", { class: "sub", text: "ENVELOPE", title: "Rates: higher is faster." }), grid(ENVC.map(([f, l]) => mkCell(byte(f, op), l, `Operator ${op} envelope ${l.toLowerCase()}. Rates: higher is faster.`))),
+      h("h4", { class: "sub", text: "ENV", title: "Rates: higher is faster." }), grid(ENVC.map(([f, l]) => mkCell(byte(f, op), l, `Operator ${op} ENV ${l.toLowerCase()}. Rates: higher is faster.`))),
       h("h4", { class: "sub", text: "KEY SCALING" }), grid(KLS.map(([f, l, t, n]) => mkCell(byte(f, op), l, t, n)), 5));
     el.querySelector("h3").append(role, freq);
     return { op, el, freq, role };

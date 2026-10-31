@@ -11,7 +11,7 @@
  *   tests/scenes/spare/M08_MONO_DUEL.bin                     SPARE DATA (0.2.25): MONO DUEL, the factory M08 of 0.2.23 .. 0.2.25 and the only factory multi in DUEL, left the
  *                                                            sixteen for the owner's HAZY TENSOR (the owner: "Mono-dual is out"); multi_render_test renders it as X08_MONO_DUEL
  * scene_put(k, NAME) stores the record in slot k (0..15) as a SAVED multi (multi.c's own store: flash or the host RAM store);
- * scene_load(k, NAME) does that and loads it as the MULTI page does, with the MODE, BALANCE, XFADE and SPLIT it holds applied (as the
+ * scene_load(k, NAME) does that and loads it as the MULTI page does, with the MODE, XFADE and SPLIT it holds applied (as the
  * CPU TEST multis always did, and as MODE RECALL ON does). A test loads a scene into the slot it used to load, so what it measures and
  * hashes is what it was. The files are read relative to felucca-base (host_tests.sh runs there). */
 #include <stdio.h>

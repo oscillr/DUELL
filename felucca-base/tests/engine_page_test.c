@@ -168,6 +168,8 @@ static void test_knob2(void)
             int16_t v0;
             if (!d || !d->label || d->label[0] == '-' || d->max == d->min)
                 continue;
+            if (card_hidden_vp(&TSEL->p[id]))        /* DUELL 1.1: a card the selection hides is not drawn and its knob does nothing (LOFI's PULSE WIDTH, K4, shows with WAVE = PLS only; tested below) */
+                continue;
             v0 = TSEL->p[id];
             turn(EN_K1 + j, v0 < d->max ? 1 : -1);
             ok &= TSEL->p[id] != v0 && id == P_E0 + (ENGINES[e]->uiord ? ENGINES[e]->uiord[j - 1u] : j - 1u);
@@ -175,6 +177,18 @@ static void test_knob2(void)
         }
         snprintf(w, sizeof w, "%s: ENGINE K2..K4 turn the engine's first three controls; the sound, FAV and the page stay, no dialog", ENGINES[e]->name);
         expect(w, ok && snd() == s0 && preset_favorite() == fav0 && TSEL->eng_req == e && !ui.confirm && on_engine_page());
+        if (ENGINES[e] == &ENG_LOFI) {               /* DUELL 1.1: K4 (PULSE WIDTH) is a card with WAVE = PLS only; with any other WAVE it is hidden and its knob does nothing */
+            int16_t w0, p0;
+            TSEL->p[P_E1] = RW_PLS;
+            p0 = TSEL->p[P_E2];
+            turn(EN_K1 + 3, p0 < 127 ? 1 : -1);
+            ok = TSEL->p[P_E2] != p0 && !card_hidden_vp(&TSEL->p[P_E2]);
+            TSEL->p[P_E1] = RW_SAW;
+            w0 = TSEL->p[P_E2];
+            turn(EN_K1 + 3, w0 < 127 ? 1 : -1);
+            ok &= TSEL->p[P_E2] == w0 && card_hidden_vp(&TSEL->p[P_E2]);
+            expect("LOFI: K4 PULSE WIDTH turns with WAVE = PLS; with WAVE = SAW the card is hidden and the knob does nothing", ok);
+        }
     }
 }
 /* the cards: K1 ENGINE, K2..K4 the engine's own (their shown names), never SOUND / FAV / INIT */

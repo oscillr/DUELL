@@ -9,17 +9,24 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>DUELL editor</title>
 <link rel="stylesheet" href="./editor.css">
+<link rel="stylesheet" href="./look11.css">
 </head>
 <body>
 <header id="top">
   <!-- The owner's header image (white on transparent, wordmark + "by OSCILL/R" + "MultiMorphing Bitimbral Synthesizer"): img/editor-header.png (also .svg). On light palettes it is inverted by CSS. -->
   <img id="logoslot" class="hdr" src="./img/editor-header.png" alt="DUELL, MultiMorphing Bitimbral Synthesizer, by OSCILL/R" width="960" height="180">
   <span class="grow"></span>
+  <!-- DUELL 1.1: the DEMO switch (works with no unit), the octave button (its own full view), the part markers and the battery, as in the device header -->
+  <button id="demosw" class="demosw" type="button" aria-pressed="false" title="DEMO: the editor with a simulated unit, no unit, no MIDI, nothing saved">DEMO</button>
   <span class="viewsw" id="viewsw" role="group" aria-label="View"><button id="vparts" class="ghost small" type="button">PARTS</button><button id="vglobal" class="ghost small" type="button">GLOBAL</button></span>
   <span id="unit" class="unit" role="status"></span>
   <button id="connect" class="small">Connect the FM-1</button><button id="disconnect" class="ghost small" hidden>Disconnect</button>
   <a id="backuplink" class="btnlink" href="./backup.html">Backup and restore</a>
+  <button id="octbtn" class="octbtn" type="button" hidden title="OCTAVE: the octave of the keys (its own view, as on the unit)">OCTAVE <b id="octval">0</b></button>
+  <span id="markers" class="markers" aria-label="Parts"></span>
+  <span id="batt" class="batt" hidden title="Battery (demo value)"><i></i></span>
 </header>
+<div id="demobar" class="demobar" hidden><b>DEMO</b><span>No unit is connected. Everything here is simulated and nothing is saved. Click through every tab.</span><button id="demoleave" class="small ghost" type="button">Leave DEMO</button></div>
 <main id="main"></main>
 <footer id="foot"><span id="msg" class="msg" role="status" aria-live="polite"></span>
   <span id="mockbar" class="mockbar" hidden><b>SIMULATED UNIT</b>

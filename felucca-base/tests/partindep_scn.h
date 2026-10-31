@@ -8,7 +8,7 @@
 #define NSCENE 12                                        /* scene 6: both parts' S&H LFO (job 3); scenes 9, 10, 11: SUB, CYCLE and STEPS (cloud job F) */
 static const char *const SCN[NSCENE] = {
     "STEREO: SPREAD, matrix PAN + bus offsets both parts, INSERT, EQ, SAT, PAN step, tail",
-    "DUEL: EQ, SAT, PUMP, BALANCE, PART FX crossfade, MUTE, SPACE, a silent part",
+    "DUEL: EQ, SAT, PUMP, LEVEL, PART FX crossfade, MUTE, SPACE, a silent part",
     "LAYER: SPREAD both, MUTE, DRIVE, PART FX OFF + MUTE, SENDS OFF, SPACE, MODE change",
     "STEREO: MORPH both parts (fader moves), matrix on both, EQ, SAT",
     "LAYER: MORPH + SPREAD + EQ + PART FX crossfade + MUTE + PAN step, silent part 2",
@@ -116,7 +116,7 @@ static uint64_t scene(uint32_t id, blk_t blk)
         trk[1].p[P_DIST] = 60;
     }
     if (id == 1u || id == 5u || id == 10u) {
-        mix_bal = id == 1u ? 20 : -15;
+        trk[id == 1u ? 0 : 1].p[P_LEVEL] = id == 1u ? 108 : 109;   /* (item 160: was BALANCE +20 / -15: part 1 x 0.8 = -1.9 dB, part 2 x 0.85 = -1.4 dB, to the nearest 0.5 dB step) */
         for (k = 0; k < 2u; k++) {
             trk[k].p[P_EQLG] = 20; trk[k].p[P_EQMG] = -20; trk[k].p[P_EQHG] = 20;
             trk[k].p[P_DKSRC] = 0; trk[k].p[P_DKDEP] = 80; trk[k].p[P_DKATK] = 10; trk[k].p[P_DKRLS] = 40; trk[k].p[P_DKRATE] = 64;   /* PUMP, not SRC PART */
@@ -141,6 +141,13 @@ static uint64_t scene(uint32_t id, blk_t blk)
         morph_set_fader(30);
         morph_roll(0);
         morph_roll(1);
+        if (id == 3u)                                   /* 2026-10-28: SMART sets no choice any more (the LFO shapes were the last), so scene 3's cross-fade (PB_MXF) needs an End B set by hand: both LFO shapes one step on, as a hand-set End B has them */
+            for (k = 0; k < 2u; k++) {
+                int8_t *eb = mph[k].h[1][mph[k].top[1]];
+                eb[P_LWAVE] = (int8_t)((mph[k].base[P_LWAVE] + 1) % 5);
+                eb[P_L2WAVE] = (int8_t)((mph[k].base[P_L2WAVE] + 1) % 5);
+                morph_build(&mph[k]);
+            }
     }
     if (id == 6u) {                                     /* the S&H of both parts' LFO 1 wraps in the same blocks: each draws from the one shared generator (voice.c lfo_rand) */
         for (k = 0; k < 2u; k++) {

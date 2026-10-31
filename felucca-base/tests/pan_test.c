@@ -45,7 +45,6 @@ static void clean(void)                                 /* the DSP as at power-o
     memset(pan_x, 0, sizeof pan_x);
     memset(pan_g, 0, sizeof pan_g);
     memset(pan_gv, 0, sizeof pan_gv);
-    mix_bal = 0;
     mix_xf = mix_split = 0;
     vage = 0;
     mod_seed = 0x2545F491u;

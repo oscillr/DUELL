@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
-"""DUELL 1.0: level balance of the factory multis by TRIM (release_drafts/VOLUME_CHECK_V1.md).
+"""DUELL 1.0: level balance of the factory multis by TRIM (working docs/VOLUME_CHECK_V1.md).
 
     tools/multi_trim.py MEASURE.txt [--target DB] [--window DB] [--apply]
 

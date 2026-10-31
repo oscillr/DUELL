@@ -53,7 +53,7 @@ await idle();
 // part 1 on PHASE: an engine with the multimode filter (ufilt 1), so MULTI FILTER 2/2 shows the ENV 2 / LFO 1 / LFO 2 depth sliders (on ANALOG the routes drive its own filter: hidden there, as on the unit)
 await E("(async () => { const u = window.__app.unit; const list = u.info.engines || []; const e = list.indexOf('PHASE'); if (e >= 0 && u.parts[0].eng !== e) await u.setEngine(0, e); return true; })()");
 await idle(); await c.sleep(100);
-await E("(async () => { window.__app.unit.writeParam(0, 43, 1); await window.__app.unit.idle(); return true; })()");   // (cloud job I: the second filter on (LP), so TWIN FILTER, TWIN MOD and TWIN CHAIN are drawn and their sliders dragged)
+await E("(async () => { window.__app.unit.writeParam(0, 43, 1); await window.__app.unit.idle(); return true; })()");   // (cloud job I: the second filter on (LP), so TWIN FILTER, TWIN CUTOFF MOD and TWIN CHAIN are drawn and their sliders dragged)
 await idle(); await c.sleep(100);
 let total = 0, dragged = 0, bipolarSeen = 0, plainSeen = 0;
 const broken = [];
@@ -111,8 +111,8 @@ ok(bipolarSeen >= 8 && plainSeen >= 20, `sliders: the fill bar follows the value
 {   // the depth cards of MULTI FILTER 2/2 (the owner's broken ones) are among the dragged, under their own labels (cloud job I: on the FILTER tab)
   await clickTab(0, "FILTER"); await idle(); await c.sleep(100);
   const list = await sliders(0), labs = list.map((s) => s.lab);
-  const want = ["FILTER ENV", "KEY TRACK", "LFO 1", "LFO 2"], cm = list.filter((s) => s.card === "CUTOFF MOD").map((s) => s.lab);   // (T0229: the CUTOFF MOD card, owner 0b)
-  ok(want.join() === cm.join(), `sliders: CUTOFF MOD (part 1 on PHASE) shows FILTER ENV, KEY TRACK, LFO 1, LFO 2, all dragged above (${cm.join(", ")})`);
+  const want = ["FILTER ENV", "KEY TRACK", "LFO 1", "LFO 2"], cm = list.filter((s) => s.card === "MULTI CUTOFF MOD").map((s) => s.lab);   // (T0229: the MULTI CUTOFF MOD card, owner 0b)
+  ok(want.join() === cm.join(), `sliders: MULTI CUTOFF MOD (part 1 on PHASE) shows FILTER ENV, KEY TRACK, LFO 1, LFO 2, all dragged above (${cm.join(", ")})`);
 }
 {   // T0227 (owner): the engine drop-down changes the engine at once (no dialog), one undo step puts it back; the ENGINE tab has ONE card of the engine's own controls
   await clickTab(0, "ENGINE"); await idle(); await c.sleep(100);

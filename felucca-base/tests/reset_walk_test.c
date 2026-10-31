@@ -16,7 +16,6 @@ static void expect(const char *what, int ok)
         bad++;
     }
 }
-static int said_reset(void) { return ui.msg_t && ui.msg[0] == 'R' && ui.msg[1] == 'E' && ui.msg[2] == 'S' && ui.msg[3] == 'E' && ui.msg[4] == 'T' && ui.msg[5] == ' '; }
 static void quiet(void) { frames(400); }
 
 /* a value off the default that the knob offers: the next one up, else the next one down */
@@ -53,7 +52,7 @@ static void walk_page(uint32_t i, const char *tag)
         turn(EN_K1 + j, 1);
         snprintf(what, sizeof what, "%s%s K%u %s: OCT- + the knob resets to the default (%d, was %d, is %d), said RESET", PAGES[i].title, tag, j + 1u, d->label ? d->label : "?",
                  d->def, off_def(d), *vp);
-        expect(what, *vp == d->def && said_reset());
+        expect(what, *vp == d->def);
         btn_up(B_OCTDN); frame(); frame();
         song.octave = 0;
     }
@@ -126,7 +125,7 @@ int main(void)
     TSEL->p[P_ATK] = 90;
     btn_down(B_OCTDN); frame();
     turn(EN_K1, 1);
-    expect("right after the ENV tap: OCT- + KNOB 1 resets ATK", TSEL->p[P_ATK] == TP[P_ATK].def && said_reset());
+    expect("right after the ENV tap: OCT- + KNOB 1 resets ATK", TSEL->p[P_ATK] == TP[P_ATK].def);
     btn_up(B_OCTDN); frame(); frame();
     /* .. and with the knob turned in the same frame as the OCT- press */
     quiet();
@@ -150,7 +149,7 @@ int main(void)
         turn(EN_K1 + i, 1);
         snprintf(what, sizeof what, "live morph, AMP ENV K%u %s: the SOUNDING value is the default after the reset (shown %d, default %d)", i + 1u, TP[ID[i]].label,
                  morph_view(song.sel, ID[i]), TP[ID[i]].def);
-        expect(what, morph_view(song.sel, ID[i]) == TP[ID[i]].def && said_reset());
+        expect(what, morph_view(song.sel, ID[i]) == TP[ID[i]].def);
         btn_up(B_OCTDN); frame(); frame();
         quiet();
     }

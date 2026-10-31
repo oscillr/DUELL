@@ -88,7 +88,6 @@ static void dsp_clean(void)                              /* the DSP as at power-
     memset(midi_bend_q8, 0, sizeof midi_bend_q8);
     memset(midi_bend_target, 0, sizeof midi_bend_target);
     memset(kb_chn, 0, sizeof kb_chn);
-    mix_bal = 0;
     mix_xf = mix_split = 0;
     vage = 0;
     mod_seed = 0x2545F491u;
@@ -1026,7 +1025,7 @@ static void t_routes(void)
             char ln[32];
             const char *more;
             mod_dst_line(&trk[0], MD_RES, ln, &more);
-            expect("  .. its DEST line says MULTI FILTER RES (not ANALOG's own RES, an EDIT slot: no DST name is an engine knob label)", str_eq(ln, "DEST: MULTI FILTER RES") && !more);
+            expect("  .. its DEST line says MULTI RES (not ANALOG's own RES, an EDIT slot: no DST name is an engine knob label)", str_eq(ln, "DEST: MULTI RES") && !more);
         }
     }
     {   /* CC74 / CC71 on a ufilt engine set the new ids over their ranges; on ANALOG its own */
@@ -1526,12 +1525,10 @@ static void t_ktrk_roll(void)
                     morph_roll_pure(o, end, e, 70u, seed, 0, 1);
                     smart0 += !m && end[P_KTRK] != 0;
                     wild_from0 += m && end[P_KTRK] != 0;
-                    bypass_ok &= !(end[P_FREEA] >= UF_STEPS && end[P_FREEC] <= 0) || end[P_KTRK] == 0;
                     o[P_KTRK] = 40;
                     morph_roll_pure(o, end, e, 70u, seed, 0, 1);
                     moved += end[P_KTRK] != 40;
                     inrange &= end[P_KTRK] >= -63 && end[P_KTRK] <= 63 && end[P_KTRK] >= 40 - 32 && end[P_KTRK] <= 63;
-                    bypass_ok &= !(end[P_FREEA] >= UF_STEPS && end[P_FREEC] <= 0) || end[P_KTRK] == 40;
                 }
             }
         }
@@ -1550,9 +1547,9 @@ static void t_ktrk_roll(void)
                 other_same &= e1[i] == end[i];
     }
     mrc = sv;
-    expect("MORPH: a KEY TRK of 0 stays 0 in SMART (500 rolls: none moved) and WILD rolls it from 0 (some do); one that is set rolls (SMART and WILD) within 32 steps of the original's",
-           !smart0 && wild_from0 > 100u && moved > 500u && inrange);
-    expect("  .. never switches the filter on: an End B whose filter is bypassed (MODE LP, CUT open) keeps the original's KEY TRK, 0 or 40; the other values of a seed are the same whatever KEY TRK holds",
+    expect("MORPH: a KEY TRK of 0 rolls also from 0 in SMART and WILD (owner 2026-10-28); one that is set rolls (SMART and WILD) within 32 steps of the original's",
+           smart0 > 100u && wild_from0 > 100u && moved > 500u && inrange);
+    expect("  .. no bypass guard (owner 2026-10-28): the roll treats a bypassed filter (MODE LP, CUT open) like any other; the other values of a seed are the same whatever KEY TRK holds",
            bypass_ok && other_same);
 }
 

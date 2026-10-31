@@ -8,7 +8,7 @@ in parallel with generate(), so its data is a source file, remade only when this
 Everything is the device's own: the VIOLET palette (bg, text, part colours c0 / c2, raise), the DUELL word of the splash lockup (build/gen/splash_logo.h,
 rows 0..33, the 4-bit coverage run list as it is), the splash's sine table (a quarter wave; the loader draws the splash's morphing wave lines), and the UI's typeface
 Inter Tight (assets/fonts/InterTight[wght].ttf, weight 500, 15 px, the M face of tools/gen_aa_font.py): WRITING and DO NOT SWITCH OFF as two whole bitmaps (4-bit alpha,
-two pixels a byte, row after row), the digits and % as glyphs for the percent. The picture it makes is release_drafts/LOADER_SCREEN_DESIGN.png (tools/loader_screen_design.py)."""
+two pixels a byte, row after row), the digits and % as glyphs for the percent. The picture it makes is working docs/LOADER_SCREEN_DESIGN.png (tools/loader_screen_design.py)."""
 import math
 import re
 import sys

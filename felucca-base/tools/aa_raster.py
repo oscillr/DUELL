@@ -72,10 +72,13 @@ def _centroid_x(img):
     return sum((x + 0.5) * c for x, c in enumerate(cols)) / m if m else None
 
 
-def _phase(font_hi, ch, w, h, ox16, base, features, gamma):
+def _phase(font_hi, ch, w, h, ox16, base, features, gamma, plain=False):
     """the 4-bit glyph whose ink centroid lands nearest the true one for the origin ox16 / 16 px: the 4-bit
     rounding of the edge pixels moves a glyph by up to ~0.05 px, so the origin may move by up to 2 / 16 px
     to take that back (the 8-bit box filter is the reference)"""
+    if plain:                                  # a plain face (the design pictures' text): the origin exactly (a float), no centroid search
+        cell = _ss_cell(font_hi, ch, w, h, ox16, base, features)
+        return cell.point(lambda v: alpha4(v, gamma)) if _centroid_x(cell) is not None else None
     o = int(round(ox16))
     true = _centroid_x(_ss_cell(font_hi, ch, w, h, o, base, features))
     if true is None:
@@ -98,7 +101,7 @@ FIXED = "0123456789."       # one phase, at the rounded pen: src/ui_draw.c roll_
 WHOLE = "0123456789."       # with tabular, their advance in whole pixels too: a number keeps an even pitch
 
 
-def raster_font(spec, px, chars, tracking=0.0, gamma=1.0, tabular=True, kern_min=1, phases=1):
+def raster_font(spec, px, chars, tracking=0.0, gamma=1.0, tabular=True, kern_min=1, phases=1, plain=False):
     """-> dict(h, asc, phases, glyphs{ch: (adv16, [(bx, by, bw, bh, bytes) per phase, or one])}, kern{(a,b): d16})
 
     Advances, kerning and the outlines come from the instanced weight at 16 x the size (unhinted): advances in
@@ -111,6 +114,7 @@ def raster_font(spec, px, chars, tracking=0.0, gamma=1.0, tabular=True, kern_min
     tracking: extra advance per glyph in em (negative = tighter; the stand-in for "Inter Tight").
     tabular: digits share one advance (the widest, OpenType tnum), each centred in it, so values do not jiggle.
     kern_min: keep kerning pairs of at least this many 1/16 px.
+    plain: no OpenType features (no tnum swap) and no kerning pairs: the design pictures' text (tools/gen_aa_font.py PLAIN faces T, F).
     """
     assert phases in (1, 2, 4, 8)
     font = open_font(spec, px)                 # the line metrics only (ascent / descent rounded to pixels)
@@ -119,7 +123,7 @@ def raster_font(spec, px, chars, tracking=0.0, gamma=1.0, tabular=True, kern_min
     pad = px                                   # canvas margin around the glyph (overhang, accents)
     cw, chh = px * 3, asc + desc + 2 * pad
     base = pad + asc                           # baseline row of the canvas
-    feats = ["tnum"] if tabular else None
+    feats = ["tnum"] if tabular and not plain else None
     glyphs, adv, nat = {}, {}, {}
     for ch in chars:
         f = feats if ch.isdigit() else None
@@ -140,7 +144,7 @@ def raster_font(spec, px, chars, tracking=0.0, gamma=1.0, tabular=True, kern_min
         shift = (adv[ch] - nat[ch]) / 2 if tabular and ch in WHOLE else 0.0   # centre the figure in the cell
         ph = []
         for p in range(1 if ch in FIXED else phases):
-            nib = None if ch == " " else _phase(font_hi, ch, cw, chh, (pad + shift + p / phases) * SS, base, f, gamma)
+            nib = None if ch == " " else _phase(font_hi, ch, cw, chh, (pad + shift + p / phases) * SS, base, f, gamma, plain)
             bb = nib and nib.getbbox()
             if not bb:
                 ph.append((0, 0, 0, 0, b""))
@@ -156,8 +160,8 @@ def raster_font(spec, px, chars, tracking=0.0, gamma=1.0, tabular=True, kern_min
         for b in chars:
             if a == " " or b == " ":
                 continue
-            if a.isdigit() and b.isdigit():
-                continue                       # tabular figures never kern
+            if plain or (a.isdigit() and b.isdigit()):
+                continue                       # tabular figures never kern (a plain face never kerns)
             d = (font_hi.getlength(a + b, features=feats) - lens[a] - lens[b]) / SS
             d16 = int(round(d * 16))
             if abs(d16) >= kern_min:

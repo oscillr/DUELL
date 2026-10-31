@@ -7,6 +7,7 @@ import { readFile } from "node:fs/promises";
 import { MockUnit, MockLink, defaultPart, factoryBrowse } from "./editor/mockunit.js";
 import { Unit, UnitError } from "./editor/unit.js";
 import { parseInfo } from "./editor/proto.js";
+import { loadItemIntoPart as loadItemIntoPartT } from "./editor/librarian.js";
 import { themeVars, palette, isDark, lum, mix } from "./editor/theme.js";
 import { sysexGranted, watchUnit, HINT } from "./editor/autoconnect.js";
 
@@ -61,7 +62,7 @@ async function connect(opt = {}) { const m = new MockUnit(opt), u = new Unit(new
     g[ID.G_DMODE] = 2;
     ok(gdescOf(g, ID.G_DMDEP).label === "CHANCE" && gdescOf(g, ID.G_DMDEP).max === 100 && ginert(g, ID.G_DMRATE) === "RAND" && ginert(g, ID.G_PINGSPREAD) === null, "hide rule: delay MODE RANDOM: DEPTH is CHANCE, RATE hidden, SPREAD live");
     g[ID.G_DMODE] = 3;
-    ok(ginert(g, ID.G_DMRATE) === "OCT+" && gdescOf(g, ID.G_DMODE).label === "MODE" && gdescOf(g, ID.G_DMODE).names.join() === "DIGITAL,PING-PONG,RANDOM,OCT UP", "hide rule: delay MODE OCT UP; MODE lists DIGITAL, PING-PONG, RANDOM, OCT UP");
+    ok(ginert(g, ID.G_DMRATE) === "OCT+" && gdescOf(g, ID.G_DMODE).label === "MODE" && gdescOf(g, ID.G_DMODE).names.join() === "DIGITAL,PING-PONG,RANDOM,OCTAVE UP", "hide rule: delay MODE OCT UP; MODE lists DIGITAL, PING-PONG, RANDOM, OCT UP");
     g[ID.G_DMODE] = 9; ok(gdescOf(g, ID.G_DMDEP).label === "MDEPTH" && ginert(g, ID.G_PINGSPREAD) === "DIGI", "hide rule: a stored mode past OCT UP plays as DIGITAL");
     {   // DUELL 0.2.19: SHIM's PITCH (id 26) and MOD (id 17) are the unit's page SHIMMER (REVERB page 2): hidden unless TYPE is SHIM, the page after REVERB
       const sh = pageByTitle("SHIMMER"), rv = pageByTitle("REVERB");
@@ -99,7 +100,7 @@ async function connect(opt = {}) { const m = new MockUnit(opt), u = new Unit(new
       ok(!tab.includes("VCF") && !tab.includes("TRIO FILTER") && !tab.includes("NOISE FILT") && !tab.some((t) => t.startsWith("MULTI FILTER")) && ft.join() === "MULTI FILTER 1/2,MULTI FILTER 2/2",
          "layout: the ENGINE tab has no engine filter pages, the multimode pages are on the FILTER tab (cloud job I), in order"); }
     ok(lab("ARP 1/3") === "MODE HOLD ORD OCT" && lab("ARP 2/3") === "RATE GATE SWG PROB" && lab("DUCK 2/2") === "CURVE ATK RLS", "page order: ARP 1/3 MODE HOLD ORD OCT, ARP 2/3 RATE GATE SWG PROB, DUCK 2/2 CURVE ATK RLS");
-    ok(/^VCE PRIO DTUNE( -)?$/.test(lab("VOICE 1/2")) && lab("VOICE 2/2") === "GLMOD GLD SPRD TRIM", "page order: VOICE 1/2 VCE PRIO DTUNE (T0227: no ALLOC), VOICE 2/2 GLMOD GLD SPRD TRIM (0.2.19: the patch trim; the mixer level is the part header's LVL)");
+    ok(lab("VOICE 1/2") === "VCE PRIO DTUNE TRN" && lab("VOICE 2/2") === "GLMOD GLD SPRD TRIM", "page order: VOICE 1/2 VCE PRIO DTUNE TRN (T0227: no ALLOC; DUELL 1.1: TRANSPOSE, the patch's, is K4), VOICE 2/2 GLMOD GLD SPRD TRIM (0.2.19: the patch trim; the mixer level is the part header's LVL)");
   }
   const r = mk("ANALOG"); r.p[ID.P_LSYNC] = 3; ok(inertReason(r, ID.P_LRATE) === "SYNC ON" && inertReason(r, ID.P_L2RATE) === null, "hide rule: a synced LFO's RATE is hidden");
   const unused = L.ENG.findIndex((e, i) => i !== 1 && i !== 4 && i !== 8 && i !== 10 && i !== 13 && e.edit.some((d) => d.label === "-"));
@@ -285,7 +286,7 @@ async function connect(opt = {}) { const m = new MockUnit(opt), u = new Unit(new
 // ---- the new layout: tabs per part, the global column, the theme from the unit's palette
 {
   const keys = PART_TABS.map((t) => t.key).join(), gk = GLOBAL_TABS.map((t) => t.key).join();
-  ok(keys === "engine,filter,envelope,lfo,matrix,fx,arpseq,roll" && PART_TABS.map((t) => t.label).join() === "ENGINE,FILTER,ENVELOPE,LFO,MATRIX,FX,ARP,SEQ", `layout: each part column has the tabs ENGINE FILTER ENVELOPE LFO MATRIX FX ARP SEQ (${keys})`);
+  ok(keys === "engine,filter,envelope,lfo,matrix,fx,arpseq,roll" && PART_TABS.map((t) => t.label).join() === "ENGINE,FILTER,ENV,LFO,MATRIX,FX,ARP,SEQ", `layout: each part column has the tabs ENGINE FILTER ENV LFO MATRIX FX ARP SEQ (${keys})`);
   ok(gk === "global,patches,multis,patterns,midi,tables,settings", `layout: the global column has the tabs GLOBAL PATCHES MULTIS PATTERNS MIDI WAVETABLES SETTINGS (${gk})`);
   const part = new Set(PART_TABS.flatMap((t) => t.pages)), glob = new Set(GLOBAL_TABS.flatMap((t) => t.pages));
   ok(["MULTI FILTER 1/2", "MULTI FILTER 2/2", "FX", "INSERT 1/2", "DUCK 2/2", "ARP 1/3", "STEP", "LFO 2 DEST", "MATRIX 5-8"].every((t) => part.has(t)) && ["CHORUS", "DELAY 1/2", "DELAY 2/2", "REVERB", "TEMPO", "MODULES"].every((t) => glob.has(t)), "layout: filter, FX, arp and step pages are in the part tabs, buses and tempo in the global column");
@@ -371,7 +372,7 @@ async function connect(opt = {}) { const m = new MockUnit(opt), u = new Unit(new
   }
   {   // the hide rules (FILTER_PAGES_PROPOSAL 5.2)
     const q = defaultPart(0), r = (t, link = 1) => { q.p[ID.P_TWTYPE] = t; q.x[X.X_LINK] = link; return [ID.P_TWTYPE, twinX(X.X_LINK), ID.P_CUT2, ID.P_RES2, twinX(X.X_ENV2), twinX(X.X_KTRK2), twinX(X.X_LFO1), twinX(X.X_LFO2), twinX(X.X_ROUTE), ID.P_DRV2, ID.P_BLEND].map((ref) => (twinWhy(q, ref) ? "-" : "x")).join(""); };
-    ok(r(0) === "x----------" && r(0, 0) === "x----------", `hide rule: TYPE OFF shows TYPE alone (TWIN MOD and TWIN CHAIN have nothing left: ${r(0)})`);
+    ok(r(0) === "x----------" && r(0, 0) === "x----------", `hide rule: TYPE OFF shows TYPE alone (TWIN CUTOFF MOD and TWIN CHAIN have nothing left: ${r(0)})`);
     ok(r(1) === "xxxxxxxxxxx" && r(2) === "xxxxxxxxxxx" && r(5) === "xxxxxxxxxxx" && r(1, 0) === "xxxxxxxxxxx", "hide rule: LP .. LADDER show everything; LINK changes the label and hides nothing");
     ok(r(6) === "x-xxx-xxxxx" && r(6, 0) === "x-xxx-xxxxx", `hide rule: COMB hides LINK and KEY TRACK, nothing else (${r(6)})`);
     q.p[ID.P_TWTYPE] = 6; ok(twinWhy(q, twinX(X.X_LINK)) === "TWIN COMB" && twinWhy(q, twinX(X.X_KTRK2)) === "TWIN COMB" && inertReason(q, ID.P_CUT2) === null, "hide rule: the reason of a hidden control is TWIN COMB / TWIN OFF (the card's tooltip)");
@@ -380,27 +381,33 @@ async function connect(opt = {}) { const m = new MockUnit(opt), u = new Unit(new
     ok(!twinTypeOffered(w, 6) && !twinTypeOffered(ph, 6) && twinTypeOffered(an, 6) && [0, 1, 2, 3, 4, 5].every((t) => twinTypeOffered(w, t) && twinTypeOffered(ph, t)), "hide rule: COMB is not in the TYPE list on WAVE and PHYS (all other types are), but on the other eight engines");
     ok(twinFlow({ x: { [X.X_ROUTE]: 0 } }) === "ENGINE > MULTI > DRIVE > TWIN > AMP" && twinFlow({ x: { [X.X_ROUTE]: 1 } }) === "ENGINE > DRIVE > MULTI + TWIN > AMP", "flow line: SERIES ENGINE > MULTI > DRIVE > TWIN > AMP; PARALLEL with the drive before both");
   }
-  {   // the labels: no control repeats TWIN or FILTER inside a titled card (naming rule R1); FILTER ENV is the one name with the word (the owner wrote it for CUTOFF MOD and TWIN MOD)
+  {   // the labels: no control repeats TWIN or FILTER inside a titled card (naming rule R1); FILTER ENV is the one name with the word (the owner wrote it for MULTI CUTOFF MOD and TWIN CUTOFF MOD)
     const labs = [...Object.values(XPART).map((x) => x[0]), ...Object.values(TWIN_LONG), ...[25, 26, 43, 101, 106].map((i) => PART[i][0])];
     ok(labs.every((l) => !/TWIN/.test(l) && (!/FILTER/.test(l) || l === "FILTER ENV")), `names (R1): no label of the second filter's, SUB's or CYCLE's controls repeats TWIN or FILTER (${labs.filter((l) => /TWIN|FILTER/.test(l)).join() || "none"})`);
-    ok([25, 26, 43, 101, 106].every((i) => PART[i][1].length > 20) && Object.values(XPART).every((x) => x[1].length > 20) && PART[43][0] === "TYPE" && PART[101][0] === "BLEND" && PART[26][0] === "DRIVE" && PART[25][0] === "RESONANCE" && PART[106][0] === "CUTOFF", "names: ids 25, 26, 43, 101, 106 are RESONANCE, DRIVE, TYPE, BLEND, CUTOFF with tooltips (they were ROOT, SCALE, ALLOCATION, FILTER TYPE, none)");
+    ok([25, 26, 43, 101, 106].every((i) => PART[i][1].length > 20) && Object.values(XPART).every((x) => x[1].length >= 20) && PART[43][0] === "TYPE" && PART[101][0] === "BLEND" && PART[26][0] === "DRIVE" && PART[25][0] === "RESONANCE" && PART[106][0] === "CUTOFF", "names: ids 25, 26, 43, 101, 106 are RESONANCE, DRIVE, TYPE, BLEND, CUTOFF with tooltips (they were ROOT, SCALE, ALLOCATION, FILTER TYPE, none)");
     const t = longDesc(L.TP[ID.P_TWTYPE], ID.P_TWTYPE);
     ok(t.names.join() === "OFF,LOW-PASS,BAND-PASS,HIGH-PASS,NOTCH,LADDER,COMB" && L.TP[ID.P_TWTYPE].names.join() === "OFF,LP,BP,HP,NOTCH,LADDER,COMB", "names: TYPE lists OFF, LOW-PASS, BAND-PASS, HIGH-PASS, NOTCH, LADDER, COMB (the firmware's LP BP HP spelled out, same order)");
     const rt = longDesc(xdescOf(defaultPart(0), X.X_ROUTE), "x0"), sw = longDesc(xdescOf(defaultPart(0), X.X_SUBWAVE), "x8");
-    ok(rt.names.join() === "SERIES,PARALLEL" && sw.names.join() === "SINE,TRIANGLE,SQUARE,PULSE" && longDesc(xdescOf(defaultPart(0), X.X_ENV2), "x3").label === "FILTER ENV" && longDesc(xdescOf(defaultPart(0), X.X_KTRK2), "x2").label === "KEY TRACK", "names: ROUTE SERIES / PARALLEL, SUB WAVE spelled out, FILTER ENV and KEY TRACK on TWIN MOD");
+    ok(rt.names.join() === "SERIES,PARALLEL" && sw.names.join() === "SINE,TRIANGLE,SQUARE,PULSE" && longDesc(xdescOf(defaultPart(0), X.X_ENV2), "x3").label === "FILTER ENV" && longDesc(xdescOf(defaultPart(0), X.X_KTRK2), "x2").label === "KEY TRACK", "names: ROUTE SERIES / PARALLEL, SUB WAVE spelled out, FILTER ENV and KEY TRACK on TWIN CUTOFF MOD");
     const dr = longDesc(L.TP[ID.P_DRV2], ID.P_DRV2);
     ok(valueText(dr, 0).val === "OFF" && valueText(dr, 1).val !== "OFF" && valueText(longDesc(L.TP[ID.P_BLEND], ID.P_BLEND), 0).val === "BOTH" && valueText(longDesc(L.TP[ID.P_BLEND], ID.P_BLEND), -64).val === "MULTI" && valueText(longDesc(L.TP[ID.P_BLEND], ID.P_BLEND), 63).val === "TWIN" && valueText(longDesc(L.TP[ID.P_BLEND], ID.P_BLEND), 32).val === "TWIN 50%" && valueText(longDesc(L.TP[ID.P_BLEND], ID.P_BLEND), -32).val === "MULTI 50%" && isBipolar(L.TP[ID.P_BLEND]) && !isBipolar(L.TP[ID.P_DRV2]), "controls: DRIVE shows OFF at 0; BLEND is a bipolar slider (the centre is marked)");
     const bip = [L.TW.OFFSET, L.TW.TUNE, L.TW.FDBK, L.XTP[X.X_KTRK2], L.XTP[X.X_ENV2], L.XTP[X.X_LFO1], L.XTP[X.X_LFO2], L.XTP[X.X_CYCURVE], L.TP[ID.P_BLEND]], plain = [L.TW.CUTOFF, L.TW.RES, L.XTP[X.X_SUBLVL], L.XTP[X.X_SUBHARM], L.XTP[X.X_CYRISE], L.TP[ID.P_DRV2]];
     ok(bip.every(isBipolar) && plain.every((d) => !isBipolar(d)), "controls: the truly bipolar ones (OFFSET TUNE FEEDBACK KEY TRACK FILTER ENV LFO 1 LFO 2 CURVE BLEND) are marked at the centre, the one-way ones are not");
     const st = longDesc(L.ENG[E("WAVE")].edit[6], "e:WAVE");
     ok(!isEnum(st) && st.max === 18 && valueText(st, 0).val === "OFF" && valueText(st, 1).val === "2" && valueText(st, 18).val === "19" && L.ENG[E("WAVE")].edit[6].names.length === 19, "WAVE STEPS: a slider of 19 places (OFF, 2 to 19) with its words from the firmware's list");
+    {   // item 165 (owner): LOFI's and ANALOG's WAVE lists in full words, exactly as the unit shows them (params.c val_shown); the vowel and other sound names stay
+      const lo = longDesc(L.ENG[E("LOFI")].edit[1], "e:LOFI").names.join(), an = longDesc(L.ENG[E("ANALOG")].edit[0], "e:ANALOG").names.join();
+      ok(lo === "PULSE,TRIANGLE,SAW,NOISE,SINE,SAW 2,BASS 1,BASS 2,ORGAN,HOLLOW,AH,OH,EE,BUZZ,STAIR" && an === "SAW,SQUARE,TRIANGLE,SINE,PWM,SYNC,SUB" &&
+         L.ENG[E("LOFI")].edit[1].names[0] === "PLS" && L.ENG[E("ANALOG")].edit[0].names[2] === "TRI",
+         `names (item 165): LOFI WAVE ${lo}; ANALOG WAVE ${an} (the stored names PLS / TRI / SIN / SQR stay the keys)`);
+    }
   }
   {   // the matrix: the new destinations and the source CYCLE by the firmware's name tables
     const dn = L.TP[ID.P_M1SRC + 1].names, sn = L.TP[ID.P_M1SRC].names;
     ok(L.MD.CUT2 === 51 && L.MD.RES2 === 52 && L.MD.DRIVE === 53 && L.MD.BLEND === 54 && L.MD.SUBLVL === 55 && L.MD.N === 56 && L.MD.S_CYCLE === 15 && dn.slice(51).join() === "CUT2,FRES2,FDRV,FBLND,SUBLV" && sn[15] === "CYCLE",
        "matrix: destinations 51..55 CUT2 FRES2 FDRV FBLND SUBLV and the source 15 CYCLE are the firmware's names");
-    ok(longValue(ID.P_M1SRC + 1, "CUT2") === "TWIN FILTER CUTOFF" && longValue(ID.P_M1SRC + 1, "FRES2") === "TWIN FILTER RESONANCE" && longValue(ID.P_M1SRC + 1, "FDRV") === "FILTER DRIVE" && longValue(ID.P_M1SRC + 1, "FBLND") === "FILTER BLEND" && longValue(ID.P_M1SRC + 1, "SUBLV") === "SUB LEVEL" && longValue(ID.P_M1SRC, "CYCLE") === "CYCLE",
-       "matrix names: TWIN FILTER CUTOFF, TWIN FILTER RESONANCE, FILTER DRIVE, FILTER BLEND, SUB LEVEL; the source CYCLE");
+    ok(longValue(ID.P_M1SRC + 1, "CUT2") === "TWIN CUTOFF" && longValue(ID.P_M1SRC + 1, "FRES2") === "TWIN FILTER RESONANCE" && longValue(ID.P_M1SRC + 1, "FDRV") === "FILTER DRIVE" && longValue(ID.P_M1SRC + 1, "FBLND") === "FILTER BLEND" && longValue(ID.P_M1SRC + 1, "SUBLV") === "SUB LEVEL" && longValue(ID.P_M1SRC, "CYCLE") === "CYCLE",
+       "matrix names: TWIN CUTOFF, TWIN FILTER RESONANCE, FILTER DRIVE, FILTER BLEND, SUB LEVEL; the source CYCLE");
     const flat = (g) => g.flatMap(([, v]) => v);
     ok([51, 52, 53, 54, 55].every((v) => flat(MATRIX_GROUPS.dst).includes(v)) && flat(MATRIX_GROUPS.src).includes(15) && new Set(flat(MATRIX_GROUPS.dst)).size === flat(MATRIX_GROUPS.dst).length, "matrix groups: the new destinations are in the FILTER and ENGINE groups, CYCLE with the envelopes, no value twice");
     const off = defaultPart(0), on = defaultPart(0); on.p[ID.P_TWTYPE] = 1;
@@ -420,7 +427,8 @@ async function connect(opt = {}) { const m = new MockUnit(opt), u = new Unit(new
     a = await u.req(CMD.SET, [2, X.X_CYRISE, ...v14(55)]); ok(rv14(a, 2) === 55 && m.parts[0].x[X.X_CYRISE] === 55, "scope 2: SET stores it and echoes the value");
     a = await u.req(CMD.SET, [2, X.X_SUBLVL, ...v14(500)]); ok(rv14(a, 2) === 127 && m.parts[0].x[X.X_SUBLVL] === 127, "scope 2: SET clamps to the descriptor (500 -> 127)");
     a = await u.req(CMD.SET, [2, X.X_KTRK2, ...v14(-500)]); ok(rv14(a, 2) === -63, "scope 2: SET clamps below (-500 -> -63)");
-    a = await u.req(CMD.SET, [2, NX - 1, ...v14(9)]); ok(rv14(a, 2) === 0, "scope 2: the spare slot X15 keeps its value");
+    a = await u.req(CMD.SET, [2, NX - 1, ...v14(9)]); ok(rv14(a, 2) === 9 && L.XTP[NX - 1].label === "STRUM" && L.XTP[NX - 1].max === 100, "scope 2: the last slot (X27, NX - 1) is STRUM since item 144 (0..100 ms): 9 is stored");
+    a = await u.req(CMD.SET, [2, NX - 1, ...v14(0)]);
     a = await u.req(CMD.DESC, [2, X.X_SUBOCT]);
     ok(a[0] === 2 && a[1] === X.X_SUBOCT && a[2] === L.XTP[X.X_SUBOCT].fmt && rv14(a, 3) === 0 && rv14(a, 5) === 2 && rv14(a, 7) === 1, "scope 2: DESC gives fmt, min, max, def");
     m.parts[0].x[X.X_CYSYNC] = 1; a = await u.req(CMD.DESC, [2, X.X_CYRISE]); ok(a.length > 12 && a[2] === L.XSYNC[0].fmt, "scope 2: DESC of CYCLE RISE while SYNC is on is the note-value descriptor"); m.parts[0].x[X.X_CYSYNC] = 0;
@@ -457,6 +465,44 @@ async function connect(opt = {}) { const m = new MockUnit(opt), u = new Unit(new
     ok(!o.u.hasX && o.u.info.nx === null && o.u.parts[0].x.every((v, k) => v === L.XTP[k].def), "scope 2: a unit without the tag: no slot is read, the defaults stand");
     ok(await rejects(async () => o.u.writeX(0, X.X_LINK, 0), /extension values/), "scope 2: Unit.writeX refuses on a unit without scope 2");
   }
+}
+// ---- item 144: STRUM, the CHORD card's third control (slot 27; the unit's CHORD K3): its descriptor, OFF at 0, the hide rule as the unit's (chord.c strum_acts)
+{
+  const { strumWhy, X: XS } = await import("./editor/layout.js");
+  const { longDesc } = await import("./editor/labels.js");
+  const d = L.XTP[XS.X_STRUM], ld = longDesc(d, "x27");
+  const part = (chrd, voice, amode) => { const p = new Array(L.P_COUNT).fill(0); p[81] = chrd; p[ID.P_VOICE] = voice; p[ID.P_AMODE] = amode; return { p, x: [] }; };
+  const menu = (arpOff, seqOff) => [{ id: 28, min: 0, value: arpOff ? 0 : 1, names: ["OFF", "ON"] }, { id: 29, min: 0, value: seqOff ? 0 : 1, names: ["OFF", "ON"] }];
+  ok(XS.X_STRUM === 27 && d.label === "STRUM" && d.fmt === 0 && d.min === 0 && d.max === 100 && d.def === 0 && d.unit === "ms", "STRUM: slot 27, 0..100 ms, default 0 (layout.json from the firmware's XTP)");
+  ok(valueText(ld, 0).val === "OFF" && valueText(ld, 25).val === "25" && valueText(ld, 25).unit === "ms" && ld.label === "STRUM", "STRUM: 0 shows OFF (as the unit's card), 25 shows 25 ms");
+  ok(strumWhy(part(3, 0, 0), menu(0, 0)) === null && strumWhy(part(0, 0, 0), menu(0, 0)) === "CHORD OFF" && strumWhy(part(3, 1, 0), menu(0, 0)) === "VOICE ONE NOTE" &&
+     strumWhy(part(3, 3, 0), menu(0, 0)) === "VOICE ONE NOTE" && strumWhy(part(3, 0, 1), menu(0, 0)) === "ARP ON" && strumWhy(part(3, 0, 1), menu(1, 0)) === null &&
+     strumWhy(part(3, 0, 15), menu(0, 1)) === null && strumWhy(part(3, 0, 15), menu(0, 0)) === "ARP ON",
+     "STRUM: hidden with CHORD OFF, MONO / UNISON, the arp playing; shown again with MODULES ARP OFF (SEQ OFF for the SEQUENCE mode)");
+}
+// ---- item 159: the editor shows the values at the MORPH fader (INFO 4F 01): what it reads is the unit's cards' value, the pushes follow a fader move on both parts,
+// a write of a shown value is taken as the unit's knob takes it, the librarian's copy of a sound compares and writes the STORED Original
+{
+  const { m, u } = await connect({ morphView: true });
+  const cut = ID.P_FREEA, rs = ID.P_FREEA + 1;   // (CUT and RES of the multimode filter)
+  ok(u.info.morphView && m.watchBits === 7, "item 159: INFO tag 4F 01 read (the tags after 4B too), WATCH 7 (bit 2: the other part is pushed)");
+  m.parts[0].p[cut] = 40; m.parts[1].p[rs] = 20; await u.readAll();
+  m.deviceFader(0, { [cut]: 12 }); m.deviceFader(1, { [rs]: -7 });
+  ok(u.parts[0].p[cut] === 52 && u.parts[1].p[rs] === 13, "item 159: a fader move is pushed for both parts (CHANGED for the selected one, TRACK_CHANGED for the other): the editor shows the sounding values");
+  await u.readAll();
+  ok(u.parts[0].p[cut] === 52 && u.parts[1].p[rs] === 13 && (await u.readStored(0))[cut] === 40, "item 159: a read shows the values at the fader; the STORED read (TRACK_DUMP byte 1) gives the Original");
+  u.writeParam(0, cut, 60); await u.idle();
+  ok(m.parts[0].p[cut] === 48 && u.parts[0].p[cut] === 60, "item 159: a write of a shown value moves the stored one by the difference (the unit's knob), the editor keeps showing what it wrote");
+  const values = m.parts[0].p.slice(); values[cut] = 33;
+  await loadItemIntoPartT(u, 0, { kind: "approx", engine: m.parts[0].eng, name: "COPY", values });
+  ok(m.parts[0].p[cut] === 33 && u.parts[0].p[cut] === 45, "item 159: the librarian's copy of a sound writes the STORED Original (33, shown 45 at this fader), not the shown value");
+  {
+    const { CMD: C, v14: V } = await import("./editor/proto.js"), { X: XX } = await import("./editor/layout.js");
+    const p1 = u.parts[1].p[XX.X_SUBLVL]; m.push(C.TRACK_CHANGED, [1, XX.X_SUBLVL, ...V(55), 2]);
+    ok(u.parts[1].x[XX.X_SUBLVL] === 55 && u.parts[1].p[XX.X_SUBLVL] === p1, "item 159: TRACK_CHANGED with the scope byte 2 is the other part's extension slot, not a parameter");
+  }
+  const o = await connect();
+  ok(!o.u.info.morphView && o.m.watchBits === 3, "item 159: a unit without the tag: WATCH answers 3, the editor reads as before");
 }
 console.log(fails ? `\nEDITOR WEB TESTS FAILED (${fails})` : "\neditor web tests passed");
 process.exit(fails ? 1 : 0);

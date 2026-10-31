@@ -108,6 +108,9 @@
 #if DUELL_VELO
 #include "fm1_adc.h"
 #include "../src/sense.h"
+#if DUELL_VELO_CAPTURE
+#include "../src/velocap.h"
+#endif
 #endif
 
 #ifndef FM1_INPUT_IDLE
@@ -701,6 +704,9 @@ static uint32_t fm1__an_take(uint32_t t0)
             fm1_an.rem = r % FM1_TICKS_PER_US;
             fm1_an.keys++;
             fm1_an.drives += fm1_an.pin != 0u;
+#if DUELL_VELO_CAPTURE
+            velocap_reading(fm1_an.note, v, fm1_an.pin != 0u, fm1_an.us);   /* developer capture build only (velocap.h): a copy of the reading into a ring, nothing else */
+#endif
             sense_update(fm1_an.note, v, fm1_an.pin != 0u, fm1_an.us);
         } else if (fm1_an.kind == FM1_AN_POT) {
             fm1_an.pot = (int16_t)v;

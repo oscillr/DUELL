@@ -40,11 +40,11 @@ static int controls_test(void)
     bad += check("RPN0 supports semitone and cent bend sensitivity", midi_ch[0].semis == 12 && midi_ch[0].cents == 50 && midi_bend_target[0] == 3200);
     queued(0xB0, 99, 0, 1); queued(0xB0, 6, 24, 1);
     bad += check("selecting NRPN cancels RPN data entry", midi_ch[0].semis == 12);
-    queued(0x90, 60, 100, 1); int32_t out[CTL]; int32_t before = midi_bend_q8[0];
+    queued(0x90, 60, 100, 1); int32_t out[CTL]; int32_t before = midi_bend_q8[0]; int16_t trans0 = t->p[P_TRANS];   /* (item 148: the patch's own TRANSPOSE, -12 on a bass; the bend must not change it) */
     track_render(t, out, CTL);
     bad += check("bend is smoothed toward the target in the real voice renderer", midi_bend_q8[0] > before && midi_bend_q8[0] < midi_bend_target[0]);
     for (uint32_t i = 0; i < 64; i++) track_render(t, out, CTL);
-    bad += check("bend smoothing reaches the exact target without changing saved pitch", midi_bend_q8[0] == 3200 && t->p[P_TRANS] == 0 && t->v[0].note == 60);
+    bad += check("bend smoothing reaches the exact target without changing saved pitch", midi_bend_q8[0] == 3200 && t->p[P_TRANS] == trans0 && t->v[0].note == 60);
     queued(0xB0, 121, 0, 1);
     bad += check("Reset Controllers centres bend and preserves RPN sensitivity", !midi_bend_target[0] && midi_ch[0].semis == 12 && gate_note(t, 60));
     queued(0xB0, 1, 87, 1); queued(0xB0, 11, 23, 1); queued(0xD0, 90, 0, 1);
@@ -313,7 +313,7 @@ static int arp_ext_clock_test(void)
         song.g[G_CLOCK] = 2; events_block(CTL);
         bad += check("CLK=TRS: NO CLOCK until its pulses arrive", clock_state() == 2u && str_eq(clock_why(0), "NO CLK"));
         pulses(2, &ms, 4);
-        bad += check("CLK=TRS, pulses arrive: EXT (TRS)", clock_state() == 1u && str_eq(clock_why(0), "TRS"));
+        bad += check("CLK=TRS, pulses arrive: EXT (TRS MIDI)", clock_state() == 1u && str_eq(clock_why(0), "TRS MIDI"));   /* (item 138: the owner's name TRS MIDI, 2026-10-25, ui_draw.c clock_why) */
         song.g[G_CLOCK] = 0; events_block(CTL);
         bad += check("back to INT: no status", clock_state() == 0 && !clock_why(0));
     }
@@ -436,7 +436,7 @@ static int auto_clock_test(void)
     transport_req = 1;
     ac_reset_stats(); ac_run(0, 0, 1000, 0);
     bad += check("AUTO, no clock: INT plays (PLAY starts, steps, arp)", clock_src() == 0u && song.playing && ac_steps >= 7u && ac_arp_moves > 4u &&
-                 str_eq(clock_why(1), "INT") && !clock_why(0));
+                 str_eq(clock_why(1), "INTERNAL") && !clock_why(0));   /* (item 138: the CLOCK names in full, INTERNAL) */
     {
         uint32_t t0 = ac_blk, nb = 60000000u / (100u * 24u);   /* us a pulse at 100 BPM */
         ac_reset_stats();
@@ -519,16 +519,16 @@ static int auto_clock_test(void)
     um_byte(0xFB); events_block(CTL);
     bad += check("TRS Continue in AUTO: locked at once, playing", clock_src() == 2u && song.playing);
 
-    /* the header: each switch said once (CLOCK USB, CLOCK INT); a change of the CHOICE is said by the knob only */
+    /* the header: no header echo of the clock source or of the CHOICE */
     ac_setup(); clock_poll(); clock_poll(); ui.msg[0] = 0;
     ac_run(100, 0, 300, 1); clock_poll();
-    bad += check("AUTO locks on USB: the header says CLOCK USB", str_eq(ui.msg, "CLOCK USB"));
+    bad += check("AUTO locks on USB: the header says nothing", !ui.msg[0]);
     ui.msg[0] = 0; clock_poll();
     bad += check(".. once", !ui.msg[0]);
     ac_run(0, 0, 1200, 0); clock_poll();
-    bad += check("the clock went away: the header says CLOCK INT", str_eq(ui.msg, "CLOCK INT"));
+    bad += check("the clock went away: the header says nothing", !ui.msg[0]);
     clock_knob(1); events_block(CTL); clock_poll(); clock_knob(-1); clock_poll(); events_block(CTL); clock_poll(); clock_poll();
-    bad += check("CLK turned INT and back to AUTO: the knob's CLOCK AUTO stays in the header", str_eq(ui.msg, "CLOCK AUTO"));
+    bad += check("CLK turned INT and back to AUTO: the header says nothing", !ui.msg[0]);
     /* the CHOICE changed: a stop only if the active source changes */
     ac_setup(); transport_req = 1; ac_run(0, 0, 200, 0);
     song.g[G_CLOCK] = 0; ac_run(0, 0, 50, 0);
@@ -795,7 +795,7 @@ static int learn_test(void)
     /* the standard map: a learned CC no longer reaches it; the QUICK GLO layer's LEVEL knobs pick a part's LEVEL (0.2.21: hold GLO; the GLO page is gone) */
     go_title("TEMPO");
     btn_down(B_GLO); frames(640);
-    turn(EN_K3, 2);                                     /* (0.2.24: K3 is LEVEL 2; K4 PAN 2) */
+    turn(EN_K2, 2);                                     /* (item 117 order: K2 is LEVEL 2; K3 PAN 1, K4 PAN 2) */
     ok = ui.ml.pick && ui.ml.trk == 1u && ui.ml.id == P_LEVEL;
     frames(300);
     queued(0xB0, 74, 10, 1); frame();
@@ -805,14 +805,14 @@ static int learn_test(void)
     ui.ml.pick = 0; ml_arm = 0;                                          /* (the learn is done, as ml_poll leaves it) */
     queued(0xB0, 74, 127, 1);
     ok &= ml_entry(74, 1, P_LEVEL) && trk[1].p[P_LEVEL] == TP[P_LEVEL].max && trk[0].p[P_FREEA] == cut;
-    bad += check("  QUICK GLO KNOB 3 (LEVEL 2) picks T2 LEVEL; CC74 is refused (CC74 IS CUTOFF), forced: T2 LEVEL, no more T1 CUT (the standard map)", ok);
+    bad += check("  QUICK GLO KNOB 2 (LEVEL 2) picks T2 LEVEL; CC74 is refused (CC74 IS CUTOFF), forced: T2 LEVEL, no more T1 CUT (the standard map)", ok);
     ml_off(); ui.ml.on = 1;
     duell_mode_req = DM_STEREO;                         /* (PAN has no card in DUEL) */
     frames(300);
-    turn(EN_K2, 2);
+    turn(EN_K3, 2);
     ok = ui.ml.pick && ui.ml.trk == 0u && ui.ml.id == P_PAN;
     frames(600);
-    bad += check("  QUICK GLO KNOB 2 (PAN 1, 0.2.24) picks T1 PAN", ok);
+    bad += check("  QUICK GLO KNOB 3 (PAN 1, item 117 order) picks T1 PAN", ok);
     ml_off(); ui.ml.on = 1;
     frames(300);
     btn_down(B_OCTUP); frame(); btn_up(B_OCTUP); frames(64);   /* (0.2.24: OCT+ with GLO held = MUTE 2) */

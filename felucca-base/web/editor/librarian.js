@@ -234,7 +234,7 @@ export function swapLines(u, a, b) {
 // ---- a patch into a PART, live, without saving anywhere (a drop on a part column). The part gets the sound the way the unit loads a slot (ui.c param_kept): every
 // parameter but the mixer LEVEL, PAN, MUTE and the arp / keys / sequencer ids (those of a patch that carries its own arp block are set); the sound's loudness is its TRIM; an FM6 sound brings its own patch.
 // The 16 steps, End B and the pattern stay with a saved patch (the protocol has no command to set them). -> { notes: [text] }
-const KEPT = (i) => i === ID.P_LEVEL || i === ID.P_PAN || i === ID.P_MUTE || (i >= 17 && i <= 32) || i === 81 || i === 82 || i === 94;
+const KEPT = (i) => i === ID.P_LEVEL || i === ID.P_PAN || i === ID.P_MUTE || (i >= 17 && i <= 32 && i !== ID.P_TRANS) || i === 81 || i === 82 || i === 94;   // (DUELL 1.1: TRANSPOSE, id 28, is the patch's: it comes with the sound)
 const ARPKEY = (i) => (i >= 17 && i <= 24) || i === 81 || i === 82;      // the arp's eight values (P_AMODE .. P_AORDER) and the chord keys (P_CHRD, P_VOIC): a patch always brings its own
 export async function loadItemIntoPart(u, part, item) {
   u.guard();
@@ -251,18 +251,20 @@ export async function loadItemIntoPart(u, part, item) {
     if (a[2]) throw new UnitError("The unit did not take the FM6 patch.", a[2]);
   }
   const want = (i) => !KEPT(i) || ARPKEY(i) || ak?.values.has(i);         // (DUELL 1.0: every patch sets the arp and the chord keys, OFF and the defaults too: a record without the block is the defaults)
+  const stored = !!u.info?.morphView;                       // item 159: the editor shows the values at the MORPH fader; the copy compares and writes the stored Original
   for (let pass = 0; pass < 2; pass++) {
     await u.readPart(part);
-    const p = u.parts[part].p, diff = [];
+    const p = stored ? await u.readStored(part) : u.parts[part].p, diff = [];
     for (let i = 0; i < L.P_COUNT; i++) if (want(i) && p[i] !== values[i]) diff.push(i);
     if (!diff.length) break;
-    for (const i of diff) u.writeParam(part, i, values[i]);
+    for (const i of diff) if (stored) await u.writeStored(part, i, values[i]); else u.writeParam(part, i, values[i]);
     await u.idle();
   }
   await u.readPart(part);
+  const now = stored ? await u.readStored(part) : u.parts[part].p;
   u.parts[part].name = item.name;
   u.parts[part].slot = null;                                // (a file's sound: in no slot of the unit)
-  const left = [...Array(L.P_COUNT).keys()].filter((i) => want(i) && u.parts[part].p[i] !== values[i]).length;
+  const left = [...Array(L.P_COUNT).keys()].filter((i) => want(i) && now[i] !== values[i]).length;
   if (left) notes.push(`${left} value${left > 1 ? "s" : ""} the part would not take`);
   return { notes };
 }

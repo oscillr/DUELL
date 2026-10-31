@@ -205,6 +205,7 @@ static uint32_t play(track_t *t, uint32_t blocks, uint32_t *at, uint8_t *note, u
     seq_start();
     for (b = 0; b < blocks; b++) {
         uint32_t v0 = vage, i;
+        vs_block();                                  /* (events_block's head: the start limit counts a block, item 144) */
         seq_tick(t, CTL);
         for (; v0 < vage; v0++, n++)
             if (n < nat) {

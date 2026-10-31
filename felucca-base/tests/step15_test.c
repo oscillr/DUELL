@@ -4,12 +4,12 @@
  *   LEN   SEQ > STEP's KNOB 3 on a note (ui.c note_set_len): right writes clean TIE steps after it (a REST or an empty
  *         step; a chord ties whole), stopping at the next step holding notes (NOTE AHEAD; a REST's kept notes too) and
  *         at LEN (END OF PATTERN); left turns its last TIEs back into RESTs, never the note itself; nothing else moves
- *         (the steps' locks stay); one undo per turn (SAVE held), redo; on a REST / TIE / empty step KNOB 3 is TIME as
+ *         (the steps' locks stay); one undo per turn (ui.c undo_swap, called direct: SAVE held is SAVE OVER since 2026-10-11), redo; on a REST / TIE / empty step KNOB 3 is TIME as
  *         before; the DRUM grid's KNOB 3 is still HIT. Played: one note-on, held to the end of its last TIE (as a
  *         recorded hold plays).
- *   VEL   step_t.vel as it plays (seq.c seq_step: 0 = 96, ACC 127, a DRUM step's accented hit 127, its other hits the
- *         step's); SEQ > AUTOMATION: no VEL rows until + ADD VEL's OCT+ (SHOW) lists every note step inside LEN, KNOB 4
- *         1..127, EDIT back to 96, SAVE held undoes, KNOB 2 nothing, HIDE / leaving the page hides them; a pattern
+ *   VEL   step_t.vel as it plays (seq.c seq_step: 0 = 96, ACC 127; the drum lanes are gone since 0.2.14: a chord's notes all take the
+ *         step's VEL); SEQ > AUTOMATION: no VEL rows until + ADD VEL's OCT+ (SHOW) lists every note step inside LEN, KNOB 4
+ *         1..127, EDIT back to 96, undo (undo_swap) undoes, KNOB 2 nothing, HIDE / leaving the page hides them; a pattern
  *         untouched plays as before (the golden renders: tests/regress.c).
  * Built and run by tests/run_tests.sh. */
 #define UI_TEST_NO_MAIN 1
@@ -89,7 +89,7 @@ static int len_edit(void)
     t = roll(1);
     t->step[1] = (step_t){{60, 64}, 2, ST_NOTE, SF_ACCENT, 90};   /* a chord on step 2 */
     put(t, 2, 0, ST_REST);
-    t->step[3] = (step_t){{0}, 0, ST_NOTE, 0, 0, 0, 0, 40};        /* empty, a CHANCE of 40 % */
+    t->step[3] = (step_t){{0}, 0, ST_NOTE, 0, 0, 40};            /* empty, a CHANCE of 40 % (step_t.probability; the drum lane fields of before 0.2.14 are gone) */
     put(t, 5, 67, ST_NOTE);
     motion_set_lock(t, 2, P_ATK, 9);
     memcpy(ref, t->step, sizeof ref);
@@ -111,17 +111,17 @@ static int len_edit(void)
     ok &= note_len(t, 1) == 1u && is_rest(&t->step[2]) && is_rest(&t->step[3]) && t->step[1].n == 2u &&
           t->step[1].time == ST_NOTE;
     bad += check("  left: its last TIEs become RESTs, down to LEN 1 (the note stays)", ok);
-    hold(B_SAVE);                                    /* (the turns 1.5 s apart or less: one undo) */
+    undo_swap();                                    /* (the turns 1.5 s apart or less: one undo) */
     ok = !memcmp(t->step, ref, sizeof ref);
-    hold(B_SAVE);
+    undo_swap();
     ok &= note_len(t, 1) == 1u && is_rest(&t->step[3]);
-    bad += check("  SAVE held: the knob's turns undone at once (back as it was); held again: redone", ok);
+    bad += check("  undo: the knob's turns undone at once (back as it was); again: redone", ok);
     frames(2000);
     turn(EN_K3, 2);
     frames(2000);
     turn(EN_K3, 1);
     ok = note_len(t, 1) == 4u;
-    hold(B_SAVE);
+    undo_swap();
     ok &= note_len(t, 1) == 3u && is_rest(&t->step[4]);
     bad += check("  turns apart: each its own undo", ok);
 
@@ -183,10 +183,13 @@ static int vel(void)
     n = play(t, 8, &off, v, 8);
     ok &= n == 1u && v[0] == 127u;
     bad += check("VEL plays: a step's 0 at 96, 50 at 50, an ACC step at 127", ok);
-    t->step[0] = (step_t){{0}, 0, ST_NOTE, 0, 40, 3, 2};          /* hits on lanes 1, 2; lane 2 accented */
+    t->step[0] = (step_t){{60, 64}, 2, ST_NOTE, 0, 40};            /* a chord: its notes take the step's VEL; the accent makes them 127 (DUELL 0.2.14 removed the drum lanes: no per-lane hits any more) */
     n = play(t, 8, &off, v, 8);
-    ok = n == 2u && ((v[0] == 40u && v[1] == 127u) || (v[0] == 127u && v[1] == 40u));
-    bad += check("  a step's hits: the step's VEL, an accented one 127 (no velocity per lane)", ok);
+    ok = n == 2u && v[0] == 40u && v[1] == 40u;
+    t->step[0].flags = SF_ACCENT;
+    n = play(t, 8, &off, v, 8);
+    ok &= n == 2u && v[0] == 127u && v[1] == 127u;
+    bad += check("  a chord step's notes: the step's VEL, an accented step 127", ok);
 
     t = roll(0);
     for (n = 0; n < 16u; n += 4u)
@@ -210,9 +213,9 @@ static int vel(void)
     ok &= t->step[4].vel == 127u;
     turn(EN_K2, 1);
     ok &= t->step[4].vel == 127u && t->step[5].vel == 0u && auto_cur() == EVC(EVK_VEL, 4);
-    hold(B_SAVE);
+    undo_swap();
     ok &= t->step[4].vel == 90u;
-    bad += check("  KNOB 4 the step's velocity (1..127), KNOB 2 nothing; SAVE held: the turn undone", ok);
+    bad += check("  KNOB 4 the step's velocity (1..127), KNOB 2 nothing; undo: the turn undone", ok);
     press(B_EDIT);
     ok = t->step[4].vel == 0u && msg_is("VEL 96") && auto_cur() == EVC(EVK_VEL, 4) && ev_list(rw) == n;
     for (n = 0; n < 20u; n++)

@@ -3,7 +3,7 @@
 export const CMD = {
   INFO: 1, GET: 2, SET: 3, DUMP: 4, DESC: 5, STEP_GET: 6, STEP_SET: 7, PRESET: 8, PROJECT: 9, NAMES: 10,
   UP_LIST: 16, UP_GET: 17, UP_PUT: 18, UP_STORE: 19, UP_LOAD: 20, UP_ERASE: 21, WATCH: 22, CHANGED: 23, RELOAD: 24, PING: 25, STEP_CHANGED: 26,
-  FM6_GET: 68, FM6_PUT: 69, PATCH_RAW: 84,
+  FM6_GET: 68, FM6_PUT: 69, PATCH_RAW: 84, BYPASS: 89, MOTION: 64,   // BYPASS: built in 1.1.0-test1 (INFO tag 5B); MOTION: ops 9..11 for target ids past 127 (1.1.0-test2, INFO tag 4C bit 1)
   TRACK: 27, TRACK_MIX: 28, TRACK_DUMP: 29, TRACK_STEP: 30, TRACK_PARAM: 31, TRACK_CHANGED: 32, MENU_DESC: 72, MENU_SET: 73, LEARN_GET: 78, LEARN_SET: 79,
 };
 export const v14 = (v) => { const x = v + 8192; return [x & 127, x >> 7 & 127]; };
@@ -13,7 +13,7 @@ export const cstr = (s) => [...asc(s), 0];
 export function rstr(a, pos) { let s = ""; while (pos < a.length && a[pos]) s += String.fromCharCode(a[pos++]); return [s, pos + 1]; }
 
 // INFO: version, counts, engine names, tagged blocks
-const TAG_LEN = { 0x55: 3, 0x4d: 4, 0x42: 3, 0x46: 4, 0x53: 3, 0x50: 3, 0x4e: 3, 0x52: 3, 0x4c: 3, 0x41: 4, 0x54: 3, 0x56: 3, 0x43: 3, 0x57: 3, 0x58: 4, 0x59: 3, 0x5a: 3 };
+const TAG_LEN = { 0x55: 3, 0x4d: 4, 0x42: 3, 0x46: 4, 0x53: 3, 0x50: 3, 0x4e: 3, 0x52: 3, 0x4c: 3, 0x41: 4, 0x54: 3, 0x56: 3, 0x43: 3, 0x57: 3, 0x58: 4, 0x59: 3, 0x5a: 3, 0x5b: 3, 0x4b: 3, 0x4f: 3 };
 export function parseInfo(a) {
   let [version, pos] = rstr(a, 0);
   if (pos < 1 || pos > a.length) throw new Error("The unit sent an unreadable INFO");
@@ -28,7 +28,14 @@ export function parseInfo(a) {
            // patchCap: the patch store's capacity (tag 58 01 lo hi, DUELL 0.2.15; null: a unit without it); patchRaw: tag 5A 01 caps bit 0 (DUELL 0.2.19) = PATCH_RAW (cmd 84)
            patchRaw: !!((tags[0x5a]?.[0] ?? 0) & 1),
            // nx: tag 59 01 NX (cloud plan job I): the unit has protocol scope 2 (GET / SET / DESC / CHANGED and TRACK_PARAM's scope byte) for its NX extension slots; null: a unit without it
-           nx: tags[0x59] ? tags[0x59][0] : null };
+           nx: tags[0x59] ? tags[0x59][0] : null,
+           // bypass: tag 5B 01 caps bit 0 (a proposal, "BYPASS (proposal)"): the unit has the volatile module bypass mask (cmd 89)
+           bypass: !!((tags[0x5b]?.[0] ?? 0) & 1),
+           // morphView: tag 4F 01 bit 0 (item 159): a part's values are read AS SHOWN at the MORPH fader (the unit's cards) and written as its knob writes; TRACK_DUMP's byte 1 and
+           // TRACK_PARAM's scope + 4 read and write the stored Original (the librarian's copy); WATCH bit 2: TRACK_CHANGED for every value of the other part
+           morphView: !!((tags[0x4f]?.[0] ?? 0) & 1),
+           // locks: tag 4C 01 caps (the sequencer's parameter locks, MOTION ops 5..7; bit 1 = targets past 127, ops 9..11); motionMax: tag 41 01 lo hi (the motion capacity, 128: op 8 lists them all), else 64
+           locks: tags[0x4c] ? tags[0x4c][0] & 127 : null, lockWide: !!((tags[0x4c]?.[0] ?? 0) & 2), motionMax: tags[0x41] ? tags[0x41][0] | tags[0x41][1] << 7 : 64 };
 }
 
 export function parseTrackQuery(a, ntrk = 4) {      // TRACK reply: selected, NTRK, per track: engine, preset, level v14, mute, armed
@@ -103,3 +110,21 @@ export const XSCOPE = 2;
 export const xReadArgs = (part, k) => [part, k, XSCOPE];
 export const xWriteArgs = (part, k, v) => [part, k, ...v14(v), XSCOPE];
 export const parseXReply = (a) => ({ part: a[0], k: a[1], v: rv14(a, 2), scope: a[4] });
+
+// MOTION (64): the sequencer's parameter locks and automation events (EDITOR_PROTOCOL.md, "Parameter locks", "LOCK TARGETS past 127").
+// A target id is 0..255: 0..127 a P_ id, 128 + n the extension slot n (SUB LEVEL = 134), 192 + d a matrix destination without a stored value. Ids past 127 go through ops 9..11 (id low 7 bits, then the high bit).
+export const MOTION_ERR = { 1: "The unit refused this lock (a step or a value outside its range).", 2: "PARAMETER LOCKS FULL", 3: "STOP TO EDIT: a song is playing." };
+export const motionSetArgs = (track, step, tid, v, lock) => (tid >= 128 ? [track, lock ? 11 : 9, step, tid & 127, 1, ...v14(v)] : [track, lock ? 5 : 3, step, tid, ...v14(v)]);
+export const motionDeleteArgs = (track, step, tid) => (tid >= 128 ? [track, 10, step, tid & 127, 1] : [track, 4, step, tid]);
+// the query reply: op 8 (every record: track, rc, on, count lo, count hi, max lo, max hi) or op 7 (track, rc, on, count, max); then count x (step, id low 7 bits, v14), count x kind (0 automation, 1 lock),
+// and with the wide tag count x high bit. A reply of ops 1..4 has no kinds: every record reads as an automation event.
+export function parseMotion(a, op8 = true, wide = true) {
+  const count = op8 ? a[3] | a[4] << 7 : a[3], max = op8 ? a[5] | a[6] << 7 : a[4];
+  let o = op8 ? 7 : 5; const rows = [];
+  for (let i = 0; i < count; i++) rows.push({ step: a[o + 4 * i], tid: a[o + 4 * i + 1], v: rv14(a, o + 4 * i + 2), lock: false });
+  o += 4 * count;
+  if (a.length >= o + count) rows.forEach((r, i) => { r.lock = a[o + i] === 1; });
+  o += count;
+  if (wide && a.length >= o + count) rows.forEach((r, i) => { if (a[o + i] === 1) r.tid += 128; });
+  return { track: a[0], rc: a[1], on: a[2], count, max, rows };
+}

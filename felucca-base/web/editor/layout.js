@@ -3,6 +3,7 @@
 // depend on the sound (engine hooks, INSERT type, ENV SYNC, ARP target), value text, the hide-rule predicates, the tab layout.
 // No DOM, no I/O here (the tests import it).
 import LAYOUT from "./layout.json" with { type: "json" };
+import { engineShown } from "./labels.js";
 
 export const L = LAYOUT;
 // 0.2.25: tests/editordump.c writes an enum's names from index 0, not from its min (params.c N_SLOPE {"-", "12dB", "24dB"}, SLOPE 1..2 came out as "-", "12dB": the
@@ -14,9 +15,10 @@ export const NPART = 2;
 
 // ---- the extension slots (cloud job I; firmware ext.h, params.c XTP; protocol scope 2): 15 stored values that have no parameter id. A part holds them in part.x[k] (k 0 .. NX-1, read through
 // GET / TRACK_PARAM scope 2); a page or card refers to one by scope 2 and its slot number (pageControls: a page id of XW_BASE + k is slot k). X: the slot numbers by name (L.XID)
-export const NX = L.NX ?? 0;
+export const NX = L.NX ?? 0;   // (DUELL 1.1: 28; X0 .. X27 are used: X27 is STRUM (item 144; it held the KEY OFFSET for a while, removed 2026-10-27, then was spare))
 export const XW_BASE = L.XW_BASE ?? 128;
-export const X = L.XID ?? {};
+// DUELL 1.1: the slot numbers 15 .. 26 by name (firmware ext.h; layout.json's XID lists the first fifteen): the DEST cards and the LFO LEVELs. A unit that reports fewer slots keeps its own (unit.js reads only what INFO says).
+export const X = { ...(L.XID ?? {}), X_AMPSAT: 15, X_E2BLND: 16, X_E2DRV: 17, X_E2RES: 18, X_CYTW: 19, X_CYPAN: 20, X_CYPIT: 21, X_L2TWR: 22, X_L2MOD: 23, X_L2BLND: 24, X_L1LVL: 25, X_L2LVL: 26, X_STRUM: 27 };
 export const xDefaults = () => (L.XTP ?? []).map((d) => d.def);
 // the descriptor of slot k of this part: the stored range, CYCLE's RISE and FALL as note values while its own SYNC switch is on
 export function xdescOf(part, k) {
@@ -50,6 +52,7 @@ export function descOf(part, id) {
   }
   if (id === ID.P_ATGT) return L.ATG[L.ENG[part.eng]?.atgt || 0];
   if (id >= ID.P_IA && id <= ID.P_ILAST) return L.INS[Math.min(Math.max(p[ID.P_ITYPE] | 0, 0), L.INS.length - 1)][id - ID.P_IA];
+  if (L.FM6ENV && id >= ID.P_ATK && id <= ID.P_REL && L.ENG[part.eng]?.name === "FM6") return L.FM6ENV[id - ID.P_ATK];   // FM6's AMP ENV knobs: the DX7 numbers 0..99 of the carriers (the unit: params.c FM6_ENV_DESC); ENV SYNC does not apply there
   if (p[ID.P_ESYNC]) {
     if (id === ID.P_ATK) return L.ESYNC[0];
     if (id === ID.P_DEC) return L.ESYNC[1];
@@ -100,7 +103,7 @@ export function valueText(d, v) {
   }
   if (d.texts) return { val: d.texts[v - d.min] ?? String(v), unit: "" };   // a number drawn as a slider whose positions have words (WAVE's STEPS: OFF, 2 .. 19)
   if (d.names) return { val: d.names[v - d.min] ?? String(v), unit: "" };
-  if (d.fk >= 0) { const t = L.FMTS[d.fk][v - d.min]; if (t) return { val: t[0], unit: t[1] }; }
+  if (d.fk >= 0) { const t = L.FMTS[d.fk][v - d.min]; if (t) return { val: String(t[0]).replace(/\n/g, " "), unit: t[1] }; }   // (a two-line name of the unit, SCALE\nROOT: one line here)
   return { val: String(v), unit: d.unit || "" };
 }
 export const isEnum = (d) => !!d.names;
@@ -114,11 +117,12 @@ export function inertReason(part, id) {
   const e = L.ENG[part.eng], p = part.p;
   if (!e) return "NO ENGINE";
   if (id === ID.P_CUT2 || id === ID.P_RES2 || id === ID.P_DRV2 || id === ID.P_BLEND) return twinWhy(part, id);   // (cloud job I: filter 2's values; the TYPE itself is never hidden)
+  if (e.name === "LOFI" && id === P_E0 + 2 && p[P_E0 + 1] !== 0) return "WAVE NOT PULSE";   // 1.1: LOFI PULSE WIDTH (K4) shows with WAVE PLS only (the unit: ui_draw.c card_hidden_vp)
   if (id >= P_E0) return unusedLabel(descOf(part, id)) ? "UNUSED" : null;
   if (id >= ID.P_IA && id <= ID.P_IMIX && id !== ID.P_ITYPE && !p[ID.P_ITYPE]) return "INSERT OFF";
   if (id === ID.P_LRATE && p[ID.P_LSYNC]) return "SYNC ON";
   if (id === ID.P_L2RATE && p[ID.P_L2SYNC]) return "SYNC ON";
-  if (e.ownenv && (id === ID.P_ATK || id === ID.P_DEC || id === ID.P_SUS || id === ID.P_REL)) return "OWN ENV";
+  // (DUELL 1.1, owner 2026-10-25: FM6's AMP ENV knobs show and act on the carrier operators; the matrix destinations for these four stay refused, dstWhy below)
   if ((id === ID.P_ED_SHP || id === ID.P_LD_SHP || id === ID.P_E2SHP || id === ID.P_L2SHP) && shapeInert(part)) return "WAVE";   // 0.2.25: no shape input with this wave
   if (p[ID.P_DKSRC] === 3 && (id === ID.P_DKRATE || id === ID.P_DKTHR || id === ID.P_DKDEP || id === ID.P_DKATK || id === ID.P_DKRLS || id === ID.P_DKCRV)) return "DUCK OFF";   // 0.2.24: DUCK SRC OFF (3): nothing ducks, the other DUCK cards are hidden (the unit's card_hidden_vp)
   return null;
@@ -157,6 +161,15 @@ export function twinFlow(part) {
   return par ? "ENGINE > DRIVE > MULTI + TWIN > AMP" : "ENGINE > MULTI > DRIVE > TWIN > AMP";
 }
 
+// DUELL 1.1 item 144: STRUM (slot 27, the CHORD page's K3) acts only on a chord the keys play (firmware chord.c strum_acts, ui_draw.c card_hidden_vp): chord keys on, POLY, the arp not playing.
+// The arp plays unless its MODE is OFF, or MODULES switches it off (ARP OFF; SEQ OFF for its SEQUENCE mode, 15): then the keys play the chord again and STRUM acts. null: it applies
+export function strumWhy(part, menu) {
+  const p = part.p;
+  if (!p[ID.P_CHRD ?? 81]) return "CHORD OFF";                    // (CHRD is id 81, core.h P_CHRD: layout.json's ID does not list it; labels.js keys it 81 too)
+  if ((p[ID.P_VOICE] | 0) !== V.POLY) return "VOICE ONE NOTE";
+  const am = p[ID.P_AMODE] | 0, arpOff = !am || modOff(menu, 28) || (am === 15 && modOff(menu, 29));
+  return arpOff ? null : "ARP ON";
+}
 // 0.2.25: the unit's MODULES switches (MENU 28 ARP, 29 SEQ, 30 SENDS, 31 PART FX; ui.c mods_of / mods_fade) hide what they switch off. menu: the unit's MENU items (null: not read)
 const MOD_IDS = { 28: [17, 18, 19, 20, 21, 22, 23, 24, 86], 29: [30, 31], 30: [34, 35, 36], 31: [33, 96, 97, 98, 99, 100, 87, 8, 89, 90, 88, 104, 103, 111, 112, 113, 107, 108, 110, 105] };
 const MOD_GLOBAL_SENDS = [10, 11, 4, 5, 6, 7, 25, 12, 13, 15, 24, 8, 9, 21, 26, 17];
@@ -179,7 +192,7 @@ export const matrixSecondShown = (part) => (part.p[ID.P_M4SRC] | 0) !== 0;
 export const isBipolar = (d) => !d.names && d.min < 0 && d.max > 0;
 export const bipolarZero = (d) => 0;
 // 0.2.25 (owner: the hide rule for modulation; the unit's mod.c mod_shp_inert / mod_e_inert, exported by the firmware as layout.json MXH): the destinations the current wave of
-// the part's engine leaves without effect (ANALOG's SHAPE outside PWM / SYNC, LOFI's outside PLS and DUTY on TRI SAW NOIS, TRIO's PW / INT2 / INT3 / DTN where no oscillator takes them)
+// the part's engine leaves without effect (ANALOG's SHAPE outside PWM / SYNC, LOFI's outside PLS and PULSE WIDTH on any wave but PLS, TRIO's PW / INT2 / INT3 / DTN where no oscillator takes them)
 const mxhOf = (eng) => L.MXH?.eng?.find((x) => x[0] === eng);
 export function dstWaveInert(part, dst) {
   const x = mxhOf(part.eng);
@@ -205,6 +218,12 @@ export function dstWhy(part, dst, g = null) {
   if (M.AATK != null && dst >= M.AATK && dst < M.AATK + 4 && e.ownenv) return "OWN ENV";   // (T0229: the AMP ENV times; FM6's operators have their own envelopes)
   return null;   // (T0229, owner: FILTER RES is never dimmed or hidden by the cutoff: no CUT OPEN)
 }
+// DUELL 1.1.0-test2 (EDITOR_PROTOCOL.md "LOCK TARGETS past 127"): the sequencer's locks offer exactly the matrix destination list. lockKind(dst): "virtual" (PITCH, TIMBRE, VOICE AMP, the seven bus values,
+// SPACE: no stored value; the lock is an AMOUNT -64..+63 added like a matrix amount), "extension" (SUB LEVEL: extension slot 6), else "parameter" (the destination's own P_ id). lockTarget(dst): the
+// target id of a virtual or extension destination (192 + dst, 128 + slot); 0 for a "parameter" one (the editor already knows its P_ id), and for OFF.
+const LOCK_VIRTUAL = (dst) => dst === 1 || dst === L.MD.SHP || dst === 4 || (dst >= L.MD.BUS && dst < L.MD.BUS + 7) || dst === 56;
+export const lockKind = (dst) => (dst <= 0 ? null : LOCK_VIRTUAL(dst) ? "virtual" : dst === L.MD.SUBLVL ? "extension" : "parameter");
+export const lockTarget = (dst) => (LOCK_VIRTUAL(dst) ? 192 + dst : dst === L.MD.SUBLVL ? 128 + 6 : 0);
 // 0.2.25: the DEST list offers dst for this part (the unit's mod.c mod_dst_offered): not removed (the EQ gains, the engine's list slots: layout.json MXH), and nothing
 // the selection makes do nothing (dstWhy). The value a slot holds stays in the list (a stored route keeps working)
 export function dstOffered(part, dst, g = null) {
@@ -232,7 +251,7 @@ export const PART_TABS = [
   { key: "engine", label: "ENGINE", pages: ["ENGINE", "EDIT 1", "EDIT 2", "VOICE 1/2", "VOICE 2/2"] },   // 0.2.21: the signal order; the multimode filter moved to FILTER (cloud job I); no engine has a filter of its own since cloud job J
   // cloud job I (FILTER_PAGES_PROPOSAL 3): filter 1 (MULTI FILTER, CUTOFF MOD) and filter 2 (TWIN FILTER, TWIN MOD, TWIN CHAIN: extension slots and ids 25, 26, 43, 101, 106 that have no unit page in this base) on one tab, in the order the sound flows
   { key: "filter", label: "FILTER", pages: ["MULTI FILTER 1/2", "MULTI FILTER 2/2"] },
-  { key: "envelope", label: "ENVELOPE", pages: ["AMP ENV", "AMP DEST", "ENV 2", "ENV 2 DEST"] },
+  { key: "envelope", label: "ENV", pages: ["AMP ENV", "AMP DEST", "ENV 2", "ENV 2 DEST"] },
   { key: "lfo", label: "LFO", pages: ["LFO 1", "LFO 1 TRIG", "LFO 1 DEST", "LFO 2", "LFO 2 TRIG", "LFO 2 DEST"] },
   { key: "matrix", label: "MATRIX", pages: ["MATRIX 1-4", "MATRIX 5-8"] },
   { key: "fx", label: "FX", pages: ["FX", "INSERT 1/2", "INSERT 2/2", "EQ 1/2", "EQ 2/2", "DUCK 1/2", "DUCK 2/2"] },
@@ -248,7 +267,8 @@ export const GLOBAL_TABS = [
   { key: "patches", label: "PATCHES", pages: ["PATCHES"] },
   { key: "multis", label: "MULTIS", pages: ["MULTIS"] },
   { key: "patterns", label: "PATTERNS", pages: ["PATTERNS"] },   // 0.2.25: the pattern slots P01..P16 through the backup objects 21..23 (stored.js)
-  { key: "midi", label: "MIDI", pages: ["SIDECHAIN", "MIDI LEARN"] },
+  { key: "midi", label: "MIDI", pages: ["SIDECHAIN"] },
+  { key: "midimap", label: "MIDI MAP", pages: ["MIDI LEARN"] },   // DUELL 1.1 (owner item 15): the assignments shown and changed on the computer (the unit has no MIDI MAP page)
   { key: "tables", label: "WAVETABLES", pages: [] },
   { key: "settings", label: "SETTINGS", pages: ["MODULES"] },
 ];
@@ -256,25 +276,26 @@ export const GLOBAL_TABS = [
 export const DUPLICATE = {
   // cloud job H (the unit pages) meets job I (the editor tabs): the same controls are the FILTER tab's cards and the engine / envelope cards
   "TWIN FILTER": "the FILTER tab's TWIN FILTER card (TYPE, LINK, OFFSET / CUTOFF / TUNE, RESONANCE / FEEDBACK)",
-  "TWIN MOD": "the FILTER tab's TWIN MOD card",
+  "TWIN MOD": "the FILTER tab's TWIN CUTOFF MOD card",
   "TWIN CHAIN": "the FILTER tab's TWIN CHAIN card",
   "SUB OSC": "the ENGINE tab's SUB OSC card beside the engine's card",
   "OP TUNE": "the ENGINE tab's OPERATORS editor (FM6): OPERATOR 1 to 6",
   "OP ENV": "the ENGINE tab's OPERATORS editor (FM6): OPERATOR 1 to 6",
   "OP MODE": "the ENGINE tab's OPERATORS editor (FM6): OPERATOR 1 to 6",
-  "CYCLE ENV 1/2": "the ENVELOPE tab's CYCLE ENV card (MODE, SYNC, RISE, FALL, CURVE)",
-  "CYCLE ENV 2/2": "the ENVELOPE tab's CYCLE ENV card",
-  MIXER: "the unit's GLO > MIXER page (0.2.25 layout round: GLO's first page; LEVEL 1, PAN 1, LEVEL 2, PAN 2, the MUTE cells): each part column's MIXER block (LEVEL, PAN, MUTE)",
-  "SEND FX": "the unit's SEND FX page (FX's last page) shows the selected part's three sends (the FX tab's CHO DLY REV cards) beside the effects they feed (the GLOBAL tab's cards); its twists only jump to those pages (0.2.24: the page says so under the cards, TURN = JUMP TO SETTINGS, and which effect is inactive for the part)",
+  "CYCLE ENV 1/2": "the ENV tab's CYCLE ENV card (MODE, SYNC, RISE, FALL, CURVE)",
+  "CYCLE ENV 2/2": "the ENV tab's CYCLE ENV card",
+  MIXER: "the unit's GLO > MIXER page (0.2.25 layout round: GLO's first page; item 117 order: K1 LEVEL 1, K2 LEVEL 2, K3 PAN 1, K4 PAN 2, the MUTE cells): each part column's MIXER block (LEVEL, PAN, MUTE)",
+  "SEND FX": "the unit's SEND FX page (FX's second page) shows the selected part's three sends (the FX tab's CHO DLY REV cards) beside the effects they feed (the GLOBAL tab's cards); its twists only jump to those pages (item 117: the page says so, TURN A KNOB: JUMP TO GLOBAL EFFECT SETTINGS, and names the effects that are inactive for the part)",
 };
 export const NOT_EDITABLE = [
   ["SCALE", "SCALE, ROOT and OFF-SCALE are the instrument's, not parameters: the editor protocol has no command for them"],
-  ["MIDI", "the parts' MIDI channels (P1 CH, P2 CH) are not reachable by the protocol; MIDI IN is on the MIDI tab"],
-  ["TOOLS", "CLEAR SEQ is the SEQ tab's Clear; INIT SOUND is the Init patch... button of each part; RESTORE ALL is on the PATCHES tab"],
-  ["AUTOMATION", "recorded motion and locks: not in this version (the protocol has MOTION)"],
-  ["MORPH", "the MORPH fader, ROLL and UNDO have no protocol command; End B is rolled from a seed, not stored as values (see below)"],
+  ["MIDI", "the parts' MIDI channels (PART 1 CHANNEL, PART 2 CHANNEL) are not reachable by the protocol; MIDI IN is on the MIDI tab"],
+  ["TOOLS", "CLEAR SEQ is the SEQ tab's Clear; INITIALIZE SOUND is the Init patch... button of each part; RESTORE ALL is on the PATCHES tab"],
+  ["SEQUENCER HELP", "the legend of the STEP page's symbols on the unit (page 2 of the STEP family, item 118): no controls, nothing to edit"],
+  ["PARAMETER LOCKS", "recorded motion and locks: not in this version (the protocol has MOTION; 1.1.0-test2: a lock can name every matrix destination, see lockTarget)"],
+  ["MORPH", "the MORPH fader, ROLL and UNDO have no protocol command; a saved patch or multi keeps End B as exact values, and PATCH_RAW and the backup carry it (see below)"],
   ["MORPH SET", "SMART, ARP and PITCH of the morph have no protocol command"],
-  ["MODE", "the output MODE (DUEL, STEREO, LAYER), BALANCE, XFADE and SPLIT have no protocol command"],
+  ["MODE", "the output MODE (DUEL, STEREO, LAYER), XFADE and SPLIT have no protocol command"],
 ];
 export function uncoveredPages() {
   const used = new Set([...PART_TABS, ...GLOBAL_TABS].flatMap((t) => t.pages));
@@ -304,7 +325,7 @@ export function pageControls(pg, part) {
 }
 export function matrixSlots(pg) { const base = pg.ids[1]; return [0, 1, 2, 3].map((k) => ({ src: base + 3 * k, dst: base + 3 * k + 1, amt: base + 3 * k + 2, n: (base - ID.P_M1SRC) / 3 + k + 1 })); }
 
-export const engineLabel = (e) => L.ENG[e]?.name ?? "?";
+export const engineLabel = (e) => engineShown(L.ENG[e]?.name ?? "?");   // (owner 2026-10-25: PHYS is shown PHYSICAL, labels.js ENGINE_SHOWN; the stored name stays the key in L.ENG)
 // the engines one can pick, in the unit's order; a part that already plays another (DRUM, a retired one) lists it too
 export const pickable = (cur) => (L.ORDER.includes(cur) ? L.ORDER : [...L.ORDER, cur]);
 export const CATEGORIES = ["-", "BASS", "LEAD", "PAD", "PLUCK", "KEYS", "DRUM", "FX", "OTHER"];

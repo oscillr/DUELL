@@ -170,11 +170,10 @@ static TC_FN int tc_boot(uint32_t rst, int crashed, int boot_failed)
     armed = tc_nv.state == TCNV_ARMED;
     tc.armed = armed ? TCW_ONESHOT : TCW_NOT;
 #if TC_AUTO_ARM
-    if (!armed && tc_auto_arm_ok(tc_nv.last)) {
-        armed = 1;
+    if (!armed) {                                       /* DUELL 1.1 (item 92 addendum 3, owner): two cores are tried at EVERY power-on, also after a strike */
+        armed = 1;                                      /* (the strike stays in tc.boot_last for the notice; the boot guard below still wins) */
         tc.armed = TCW_AUTO;
-    } else if (!armed)
-        tc_nv.last = TCR_NONE;                          /* a strike last time: one core now, forgotten, the next power-on tries again */
+    }
 #endif
     if (armed && boot_failed) {
         tc_nv.last = TCR_SKIPBOOT;
@@ -205,6 +204,14 @@ static TC_FN int tc_boot(uint32_t rst, int crashed, int boot_failed)
         tc.strike = 1;
     }
     return tc.up;
+}
+/* ERASE DATA (main.c, just before the restart; DUELL 1.1 item 92 addendum 2): the record across a reset is wiped whole (strike, last reason, SKIPBOOT,
+ * ARMED/RAN), the magic too: the next start finds no record, begins from NONE and tries two cores (tc_boot) */
+static TC_FN void tc_forget(void)
+{
+    tc_nv.magic = 0;
+    tc_nv.state = 0;
+    tc_nv.last = TCR_NONE;
 }
 /* arm a start for the next power-on (stage 1's developer page; the caller then restarts the unit) */
 static TC_FN void tc_arm(void)

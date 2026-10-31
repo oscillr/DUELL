@@ -56,9 +56,9 @@ int main(void)
     static project_store_t st, st2, slot;
     static uint8_t old[3840];
 
-    bad += check("layout: name at 3824, A B's patches at 3568, 1666 spare before them (no edits), P_COUNT 127 at byte 66, revision 7, two parts, no song chain",
+    bad += check("layout: name at 3824, A B's patches at 3568, 1642 spare before them (no edits; item 138: NX 28), P_COUNT 127 at byte 66, revision 7, two parts, no song chain",
                  PROJ_NAME_OFF == 3824u && PROJ_FM6_OFF == 3568u && PROJ_NTRK == 2u && P_COUNT == 127u && PROJ_REV == 7u && NPART == 2u &&
-                 68u + PROJ_NTRK * (P_COUNT + 1u + NX + 1u + 2u + NSTEP * 9u) + sizeof(motion_store_t) + 1666u == PROJ_FM6_OFF);
+                 68u + PROJ_NTRK * (P_COUNT + 1u + NX + 1u + 2u + NSTEP * 9u) + sizeof(motion_store_t) + 1642u == PROJ_FM6_OFF);
 
     /* a round trip */
     base_project(&a);
@@ -157,7 +157,7 @@ int main(void)
         project_t e, c0;
         uint32_t at = 68u + P_COUNT, ins = at + 1u + NX, j;       /* part A: the byte nx, the NX slots, then the byte ne */
         base_project(&e);
-        for (j = 0; j < NX; j++) { e.t[0].x[j] = (int16_t)(j * 7u) - 50; e.t[1].x[j] = (int16_t)(127 - 3 * (int)j); }
+        for (j = 0; j < NX; j++) { e.t[0].x[j] = (int16_t)((j * 7u) % 170u) - 50; e.t[1].x[j] = (int16_t)(127 - 3 * (int)j); }   /* (item 138: NX 28: j * 7 - 50 ran past 127 from slot 26 on) */
         e.t[0].x[3] = -64; e.t[0].x[4] = 127;
         e.xe_n[0] = XB_MAX; e.xe_n[1] = 3;
         for (j = 0; j < XB_MAX; j++) { e.xe[0][j].wid = (uint8_t)(j < 31u ? j * 4u : 128u + 5u); e.xe[0][j].val = (int16_t)(j * 5) - 64; }

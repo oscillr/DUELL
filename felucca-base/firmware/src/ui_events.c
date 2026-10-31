@@ -1,10 +1,10 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
-/* Felucca SEQ > AUTOMATION (1.1.5 AUTO LIST; 1.2, Discussion #153: the AUTOMATION page, CHANCE and RATCH merged into it;
+/* Felucca SEQ > PARAMETER LOCKS (1.1.5 AUTO LIST; 1.2, Discussion #153: the PARAMETER LOCKS page, CHANCE and RATCH merged into it;
  * 1.2, #162: NUDGE and QUANTIZE too; 1.5, #173: VEL; included by ui.c): the selected track's automation as a list.
  * The rows:
  *   PLAY     the first: the track's automation ON / OFF (KNOB 4; OFF keeps it) and its counts; OCT+ CLEAR asks
- *            "CLEAR Tn AUTOMATION?" (the locks and events go, the steps' CHANCE, RATCH, NUDGE, VEL stay)
+ *            "CLEAR Tn PARAMETER LOCKS?" (the locks and events go, the steps' CHANCE, RATCH, NUDGE, VEL stay)
  *   QUANTIZE the second: the track's QUANTIZE (P_SQNT) ON / OFF (KNOB 4) and how many steps have a NUDGE. ON (the
  *            default) plays every step on its start; OFF plays the nudges (seq.c seq_tick)
  *   LOCK / AUTO  a record (motion.c): its step, its parameter, its value
@@ -25,15 +25,17 @@
  *          yet); on + ADD, CHANCE, RATCH and NUDGE come first
  *   KNOB 4 the value (PLAY, QUANTIZE: ON / OFF; NUDGE -8..+7 sixteenths of the step, "QUANTIZE IS ON" while it is;
  *          VEL 1..127)
- *   OCT+   on + ADD: a lock on the step and parameter KNOB 2 / 3 set there (the SEQ cursor's step and the first
- *          parameter of the sound page shown last, to begin with), at the sound's own value; CHANCE 50 %, RATCH x2 or
+ *   OCT+   on + ADD: a lock on the step and parameter KNOB 2 / 3 set there (the SEQ cursor's step and the engine's
+ *          first control, ui.c lock_id, to begin with), at the sound's own value; CHANCE 50 %, RATCH x2 or
  *          NUDGE +4/16 on that step, VEL: SHOW / HIDE the VEL rows; on a record: its kind LOCK <-> AUTO (an automation
  *          event holds its value until the next one, a lock sounds on its step only); on PLAY: CLEAR (the dialog)
  *   EDIT   deletes the record, puts a CHANCE / RATCH / NUDGE / VEL back to 100 % / x1 / 0 / 96;  OCT- goes HOME (as
  *          on the other action pages)
  * Every edit is one undo (SAVE held: ui.c motion_undo_take, step_undo_take; a knob turned on is one; PLAY and QUANTIZE
  * are settings, as on their pages before). Not while a song plays (STOP TO EDIT). The 128 records are shared by the four
- * tracks: AUTOMATION FULL when they are used */
+ * tracks: PARAMETER LOCKS FULL when they are used.
+ * DUELL 1.0 (change list B.8): locks are made by turning a knob while the part records (motion.c motion_knob_lock); this page
+ * is the list where they are changed, deleted and switched LOCK / AUTO */
 static int32_t accel(uint32_t role, int32_t s, int32_t range);
 static void confirm_open(uint32_t kind, uint32_t trk);
 
@@ -54,24 +56,43 @@ static int ev_id_ok(const track_t *t, uint32_t id)
     const param_desc_t *d;
     if (ev_sid(id))
         return 1;
-    if (id >= P_COUNT || !motion_param(id))
+    if (id >= 256u || !motion_param(id) || !mod_lock_ok(t, id))   /* (1.1: the matrix's destination list and its own offer rule, mod.c; DUELL 1.1: every destination, the extension slot and the virtual targets too) */
         return 0;
-    d = track_desc(t, id);
+    d = lock_desc(t, id);
     return d && d->label && d->label[0] && d->label[0] != '-' && d->max > d->min;
 }
 /* its name in the list and on the card (b holds 20): the module's name before the card's shown name where the name alone would say two things
- * (AMP ENV ATTACK, FILT ENV CUTOFF, LFO 1 RATE, LFO 2 PITCH; T0227: the cards' full names, params.c desc_said; FILT ENV is the second envelope) */
+ * (AMP ENV ATTACK, FILTER ENV CUTOFF, LFO 1 RATE, LFO 2 PITCH; T0227: the cards' full names, params.c desc_said; FILTER ENV is the second envelope) */
 static void ev_name(const track_t *t, uint32_t id, char *b)
 {
     const char *pre = id >= P_ATK && id <= P_ED_SHP ? "AMP ENV " : (id >= P_LRATE && id <= P_LD_AMP) || (id >= P_LSYNC && id <= P_LPOL) ? "LFO 1 " :
-                      (id >= P_E2ATK && id <= P_E2REL) || id == P_E2FLT || id == P_E2SHP ? "FILT ENV " :
+                      (id >= P_E2ATK && id <= P_E2REL) || id == P_E2FLT || id == P_E2SHP ? "FILTER ENV " :
                       (id >= P_L2PIT && id <= P_L2SHP) || (id >= P_L2RATE && id <= P_L2FADE) || (id >= P_L2SYNC && id <= P_L2POL) ? "LFO 2 " : "";
     if (ev_sid(id)) {
-        str_cpy(b, id == EV_CHANCE ? "CHANCE" : id == EV_RATCH ? "RATCH" : id == EV_VEL ? "VEL" : "NUDGE", 20);
+        str_cpy(b, id == EV_CHANCE ? "CHANCE" : id == EV_RATCH ? "RATCHET" : id == EV_VEL ? "VEL" : "NUDGE", 32);
         return;
     }
-    str_cpy(b, pre, 20);
-    desc_said(track_desc(t, id), b + str_len(b), 20 - str_len(b));
+    str_cpy(b, pre, 32);
+    desc_said(lock_desc(t, id), b + str_len(b), 32 - str_len(b));
+}
+
+/* 1.1 (owner, HANDOFF_V2 item 34): a lock's or event's parameter under the MATRIX's name. In a list row the full line as the matrix's DEST line says it ("FILTER ENV MULTI CUTOFF",
+ * "AMP ENV ATTACK"; b holds 32); on a card the matrix's DEST card name (two lines where it has them: mod_dst_name; nothing is shortened, the card cuts what does not fit) */
+static void ev_dest_name(const track_t *t, uint32_t id, char *b, int card)
+{
+    uint32_t d = ev_sid(id) ? 0u : mod_lock_dst(id);
+    const char *more;
+    char tmp[32];
+    if (!d) {
+        ev_name(t, id, b);
+        return;
+    }
+    if (card) {
+        str_cpy(b, mod_dst_name(t, (int32_t)d), 32);
+        return;
+    }
+    mod_dst_line(t, (int32_t)d, tmp, &more);
+    str_cpy(b, tmp + 6, 32);                           /* (after "DEST: ") */
 }
 
 /* a step's CHANCE (kind EVK_CHANCE), RATCH (EVK_RATCH), NUDGE (EVK_NUDGE) or VEL (EVK_VEL): its value, its default
@@ -136,15 +157,28 @@ static int ev_id_free(const track_t *t, uint32_t step, uint32_t id)
         return ev_sdef(&t->step[step], ev_skind(id));
     return motion_find(t, step, id) < 0;
 }
-/* + ADD's order: CHANCE, RATCH, NUDGE, VEL, then the parameters by id; (uint32_t)-1 before the first */
+/* + ADD's order: CHANCE, RATCH, NUDGE, VEL, then the parameters in the MATRIX's destination order (params.c MDST_ORDER, 1.1: the same list as the matrix's DEST knob);
+ * (uint32_t)-1 before the first. A place that has no parameter (OFF, a destination with no stored value) is 0xFF, which ev_id_ok refuses */
 static int32_t ev_id_pos(uint32_t id)
 {
-    return id == EV_CHANCE ? 0 : id == EV_RATCH ? 1 : id == EV_NUDGE ? 2 : id == EV_VEL ? 3
-           : id < P_COUNT ? (int32_t)id + 4 : -1;
+    uint32_t d, r;
+    if (id == EV_CHANCE || id == EV_RATCH || id == EV_NUDGE || id == EV_VEL)
+        return id == EV_CHANCE ? 0 : id == EV_RATCH ? 1 : id == EV_NUDGE ? 2 : 3;
+    d = mod_lock_dst(id);
+    if (!d)
+        return -1;
+    for (r = 0; r < MD_N; r++)
+        if (MDST_ORDER[r] == d)
+            return (int32_t)r + 4;
+    return -1;
 }
 static uint32_t ev_id_at(int32_t v)
 {
-    return v == 0 ? EV_CHANCE : v == 1 ? EV_RATCH : v == 2 ? EV_NUDGE : v == 3 ? EV_VEL : (uint32_t)(v - 4);
+    uint32_t id;
+    if (v < 4)
+        return v == 0 ? EV_CHANCE : v == 1 ? EV_RATCH : v == 2 ? EV_NUDGE : EV_VEL;
+    id = mod_lock_id(MDST_ORDER[v - 4]);
+    return id ? id : 0xFFu;
 }
 /* the next one after id in direction dir (+1 / -1) that is free on track t's step; id itself when there is none */
 static uint32_t ev_id_step(const track_t *t, uint32_t step, uint32_t id, int32_t dir)
@@ -152,7 +186,7 @@ static uint32_t ev_id_step(const track_t *t, uint32_t step, uint32_t id, int32_t
     int32_t i = ev_id_pos(id);
     for (;;) {
         i += dir;
-        if (i < 0 || i >= (int32_t)P_COUNT + 4)
+        if (i < 0 || i >= (int32_t)MD_N + 4)
             return id;
         if (ev_id_ok(t, ev_id_at(i)) && ev_id_free(t, step, ev_id_at(i)))
             return ev_id_at(i);
@@ -311,7 +345,7 @@ static void ev_step_knob(track_t *t, uint32_t slot, int32_t s, uint32_t c)
     ev_follow(c);
 }
 
-/* KNOB slot turned s on AUTOMATION */
+/* KNOB slot turned s on PARAMETER LOCKS */
 static void ev_knob(uint32_t slot, int32_t s)
 {
     track_t *t = TSEL;
@@ -356,7 +390,7 @@ static void ev_knob(uint32_t slot, int32_t s)
     i = c & 0xFFu;
     e = &motion.event[i];
     step = e->place & 63u;
-    id = MOTION_ID(e);
+    id = MOTION_TID(e);
     if (slot == 1u) {                                   /* the next step where its parameter is free */
         uint32_t top = ev_len(t) > step ? ev_len(t) : step + 1u, m = (uint32_t)(s > 0 ? s : -s);
         int32_t to = (int32_t)step, at = (int32_t)step;
@@ -432,7 +466,7 @@ static void ev_oct(void)
             ev_sput(&t->step[ui.ev_step], sk, ev_sadd(sk));
             motion_undo_done(t);
             ev_follow(EVC(sk, ui.ev_step));
-            ui_message(sk == EVK_CHANCE ? "CHANCE ADDED" : sk == EVK_RATCH ? "RATCH ADDED" :
+            ui_message(sk == EVK_CHANCE ? "CHANCE ADDED" : sk == EVK_RATCH ? "RATCHET ADDED" :
                        t->p[P_SQNT] ? "QUANTIZE IS ON" : "NUDGE ADDED");
             return;
         }
@@ -442,7 +476,7 @@ static void ev_oct(void)
             return;
         }
         if (motion.count >= MOTION_MAX) {
-            ui_message("AUTOMATION FULL");
+            ui_message("PARAMETER LOCKS FULL");
             return;
         }
         motion_undo_take(t, 0);
@@ -457,9 +491,9 @@ static void ev_oct(void)
         const motion_event_t e = motion.event[c & 0xFFu];
         uint32_t lock = !(e.param & MOTION_LOCK);
         motion_undo_take(t, 0);
-        (void)motion_put(t, e.place & 63u, MOTION_ID(&e), e.value, lock ? MOTION_LOCK : 0u);
+        (void)motion_put(t, e.place & 63u, MOTION_TID(&e), e.value, lock ? MOTION_LOCK : 0u);
         motion_undo_done(t);
-        ui_message(lock ? "NOW A LOCK" : "NOW AUTOMATION");
+        ui_message(lock ? "NOW A LOCK" : "NOW AUTO");
     }
 }
 
@@ -477,7 +511,7 @@ static void ev_delete(void)
     if (k == EVK_REC) {
         e = &motion.event[c & 0xFFu];
         motion_undo_take(t, 0);
-        motion_delete_event(t, e->place & 63u, MOTION_ID(e));
+        motion_delete_event(t, e->place & 63u, MOTION_TID(e));
     } else {
         step_undo_take(t, 0);
         ev_sput(&t->step[c & 0xFFu], k, ev_sdefv(k));

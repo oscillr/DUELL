@@ -223,8 +223,14 @@ static void fm1_main(void)
         uint32_t m = fm1_ms;
         fm1_wdt_feed();
         usb_retry(fm1_ms);
-        if (erase_restart_due())                        /* DUELL 0.2.2: ERASE DATA done (erase_data.c): the first-start path */
+        if (erase_restart_due()) {                      /* DUELL 0.2.2: ERASE DATA done (erase_data.c): the first-start path */
+            BG_ERASE_ALL(bootguard);   /* DUELL 1.1 (item 92 addendum 2): ERASE wipes the boot guard whole (pending, failed = the update-mode counter, magic) .. */
+#if DUELL_TWOCORE
+            tc_forget();               /* .. and the second-core record (strike, last, SKIPBOOT): a clean start always tries two cores */
+#endif
+            /* (item 92 first fix, now covered by the wipe above:) DUELL 1.1 (item 92): an intended restart, not a failed start. Left set, an erase inside the first 30 s after a start (the installer does exactly that) made the boot guard see "the last start died": tc_boot then skipped core 1 (SKIPBOOT) for that whole session */
             fm1_reboot();
+        }
         if (fm1_ms > 30000u && bootguard.pending) {     /* a crash or hang in the first 30 s counts */
             bootguard.pending = 0;
             bootguard.failed = 0;
@@ -302,6 +308,9 @@ static void fm1_main(void)
         }
 #if FELUCCA_CDC
         cdc_task();
+#if DUELL_VELO_CAPTURE
+        velocap_drain();                              /* developer capture build only: the queued key readings to the serial console (never waits) */
+#endif
 #endif
         felucca_dbg.ui_frames++;
         felucca_dbg.page = ui.page;
@@ -322,6 +331,9 @@ static void fm1_main(void)
         felucca_dbg.stage = 9;
         while (fm1_ms - m < 15u) {                               /* ~60 UI frames/s at most */
             ui_input();
+#if DUELL_VELO_CAPTURE
+            velocap_drain();
+#endif
             wave_service();                     /* (the table builds use the wait: ~0.3 ms a frame) */
 #if FELUCCA_OTA
             ed_service();                       /* editor replies without waiting for the next frame */
@@ -333,6 +345,7 @@ static void fm1_main(void)
 void fm1_cstart(void)
 {
     uint32_t *s, *d, p3, src, wdt;
+    int bg_enter;
 #if DUELL_TWOCORE
     fm1_cpu1_halt();                           /* (after Felucca 1.6.1: a second core still running from before this reset would read the
                                                 * RAM cleared below; hal/fm1_sys.h) */
@@ -346,19 +359,9 @@ void fm1_cstart(void)
     src = fm1_boot.rst_src;
     wdt = fm1_boot.wdt_con;
     fm1_wdt_arm(0x0D);
-    if (bootguard.magic != BOOTGUARD_MAGIC) {
-        bootguard.magic = BOOTGUARD_MAGIC;
-        bootguard.failed = 0;
-        bootguard.pending = 0;
-    }
-    if (bootguard.pending)
-        bootguard.failed++;
-    bootguard.pending = 1;
-    if (bootguard.failed >= 2u) {
-        bootguard.failed = 0;
-        bootguard.pending = 0;
+    BG_START(bootguard, BOOTGUARD_MAGIC, bg_enter);   /* (bootguard.h) */
+    if (bg_enter)
         fm1_enter_uboot();
-    }
 #if DUELL_RAMPLACE
     ramplace_copy();                            /* the RAM ranges X and Z before anything can call them (memset, memcpy are in Z; ramplace.c);
                                                  * after the boot guard: a start that dies here counts as a failed one (2: the update mode) */

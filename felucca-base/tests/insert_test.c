@@ -294,7 +294,7 @@ static void test_glide(void)
         track_insert(t, sig_a + i * CTL, CTL);
     ck("  and out again; then nothing runs (the input as it is)", wm == 32768 - CTL * SL_SLOPE && !ins[0].w &&
        !memcmp(sig_a + 8u * CTL, sig_in + 8u * CTL, CTL * sizeof(int32_t)));
-    /* a TYPE change while it plays: SOFT fades out, FLANG fades in from rest */
+    /* a TYPE change while it plays: SOFT fades out, FLANGER fades in from rest */
     t->p[P_IMIX] = 127;
     for (i = 9; i < 16u; i++)
         track_insert(t, sig_a + i * CTL, CTL);
@@ -480,7 +480,7 @@ static void test_cost(void)
         worst = c > worst ? c : worst;
     }
     c = cost(IT_PHASER, 0) - c0;
-    printf("insert:   PHASR at MIX 0 %+5.1f (a test per block)\n", c);
+    printf("insert:   PHASER at MIX 0 %+5.1f (a test per block)\n", c);
     ck("cost: MIX 0 next to nothing; every TYPE a fixed cost per track below 10 % of an 8-voice part",
        worst < c0 * 0.10 && c < c0 * 0.005);
 }
@@ -589,7 +589,7 @@ static void test_lofi(void)
     uint32_t i, j;
     int ok;
     double r, r2;
-    printf("insert: TAPE, VINYL (0.2.14): ins_t %u bytes, as before (one type runs at a time: the PHASR words are the same words)\n", (unsigned)sizeof(ins_t));
+    printf("insert: TAPE, VINYL (0.2.14): ins_t %u bytes, as before (one type runs at a time: the PHASER words are the same words)\n", (unsigned)sizeof(ins_t));
     ck("TAPE, VINYL: ins_t stays 580 bytes (pool budget unchanged)", sizeof(ins_t) == 580u);
     fresh(0, 0);
     /* labels, ranges, names that fit the 6-character value display */

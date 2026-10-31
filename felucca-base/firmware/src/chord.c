@@ -15,7 +15,13 @@
  * The key is mapped first (kb_map: the octave, TRN, OFF-SCALE SNAP), the chord is built on the note it gives.
  * MONO / LEGATO / UNISON parts play the chord's root only. Every source keeps the notes it started (kb_chord for a
  * key, mchord for a MIDI note) and its release ends exactly those, so CHRD / VOIC changed while it is held
- * leave nothing hanging. A note several sources hold sounds once and ends with the last of them. */
+ * leave nothing hanging. A note several sources hold sounds once and ends with the last of them.
+ * STRUM (DUELL 1.1 item 144, the CHORD page's K3, ext slot X27): the tones of such a chord start one after the other, low to high, STRUM ms apart
+ * (in whole blocks of CTL samples, 0.73 ms: 1 ms is one block, 100 ms 138); 0 = OFF, every tone at once as before. Only where the chord is played
+ * by the keys themselves (strum_acts: CHRD on, POLY, the arp not playing: with the ARP or its SEQ mode on the arp already sequences the tones, and
+ * MONO / LEGATO / UNISON play the root alone). The lowest tone starts with the key, as before; seq.c strum_block starts the next ones. A key or MIDI
+ * note let go before a tone's turn cancels it (the source's count, kb_chn / mchord_t.n, is the tones STARTED, so its release ends exactly those);
+ * a panic, a MODE change, STOP ALL forget what waits. Sequencer steps play their stored notes together (no strum: they are notes, not a chord key) */
 enum { CH_OFF, CH_DIA3, CH_DIA7, CH_MAJ, CH_MIN, CH_DOM7, CH_MAJ7, CH_MIN7, CH_SUS4, CH_POW };
 enum { VC_CLOSE, VC_OPEN, VC_INV1, VC_INV2, VC_BASS };
 #define CHORD_MAX 4u
@@ -27,7 +33,11 @@ static const int8_t CHORD_SHAPE[CH_POW - CH_MAJ + 1][CHORD_MAX] = {
 
 static uint8_t kb_chord[27][CHORD_MAX], kb_chn[27];   /* the notes key k started (kb_chn 0: none) */
 static uint8_t kb_chord2[27][CHORD_MAX], kb_chn2[27];  /* LAYER: the same key's notes on part 2 (its own chord) */
-typedef struct { uint8_t id, ch, src, n, note[CHORD_MAX]; } mchord_t;   /* id: track + 1, 0 = free */
+/* STRUM (item 144): key k's chord has kb_ctot[k] tones, kb_chn[k] of them started; kb_sw[k] blocks until the next one (0: none waits); kb_svel[k]
+ * the velocity they play. kb_ctot2 / kb_sw2: LAYER part 2's copy */
+static uint8_t kb_ctot[27], kb_sw[27], kb_ctot2[27], kb_sw2[27], kb_svel[27];
+typedef struct { uint8_t id, ch, src, n, note[CHORD_MAX], tot, wait, vel; } mchord_t;   /* id: track + 1, 0 = free; n the tones started, tot the chord's (STRUM: the rest wait,
+                                                                                * wait blocks to the next one; vel the note's) */
 static mchord_t mchord[MCHORD_N];
 /* the last chord played per track (the CHORD page shows it): its root, notes, and the shape's tones above the
  * root (bit i = i semitones, 0..11) */
@@ -216,3 +226,30 @@ static void mchord_forget(uint32_t track)               /* panic: the track's MI
         if (mchord[i].id == track + 1u)
             mchord[i].id = 0;
 }
+
+/* STRUM (item 144): whether part t's chords are strummed by its keys (the card shows only then: ui_draw.c card_hidden_vp; the editor's layout.js strumWhy):
+ * chord keys on, POLY (one voice plays the root alone), the arp not playing (it sequences the tones itself; MODULES ARP OFF lets the keys play again) */
+static int strum_acts(const track_t *t) { return t->p[P_CHRD] && trk_vmode(t) == V_POLY && !arp_mode(t); }
+/* the blocks between two tones of part t's chord, 0 = OFF (the stored ms, 0..100, in blocks of CTL samples, rounded; at least 1 when on) */
+static uint32_t strum_blocks(const track_t *t)
+{
+    int32_t ms = XV(t, X_STRUM);
+    uint32_t b;
+    if (ms <= 0 || !strum_acts(t))
+        return 0;
+    ms = ms > 100 ? 100 : ms;
+    b = ((uint32_t)ms * FS + 500u * CTL) / (1000u * CTL);
+    return b ? b : 1u;
+}
+/* a panic of track `track` (seq.c events_block, mode_apply, stop_all): its keys' tones that wait are forgotten (the started ones stay with the key) */
+static void strum_forget(uint32_t track)
+{
+    uint32_t k;
+    for (k = 0; k < 27u; k++) {
+        if (kb_trk[k] == track)
+            kb_sw[k] = 0;
+        if (track == 1u)
+            kb_sw2[k] = 0;
+    }
+}
+

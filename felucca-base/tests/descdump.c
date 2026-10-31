@@ -13,6 +13,11 @@ static void js_str(const char *s)
 {
     putchar('"');
     for (; s && *s; s++) {
+        if (*s == '\n') {
+            putchar('\\');
+            putchar('n');
+            continue;
+        }
         if (*s == '"' || *s == '\\')
             putchar('\\');
         putchar(*s);
@@ -142,7 +147,7 @@ int main(void)
         if (d->fmt != F_PCT)
             continue;
         for (i = 0; i < 3u; i++) {
-            char val[12];
+            char val[PV_LEN];
             const char *unit;
             param_format(d, x[i], val, &unit);
             printf("%s[%d,%d,%d,%d,", e++ ? "," : "", k < (uint32_t)P_E0 ? 0 : 1, k < (uint32_t)P_E0 ? (int)k : (int)(k - P_E0),

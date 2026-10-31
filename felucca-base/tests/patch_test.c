@@ -11,11 +11,20 @@
  *   3. the slots: a fresh unit holds the factory sound in all 128 (nothing written), SAVE overwrites the slot it is told to (K1 in the dialog picks it,
  *      the slot the sound came from is offered), RESTORE brings the factory sound back bit for bit, RESTORE ALL, MIDI program change = the slot,
  *      FAV is the slot's, a power cut at every step of a SAVE, a RESTORE and a RESTORE ALL;
- *   4. the page: ONE list of 128 slots (the number, the name), K1 steps and loads, K2 TYPE a filter, K3 FAV, K4 RESTORE not drawn on a factory slot.
+ *   4. the page: ONE list of 128 slots (the number, the name), K1 steps and loads, K2 TYPE a filter, K3 FAV, K4 RESTORE drawn on the slot the part plays (reloads its saved version).
  *   build/host/patch_test            (DUELL/host_tests.sh "patch") */
 #define UI_TEST_NO_MAIN 1
 #define FELUCCA_FLASH 1
 #include "ui_test.c"
+/* ROLL CHAINED storage (PT_VER 4): the seed block (up_mblk), the extension block's edit list (up_xb_in / up_xb_nin) and the flags PTF_XB / PTF_BM (16 / 64) are gone from the record.
+ * These stand-ins are only so that this file compiles; the checks that use them are stale and need rewriting to the new record (End B as values: up_bv_in, the values at range bits) */
+#ifndef PTF_XB
+#define PTF_XB 16u
+#define PTF_BM 64u
+#endif
+static const uint8_t *up_mblk;
+static const xb_edit_t *up_xb_in;
+static uint32_t up_xb_nin;
 
 static uint8_t nor[0x100000];
 static long cut_bytes = -1;
@@ -557,12 +566,13 @@ int main(void)
                                          "an odd n in tag 1", "an odd n in tag 2", "a value byte 192 in tag 1", "a value byte 192 in tag 2", "33 edits", "wide id 127 in an edit",
                                          "an edit id twice", "L 0", "a lone tag byte"};
             uint32_t m, bad_n = 0, refused_n = 0;
+            const uint32_t T1 = 2u * NX;                                    /* item 138: tag 1's bytes with every slot set (NX 16 -> 28 in DUELL 1.1: the offsets were for 16 pairs) */
             for (i = 0; i < XB_MAX; i++)
                 ed[i] = (xb_edit_t){(uint8_t)(2u * i), (int16_t)i};
             for (i = 0; i < NX; i++)
-                blk[i] = (uint8_t)(xb_def(i) + 1u);
-            bn = xb_block_build(blk, ed, 3, blk + 32);                      /* a good block: tag 1 (16 pairs) + tag 2 (3 edits) */
-            ok = bn == 2u + 2u + 32u + 2u + 6u && xb_block_ok(blk + 32, bn) == bn;
+                blk[i] = (uint8_t)(xb_def(i) < 191u ? xb_def(i) + 1u : xb_def(i) - 1u);   /* (item 138: a slot whose default is the top value 127 (byte 191, the LFO LEVELs of 1.1) one under it: 192 is a damaged byte) */
+            bn = xb_block_build(blk, ed, 3, blk + 32);                      /* a good block: tag 1 (NX pairs, T1 bytes) + tag 2 (3 edits) */
+            ok = bn == 2u + 2u + T1 + 2u + 6u && xb_block_ok(blk + 32, bn) == bn;
             for (m = 0; m < sizeof WHAT / sizeof WHAT[0]; m++) {
                 uint8_t b[XB_BLOCK_MAX + 8];
                 uint32_t n2 = bn, rc;
@@ -574,12 +584,12 @@ int main(void)
                 case 3: b[1] = 2; break;
                 case 4: b[1] = 0; break;
                 case 5: b[3] = 255; break;                                  /* tag 1's n */
-                case 6: b[2 + 2 + 32] = XB_T_EXT; break;                    /* the second section becomes a tag 1 too */
-                case 7: b[2 + 2 + 32] = XB_T_EDIT; b[2] = XB_T_EDIT; break;
-                case 8: b[3] = 31; b[2 + 2 + 32 - 1] = 0; break;           /* n 31: the sections no longer add up either */
-                case 9: b[2 + 2 + 32 + 1] = 5; break;
+                case 6: b[2 + 2 + T1] = XB_T_EXT; break;                    /* the second section becomes a tag 1 too */
+                case 7: b[2 + 2 + T1] = XB_T_EDIT; b[2] = XB_T_EDIT; break;
+                case 8: b[3] = (uint8_t)(T1 - 1u); b[2 + 2 + T1 - 1] = 0; break;   /* an odd n (T1 - 1): the sections no longer add up either */
+                case 9: b[2 + 2 + T1 + 1] = 5; break;
                 case 10: b[5] = 192; break;
-                case 11: b[2 + 2 + 32 + 3] = 192; break;
+                case 11: b[2 + 2 + T1 + 3] = 192; break;
                 case 12:
                     for (j = 0; j <= XB_MAX; j++) ed[j] = (xb_edit_t){(uint8_t)(2u * j), 1};
                     n2 = 2u + 2u + 2u + 2u * (XB_MAX + 1u);
@@ -588,8 +598,8 @@ int main(void)
                     n2 = 4u + 2u * (XB_MAX + 1u);
                     b[0] = (uint8_t)(n2 - 1u);
                     break;
-                case 13: b[2 + 2 + 32 + 2] = 127; break;
-                case 14: b[2 + 2 + 32 + 4] = b[2 + 2 + 32 + 2]; break;
+                case 13: b[2 + 2 + T1 + 2] = 127; break;
+                case 14: b[2 + 2 + T1 + 4] = b[2 + 2 + T1 + 2]; break;
                 case 15: b[0] = 0; break;
                 default: n2 = 3; b[0] = 2; b[2] = 7; break;
                 }
@@ -952,11 +962,23 @@ int main(void)
             sl_name(k, nmk);
             ok = sl_fac(k, &fe, &fk) && sl_engine(k) == fe && str_eq(nmk, ds_name(fe, fk)) && sl_cat(k) == preset_cat(fe, fk);
             sl_values(k, v1);
+            {   /* item 138: DUELL 1.1 load_end (ui.c) moves the retired DEST cards' routes into the matrix, fills the empty slots with the preselected pairs at amount 0 and packs
+                 * (mod.c mod_legacy_move, mod_preselect, mod_compact: the same sound); the list's values through the same three steps (trk[0] as the scratch part, put back after) */
+                int16_t keep[P_COUNT];
+                memcpy(keep, trk[0].p, sizeof keep);
+                memcpy(trk[0].p, v1, sizeof keep);
+                (void)mod_legacy_move(&trk[0]);
+                mod_preselect(&trk[0]);
+                (void)mod_compact(&trk[0]);
+                memcpy(v1, trk[0].p, sizeof keep);
+                memcpy(trk[0].p, keep, sizeof keep);
+            }
             /* a part that loads the factory sound the old way (the browse position's engine and index) is what sl_values says */
             set_engine_of(&trk[1], fe);
             apply_preset_to(&trk[1], fk);
             for (i = 0; i < P_COUNT; i++)
-                ok &= v1[i] == trk[1].p[i] || (i >= P_AMODE && i <= P_AORDER) || i == P_CHRD || i == P_VOIC || param_kept(i) || i == P_LEVEL;
+                ok &= v1[i] == trk[1].p[i] || (i >= P_AMODE && i <= P_AORDER) || i == P_CHRD || i == P_VOIC || param_kept(i) || i == P_LEVEL ||
+                      (fe == ENGI_FM6 && i >= P_ATK && i <= P_REL && trk[1].p[i] == fm6_env_value(&trk[1], i - P_ATK));   /* (item 138: FM6's AMP ENV knobs are its carriers' numbers, FM6_ENV_MAP_V2) */
             ok &= v1[P_TRIM] == trk[1].p[P_TRIM];   /* (0.2.19: the factory sound's trim; the mixer level is no sound's) */
             same += ok;
             named += nmk[0] != 0 && !str_eq(nmk, "INIT");
@@ -975,7 +997,7 @@ int main(void)
 
     /* 3a: SAVE then reload equals the saved sound; RESTORE brings the factory sound back bit for bit */
     {
-        int16_t fac[P_COUNT], sv[P_COUNT];
+        int16_t fac[P_COUNT], sv[P_COUNT], trn_fac;
         uint8_t blk[7];
         uint32_t sl = 41u, e0, f0;
         song.sel = 0;
@@ -984,16 +1006,20 @@ int main(void)
         memcpy(fac, trk[0].p, sizeof fac);
         trk[0].p[P_REL] = (int16_t)(trk[0].p[P_REL] > 60 ? 12 : 88);
         trk[0].p[P_E2] = (int16_t)(trk[0].p[P_E2] > 30 ? 5 : 77);
+        trk[0].p[P_TRANS] = -24;                       /* (DUELL 1.1, owner 2026-10-27: TRANSPOSE is the patch's: a bass two octaves down) */
         memcpy(sv, trk[0].p, sizeof sv);
         ck("SAVE (slot 42 over its factory sound): written, the part plays that slot, a record exists", up_patch_save_part(0, sl) == 0 && up_used(sl) && trk[0].user == sl + 1u &&
            up_count() == 1u && slot_of(&trk[0]) == sl);
         power_cycle();
         sl_load(97u);                                  /* another sound, then back */
+        trn_fac = trk[0].p[P_TRANS];                   /* (the factory sound's TRANSPOSE) */
         sl_load(sl);
         ok = trk[0].user == sl + 1u && trk[0].eng_req == e0;
         for (i = 0; i < P_COUNT; i++)
             ok &= param_kept(i) ? 1 : trk[0].p[i] == sv[i];
         ck("  after a power cycle: loading the slot gives the saved sound back (every sound value, its name = the factory name it came from)", ok);
+        ck("  TRANSPOSE is the patch's: the factory sound loaded between set the part to its own 0, the saved patch brings -24 back", trn_fac == 0 && trk[0].p[P_TRANS] == -24 &&
+           !param_kept(P_TRANS));
         {
             char nmk[13];
             sl_name(sl, nmk);
@@ -1010,6 +1036,31 @@ int main(void)
         power_cycle();
         ck("  after a power cycle: still the factory sound in the slot, no chunk holds a record", !up_used(sl) && pt_bytes() == PT_HDR * 0u + pt_bytes() && up_count() == 0u);
         ck("RESTORE of a slot that holds its factory sound: rc 0, nothing written", (watch = 1, wrote = stray = 0, sl_restore(sl)) == 0 && !wrote && !stray && (watch = 0, 1));
+    }
+
+    /* 3a2: K4 RESTORE (PATCHES, owner 2026-10-26): the part reloads the SAVED version of its slot, edits gone, the record stays, never the factory sound */
+    {
+        int16_t sv[P_COUNT];
+        uint32_t sl = 41u, nrec;
+        song.sel = 0;
+        sl_load(sl);
+        trk[0].p[P_REL] = (int16_t)(trk[0].p[P_REL] > 60 ? 12 : 88);
+        memcpy(sv, trk[0].p, sizeof sv);
+        up_patch_save_part(0, sl);
+        nrec = up_count();
+        trk[0].p[P_REL] = (int16_t)(sv[P_REL] > 60 ? 7 : 71);      /* an unsaved edit */
+        trk[0].p[P_E2] = (int16_t)(sv[P_E2] > 30 ? 3 : 90);
+        patch_restore_do(sl);
+        ok = trk[0].user == sl + 1u && up_used(sl) && up_count() == nrec && slot_of(&trk[0]) == sl;
+        for (i = 0; i < P_COUNT; i++)
+            ok &= param_kept(i) ? 1 : trk[0].p[i] == sv[i];
+        ck("K4 RESTORE of an edited saved slot: the saved record's values back, the record still stored, not the factory sound", ok);
+        undo_swap();
+        ck("  one undo brings the unsaved edit back", trk[0].p[P_REL] == (sv[P_REL] > 60 ? 7 : 71));
+        sl_load(97u);
+        patch_restore_do(sl);
+        ck("  RESTORE for a slot the part does not play is refused (it keeps playing #98)", slot_of(&trk[0]) == 97u);
+        (void)sl_restore(sl);
     }
 
     /* 3b: RESTORE ALL; the parts that play a saved slot get their factory sound */
@@ -1183,9 +1234,11 @@ int main(void)
     trk[0].p[P_E4] = (int16_t)(trk[0].p[P_E4] + 7);
     ui.msg_t = 0;
     ui.force = 1; frame();
-    ck("a slot with its factory sound: the RESTORE card is not drawn", ui.col[3][0] == 0x7f && ui.col[0][0] != 0x7f);
+    ck("the slot the part plays (a factory sound, edited): the RESTORE card is drawn", ui.col[3][0] != 0x7f && ui.col[0][0] != 0x7f);
     turn(EN_K4, 1);
-    ck("K4 RESTORE on a slot with its factory sound: nothing, no dialog, no message (no card)", !ui.msg_t && !ui.confirm);
+    ck("K4 RESTORE there: the dialog RESTORE #11 TO LAST SAVE?, the factory sound is the saved version", ui.confirm == CF_RESTORE && ui.confirm_trk == 10u);
+    press(B_OCTDN);
+    ck("  OCT-: nothing changes", !ui.confirm);
     hold(B_SAVE);
     ck("hold SAVE: the OVERWRITE dialog, the slot the sound came from offered (#11), nothing written yet", ui.confirm == CF_SAVE_OVER && ui.svs == 10u && !up_count());
     {
@@ -1260,18 +1313,16 @@ int main(void)
     ck("K4 RESTORE on a saved slot: the dialog RESTORE #13 TO <factory name>?", ui.confirm == CF_RESTORE && ui.confirm_trk == 12u);
     {
         char a1[32], b1[32];
-        uint32_t fe, fk;
         confirm_text(a1, b1);
-        sl_fac(12u, &fe, &fk);
-        ck("  it names the factory sound that comes back and, under it, the saved sound that goes", !strncmp(a1, "RESTORE #13 TO ", 15) && strstr(a1, ds_name(fe, fk)) &&
-           b1[0]);
+        ck("  it reads RESTORE #13 TO LAST SAVE? and, under it, the saved patch's name", str_eq(a1, "RESTORE #13 TO LAST SAVE?") && b1[0] && !strstr(b1, "..."));
     }
     press(B_OCTDN);
     ck("  OCT-: nothing changes", !ui.confirm && up_used(12));
     turn(EN_K4, 1);
     press(B_OCTUP);
-    ck("  OCT+: RESTORED #13: the record gone, the part plays the slot's factory sound, the cursor stays on the slot",
-       msg_is("RESTORED #13") && !up_used(12) && up_count() == 0u && trk[0].user == 0u && pl_cursor(&total) == 12u && slot_of(&trk[0]) == 12u);
+    ck("  OCT+: RESTORED #13: the record stays, the part plays it, the cursor stays on the slot",
+       msg_is("RESTORED #13") && up_used(12) && up_count() == 1u && trk[0].user == 13u && pl_cursor(&total) == 12u && slot_of(&trk[0]) == 12u);
+    (void)sl_restore(12u);                              /* (the record out of the way for the checks below) */
     {
         uint32_t eng0 = TSEL->eng_req;
         for (i = 0; i < 40u && list_mode() <= CAT_N; i++)

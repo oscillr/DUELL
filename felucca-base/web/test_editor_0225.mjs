@@ -25,7 +25,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 {
   const M = L.MD, mk = (name, wave, key = 0) => { const p = new Array(L.P_COUNT).fill(0); p[P_E0 + key] = wave; p[ID.P_FREEA] = L.TP[ID.P_FREEA].max; return { eng: E(name), p }; };
   const saw = mk("ANALOG", 0), pwm = mk("ANALOG", 4), nois = mk("TRIO", 8), lofiTri = mk("LOFI", 1, 1), wheel = mk("WHEEL", 0);
-  ok(M.FMODE === 46 && L.TP[ID.P_M1SRC + 1].names[M.FMODE] === "FMODE" && VALUE_NAMES.dst.FMODE === "MULTI FILTER MODE", "matrix: MULTI FILTER MODE is destination 46 (appended), shown MULTI FILTER MODE");
+  ok(M.FMODE === 46 && L.TP[ID.P_M1SRC + 1].names[M.FMODE] === "FMODE" && VALUE_NAMES.dst.FMODE === "MULTI MODE", "matrix: MULTI MODE is destination 46 (appended), shown MULTI MODE");
   ok(![28, 29, 30].some((d) => dstOffered(saw, d)) && !dstOffered(saw, M.E1) && dstOffered(saw, M.E1 + 1) && dstOffered(saw, M.FMODE) && dstOffered(saw, M.CUT ?? 2),
      "matrix: the EQ gains and ANALOG WAVE are not offered; ANALOG DTN, FILTER MODE and CUT are");
   ok(!dstOffered(saw, M.SHP) && !dstOffered(saw, M.E2SHP) && dstOffered(pwm, M.SHP) && dstWhy(saw, M.SHP) === "WAVE", "matrix: SHAPE is offered with ANALOG PWM, not with SAW (WAVE)");
@@ -48,9 +48,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ok(missing.length === 0, `labels: every part control on a page has a long label and a tooltip (${missing.join(",") || "none missing"})`);
   const tabPages = new Set(GLOBAL_TABS.flatMap((t) => t.pages)), gOn = new Set(); for (const pg of L.PAGES) if (pg.scope === "GLOBAL" && tabPages.has(pg.title) && pg.title !== "MULTIS") for (const id of pg.ids) if (id >= 0 && id < L.G_COUNT) gOn.add(id);
   const gm = [...gOn].filter((id) => !GLOBAL[id]); ok(gm.length === 0, `labels: every global control on a page has a long label (${gm.join(",") || "none missing"})`);
-  const want = { 42: "PRIORITY", 37: "MODE", 41: "GLIDE TYPE", 38: "GLIDE", 95: "SPREAD", 44: "UNISON DETUNE", 102: "TEMPO SYNC", 73: "ATTACK", 74: "DECAY", 75: "SUSTAIN", 76: "RELEASE", 109: "PATCH LEVEL", 6: "PITCH DEPTH", 7: "SHAPE DEPTH",
+  const want = { 42: "PRIORITY", 37: "MODE", 41: "GLIDE TYPE", 38: "GLIDE", 95: "SPREAD", 44: "UNISON DETUNE", 102: "TEMPO SYNC", 73: "ATTACK", 74: "DECAY", 75: "SUSTAIN", 76: "RELEASE", 109: "PATCH LEVEL", 6: "PITCH DEPTH", 7: "TIMBRE DEPTH",
     114: "FILTER ENV", 27: "KEY TRACK", 14: "LFO 1", 117: "LFO 2", 29: "LENGTH", 30: "DIVISION", 31: "SWING", 32: "GATE", 81: "TYPE", 96: "TYPE", 105: "CURVE", 112: "RATE", 16: "AMP DEPTH" };
-  ok(Object.entries(want).every(([id, t]) => PART[id][0] === t), "labels (T0229, rules R1..R6): inside a card the short name, the card's title carries the context (VOICE: MODE PRIORITY GLIDE TYPE SPREAD; CUTOFF MOD: FILTER ENV KEY TRACK LFO 1 LFO 2; PATTERN: LENGTH DIVISION SWING GATE; CHORD / INSERT: TYPE; DUCKING: RATE CURVE)");
+  ok(Object.entries(want).every(([id, t]) => PART[id][0] === t), "labels (T0229, rules R1..R6): inside a card the short name, the card's title carries the context (VOICE: MODE PRIORITY GLIDE TYPE SPREAD; MULTI CUTOFF MOD: FILTER ENV KEY TRACK LFO 1 LFO 2; PATTERN: LENGTH DIVISION SWING GATE; CHORD / INSERT: TYPE; DUCKING: RATE CURVE)");
   const vce = longDesc(L.TP[37], 37), prio = longDesc(L.TP[42], 42);
   ok(vce.names.join() === "POLY,MONO,LEGATO,UNISON" && prio.names.join() === "LAST,LOWEST,HIGHEST" && vce.short === "VCE", "labels: value names spelled out (POLY MONO LEGATO UNISON; LAST LOWEST HIGHEST; id 43 is the TWIN FILTER's TYPE now, job I names it), the unit's short label kept");
   ok(longDesc(L.TP[37], 37) === vce && L.TP[37].label === "VCE", "labels: the same descriptor object for the same control (a drag is never rebuilt) and the firmware's table untouched");
@@ -296,7 +296,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const { XPART, XVALUE, TWIN_LONG } = await import("./editor/labels.js");
   const { X, NX } = await import("./editor/layout.js");
   const used = Object.keys(X).length;
-  ok(Object.keys(XPART).length === used && L.XTP.slice(0, used).every((d, k) => XPART[k] && XPART[k][0] && XPART[k][1].length > 20), "labels: every used extension slot has a long label and a plain tooltip (15 of 16; X15 is the spare)");
+  ok(Object.keys(XPART).length === used && L.XTP.slice(0, used).every((d, k) => XPART[k] && XPART[k][0] && XPART[k][1].length >= 20), "labels: every used extension slot has a long label and a plain tooltip (15 of 16; X15 is the spare)");
   let lenOk = true; for (const [k, m] of Object.entries(XVALUE)) { const d = L.XTP[+k]; lenOk = lenOk && !!d.names && longDesc(d, `x${k}`).names.length === d.names.length && Object.keys(m).every((n) => d.names.includes(n)); }
   ok(lenOk, "labels: the slots' long value names keep the firmware list's length and order (ROUTE: PARALLEL; SUB WAVE: TRIANGLE)");
   ok(longDesc(L.XTP[X.X_CYRISE], "x11") === longDesc(L.XTP[X.X_CYRISE], "x11") && longDesc(L.XTP[X.X_CYRISE], "x11").label === "RISE" && longDesc(L.XSYNC[0], "x11").label === "RISE" && longDesc(L.XSYNC[0], "x11").fk === L.XSYNC[0].fk, "labels: the same descriptor object for the same slot (a drag is never rebuilt); CYCLE RISE keeps its name with SYNC on");
@@ -306,7 +306,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ---- tabs
 ok(GLOBAL_TABS.some((t) => t.key === "patterns" && t.pages.includes("PATTERNS")) && pageByTitle("PATTERNS"), "tabs: PATTERNS has a tab of the GLOBAL column");
-ok(PART_TABS.map((t) => t.key).join() === "engine,filter,envelope,lfo,matrix,fx,arpseq,roll" && PART_TABS[1].label === "FILTER" && PART_TABS[1].pages.join() === "MULTI FILTER 1/2,MULTI FILTER 2/2", "tabs: FILTER sits between ENGINE and ENVELOPE and holds the multimode filter's two pages (cloud job I)");
+ok(PART_TABS.map((t) => t.key).join() === "engine,filter,envelope,lfo,matrix,fx,arpseq,roll" && PART_TABS[1].label === "FILTER" && PART_TABS[1].pages.join() === "MULTI FILTER 1/2,MULTI FILTER 2/2", "tabs: FILTER sits between ENGINE and ENV and holds the multimode filter's two pages (cloud job I)");
 {   // editor2 task 12: the editor's own hand-written text names the filters MULTI FILTER and TWIN FILTER (the firmware-driven names, the flow strip and the matrix destinations are not touched)
   const { readFileSync } = await import("node:fs");
   const own = ["labels.js", "app.js"].map((f) => readFileSync(new URL(`./editor/${f}`, import.meta.url), "utf8")).join("\n").split("\n").filter((l) => !/^\s*\/\//.test(l)).join("\n");

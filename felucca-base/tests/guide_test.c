@@ -4,6 +4,8 @@
  *              do not (the splash as before); an older settings record (the bit clear: every build before 0.2.11) shows it once;
  *              leaving it sets the bit and writes the settings once (one erase), so the next start has no guide; the MENU's GUIDE
  *              row opens the same pages and never touches the bit (clear stays clear, set stays set); powered off with it up: shown again
+ *   PAGES      DUELL 1.1 (item 118): five pages, SETUP 1/5 and 5/5 ask (LAYER STEREO DUEL; MIDI LATER NOW), GUIDE 2/5 .. 4/5 tell; the title is SETUP or GUIDE, the counter is the footer's (the MENU's copy: GUIDE 1/3 .. 3/3,
+ *              the pages 2 .. 4); each text within the page's room, every L heading's glyphs in the sparse L face
  *   KEYS       SELECT right / OCT+ next, SELECT left / OCT- back, both stopping at the ends; OCT+ on the last page finishes; HOME and
  *              every page button (EDIT FX ENV LFO ARP SCL GLO SEQ SAVE) leave at once, the button then doing its job; from the MENU
  *              HOME closes the menu too, OCT+ at the end goes back to the menu
@@ -13,6 +15,7 @@
  * Built and run by DUELL/host_tests.sh (name: guide): the UI sources against ui_test.c's stub display and knobs. */
 #define UI_TEST_NO_MAIN 1
 #define FELUCCA_FLASH 1
+#define UI_TEXT_CAPTURE 1                              /* (the pages are read from the texts drawn: ui_test.c screen_read / rows_has) */
 #include "ui_test.c"
 
 static uint8_t nor[0x100000];
@@ -73,7 +76,14 @@ static int stored_seen(void)                            /* the bit as the flash 
     static persist_t p;
     return st_load(OBJ_SETTINGS, &p, sizeof p) > 0 && ((p.favorites.factory[15][24] >> 5) & 1u);
 }
-static int page_is(uint32_t n) { char tb[24]; uint32_t pi; head_page_title(tb, &pi); return ui.guide == n && tb[0] == 'G' && tb[6] == (char)('0' + n); }
+static int page_is(uint32_t n)                          /* page n is up: the title (SETUP on the questions 1 and 5, else GUIDE) and the footer's counter (n/5; the MENU's copy: n-1 of 3) */
+{
+    char tb[24], c[8];
+    uint32_t pi, m = ui.guide_menu != 0u;
+    head_page_title(tb, &pi);
+    snprintf(c, sizeof c, "%u/%u", m ? n - 1u : n, m ? 3u : GUIDE_N);
+    return ui.guide == n && !strcmp(tb, (n == 1u || n == 5u) && !m ? "SETUP" : "GUIDE") && rows_has(215, 250, c);
+}
 
 int main(void)
 {
@@ -81,37 +91,32 @@ int main(void)
     uint32_t i, e0, k, n;
     setvbuf(stdout, NULL, _IONBF, 0);
 
-    /* the pages fit: every line within GD_W (M; a heading L, its glyphs all in the sparse L face), every page above the key hints */
+    /* the pages fit: every text drawn in the page's body within the text room (x GD_X .. GD_X + GD_W, ink to the pixel), above the key hints; every L heading and option name has its glyphs in the sparse L face */
     {
-        uint32_t p, ok = 1, glyphs = 1, maxw = 0, maxh = 0;
-        for (p = 0; p < GUIDE_N; p++) {
-            const char *s = GUIDE_TXT[p];
-            int32_t h = 0;
-            while (*s) {
-                char ln[32];
-                uint32_t n = 0;
-                int head = *s == '#', gap = *s == '~', key = *s == '*';
-                int32_t w;
-                s += head || gap || key;
-                while (*s && *s != '\n' && n + 1u < sizeof ln)
-                    ln[n++] = *s++;
-                ln[n] = 0;
-                ok &= !*s || *s == '\n';               /* (no line cut by the buffer) */
-                if (*s == '\n')
-                    s++;
-                if (gap) { h += GD_H_GAP; continue; }
-                w = text_w(head ? &AF_L : &AF_M, ln);
-                ok &= w <= GD_W && n > 0u;
-                maxw = w > (int32_t)maxw ? (uint32_t)w : maxw;
-                for (n = 0; head && ln[n]; n++)
-                    glyphs &= glyph_at(&AF_L, (uint8_t)ln[n]) >= 0;
-                h += head ? GD_H_HEAD : GD_H_LINE;
+        static const char *const GUIDE_L[] = {"LAYER", "STEREO", "DUEL", "PART MARKER", "PERFORM MODE", "QUICK EDIT", "STOP ALL", "RESET A KNOB", "SAVE OVER A PATCH", "PARAMETER LOCK", "LATER", "NOW"};
+        uint32_t p, m, q, ok = 1, glyphs = 1, maxw = 0, maxy = 0, seen = 0;
+        const char *s;
+        for (m = 0; m < 2u; m++)
+            for (p = m ? 2u : 1u; p <= (m ? 4u : GUIDE_N); p++) {
+                ui_power_on();
+                guide_open(m);
+                ui.guide = (uint8_t)p;
+                frames(100);
+                screen_read();
+                for (q = 0; q < txt_n; q++) {
+                    if (txt_log[q].y0 < H_HEAD || txt_log[q].y0 >= GD_HINT_Y)      /* (the header, the legend row and the footer are the shared ones') */
+                        continue;
+                    seen++;
+                    ok &= txt_log[q].x0 >= GD_X - 1 && txt_log[q].x1 <= GD_X + GD_W + 1 && txt_log[q].y1 <= GD_HINT_Y;
+                    maxw = (uint32_t)(txt_log[q].x1 - txt_log[q].x0) > maxw ? (uint32_t)(txt_log[q].x1 - txt_log[q].x0) : maxw;
+                    maxy = (uint32_t)txt_log[q].y1 > maxy ? (uint32_t)txt_log[q].y1 : maxy;
+                }
             }
-            ok &= GD_TOP + h <= GD_HINT_Y;
-            maxh = (uint32_t)h > maxh ? (uint32_t)h : maxh;
-        }
-        printf("guide: the widest line %u px of %d, the tallest page %u px of %d\n", maxw, GD_W, maxh, GD_HINT_Y - GD_TOP);
-        expect("every page's lines fit (GD_W) and every page fits above the key hints", ok);
+        for (q = 0; q < sizeof GUIDE_L / sizeof GUIDE_L[0]; q++)
+            for (s = GUIDE_L[q]; *s; s++)
+                glyphs &= glyph_at(&AF_L, (uint8_t)*s) >= 0;
+        printf("guide: the widest text %u px of %d, the lowest body ink row %u of %d (%u texts looked at)\n", maxw, GD_W, maxy, GD_HINT_Y, seen);
+        expect("every page's texts fit (GD_X .. GD_X + GD_W) and every page fits above the key hints", ok && seen > 40u);
         expect("every heading's glyphs are in the L face", glyphs);
     }
 
@@ -120,29 +125,46 @@ int main(void)
     boot();
     expect("fresh unit: no valid settings, the bit clear", first_boot_pending == 1u && !guide_seen());
     frames(1300);
-    expect("  the splash is still up after 1.3 s (SPLASH_MS 1.2 s + GUIDE_SPLASH_MS)", splash_on && !ui.guide);
-    frames(500);
-    expect("  .. over by 1.8 s and the guide is up on its first page (header GUIDE 1/6)", !splash_on && page_is(1u));
+    expect("  the splash is still up after 1.3 s (past SPLASH_MS 1.2 s: the first start's splash waits)", splash_on && !ui.guide);
+    frames(3700);
+    expect("  .. and after 5 s (DUELL 1.1: the first start's splash waits for OCT+ or HOME, 60 s at most)", splash_on && !ui.guide);
+    turn(EN_K1, 3); turn(EN_SELECT, 1); tap_key(5); press(B_FX); press(B_PLAY); frames(100);
+    expect("  .. a knob, SELECT, a key and other buttons do not end it", splash_on && !ui.guide && !stored_seen());
+    press(B_OCTUP);
+    frames(100);
+    expect("  .. OCT+ ends it and the guide is up on its first page (header SETUP, the footer 1/5)", !splash_on && page_is(1u));
     expect("  .. the first start's M01 is loaded under it, its LOADED not over the guide's header", first_boot_pending == 0u && !ui.msg_t);
     frames(3000);
     expect("  it stays up by itself (no time-out) and has written nothing of its own yet", ui.guide == 1u && !stored_seen());
 
-    /* the keys: next, back, the ends */
+    /* the keys: next, back, the ends. DUELL 1.1: SETUP 1/5 and 5/5 ask a question (SELECT and the knobs pick the option there, guide_setup_test.c; OCT+ / OCT- turn the page); the GUIDE pages 2/5 .. 4/5 turn with SELECT too */
     turn(EN_SELECT, 1);
-    expect("SELECT right: page 2", page_is(2u));
+    expect("SETUP 1/5: SELECT right picks (STEREO), the page stays", page_is(1u) && guide_pick[0] == 1u);
+    turn(EN_SELECT, -3);
+    expect("  .. SELECT left picks LAYER and stops, the page stays", page_is(1u) && guide_pick[0] == 0u);
     press(B_OCTUP);
-    expect("OCT+: page 3", page_is(3u));
+    expect("OCT+: page 2", page_is(2u));
+    turn(EN_SELECT, 1);
+    expect("SELECT right: page 3", page_is(3u));
+    press(B_OCTUP);
+    expect("OCT+: page 4", page_is(4u));
     press(B_OCTDN);
-    expect("OCT-: page 2", page_is(2u));
+    expect("OCT-: page 3", page_is(3u));
     turn(EN_SELECT, -1);
-    expect("SELECT left: page 1", page_is(1u));
+    expect("SELECT left: page 2", page_is(2u));
+    turn(EN_SELECT, -1);
+    expect("SELECT left again: page 1 (a question again)", page_is(1u));
     turn(EN_SELECT, -3); press(B_OCTDN);
     expect("  .. and stays on page 1 at the start", page_is(1u));
+    press(B_OCTUP); press(B_OCTUP); press(B_OCTUP); press(B_OCTUP);
+    expect("OCT+ four times: the last page (GUIDE_N), SETUP 5/5", page_is(GUIDE_N));
     turn(EN_SELECT, 20);
-    expect("SELECT right far: the last page (GUIDE_N), no further", page_is(GUIDE_N));
-    turn(EN_SELECT, 1);
-    expect("  .. SELECT right on the last page stays there", page_is(GUIDE_N));
+    expect("SELECT right far on the last page (a question): picks NOW, no further, the page stays", page_is(GUIDE_N) && guide_pick[1] == 1u);
+    turn(EN_SELECT, -20);
+    expect("  .. SELECT left far: LATER (the finish below goes to HOME)", page_is(GUIDE_N) && guide_pick[1] == 0u);
     expect("the octave never moved (OCT- / OCT+ were the guide's)", (frames(200), song.octave == 0));
+    press(B_OCTDN); press(B_OCTDN);
+    expect("OCT- twice: GUIDE 3/5, an information page (no question): the playing checks below are made here", page_is(3u));
 
     /* playing under it */
     {
@@ -155,7 +177,7 @@ int main(void)
         frames(400);
         expect("KNOB 1-4, PRESETS, ALGORITHM: nothing changed (every parameter, the sound, the part, the morph fader, the page)",
                !memcmp(keep[0], trk[0].p, sizeof keep[0]) && !memcmp(keep[1], trk[1].p, sizeof keep[1]) && TSEL->preset == pre && song.sel == sel &&
-               trk[0].eng_req == s0 && morph_fader_of(0) == f0 && (uint32_t)song.octave == oct && ui.guide == GUIDE_N);
+               trk[0].eng_req == s0 && morph_fader_of(0) == f0 && (uint32_t)song.octave == oct && ui.guide == 3u);
         events_block(CTL);                              /* (the audio side takes the MODE: LAYER, as multi_test does) */
         key_down(7);
         for (k = 0, n = 0; n < 200u && !k; n++) {
@@ -164,7 +186,7 @@ int main(void)
                 k |= trk[0].v[i].active || trk[1].v[i].active;
         }
         key_up(7);
-        expect("a key sounds under it", k != 0u && ui.guide == GUIDE_N);
+        expect("a key sounds under it", k != 0u && ui.guide == 3u);
         frames(500);
         press(B_PLAY); frames(100);
         expect("PLAY/STOP plays", song.playing || transport_req == 1u || seq_counting());
@@ -175,17 +197,20 @@ int main(void)
         transport_req = 0;
         frames(500);
         btn_down(B_PLAY); frame(); btn_up(B_PLAY); frame(); btn_down(B_PLAY); frame(); btn_up(B_PLAY); frame();
-        expect("  .. twice: STOP ALL (the header says it)", transport_req == 4u && ui.guide == GUIDE_N && ui.msg_t && str_eq(ui.msg, "STOP ALL"));
+        expect("  .. twice: STOP ALL (the header says it)", transport_req == 4u && ui.guide == 3u && ui.msg_t && str_eq(ui.msg, "STOP ALL"));
         transport_req = 0; ui.msg_t = 0;
         song.playing = 0;                               /* (no audio here to stop it: the settings write waits for silence, the transport stopped too) */
         tails_over();
         TSEL->p[P_AHOLD] = 0;
         press(B_REC);
-        expect("REC: the HOLD switch (HOLD ON), still in the guide", TSEL->p[P_AHOLD] != 0 && ui.guide == GUIDE_N && str_eq(ui.msg, "HOLD ON"));
+        expect("REC: the HOLD switch (HOLD ON), still in the guide", TSEL->p[P_AHOLD] != 0 && ui.guide == 3u && str_eq(ui.msg, "HOLD ON"));
         press(B_REC);
-        expect("  .. again: HOLD OFF", TSEL->p[P_AHOLD] == 0 && ui.guide == GUIDE_N);
+        expect("  .. again: HOLD OFF", TSEL->p[P_AHOLD] == 0 && ui.guide == 3u);
         ui.msg_t = 0;
     }
+
+    press(B_OCTUP); press(B_OCTUP);
+    expect("OCT+ twice: SETUP 5/5 again, LATER picked", page_is(GUIDE_N) && guide_pick[1] == 0u);
 
     /* finishing: OCT+ on the last page sets the bit, one settings write */
     e0 = erases;
@@ -207,18 +232,22 @@ int main(void)
     ui.menu = 1; ui.menu_sel = MI_GUIDE; ui.force = 1; frame();
     e0 = erases;
     turn(EN_K1, 1);
-    expect("MENU > SYSTEM > GUIDE, KNOB 1 right: the guide on page 1, the menu under it", page_is(1u) && ui.menu == 1u);
-    turn(EN_SELECT, 20);
+    expect("MENU > SYSTEM > GUIDE, KNOB 1 right: the guide on its first page (2 of the five: the MENU copy shows GUIDE 2/5 .. 4/5 as 1/3 .. 3/3), the menu under it", page_is(2u) && ui.menu == 1u);
+    turn(EN_SELECT, 20);                                /* (a turn is one page a frame, whatever its size: page 3) */
+    expect("  SELECT right: the next page only (a turn moves one page), page 3 (the MENU copy's 2/3)", page_is(3u));
+    press(B_OCTUP);
+    expect("  OCT+: the copy's last page, GUIDE 3/3 (page 4)", page_is(4u));
     press(B_OCTUP);
     expect("  OCT+ at its end: back to the MENU at the GUIDE row", !ui.guide && ui.menu == 1u && ui.menu_sel == MI_GUIDE);
     press(B_OCTUP);
-    expect("  OCT+ on the row opens it again", page_is(1u));
+    expect("  OCT+ on the row opens it again", page_is(2u));
     press(B_HOME);
     frames(100);
     expect("  HOME: the guide and the menu closed, HOME's page (HOME OPENS: MORPH)", !ui.guide && !ui.menu && (at_home() || cur_fam() == FAM_TRK));
     frames(3000);
     settings_poll();
-    expect("  the bit untouched (still set), nothing written", guide_seen() && erases == e0);
+    /* (HOME closed the MENU, and a MENU close saves the settings (ui_menu.c menu_close: "palette / panel table, if changed"): the record of the first start holds no button table yet, so that close writes it once, whatever the guide did; the guide's own bit stays as it was) */
+    expect("  the bit untouched (still set, in the flash too); the only write is the MENU close's (the button table, at most one erase)", guide_seen() && stored_seen() && erases - e0 <= 1u);
 
     /* an older settings record (0.2.10: bit 5 of [15][24] never written): shown once */
     memset(&pb, 0, sizeof pb);
@@ -231,7 +260,10 @@ int main(void)
     expect("  read as valid (not a new unit), theme kept, the bit clear", !first_boot_pending && settings.palette == 3u && !guide_seen() &&
            (ui_prefs2 & (PREF_CPU_OFF >> 16)));
     frames(1800);
-    expect("  the guide is up after the splash", !splash_on && page_is(1u));
+    expect("  the splash waits (the bit is clear)", splash_on && !ui.guide);
+    press(B_OCTUP);
+    frames(100);
+    expect("  the guide is up after the splash (OCT+)", !splash_on && page_is(1u));
     {   /* the MENU's GUIDE does not touch a clear bit either: from the menu while the first-start guide is not up (opened by hand) */
         ui.guide = 0; ui.force = 1;
         ui.menu = 1; ui.menu_sel = MI_GUIDE; frame();
@@ -244,6 +276,8 @@ int main(void)
     }
     boot();                                             /* powered off with the bit still clear: shown again */
     frames(1800);
+    press(B_OCTUP);
+    frames(100);
     expect("  a power-off before it was left: shown again", page_is(1u));
     turn(EN_SELECT, 2);
     e0 = erases;
@@ -253,6 +287,16 @@ int main(void)
     settings_poll();
     expect("  .. the bit set, written once, the other settings kept", guide_seen() && stored_seen() && erases - e0 == 1u && settings.palette == 3u &&
            (ui_prefs2 & (PREF_CPU_OFF >> 16)));
+
+    /* the first start's splash: HOME skips the guide for good (DUELL 1.1, ui_input.c splash_input): no guide, the bit set and written once */
+    memset(nor, 0xFF, sizeof nor);
+    boot();
+    frames(1500);
+    e0 = erases;
+    press(B_HOME);
+    frames(3000);
+    settings_poll();
+    expect("splash of a new unit: HOME skips the guide: no guide, the bit set and written (one erase), HOME's page", !splash_on && !ui.guide && guide_seen() && stored_seen() && erases - e0 == 1u);
 
     /* every page button and HOME leave at once, from any page */
     {

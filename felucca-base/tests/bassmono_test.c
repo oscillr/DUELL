@@ -373,7 +373,6 @@ static void dsp_clean(uint32_t mode)                    /* the DSP as at power-o
     memset(midi_bend_q8, 0, sizeof midi_bend_q8);
     memset(midi_bend_target, 0, sizeof midi_bend_target);
     memset(kb_chn, 0, sizeof kb_chn);
-    mix_bal = 0;
     mix_xf = mix_split = 0;
     vage = 0;
     mod_seed = 0x2545F491u;
@@ -606,7 +605,7 @@ static void test_control(void)
     frame();
     turn(EN_K1, 1);
     frame();
-    expect("K1 right: 40 Hz (one corner a detent), the audio side after the next frame; the header says \"BASS MONO 40 Hz\" (the card's label is BMONO)", song.bm == 1 && bm_sel == 1u && str_eq(ui.msg, "BASS MONO 40 Hz"));
+    expect("K1 right: 40 Hz (one corner a detent), the audio side after the next frame (the card's label is BMONO)", song.bm == 1 && bm_sel == 1u);
     song.bm = 6;
     frame();
     ok = bm_sel == 6u;

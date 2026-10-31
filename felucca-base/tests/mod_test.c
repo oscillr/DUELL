@@ -942,9 +942,9 @@ static void test_dest027(void)
         fm = trk[0].p[P_FREEC];
         mod_end(&trk[0]);
         mod_dst_line(&trk[0], MD_FMODE, b2, &more2);
-        check("0.2.25 FILTER MODE: MODW -> FMODE +63 moves the filter's MODE (LP 0 -> 125, near HP), the stored MODE back after; DEST: MULTI FILTER MODE",
-              fm == ((((127 * 258) * 64) >> 6) * 127 >> 15) && trk[0].p[P_FREEC] == 0 && str_eq(mod_dst_name(&trk[0], MD_FMODE), "FMODE") &&
-              str_eq(b2, "DEST: MULTI FILTER MODE") && !mod_dst_why(&trk[0], MD_FMODE));
+        check("0.2.25 FILTER MODE: MODW -> FMODE +63 moves the filter's MODE (LP 0 -> 125, near HP), the stored MODE back after; DEST: MULTI MODE (DUELL 1.1: the card MULTI / MODE, the line MULTI MODE)",
+              fm == ((((127 * 258) * 64) >> 6) * 127 >> 15) && trk[0].p[P_FREEC] == 0 && str_eq(mod_dst_name(&trk[0], MD_FMODE), "MULTI\nMODE") &&
+              str_eq(b2, "DEST: MULTI MODE") && !mod_dst_why(&trk[0], MD_FMODE));
         slot(&trk[0], 0, 0, 0, 0);
     }
     }

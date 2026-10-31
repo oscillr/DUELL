@@ -50,8 +50,8 @@ export const SMART = {
 };
 // info: the version string from INFO (a string), or null/undefined/anything else when the unit gave no usable answer.
 // Returns { kind: "duell", version } or { kind: "other" }. (Not having asked at all is `null` for the caller, never this.)
-export function detectUnit(info) {
-  const m = typeof info === "string" ? /^(?:FELUCCA )?DUELL (\d+\.\d+(?:\.\d+)?)(?!\S)/.exec(info.trim()) : null;
+export function detectUnit(info) {      // (item 91: a test build "DUELL 1.1.0-test3" is DUELL too; before, it read as "not DUELL" and the erase box came up ticked)
+  const m = typeof info === "string" ? /^(?:FELUCCA )?DUELL (\d+\.\d+(?:\.\d+)?(?:-test\d+)?)(?!\S)/.exec(info.trim()) : null;
   return m ? { kind: "duell", version: m[1] } : { kind: "other" };
 }
 // The erase box: detected = detectUnit(...) or null (not asked / could not talk yet); touched = the user clicked the box;

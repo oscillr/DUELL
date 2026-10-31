@@ -10,7 +10,7 @@ import { L, ID, P_E0 } from "./editor/layout.js";
 import { MockUnit, MockLink, defaultPart } from "./editor/mockunit.js";
 import { Unit } from "./editor/unit.js";
 import { CMD } from "./editor/proto.js";
-import { buildRecord, parseRecord, describeRecord, packPatch, unpackPatch, storeDefaults, engineIndex, PTF, parseXBlock, recordProblem, XB_DEFS, XB_MAX, NX, WORST } from "./editor/patchrecord.js";
+import { buildRecord, buildEndB, endBSize, parseRecord, describeRecord, packPatch, unpackPatch, storeDefaults, engineIndex, rangeOf, PTF, recordProblem, XB_DEFS, NX, WORST } from "./editor/patchrecord.js";
 import { itemFromRecord, itemApprox, buildFile, stringifyFile, parseFile, sniff, toBase64, fromBase64 } from "./editor/patchfile.js";
 import * as LIB from "./editor/librarian.js";
 import { FM6 } from "./editor/fm6voice.js";
@@ -31,10 +31,11 @@ const same = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
   const rec = buildRecord({ engine: 0, name: "TEST ONE", cat: 3, values: v });
   const r = parseRecord(rec);
   ok(r.ok && r.name === "TEST ONE" && r.engine === 0 && r.cat === 3 && r.slot === 0 && r.rev === 0 && same(r.values, v) && (rec[4] & PTF.CB), "record: built and parsed back (name, engine, category, every value; slot and revision 0)");
-  ok(rec[0] === rec.length && rec.length === 20 + 2 * rec[19] && rec[19] === 3, "record: sparse, three pairs for three values off the default, the length field is the length");
-  const many = storeDefaults(0).map((d, i) => (i % 3 === 0 && i > 0 && i < 100 ? Math.min(d + 1, 120) : d));
+  ok(rec[0] === rec.length && rec.length === 20 + 20 + 3 && rec[19] === 3, "record: sparse, a 20 byte bitmap and three values of 7 bits (21 bits, 3 bytes), the length field is the length");
+  ok(same(rec, expectRecord(0, "TEST ONE", 3, [[45, 60], [46, 20], [ID.P_TRIM, 99]])), "record: the bytes are the ones written out here from the format: bitmap by wide id, each value minus its minimum in the bits of its range");
+  const many = storeDefaults(0).map((d, i) => (i % 3 === 0 && i > 0 && i < 100 && d + 1 <= rangeOf(0, i).max ? d + 1 : d));
   const rb = buildRecord({ engine: 0, name: "BITMAP", values: many }), pb = parseRecord(rb);
-  ok((rb[4] & PTF.BM) && pb.ok && same(pb.values, many), "record: more than 16 values off the default use the bitmap form and come back the same");
+  ok(pb.ok && same(pb.values, many) && rb.length <= WORST, "record: many values off the default come back the same");
   const fm = Array.from({ length: 128 }, (_, i) => (i * 7 + 3) % 128), vv = storeDefaults(FM6E); vv[P_E0 + 7] = 8;
   const rf = buildRecord({ engine: FM6E, name: "FM ONE", values: vv, patch128: fm }), pf = parseRecord(rf);
   ok(pf.ok && (rf[4] & PTF.FM6) && same([...pf.fm6], fm) && pf.values[P_E0 + 7] === 8, "record: an FM6 sound carries its 128 byte patch (packed 8 to 7) and SLOT OWN");
@@ -45,80 +46,72 @@ const same = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
   ok(storeDefault0(), "record: CUT, SLOPE and the two TRIGs and the DUCK CURVE have the store default 0 (upreset.c up_def), the others the editor's");
   ok((rec[4] & PTF.TR) && !parseRecord(rec).pairs.has(0), "record: a record built now has PTF_TR (the loudness is the TRIM) and never stores the mixer level (id 0)");
   { // a record of 0.2.14 .. 0.2.18 (no PTF_TR): its LEVEL (id 0) is read as the trim
-    const old = rec.slice(); old[4] &= ~PTF.TR;
-    const i = 20 + 2 * [...Array(old[19]).keys()].findIndex((k) => old[20 + 2 * k] === ID.P_TRIM); old[i] = 0;   // the pair (109, 99) becomes (0, 99): the LEVEL of the old form
+    const old = new Uint8Array(41); old[0] = 41; old[4] = PTF.CB; old[5] = 0; old[7] = 79; old[19] = 1; old[20] = 1; old[40] = 99;   // name "O", one value: wide id 0 (the LEVEL of the old form) = 99
     const po = parseRecord(old);
     ok(po.ok && po.values[ID.P_TRIM] === 99 && po.values[ID.P_LEVEL] === 104, "record: a record before PTF_TR reads its LEVEL as the trim (up_rec)");
   }
   const d = describeRecord(r);
   ok(d.engine === "ANALOG" && d.category === "PAD" && Object.keys(d.params).length >= 3 && Object.values(d.params).some((x) => /kHz|Hz/.test(x)), "record: the readable dump names what differs and formats it as the unit does");
 }
-// ---- the extension block (firmware/src/up_xb.h): the bytes are written out by hand from the spec, not by the code under test
+// ---- the values, the extension slots, End B and the arp block (firmware/src/upreset.c PT_VER 4): the bytes are written out here from the format, not by the code under test
+function bitsOf(r) { const n = r.max - r.min + 1; let b = 0; while ((1 << b) < n) b++; return b; }
+function expectValues(eng, entries) {                    // entries [[wide id, value]] ascending -> 20 byte bitmap + the values at the bits of their ranges (LSB first), padded to the byte
+  const bm = new Uint8Array(20), bits = [];
+  for (const [w, v] of entries) { bm[w >> 3] |= 1 << (w & 7); const r = rangeOf(eng, w); for (let i = 0; i < bitsOf(r); i++) bits.push((v - r.min) >> i & 1); }
+  const by = new Uint8Array(bits.length + 7 >> 3); bits.forEach((x, i) => { by[i >> 3] |= x << (i & 7); });
+  return [...bm, ...by];
+}
+function expectRecord(eng, name, cat, entries, after = [], flags = PTF.CB | PTF.TR) {
+  const body = [...expectValues(eng, entries), ...after], len = 20 + body.length;
+  return Uint8Array.from([len & 255, len >> 8, 0, 0, flags, eng, cat, ...[...name].map((c) => c.charCodeAt(0)), ...Array(12 - name.length).fill(0), entries.length, ...body]);
+}
 {
   const v = storeDefaults(0); v[ID.P_TRIM] = 99;
-  const base = buildRecord({ engine: 0, name: "XB BASE", cat: 2, values: v, mb: [1, 0, 0, 0, 0, 0, 0] });   // fixed part, End B (7), three... pairs
-  const X0 = XB_DEFS.map((d) => d - 64);
-  const withBlock = (blk, rec = base) => { const o = Uint8Array.from([...rec.slice(0, 20), ...blk, ...rec.slice(20)]); o[4] |= PTF.XB; o[0] = o.length & 255; o[1] = o.length >> 8; return o; };
-  const noBlock = (rec) => !(rec[4] & PTF.XB) && same(rec, base);
-  ok(XB_DEFS.length === NX && XB_MAX === 32 && WORST === 534 && !("SH" in PTF) && PTF.XB === 16 && XB_DEFS[1] === 65 && XB_DEFS[7] === 65 && XB_DEFS[11] === 74 && XB_DEFS[12] === 134 && XB_DEFS.filter((d) => d === 64).length === 12, "xblock: PTF.XB is 16 (the shadow flag is gone), 16 slots, TWIN LINK and SUB OCTAVE default to stored 65, CYCLE RISE and FALL to 74 and 134 (job B's descriptors), WORST is the unit's 534");
-  ok(noBlock(buildRecord({ engine: 0, name: "XB BASE", cat: 2, values: v, mb: [1, 0, 0, 0, 0, 0, 0], ext: X0, edits: [] })) && noBlock(buildRecord({ engine: 0, name: "XB BASE", cat: 2, values: v, mb: [1, 0, 0, 0, 0, 0, 0], ext: null })),
-     "xblock: every slot at its default and no edit: no block at all, the flag clear (the record is the one without ext)");
+  const X0 = XB_DEFS.map((d) => d - 64), base = expectRecord(0, "XB BASE", 2, [[ID.P_TRIM, 99]]);
+  ok(XB_DEFS.length === NX && WORST === 577 && !("XB" in PTF) && !("BM" in PTF) && PTF.ALL === 175 && PTF.MB === 8 && XB_DEFS[1] === 65 && XB_DEFS[7] === 65 && XB_DEFS[11] === 74 && XB_DEFS[12] === 134 && XB_DEFS.filter((d) => d === 64).length === 12,
+     "values: the extension flag (16) and the bitmap flag (64) are gone, 28 slots, TWIN LINK and SUB OCTAVE default to stored 65, CYCLE RISE and FALL to 74 and 134, WORST is the unit's 577");
+  ok(same(buildRecord({ engine: 0, name: "XB BASE", cat: 2, values: v }), base) && same(buildRecord({ engine: 0, name: "XB BASE", cat: 2, values: v, ext: X0 }), base), "values: every slot at its default writes no slot: the same record as without ext");
   const pr = parseRecord(base);
-  ok(pr.ok && same(pr.xv, X0) && pr.edits.length === 0 && pr.mb && pr.mb[0] === 1, "xblock: a record without a block reads the 16 default slots and no edits (and End B)");
-  // (1) one slot off its default: SUB LEVEL (X6, wide id 134) = 10 -> [L 5][XV 1][tag 1][n 2][134][74]
-  const e1 = X0.slice(); e1[6] = 10;
-  const r1 = buildRecord({ engine: 0, name: "XB BASE", cat: 2, values: v, mb: [1, 0, 0, 0, 0, 0, 0], ext: e1 }), h1 = withBlock([5, 1, 1, 2, 134, 74]);
-  const p1 = parseRecord(r1);
-  ok(same(r1, h1) && r1.length === base.length + 6 && (r1[4] & PTF.XB) && r1[20] === 5 && p1.ok && p1.xv[6] === 10 && p1.xv.filter((x, k) => x !== X0[k]).length === 1 && p1.edits.length === 0 && p1.mb[0] === 1 && p1.values[ID.P_TRIM] === 99,
-     "xblock 1: one slot off its default is [05 01 01 02 86 4A] between the fixed part and End B, and reads back");
-  const e1b = X0.slice(); e1b[1] = 0;                  // TWIN LINK OFF is the off-default one (its default is ON)
-  ok(same(buildRecord({ engine: 0, name: "XB BASE", cat: 2, values: v, mb: [1, 0, 0, 0, 0, 0, 0], ext: e1b }), withBlock([5, 1, 1, 2, 129, 64])) && parseRecord(withBlock([5, 1, 1, 2, 129, 64])).xv[1] === 0,
-     "xblock 1: TWIN LINK OFF (default ON) is the pair (129, 64)");
-  // (2) 16 slots off their default and 32 edits: L 101, tag 1 n 32, tag 2 n 64, 102 bytes
-  const e2 = X0.map((d, k) => d + 1 + k), wids = [...Array(26).keys(), 128, 129, 130, 131, 140, 255].slice(0, 32), ed2 = wids.map((wid, i) => ({ wid, val: i * 3 - 64 }));
-  const blk2 = [101, 1, 1, 32, ...e2.flatMap((x, k) => [128 + k, x + 64]), 2, 64, ...ed2.flatMap((e) => [e.wid, e.val + 64])];
-  const r2 = buildRecord({ engine: 0, name: "XB BASE", cat: 2, values: v, mb: [1, 0, 0, 0, 0, 0, 0], ext: e2, edits: ed2 }), p2 = parseRecord(r2);
-  ok(blk2.length === 102 && same(r2, withBlock(blk2)) && r2.length === base.length + 102 && p2.ok && same(p2.xv, e2) && p2.edits.length === 32 && p2.edits.every((e, i) => e.wid === ed2[i].wid && e.val === ed2[i].val),
-     "xblock 2: 16 slots off their default and 32 edits: block length 102 (L 101, tag 1 n 32, tag 2 n 64), slots in order, edits in the given order, read back");
-  ok(parseXBlock(r2, 20, r2.length - 20).length === 102 && parseXBlock(r2, 20, r2.length - 20).ok, "xblock 2: parseXBlock gives the block's length (1 + L)");
-  const B = (...body) => [body.length, ...body];       // a block from its body (XV and sections): L first
-  // (3) an unknown tag 9 between known tags: skipped by its n
-  const blk3 = B(1, 1, 2, 128, 65, 9, 3, 7, 7, 7, 2, 2, 5, 70), r3 = withBlock(blk3), p3 = parseRecord(r3);
-  ok(blk3[0] === 14 && p3.ok && p3.xv[0] === 1 && p3.edits.length === 1 && p3.edits[0].wid === 5 && p3.edits[0].val === 6 && parseXBlock(r3, 20, r3.length - 20).unknownTags.join() === "9",
-     "xblock 3: an unknown tag 9 between tag 1 and tag 2 is skipped by its n; the known sections still read");
-  // (4) a block whose L is one too long: refused
-  const r4 = withBlock([6, 1, 1, 2, 134, 74]);
-  ok(!parseRecord(r4).ok && !parseXBlock(r4.slice(0, 26), 20, 6).ok && !parseXBlock([6, 1, 1, 2, 134, 74], 0, 6).ok && !parseXBlock([5, 1, 1, 2, 134, 74], 0, 5).ok && parseXBlock([5, 1, 1, 2, 134, 74], 0, 6).ok,
-     "xblock 4: a block whose L is one too long (past the record, or into the data behind it) is refused");
-  // (5) a repeated tag 2 (and a repeated tag 1)
-  ok(!parseRecord(withBlock(B(1, 2, 2, 5, 70, 2, 2, 6, 70))).ok && !parseRecord(withBlock(B(1, 1, 2, 128, 65, 1, 2, 129, 64))).ok && parseRecord(withBlock(B(1, 2, 2, 5, 70))).ok,
-     "xblock 5: a repeated tag 2, and a repeated tag 1, are refused");
-  // (6) an unknown wide id inside tag 1 (200): the record loads, the id is skipped
-  const r6 = withBlock(B(1, 1, 4, 200, 100, 129, 66)), p6 = parseRecord(r6);
-  ok(p6.ok && p6.xv[1] === 2 && p6.xv.filter((x, k) => x !== X0[k]).length === 1, "xblock 6: an unknown wide id 200 in tag 1 is skipped (the record loads, the other slot is read)");
-  const skip = (id) => parseRecord(withBlock(B(1, 1, 2, id, 70)));
-  ok([144, 255, 127, 3].every((id) => skip(id).ok && same(skip(id).xv, X0)) && skip(143).xv[15] === 6, "xblock 6: wide ids 144, 255, 127 and 3 in tag 1 are not slots and are skipped (only tag 2 refuses 127); 143 is the spare slot X15");
-  // (7) edits containing wide id 127: refused (read and build); wide id 200 and 0..126 are fine in tag 2
-  ok(!parseRecord(withBlock(B(1, 2, 2, 127, 70))).ok && await rejects(async () => buildRecord({ engine: 0, name: "X", values: storeDefaults(0), edits: [{ wid: 127, val: 1 }] }), /127/)
-     && parseRecord(withBlock(B(1, 2, 2, 200, 70))).edits[0].wid === 200, "xblock 7: an edit of wide id 127 is refused (parse and build); 200 (a slot a newer firmware has) is kept");
-  // the other ways a block is damaged
-  const dmg = [[[0], "L 0"], [B(2), "XV 2"], [B(0), "XV 0"], [B(1, 1, 3, 128, 65, 1), "odd n in tag 1"], [B(1, 2, 3, 5, 70, 1), "odd n in tag 2"], [B(1, 1, 2, 128, 192), "tag 1 value over 191"],
-    [B(1, 2, 2, 5, 192), "tag 2 value over 191"], [B(1, 2, 2, 5, 70, 2, 0), "a second, empty tag 2"], [B(1, 9, 9, 1), "a section runs past the block"], [B(1, 9), "a section header cut off"],
-    [B(1, 2, 4, 5, 70, 5, 71), "an id twice in tag 2"], [B(1, 2, 66, ...Array(33).fill(0).flatMap((_, i) => [i, 70])), "33 edits"], [B(1, 3, 1, 1), "(an unknown tag is fine)"]];
-  ok(dmg.slice(0, -1).every(([blk]) => !parseRecord(withBlock(blk)).ok) && parseRecord(withBlock(dmg.at(-1)[0])).ok, `xblock: damaged blocks are refused (${dmg.slice(0, -1).map((d) => d[1]).join(", ")}); an unknown tag alone is not damage`);
-  ok(parseRecord(withBlock(B(1, 2, 64, ...Array(32).fill(0).flatMap((_, i) => [i, 70])))).edits.length === 32, "xblock: exactly 32 edits are fine");
-  ok(parseRecord(withBlock(B(1))).ok && same(parseRecord(withBlock(B(1))).xv, X0), "xblock: a block with no section (only XV) is a block the firmware's xb_block_ok takes");
-  { const short = base.slice(0, 20); short[4] = PTF.XB | PTF.CB | PTF.TR; short[19] = 0; short[0] = 20; short[1] = 0;
-    ok(!parseRecord(short).ok && !parseRecord(Uint8Array.from([...short, 0])).ok, "xblock: a record with the flag and no room for the block's length byte is refused, not misread"); }
-  // build refusals and clamping
-  ok(await rejects(async () => buildRecord({ engine: 0, name: "X", values: storeDefaults(0), edits: Array.from({ length: 33 }, (_, i) => ({ wid: i, val: 0 })) }), /32/) && await rejects(async () => buildRecord({ engine: 0, name: "X", values: storeDefaults(0), edits: [{ wid: 3, val: 0 }, { wid: 3, val: 1 }] }), /twice/)
-     && await rejects(async () => buildRecord({ engine: 0, name: "X", values: storeDefaults(0), ext: [0] }), /16/), "xblock: building more than 32 edits, an id twice or a short slot list is refused");
-  const rc = parseRecord(buildRecord({ engine: 0, name: "CLAMP", values: storeDefaults(0), ext: X0.map((d, k) => (k === 6 ? 500 : d)), edits: [{ wid: 9, val: -500 }, { wid: 131, val: 127 }] }));
-  ok(rc.ok && rc.xv[6] === 127 && rc.edits[0].val === -64 && rc.edits[1].val === 127, "xblock: values are held to -64 .. +127 as xb_pack does");
-  ok(recordProblem(r2) === null && recordProblem(r1) === null && recordProblem(r4) !== null, "xblock: recordProblem (the unit's pt_rec_ok) takes the good records and refuses the bad one");
-  const d2 = describeRecord(p2);
-  ok(Object.keys(d2.ext).length === 16 && d2.ext["X6 SUB LEVEL"] === String(e2[6]) && d2.edits === 32 && d2.carries.some((c) => /32 hand-set/.test(c)) && Object.keys(describeRecord(pr).ext).length === 0 && describeRecord(pr).edits === 0,
-     "xblock: describeRecord lists the slots off their default by name and the number of edits");
+  ok(pr.ok && same(pr.xv, X0) && pr.mb === null && pr.values[ID.P_TRIM] === 99, "values: a record without a slot reads the 28 default slots and no End B");
+  const e1 = X0.slice(); e1[6] = 10;                      // SUB LEVEL (X6, wide id 134) = 10
+  const r1 = buildRecord({ engine: 0, name: "XB BASE", cat: 2, values: v, ext: e1 }), p1 = parseRecord(r1);
+  ok(same(r1, expectRecord(0, "XB BASE", 2, [[ID.P_TRIM, 99], [134, 10]])) && p1.ok && p1.xv[6] === 10 && p1.xv.filter((x, k) => x !== X0[k]).length === 1, "values: one slot off its default is one more value (wide id 134, 7 bits) after the parameters, and reads back");
+  const e1b = X0.slice(); e1b[1] = 0;                     // TWIN LINK OFF (its default is ON): a 1 bit value
+  ok(same(buildRecord({ engine: 0, name: "XB BASE", cat: 2, values: v, ext: e1b }), expectRecord(0, "XB BASE", 2, [[ID.P_TRIM, 99], [129, 0]])) && parseRecord(buildRecord({ engine: 0, name: "XB BASE", values: v, ext: e1b })).xv[1] === 0,
+     "values: TWIN LINK OFF (default ON) is wide id 129 in one bit");
+  ok(same(buildRecord({ engine: 0, name: "XB BASE", cat: 2, values: v.map((x, i) => (i === 0 ? 30 : x)) }), base), "values: the mixer level (id 0) is never written");
+  // End B as values (morph.c MBV): [flags][AMOUNT + 1][20 byte differs-bitmap][values at range bits][20 marks][57 FM6 bytes]
+  const eb = buildEndB({ engine: 0, amount: 40, values: { 9: 5, 45: 70 }, marks: [9] }), ev = expectValues(0, [[9, 5], [45, 70]]);
+  ok(same(eb, [1, 41, ...ev.slice(0, 20), ...ev.slice(20), ...expectValues(0, [[9, 0]]).slice(0, 20)]) && endBSize(eb, 0, eb.length, 0) === eb.length && eb.length === 22 + 2 + 20, "End B: the block is flags, AMOUNT + 1, the differs-bitmap, the values at their range bits, then the marks of the values set by hand");
+  const rb2 = buildRecord({ engine: 0, name: "XB BASE", cat: 2, values: v, mb: eb }), pb2 = parseRecord(rb2);
+  ok(same(rb2, expectRecord(0, "XB BASE", 2, [[ID.P_TRIM, 99]], eb, PTF.CB | PTF.TR | PTF.MB)) && pb2.ok && same(pb2.mb, eb) && recordProblem(rb2) === null, "End B: the record carries the block right after its values (flag MB), parseRecord hands it back, recordProblem takes it");
+  const never = [0, 5, 29, 94, 149, 155, 127, 156].map((w) => { const c = eb.slice(); c[2 + (w >> 3)] |= 1 << (w & 7); return c; });
+  ok(never.every((c) => endBSize(c, 0, c.length, 0) === 0) && await rejects(async () => buildEndB({ engine: 0, values: { 29: 1 } }), /never differs/) && await rejects(async () => buildEndB({ engine: 0, values: { 127: 1 } }), /never differs/), "End B: a bit on a value that never differs (LEVEL, MUTE, LEN, QUANTIZE, CYCLE to PITCH, STRUM, wide id 127 and 156) is no block");
+  ok(endBSize(eb, 0, eb.length - 1, 0) === 0 && endBSize(eb.slice(0, 21), 0, 21, 0) === 0 && endBSize(Uint8Array.from([4, 0, ...Array(20).fill(0)]), 0, 22, 0) === 0 && endBSize(Uint8Array.from([0, 102, ...Array(20).fill(0)]), 0, 22, 0) === 0 && endBSize(Uint8Array.from([2, 0, ...Array(20).fill(0), ...Array(57).fill(0)]), 0, 79, 0) === 0,
+     "End B: a block cut short, with an unknown flag, with AMOUNT over 100 or with FM6 bytes on another engine is no block");
+  const fb = buildEndB({ engine: FM6E, amount: null, values: {}, fm6: Array.from({ length: 65 }, (_, i) => i + 30) });
+  ok(fb.length === 79 && fb[0] === 2 && fb[1] === 0 && fb[22] === 30 + ((31 & 1) << 7) && endBSize(fb, 0, 79, FM6E) === 79 && await rejects(async () => buildEndB({ engine: FM6E, fm6: Array(65).fill(100) }), /0 to 99/), "End B: FM6 End B is 65 bytes of 7 bits (57 bytes), each at most 99");
+  const rbad = rb2.slice(); rbad[4] &= ~PTF.MB;
+  ok(!parseRecord(rbad).ok && !parseRecord(rb2.slice(0, rb2.length - 3)).ok && !parseRecord(Uint8Array.from([...rb2.slice(0, 19), 4, ...rb2.slice(20)])).ok, "End B: the flag cleared (the block is left over), a record cut inside the block and a wrong value count are refused");
+  const old = rb2.slice(); old[4] |= 16;
+  ok(!parseRecord(old).ok && !parseRecord(Object.assign(rb2.slice(), { 4: rb2[4] | 64 })).ok, "values: PT_VER 3's flags (16 the extension block, 64 the bitmap form) are refused");
+  { const c = rb2.slice(); c[20 + 15] |= 128;
+    ok(!parseRecord(c).ok, "values: wide id 127 in the bitmap is refused"); }
+  // the arp / keys / sequencer block: g, u16 bitmap by ordinal, the values at range bits (padded), with SEQ a u16 step map and 7 bytes a step
+  const akA = [3, 0, 3, 0, 0], akB = [4, 0, 3, 1, 0, 5], akC = [19, 0, 7, 0, 0, 5, 0, ...Array(14).fill(9)], akD = [3, 0, 3, 0, 1];
+  const rA = buildRecord({ engine: 0, name: "ARP", values: v, ak: akA }), pA = parseRecord(rA);
+  ok(rA[4] & PTF.AK && same(rA.slice(-5), akA) && pA.ok && pA.ak.groups === 3 && pA.ak.values.size === 10 && pA.ak.values.get(17) === rangeOf(0, 17).def, "arp block: groups arp and keys with no value off its default: every value of the groups is the engine's default");
+  const vB = v.slice(); vB[17] = 5;
+  const rB = buildRecord({ engine: 0, name: "ARP", values: vB, ak: akB }), pB = parseRecord(rB);
+  ok(pB.ok && pB.ak.values.get(17) === 5 && pB.values[17] === 5 && (rB[20 + 2] >> 1 & 1) === 0 && rB[19] === 1, "arp block: a value off its default is at its range bits (ordinal 0, 4 bits), and the ids of a group the block carries are not in the values");
+  const pC = parseRecord(buildRecord({ engine: 0, name: "ARP", values: v, ak: akC }));
+  ok(pC.ok && pC.ak.groups === 7 && pC.ak.steps === 2 && !parseRecord(buildRecord({ engine: 0, name: "ARP", values: v, ak: [17, 0, ...akC.slice(2, 19)] })).ak, "arp block: the SEQ group has a step map and 7 bytes a step; a step missing makes the block no block (the arp is off)");
+  ok(parseRecord(buildRecord({ engine: 0, name: "ARP", values: v, ak: akD })).ak === null, "arp block: the retired SCALE ordinal (8) in the bitmap makes the block no block");
+  ok(await rejects(async () => buildRecord({ engine: 0, name: "X", values: storeDefaults(0), ext: [0] }), /28/) && await rejects(async () => buildRecord({ engine: 0, name: "X", values: storeDefaults(0), mb: [1, 2, 3] }), /End B/), "build: a short slot list and bytes that are no End B block are refused");
+  const rc = parseRecord(buildRecord({ engine: 0, name: "CLAMP", values: storeDefaults(0), ext: X0.map((d, k) => (k === 6 ? 500 : d)) }));
+  ok(rc.ok && rc.xv[6] === 127, "build: slot values are held to -64 .. +127");
+  const d2 = describeRecord(p1);
+  ok(Object.keys(d2.ext).length === 1 && d2.ext["X6 SUB LEVEL"] === "10" && Object.keys(describeRecord(pr).ext).length === 0 && describeRecord(pb2).carries.includes("End B"), "values: describeRecord lists the slots off their default by name and says End B is carried");
 }
 function storeDefault0() { const d = storeDefaults(0); return d[45] === 0 && d[48] === 0 && d[84] === 0 && d[92] === 0 && d[105] === 0 && d[ID.P_LEVEL] === 104 && d[ID.P_TRIM] === L.TP[ID.P_TRIM].def; }
 
@@ -149,7 +142,7 @@ function storeDefault0() { const d = storeDefaults(0); return d[45] === 0 && d[4
   ok((await begin(5, rec0.length, b5(bkCrc(rec0))))[2] === 0 && (await raw([4, 5]))[2] === 2, "PATCH_RAW: a commit before all bytes arrived: rc 2");
   ok((await raw([3, 5, 0, 0, 0]))[2] === 5, "PATCH_RAW: a piece after a failed commit is stale (rc 5)");
   ok((await begin(5, 100, b5(1)))[2] === 0 && (await raw([3, 5, 1, 0, 0, 0]))[2] === 1 && (await raw([5, 5]))[2] === 0 && (await raw([3, 5, 0, 0, 0]))[2] === 5, "PATCH_RAW: out of order is rc 1, abort ends the transfer");
-  ok((await begin(128, 100, b5(0)))[2] === 1 && (await begin(0, 19, b5(0)))[2] === 1 && (await begin(0, 535, b5(0)))[2] === 1 && (await begin(0, 534, b5(0)))[2] === 0 && (await raw([5, 0]))[2] === 0 && (await raw([9, 0]))[2] === 1, "PATCH_RAW: slot 128, a length under 20 or over the biggest record (PT_WORST 534; 534 itself is accepted), an unknown op: rc 1");
+  ok((await begin(128, 100, b5(0)))[2] === 1 && (await begin(0, 19, b5(0)))[2] === 1 && (await begin(0, 578, b5(0)))[2] === 1 && (await begin(0, 577, b5(0)))[2] === 0 && (await raw([5, 0]))[2] === 0 && (await raw([9, 0]))[2] === 1, "PATCH_RAW: slot 128, a length under 20 or over the biggest record (PT_WORST 577; 577 itself is accepted), an unknown op: rc 1");
 }
 
 // ---- the file: round trips

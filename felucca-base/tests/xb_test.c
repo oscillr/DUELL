@@ -66,9 +66,9 @@ int main(void)
     xb_edit_t e[XB_MAX + 4], e2[XB_MAX + 4];
 
     /* ---- 1a: the constants */
-    ck("constants: XB_MAX 32, NX 16, XB_BLOCK_MAX 102 (L, XV, tag 1 with all 16 slots, tag 2 with 32 edits), XB_VER 1, an edit is a u8 id and an i16 value",
-       XB_MAX == 32u && NX == 16u && XB_BLOCK_MAX == 102u && XB_VER == 1u && sizeof(xb_edit_t) == 4u && XW_BASE == 128u && XWID(X_CYSYNC) == 142u);
-    ck("defaults: slot 1 (TWIN LINK) is ON and slot 7 (SUB OCTAVE) is stored 1 (-1), CYCLE RISE 10 / FALL 70 (job B's descriptors; 74 / 134), the others 0", xb_def(X_LINK) == 65u && xb_def(X_SUBOCT) == 65u && ({ uint32_t d = 1; for (i = 0; i < NX; i++) d &= i == X_LINK || i == X_SUBOCT || (i == X_CYRISE && xb_def(i) == 74u) || (i == X_CYFALL && xb_def(i) == 134u) || xb_def(i) == 64u; d; }));
+    ck("constants: XB_MAX 32, NX 28, XB_BLOCK_MAX 126 (L, XV, tag 1 with all 28 slots, tag 2 with 32 edits), XB_VER 1, an edit is a u8 id and an i16 value",   /* (item 138: NX 16 -> 28 in DUELL 1.1, ext.h) */
+       XB_MAX == 32u && NX == 28u && XB_BLOCK_MAX == 126u && XB_VER == 1u && sizeof(xb_edit_t) == 4u && XW_BASE == 128u && XWID(X_CYSYNC) == 142u);
+    ck("defaults: slot 1 (TWIN LINK) is ON and slot 7 (SUB OCTAVE) is stored 1 (-1), CYCLE RISE 10 / FALL 70 (job B's descriptors; 74 / 134), LFO 1 / 2 LEVEL 127 (191; DUELL 1.1), the others 0", xb_def(X_LINK) == 65u && xb_def(X_SUBOCT) == 65u && ({ uint32_t d = 1; for (i = 0; i < NX; i++) d &= i == X_LINK || i == X_SUBOCT || (i == X_CYRISE && xb_def(i) == 74u) || (i == X_CYFALL && xb_def(i) == 134u) || ((i == X_LFO1LVL || i == X_LFO2LVL) && xb_def(i) == 191u) || xb_def(i) == 64u; d; }));
 
     /* ---- 1b: xb_pack / xb_unpack */
     for (i = 0; i < XB_MAX; i++)
@@ -132,9 +132,9 @@ int main(void)
     ck("  read back: the slot, the three edits, the other slots at their defaults", xb_block_read(buf, xv2, e2) == 3u && xv2[X_SUBLVL] == 164u && xe_eq(e, e2, 3u) &&
        ({ uint32_t d = 1; for (i = 0; i < NX; i++) d &= i == X_SUBLVL || xv2[i] == xb_def(i); d; }));
     for (i = 0; i < NX; i++)
-        xv[i] = (uint8_t)(xb_def(i) + 1u + i);
+        xv[i] = (uint8_t)(xb_def(i) + 1u + i <= 191u ? xb_def(i) + 1u + i : xb_def(i) - 1u - i);   /* (item 138: a slot whose default is the top, the LFO LEVELs, goes down: a byte over 191 is damaged) */
     n = xb_block_build(xv, e, XB_MAX, buf);
-    ck("the biggest block: all 16 slots off default and 32 edits is XB_BLOCK_MAX = 102 bytes, taken, read back equal", n == XB_BLOCK_MAX && xb_block_ok(buf, n) == n &&
+    ck("the biggest block: all 28 slots off default and 32 edits is XB_BLOCK_MAX = 126 bytes, taken, read back equal", n == XB_BLOCK_MAX && xb_block_ok(buf, n) == n &&
        ({ for (i = 0; i < NX; i++) xv2[i] = xb_def(i); xb_block_read(buf, xv2, e2) == XB_MAX && !memcmp(xv, xv2, NX) && xe_eq(e, e2, XB_MAX); }));
     {   /* an unknown tag skipped wherever it sits, with any content */
         uint8_t src[XB_BLOCK_MAX], b[XB_BLOCK_MAX + 40];

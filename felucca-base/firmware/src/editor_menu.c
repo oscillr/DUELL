@@ -69,13 +69,13 @@ static const uint8_t ED_MENU[][2] = {
                                                        /* (id 23, 1.3 HOME / DUELL OVERVIEW SCOPE / PARTS, retired in DUELL 0.2.14 with the OVERVIEW page; never reused) */
                                                        /* (id 24, HELP, retired in DUELL 0.2.2: removed for now; never reused) */
     {MI_HOMEPG, 25},                                   /* DUELL 0.1: HOME OPENS MORPH / MODE / MIXER (0.2.14: no OVERVIEW, max 2), CONTROL */
-    {MI_CPU, 26},                                      /* DUELL 0.2.9: CPU METER ON / OFF, DISPLAY (the CPU bar under the header's battery) */
+    /* id 26 (CPU METER, DUELL 0.2.9) is retired with the CPU bar in 1.1: no row, the id stays reserved and is never reused */
     {MI_MODERECALL, 27},                                /* DUELL 0.2.11: MODE RECALL OFF / ON, CONTROL (does a multi load set its saved MODE); 0.2.14: MULTI LOAD KEEPS MODE / SETS MODE */
     {ED_MODS + 0u, 28}, {ED_MODS + 1u, 29},             /* DUELL 0.2.14: GLO > MODULES ARP, SEQ, SENDS, PART FX (OFF / ON; no MENU row: ED_MODS) */
     {ED_MODS + 2u, 30}, {ED_MODS + 3u, 31},
 #if DUELL_VELO
-    {MI_AFTERT, 45},                                    /* DUELL 1.0: AFTERTOUCH OFF / ON, CONTROL, its own line (the keys' channel pressure; KEY VELOCITY is id 44) */
-    {MI_KEYVEL, 44},                                    /* DUELL (job D): KEY VELOCITY OFF / ON, CONTROL (developer builds with KEY SENSE only; the id is free in every other build) */
+    {MI_AFTERT, 45},                                    /* DUELL 1.0: AFTERTOUCH OFF / SOFTER / SOFT / NORMAL / HARD / HARDER (DUELL 1.1: values 0..5), CONTROL, its own line (the keys' channel pressure; KEY VELOCITY is id 44) */
+    {MI_KEYVEL, 44},                                    /* DUELL (job D): KEY VELOCITY OFF / SOFTER / SOFT / NORMAL / HARD / HARDER (DUELL 1.1: values 0..5), CONTROL (developer builds with KEY SENSE only; the id is free in every other build) */
 #endif
     {MI_PERFLEAVE, 32},                                 /* DUELL 0.2.14: PERF LEAVE FADE / KEEP, CONTROL (leaving PERFORM / a sound load: SPACE and KILL to neutral, or stay) */
     {ED_BM, 33},                                        /* DUELL 0.2.19: BASS MONO OFF / 40 .. 400 Hz, the MASTER page (the master mono below the corner; not in DUEL); no MENU row (ED_BM) */
@@ -148,11 +148,11 @@ static int ed_menu_handle(uint32_t cmd, const uint8_t *a, uint32_t n)
             ed_v(song.bm > 0 && song.bm <= (int16_t)BM_N ? song.bm : 0);
             ed_v(0);
             ed_v((int32_t)BM_N);
-            ed_str("BASS MONO", 12);
+            ed_str("BASS MONO", PV_LEN);
             for (i = 0; i <= BM_N; i++)
-                ed_str(N_BM[i], 12);
+                ed_str(N_BM[i], PV_LEN);
             ed_b(MTAB_COUNT + 1u);
-            ed_str(ED_BM_TAB, 12);
+            ed_str(ED_BM_TAB, PV_LEN);
             return 1;
         }
         if (row >= ED_MS) {                            /* (0.2.23: WIDTH 0..200 % as a number; tab MASTER) */
@@ -161,10 +161,10 @@ static int ed_menu_handle(uint32_t cmd, const uint8_t *a, uint32_t n)
             ed_v(song.ms[0]);
             ed_v(0);
             ed_v(GP[G_WD].max);
-            ed_str(GP[G_WD].label, 12);
-            ed_str("%", 12);
+            ed_str(GP[G_WD].label, PV_LEN);
+            ed_str("%", PV_LEN);
             ed_b(MTAB_COUNT + 1u);
-            ed_str(ED_BM_TAB, 12);
+            ed_str(ED_BM_TAB, PV_LEN);
             return 1;
         }
         if (row >= ED_SC) {                            /* (0.2.22: SIDECHAIN: P1 CH, P1 NOTE, P2 CH, P2 NOTE as numbers; tab SIDECHAIN) */
@@ -174,14 +174,14 @@ static int ed_menu_handle(uint32_t cmd, const uint8_t *a, uint32_t n)
             ed_v((int32_t)sc_get(k) + ((k & 1u) ? 0 : 1));
             ed_v((k & 1u) ? 0 : 1);
             ed_v((k & 1u) ? 127 : 16);
-            ed_str(k == 0u ? "P1 CH" : k == 1u ? "P1 NOTE" : k == 2u ? "P2 CH" : "P2 NOTE", 12);
-            ed_str("", 12);
+            ed_str(k == 0u ? "P1 CH" : k == 1u ? "P1 NOTE" : k == 2u ? "P2 CH" : "P2 NOTE", PV_LEN);
+            ed_str("", PV_LEN);
             ed_b(MTAB_COUNT + 2u);
-            ed_str(ED_SC_TAB, 12);
+            ed_str(ED_SC_TAB, PV_LEN);
             return 1;
         }
         if (row >= ED_CP) {                            /* (0.2.21: COMP: THRESH as a number, the others as lists; tab MASTER) */
-            char nm[16], u[8];
+            char nm[PV_LEN + 8], u[8];
             const char *unit;
             k = row - ED_CP;
             ed_b(ED_MENU[a[0]][1]);
@@ -189,11 +189,11 @@ static int ed_menu_handle(uint32_t cmd, const uint8_t *a, uint32_t n)
             ed_v(song.cp[k] + (k == 0u ? -40 : 0));
             ed_v(k == 0u ? -40 : 0);
             ed_v(GP[G_CT + k].max - (k == 0u ? 40 : 0));
-            ed_str(GP[G_CT + k].label, 12);
+            ed_str(GP[G_CT + k].label, PV_LEN);
             if (k == 0u) {
-                ed_str("dB", 12);
+                ed_str("dB", PV_LEN);
             } else if (k != 1u) {
-                ed_str("", 12);
+                ed_str("", PV_LEN);
             } else {
                 for (i = 0; i <= (uint32_t)GP[G_CT + k].max; i++) {
                     unit = "";
@@ -201,25 +201,30 @@ static int ed_menu_handle(uint32_t cmd, const uint8_t *a, uint32_t n)
                     str_cpy(u, unit, 8);
                     if (u[0] && u[0] != ':')
                         str_cpy(nm + str_len(nm), " ", 2), str_cpy(nm + str_len(nm), u, 6);
-                    ed_str(nm, 12);
+                    ed_str(nm, PV_LEN + 8);
                 }
             }
             ed_b(MTAB_COUNT + 1u);
-            ed_str(ED_BM_TAB, 12);
+            ed_str(ED_BM_TAB, PV_LEN);
             return 1;
         }
         if (row >= ED_MODS) {                          /* (0.2.14: a MODULES switch: OFF / ON, its tab MODULES) */
             k = row - ED_MODS;
             ed_b(ED_MENU[a[0]][1]);
             ed_b(EDM_ENUM);
-            ed_v((int32_t)!((mods_get() >> k) & 1u));
+            ed_v(k < 2u ? (int32_t)mods_run_get(k) : (int32_t)!((mods_get() >> k) & 1u));
             ed_v(0);
-            ed_v(1);
-            ed_str(MODS_NAME[k], 12);
-            ed_str("OFF", 12);
-            ed_str("ON", 12);
+            ed_v(k < 2u ? 2 : 1);                      /* (DUELL 1.1: ARP and SEQ: 0 OFF, 1 FOLLOWS PATCH, 2 KEEPS RUNNING) */
+            ed_str(MODS_NAME[k], PV_LEN);
+            ed_str("OFF", PV_LEN);
+            if (k < 2u) {
+                ed_str("FOLLOWS PATCH", PV_LEN);
+                ed_str("KEEPS RUNNING", PV_LEN);
+            } else {
+                ed_str("ON", PV_LEN);
+            }
             ed_b(MTAB_COUNT);
-            ed_str(ED_MODS_TAB, 12);
+            ed_str(ED_MODS_TAB, PV_LEN);
             return 1;
         }
         k = menu_n(row);
@@ -229,14 +234,14 @@ static int ed_menu_handle(uint32_t cmd, const uint8_t *a, uint32_t n)
         ed_v((int32_t)menu_get(row) + lo);
         ed_v(lo);
         ed_v((int32_t)k - 1 + lo);
-        ed_str(MI_NAME[row], 12);
+        ed_str(MI_NAME[row], PV_LEN);
         if (row == MI_TUNE)
-            ed_str("Hz", 12);                          /* (EDM_TENTHS: its unit) */
+            ed_str("Hz", PV_LEN);                          /* (EDM_TENTHS: its unit) */
         else
             for (i = 0; i < k; i++)
-                ed_str(menu_vname(row, i), 12);
+                ed_str(menu_vname(row, i), PV_LEN);
         ed_b(MI_TAB[row]);                             /* (after the names: an older editor stops before it) */
-        ed_str(MTAB_NAME[MI_TAB[row]], 12);
+        ed_str(MTAB_NAME[MI_TAB[row]], PV_LEN);
         return 1;
     }
     if (cmd != ED_MENU_SET)
@@ -287,10 +292,13 @@ static int ed_menu_handle(uint32_t cmd, const uint8_t *a, uint32_t n)
     }
     if (row >= ED_MODS) {                              /* (0.2.14: a MODULES switch, as its knob: 0 OFF, 1 ON; saved with the settings) */
         k = row - ED_MODS;
-        mods_put(1u << k, v <= 0);                     /* (as the MODULES knob: it redraws and queues the save itself when the switch changes) */
+        if (k < 2u)                                    /* (DUELL 1.1: ARP, SEQ: 0 OFF, 1 FOLLOWS PATCH, 2 KEEPS RUNNING; an older editor's 1 = ON is FOLLOWS PATCH) */
+            mods_run_put(k, (uint32_t)clamp(v, 0, 2));
+        else
+            mods_put(1u << k, v <= 0);                 /* (as the MODULES knob: it redraws and queues the save itself when the switch changes) */
         ed_b(ed_menu_defer());
         ed_b(a[0]);
-        ed_v((int32_t)!((mods_get() >> k) & 1u));
+        ed_v(k < 2u ? (int32_t)mods_run_get(k) : (int32_t)!((mods_get() >> k) & 1u));
         return 1;
     }
     lo = row == MI_TUNE ? TUNE_MIN : 0;                /* (a number: from its min) */

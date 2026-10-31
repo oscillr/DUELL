@@ -137,7 +137,7 @@ static const icon_map_t ICON_MAP[] = {
     /* arp, scale, pattern */
     {"MODE", ICON_ARP}, {"OCT", ICON_OCTAVE}, {"GATE", ICON_GATE}, {"SWG", ICON_SWING},
     {"PROB", ICON_PROB}, {"HOLD", ICON_HOLD}, {"ORD", ICON_ORDER}, {"ROOT", ICON_PITCH},
-    {"SCL", ICON_SCALE}, {"QNT", ICON_QUANTIZE}, {"TRN", ICON_TRANSPOSE}, {"LEN", ICON_LENGTH},
+    {"SCALE", ICON_SCALE}, {"QNT", ICON_QUANTIZE}, {"TRN", ICON_TRANSPOSE}, {"LEN", ICON_LENGTH},
     {"DIV", ICON_DIVISION}, {"VOIC", ICON_OCTAVE},   /* (CHRD: below, PHYS's) */
     /* fx sends, voice */
     {"SAT", ICON_DIST}, {"LOW", ICON_TONE}, {"MID", ICON_TONE}, {"HIGH", ICON_TONE}, {"LO HZ", ICON_CUTOFF},
@@ -155,11 +155,11 @@ static const icon_map_t ICON_MAP[] = {
     {"DTN", ICON_DETUNE}, {"NOIS", ICON_NOISE}, {"CUT", ICON_CUTOFF}, {"RES", ICON_RESO},
     {"DRV", ICON_DRIVE}, {"KTR", ICON_KEYTRACK}, {"ALG", ICON_ALGORITHM}, {"R2", ICON_RATIO},
     {"R3", ICON_RATIO}, {"R4", ICON_RATIO}, {"IDX", ICON_MOD}, {"MDEC", ICON_DECAY},
-    {"FB", ICON_FEEDBACK}, {"DUTY", ICON_PULSE}, {"CRSH", ICON_BITS},
+    {"FB", ICON_FEEDBACK}, {"PULSE WIDTH", ICON_PULSE}, {"CRSH", ICON_BITS},
     {"SWP", ICON_SWEEP}, {"VIB", ICON_VIBRATO}, {"ARP", ICON_ARP}, {"TONE", ICON_TONE},
     {"BITS", ICON_BITS}, {"WAVE 2", ICON_WAVE}, {"WAVE2", ICON_WAVE},
     {"DCW", ICON_SHAPE}, {"ENV", ICON_ENV}, {"LINE", ICON_MIX}, {"SUB", ICON_SUB},
-    {"FOLD", ICON_FOLD}, {"WAV#", ICON_WAVE}, {"DCY", ICON_DECAY}, {"INT2", ICON_TRANSPOSE},
+    {"FOLD", ICON_FOLD}, {"DCY", ICON_DECAY}, {"INT2", ICON_TRANSPOSE},
     {"INT3", ICON_TRANSPOSE}, {"PW", ICON_PULSE},
     {"REG", ICON_DRAWBAR}, {"BODY", ICON_LEVEL}, {"TOP", ICON_TONE}, {"PERC", ICON_DECAY},
     {"CLICK", ICON_ATTACK}, {"ROTR", ICON_VIBRATO},
@@ -194,8 +194,10 @@ static uint32_t icon_for_label(const char *l)
 static const icon_map_t WAVE_ICON[] = {
     {"SIN", ICON_W_SIN}, {"TRI", ICON_W_TRI}, {"SAW", ICON_W_SAW}, {"SQR", ICON_W_SQR},
     {"PLS", ICON_W_PLS}, {"PWM", ICON_W_PWM}, {"S&H", ICON_W_SH}, {"NOIS", ICON_NOISE},
-    {"DSIN", ICON_W_DSIN}, {"SPLS", ICON_W_SPLS}, {"RSAW", ICON_W_RSAW}, {"RTRI", ICON_W_RTRI},
+    {"DOUBLE\nSINE", ICON_W_DSIN}, {"NOISE", ICON_NOISE}, {"SPLS", ICON_W_SPLS}, {"RSAW", ICON_W_RSAW}, {"RTRI", ICON_W_RTRI},
     {"RTRP", ICON_W_RTRP},
+    {"SQUARE", ICON_W_SQR}, {"PULSE", ICON_W_PLS}, {"SAW\nPULSE", ICON_W_SPLS}, {"RESONANT\nSAW", ICON_W_RSAW},
+    {"RESONANT\nTRIANGLE", ICON_W_RTRI}, {"RESONANT\nTRAPEZOID", ICON_W_RTRP},
 };
 
 static uint32_t param_icon(const param_desc_t *d, int32_t v)
@@ -236,7 +238,7 @@ static uint32_t mod_src_icon(int32_t s)
 {
     static const uint8_t I[MS_N] = {ICON_MOD, ICON_LFO_WAVE, ICON_ENV, ICON_ACCENT, ICON_KEYTRACK, ICON_PROB,
                                     ICON_MOD, ICON_MIDI, ICON_LEVEL, ICON_W_SH, ICON_GLIDE, [MS_ENV2] = ICON_ENV, [MS_LFO2] = ICON_LFO_WAVE,
-                                    [MS_MORPH] = ICON_MIX, [MS_DUCK] = ICON_LEVEL, [MS_CYCLE] = ICON_ENV};
+                                    [MS_MORPH] = ICON_MIX, [MS_DUCK] = ICON_LEVEL, [MS_CYCLE] = ICON_ENV, [MS_BREATH] = ICON_MIDI, [MS_FOOT] = ICON_MIDI};
     return I[clamp(s, 0, MS_N - 1)];
 }
 static uint32_t mod_dst_icon(const track_t *t, int32_t d)
@@ -288,7 +290,7 @@ static uint32_t page_icon(const page_t *pg)
     switch (pg->graph) {
     case GR_GLO: return ICON_X_MIXER;         /* MIXER (GLO's first page, 0.2.25; HOME's before): vertical faders */
     case GR_PATS: return ICON_X_PATTERN;      /* SAVE > PATTERNS: the pattern loader */
-    case GR_EVENTS: return motion_icon();     /* AUTOMATION */
+    case GR_EVENTS: return motion_icon();     /* PARAMETER LOCKS */
     default: return ICON_NONE;
     }
 }

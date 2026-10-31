@@ -47,7 +47,7 @@ int main(int argc, char **argv)
     static const uint8_t pd[] = {0x08, 0xf0};
     const aafont_t probe = {1, 1, 'A', 'A', 0, 0, pg, pd, 0, 0, 0};
     double worst = 100;
-    assert(NPALETTES == 10u && !strcmp(UI_PALETTES[0].name, "GREY") && !strcmp(UI_PALETTES[7].name, "HI-CON") &&
+    assert(NPALETTES == 10u && !strcmp(UI_PALETTES[0].name, "GREY") && !strcmp(UI_PALETTES[7].name, "POLICE") &&
            !strcmp(UI_PALETTES[8].name, "NIGHT") && !strcmp(UI_PALETTES[9].name, "MONO") && UI_BW_INDEX == 9u);
     /* (#50, 1.0.2: appended, the ids stay; GREY is the MONO of 1.0.1, id 0) */
     {   /* MONO: every token black or white */
@@ -62,7 +62,7 @@ int main(int argc, char **argv)
                 printf("MONO: token %u = %04x is not black or white\n", i, tok[i]);
             assert(tok[i] == 0x0000u || tok[i] == 0xFFFFu || grey_ok);
         }
-        assert(T_BG == 0u && T_SURF == 0u && T_TEXT == 0xFFFFu && T_SEL == 0xFFFFu && T_INK == 0u && T_REC == 0xFFFFu);
+        assert(T_BG == 0u && T_BG == 0u && T_TEXT == 0xFFFFu && T_SEL == 0xFFFFu && T_INK == 0u && T_REC == 0xFFFFu);
     }
     for (unsigned p = 0; p < NPALETTES; p++) {
         uint16_t *tok = &ux.bg;
@@ -71,10 +71,10 @@ int main(int argc, char **argv)
             for (unsigned i = 0; i < 14; i++) assert(gray(tok[i]));      /* every token, derived ones too (RAISE, KEY the last) */
         /* text and the things read on the screen; the generator checks the same (tools/gen_ui_palettes.py) */
         struct { uint16_t fg, bg; double min; } c[] = {
-            {T_TEXT, T_BG, 12.0}, {T_TEXT, T_SURF, 9.0}, {T_MID, T_BG, 5.0}, {T_MID, T_SURF, 4.0},
-            {T_THEME, T_BG, 4.5}, {T_THEME, T_SURF, 4.5}, {T_ACCENT, T_BG, 4.5}, {T_ACCENT, T_SURF, 4.5},
+            {T_TEXT, T_BG, 12.0}, {T_TEXT, T_BG, 9.0}, {T_MID, T_BG, 5.0}, {T_MID, T_BG, 4.0},
+            {T_THEME, T_BG, 4.5}, {T_THEME, T_BG, 4.5}, {T_ACCENT, T_BG, 4.5}, {T_ACCENT, T_BG, 4.5},
             {T_INK, T_SEL, 4.5}, {T_INK, T_THEME, 4.5}, {T_DIM, T_BG, 2.2}, {T_LINE, T_BG, 1.25}, {T_REC, T_BG, 3.0},
-            {T_INK, T_KEY, 4.5}, {T_KEY, T_BG, 3.0}, {T_KEY, T_SURF, 2.5}, {T_INK, T_DIM, 1.8}, {T_INK, T_ACCENT, 4.5},
+            {T_INK, T_KEY, 4.5}, {T_KEY, T_BG, 3.0}, {T_KEY, T_BG, 2.5}, {T_INK, T_DIM, 1.8}, {T_INK, T_ACCENT, 4.5},
             {T_TEXT, T_RAISE, 7.0}};
         double min = 100;
         for (unsigned i = 0; i < sizeof c / sizeof c[0]; i++) {

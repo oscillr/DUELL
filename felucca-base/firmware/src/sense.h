@@ -25,7 +25,7 @@
 #include "sense_cal.h"
 
 /* ---- the calibration store: provided by the patch store job (job A); the tests use a RAM stub ---- */
-#define SENSE_CAL_BYTES (4u + 4u * SC_NKEY + 2u)    /* 'V' 'C' version nkey, (floor, ceiling) x 20, CRC-16 */
+#define SENSE_CAL_BYTES (4u + 4u * SC_NKEY + 2u)    /* 'V' 'C' version nkey, (floor, ceiling) x 20, CRC-16; the version is SC_CAL_VERSION (2 since item 123: a record of another version is not accepted) */
 /* n bytes of the stored record into buf; the number of bytes read, or < 0 when nothing is stored */
 int velo_cal_load(uint8_t *buf, uint32_t n);
 /* n bytes to the store (a flash write: main loop only, never from the tick); 0 = stored */
@@ -47,6 +47,10 @@ uint32_t sense_enabled(void);                                /* KEY VELOCITY is 
 void sense_at_enable(uint32_t on);                           /* AFTERTOUCH (DUELL 1.0, its own setting; default OFF): the channel pressure the keys send; sense_at_value is 0 while it is OFF */
 uint32_t sense_at_enabled(void);
 uint32_t sense_running(void);                                /* either one is ON: the key sensing runs */
+void sense_vel_type_set(uint32_t t);                         /* DUELL 1.1: the KEY VELOCITY curve type 0 .. 4 = SOFTER SOFT NORMAL HARD HARDER (sense_cal.h SC_TYPE_EXP_Q8; default NORMAL); the ON / OFF is sense_enable */
+uint32_t sense_vel_type_get(void);
+void sense_at_type_set(uint32_t t);                          /* the same for AFTERTOUCH */
+uint32_t sense_at_type_get(void);
 void sense_curve_set(uint32_t pct);                          /* 0 = flat 100 .. 100 = the measured range */
 uint32_t sense_curve_get(void);
 void sense_reset(void);                                      /* calibration back to the priors, all key states cleared */
@@ -59,7 +63,7 @@ void sense_cal_restore(void);                                /* boot / after a s
 void sense_cal_store(void);                                  /* velo_cal_save now (main loop) */
 uint32_t sense_cal_export(uint8_t *buf);                     /* SENSE_CAL_BYTES into buf (tests, the store) */
 uint32_t sense_cal_import(const uint8_t *buf);               /* 1 = accepted */
-void sense_cal_get(uint32_t note, uint32_t *floor, uint32_t *ceil);   /* the key's floor and ceiling in counts (derived, with margins) */
+void sense_cal_get(uint32_t note, uint32_t *floor, uint32_t *ceil);   /* the key's floor and ceiling in counts (the learned quantiles, clamped to the windows of sense_cal.h; no margins since item 123) */
 
 /* ---- event ring and statistics (log, tests) ---- */
 enum { SE_LAND = 1, SE_LIFT, SE_AT, SE_GAP, SE_UNKNOWN };

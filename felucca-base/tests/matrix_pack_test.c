@@ -206,7 +206,7 @@ int main(void)
         load_begin(TSEL, UNDO_SOUND);
         load_end(TSEL);
         printf("matrixpack: after load_end: slot 1 SRC %d AMT %d, slot 3 SRC %d, undo_depth %u\n", TSEL->p[P_M1SRC], TSEL->p[P_M1AMT], TSEL->p[P_M3SRC], (unsigned)undo_depth);
-        expect("a load with a gap (slot 1 empty, slot 3 used): packed at load_end (slot 1 = LFO -> PAN 11, slot 3 clear)", TSEL->p[P_M1SRC] == MS_LFO && TSEL->p[P_M1AMT] == 11 && TSEL->p[P_M3SRC] == 0);
+        expect("a load with a gap (slot 1 empty, slot 3 used): packed at load_end (slot 1 = LFO -> PAN 11, slot 3 at amount 0: empty or, DUELL 1.1, a preselected pair)", TSEL->p[P_M1SRC] == MS_LFO && TSEL->p[P_M1AMT] == 11 && TSEL->p[P_M3AMT] == 0 && (TSEL->p[P_M3SRC] != MS_LFO || TSEL->p[P_M3DST] != MD_PAN));   /* (item 138: mod.c mod_preselect fills the empty slots at a sound load) */
     }
     (void)gaps_seen;
     printf("matrixpack: %d checks, %d failed\n", ncheck, bad);

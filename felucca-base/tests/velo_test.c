@@ -5,9 +5,9 @@
  *   cc -O2 -Ifirmware/src -Itests tests/velo_test.c -lm        (host_tests.sh velo; ./velo_test --csv FILE writes a recording)
  * The scan is the one of hal/fm1_input.h: one column every 100 us, 11 columns a frame, an analog key once every two frames
  * (rows PA7 on even frames, PA8 on odd ones), the converter reading taken at the tick after it was started; the event step
- * (sense_gate) runs once per audio half (2.9 ms). The numbers of the simulated keys are Velo's (VELO_STUDY.md) and guesses: the
+ * (sense_gate) runs once per audio half (2.9 ms). The numbers of the simulated keys are the owner's unit (item 123: tests/velo_pill.h; before: Velo's, VELO_STUDY.md) and guesses: the
  * gates below are for THIS simulated hand, not for anyone's keys.
- *   1  the simulated hand: velocity median 50 .. 70, at most 3 % at 110 or more, at most 5 % below 10 (cold start, no stored
+ *   1  the simulated hand: velocity median 60 .. 90, at most 8 % at 110 or more, at most 5 % below 10 (cold start, no stored
  *      calibration; and again from a stored one), the velocity follows the strength (rank correlation)
  *   2  the added latency of the note (against the digital scan alone)
  *   3  calibration moves both ways (a drift up, a drift down), is clamped, has a reset
@@ -218,8 +218,8 @@ static void note_stats(const char *name, uint32_t *n_out, int gate, double *corr
     *corr = rank_corr(xs, ys, n);
     printf("   %-34s %4u notes  quartiles %3u / %3u / %3u   >=110: %4.1f %%   <10: %4.1f %%   rank corr %.2f\n", name, n, q1, med, q3, hi, lo, *corr);
     if (gate) {
-        check("  median within 50 .. 70", med >= 50u && med <= 70u);
-        check("  at most 3 % at 110 or more", hi <= 3.0);
+        check("  median within 60 .. 90", med >= 60u && med <= 90u);
+        check("  at most 8 % at 110 or more", hi <= 8.0);
         check("  at most 5 % below 10", lo <= 5.0);
     }
 }
@@ -288,14 +288,14 @@ static uint32_t press_vel(uint32_t k, uint32_t d)
     return v;
 }
 
-/* give key k a settled range: 14 landings between 400 (hard) and 580 (soft), then released, events drained */
+/* give key k a settled range: 14 landings between 695 (hard) and 1000 (soft), the owner's unit (item 123), then released, events drained */
 static void prime(uint32_t k)
 {
     uint32_t i, v, unk, lifts;
     for (i = 0; i < 14u; i++) {
         feed(k, 1023, 0, 2200);
         feed(k, 200, 0, 2200);
-        feed(k, 400u + (i * 53u) % 181u, 1, 2200);
+        feed(k, 695u + (i * 53u) % 306u, 1, 2200);
         feed(k, 1023, 0, 2200);
         feed(k, 1023, 0, 2200);
     }
@@ -309,7 +309,7 @@ static void test_scripted(void)
     printf("-- a key, scripted\n");
     fresh();
     /* the first landing of a key: a mid velocity, the key's range unknown */
-    v = land(k, 200, 480);
+    v = land(k, 200, 880);                         /* (item 123: the owner's unit reads 680 .. 1020; the typical key is 695 .. 1000) */
     check("first landing of a new key reads mid-scale (velocity 40 .. 90)", v >= 40u && v <= 90u);
     release(k);
     pop_lands(&v, &unk, &lifts);
@@ -388,14 +388,21 @@ static void test_scripted(void)
     n = pop_lands(&v, &unk, &lifts);
     check("a touch, a gap, then open: nothing", n == 0u);
 
-    /* the pill outside any sane range is rejected */
+    /* DUELL 1.1 (owner: a REALLY hard hit played very quiet): a driven reading below the pill range is the hardest press, not "no pill"; one above it still waits */
     fresh();
     feed(k, 1023, 0, 2200);
     feed(k, 200, 0, 2200);
-    feed(k, 100, 1, 2200);                         /* a driven reading of 100: not a pill */
+    feed(k, 100, 1, 2200);                         /* a driven reading of 100: harder than the pill range */
     n = pop_lands(&v, &unk, &lifts);
-    check("a driven reading outside the pill's range waits (no velocity from it)", n == 0u);
-    feed(k, 480, 1, 2200);
+    check("a driven reading below the pill's range is the hardest press: velocity 127 at once", n == 1u && v == 127u && !unk);
+    fresh();
+    feed(k, 1023, 0, 2200);
+    feed(k, 200, 0, 2200);
+    feed(k, 1023, 1, 2200);                        /* a driven reading above the range (item 123: the saturated converter, the open key; 900 .. 1022 is a very soft pill now): no landing */
+    n = pop_lands(&v, &unk, &lifts);
+    check("a driven reading above the pill's range waits (no velocity from it)", n == 0u);
+    feed(k, 200, 0, 2200);
+    feed(k, 880, 1, 2200);
     n = pop_lands(&v, &unk, &lifts);
     check("  .. and the next good reading gives the velocity", n == 1u);
     (void)i;
@@ -417,18 +424,18 @@ static void test_chord(void)
     AT(k0, 300, 0, 100);                            /* k0 lands, soft */
     AT(k1, 1023, 0, 500);
     AT(k2, 1023, 0, 1000);
-    AT(k0, 560, 1, 2400);                           /* its driven reading: soft */
+    AT(k0, 990, 1, 2400);                           /* its driven reading: soft */
     AT(k1, 190, 0, 3100);                           /* 3 ms after the first landing */
     AT(k2, 190, 0, 4100);                           /* 4 ms after */
-    AT(k1, 400, 1, 5400);                           /* hard */
-    AT(k2, 400, 1, 6400);                           /* hard */
+    AT(k1, 700, 1, 5400);                           /* hard */
+    AT(k2, 700, 1, 6400);                           /* hard */
     while (sense_event_pop(&e))
         if (e.type == SE_LAND && got < 3u)
             vs[got++] = e.a;
     if (getenv("VELO_DEBUG"))
         printf("   chord velocities %u %u %u\n", vs[0], vs[1], vs[2]);
     check("three notes inside the chord window: three landings", got == 3u);
-    check("  .. all take the first note's velocity", vs[0] == vs[1] && vs[1] == vs[2] && vs[0] < 40u);
+    check("  .. a follower takes the first note's velocity but never a lower one than its own press (DUELL 1.1: a hard note after a soft one stays hard)", vs[0] < 40u && vs[1] >= vs[0] && vs[2] >= vs[0] && vs[1] > 80u && vs[2] > 80u);
     /* outside the window: their own */
     fresh();
     prime(k0);
@@ -437,10 +444,10 @@ static void test_chord(void)
     AT(k0, 1023, 0, 0);
     AT(k0, 300, 0, 100);
     AT(k1, 1023, 0, 500);
-    AT(k0, 560, 1, 2500);
+    AT(k0, 990, 1, 2500);
     AT(k1, 1023, 0, 8000);
     AT(k1, 190, 0, 10000);                          /* 10 ms after the first */
-    AT(k1, 400, 1, 12000);
+    AT(k1, 700, 1, 12000);
     got = 0;
     while (sense_event_pop(&e))
         if (e.type == SE_LAND && got < 3u)
@@ -457,7 +464,7 @@ static void test_chord(void)
     AT(k1, 190, 0, 2300);
     AT(k0, 1023, 0, 2600);                          /* k0 lifted at once */
     AT(k0, 1023, 0, 4800);
-    AT(k1, 400, 1, 4500);
+    AT(k1, 700, 1, 4500);
     got = 0;
     while (sense_event_pop(&e))
         if (e.type == SE_LAND && got < 3u)
@@ -480,13 +487,13 @@ static void test_aftertouch(void)
         feed(k, 500, 1, 2200);
     }
     check("a light hold: aftertouch about zero", sense_at_value() <= 8u);
-    for (i = 0; i < 30; i++) {                     /* squeeze: the driven reading falls 70 counts */
+    for (i = 0; i < 30; i++) {                     /* squeeze: the driven reading falls 150 counts (item 126: SC_AT_SPAN 140 + the noise floor 6) */
         feed(k, 220, 0, 2200);
-        feed(k, 500 - (uint32_t)(70.0 * (i + 1) / 30.0), 1, 2200);
+        feed(k, 500 - (uint32_t)(150.0 * (i + 1) / 30.0), 1, 2200);
         if (sense_at_value() > max_hold)
             max_hold = sense_at_value();
     }
-    check("a squeeze of 70 counts: aftertouch reaches 100 .. 127", max_hold >= 100u && max_hold <= 127u);
+    check("a squeeze of 150 counts: aftertouch reaches 100 .. 127", max_hold >= 100u && max_hold <= 127u);
     for (i = 0; i < 20; i++) {                     /* let the squeeze off */
         feed(k, 220, 0, 2200);
         feed(k, 500, 1, 2200);
@@ -508,7 +515,7 @@ static void test_hand(void)
     sense_ev_t e;
     sense_stat_t st;
     uint8_t cal[SENSE_CAL_BYTES];
-    printf("-- the simulated hand (%u keys, Velo's spread of floors, noise, bounce, 2.2 ms sampling with jitter)\n", NK);
+    printf("-- the simulated hand (%u keys, a spread of floors, noise, bounce, 2.2 ms sampling with jitter)\n", NK);
     pl_rng = 0x2545F491u;
     keys_make();
     hand_make(&h, 600, 2, 3, 0.12);
@@ -626,7 +633,7 @@ static void test_calibration(void)
     sense_cal_get(k, &f1, &c1);
     printf("   keys drift +50:    floor %u ceiling %u\n", f1, c1);
     check("  the calibration followed a drift UP (both ends)", f1 > f0 + 10u && c1 > c0 + 10u);
-    for (round = 0; round < 4; round++) {
+    for (round = 0; round < 8; round++) {          /* (the far end of a quantile moves by 0.075 count a press, the near end by 3: the way back down takes 8 rounds of 25 counts) */
         keys[k].hard -= 25.0;
         sim_run(&h, &o);
     }
@@ -687,24 +694,24 @@ static void test_settings(void)
     fresh();
     check("ON: a note of the top 7 keys plays the fixed velocity", sense_vel(20) == SC_TOP_VEL && sense_vel(26) == SC_TOP_VEL);
     check("ON: the top 7 keys are not gated", sense_gate(1u << 22, 0) == (1u << 22));
-    /* the curve: flat 100 .. the measured range. A hard landing (driven reading 405) on a key whose range is 400 .. 580 */
+    /* the curve: flat 100 .. the measured range. A hard landing (driven reading 690) on a key whose range is 695 .. 1000 (prime) */
     fresh();
     prime(6);
     cur = 1u << 6;
     sense_curve_set(100);
-    v100 = press_vel(6, 372);
+    v100 = press_vel(6, 690);
     check("ON: the key that landed starts (gate lets it through)", v100 != 0u);
     check("curve 100: the measured range (a hard landing is well above 100)", v100 >= 115u);
     sense_curve_set(50);
     check("curve get/set", sense_curve_get() == 50u);
-    v50 = press_vel(6, 372);
+    v50 = press_vel(6, 690);
     sense_curve_set(0);
-    v0 = press_vel(6, 372);
+    v0 = press_vel(6, 690);
     check("curve 0: flat 100", v0 == 100u);
     check("curve 50: half way between 100 and the measured velocity (+-1)",
           (int)v50 - 100 - ((int)v100 - 100) / 2 >= -1 && (int)v50 - 100 - ((int)v100 - 100) / 2 <= 1);
     sense_curve_set(100);
-    v100 = press_vel(6, 610);
+    v100 = press_vel(6, 1015);
     check("curve 100: a soft landing is well below 100", v100 <= 20u);
 
     /* a note whose velocity is not in: held back; released while waiting: plays once for a block */
@@ -742,7 +749,7 @@ static void test_settings(void)
             break;
         }
         for (p = 0; p < SC_WALK_SOFT + SC_WALK_HARD; p++) {
-            uint32_t d = p < SC_WALK_SOFT ? 540u + 8u * p : 400u + 6u * p;
+            uint32_t d = p < SC_WALK_SOFT ? 960u + 8u * p : 690u + 6u * p;
             feed(k, 1023, 0, 2200);
             feed(k, 200, 0, 2200);
             feed(k, d, 1, 2200);
@@ -757,7 +764,7 @@ static void test_settings(void)
     }
     check("walk: done after 20 keys x (soft + hard) presses", sense_walk_done() && sense_walk_step(NULL, NULL) == -1);
     sense_cal_get(7, &v100, &v50);
-    check("walk: the key's floor and ceiling bracket what was pressed", v100 <= 400u + 6u * 3u && v50 >= 540u + 16u);
+    check("walk: the key's floor and ceiling bracket what was pressed", v100 <= 690u + 6u * 3u && v50 >= 960u + 16u);
     stub_saves = 0;
     sense_service(1000, 0);
     check("  sense_service does not store while a key is held", stub_saves == 0);
@@ -780,6 +787,21 @@ static void test_settings(void)
     memcpy(b2, buf, sizeof b2);
     b2[2] = 9;
     check("an unknown version is refused", sense_cal_import(b2) == 0u);
+    {   /* item 123: the old record (version 1: the ranges of Velo's unit, the owner's unit held 560 / 720) is not accepted; every key stays on the new typical range */
+        uint32_t c, kk, f, cc;
+        sense_reset();
+        memset(b2, 0, sizeof b2);
+        b2[0] = 'V', b2[1] = 'C', b2[2] = 1, b2[3] = NK;
+        for (kk = 0; kk < NK; kk++) {
+            b2[4u + 4u * kk] = (uint8_t)(560u * 64u), b2[5u + 4u * kk] = (uint8_t)((560u * 64u) >> 8);
+            b2[6u + 4u * kk] = (uint8_t)(720u * 64u), b2[7u + 4u * kk] = (uint8_t)((720u * 64u) >> 8);
+        }
+        c = sc_crc16(b2, 4u + 4u * NK);
+        b2[4u + 4u * NK] = (uint8_t)c, b2[5u + 4u * NK] = (uint8_t)(c >> 8);
+        check("a version-1 record (the old ranges, valid CRC) is refused", sense_cal_import(b2) == 0u);
+        sense_cal_get(3, &f, &cc);
+        check("  .. and the key stays on the typical range (SC_FLOOR_PRIOR .. 1000)", f == SC_FLOOR_PRIOR && cc == SC_CEIL_PRIOR && SC_CAL_VERSION == 2u);
+    }
     {
         uint32_t c;
         memcpy(b2, buf, sizeof b2);

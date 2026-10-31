@@ -21,12 +21,13 @@
  * Chunk: u16 'PT' magic, u8 version PT_VER, u8 0, then records back to back. Record (little endian):
  *   0 u16 length of the whole record     2 u8 slot (0..127)       3 u8 revision (+1 at every rewrite; a record that moved to
  *   4 u8 flags PTF_*                      5 u8 engine              another chunk exists twice for a moment: the newer wins)
- *   6 u8 category (raw, 0 none)           7 12 bytes name, 0-padded                19 u8 npairs (nvalues with PTF_BM)
- *   20 [PTF_XB] the EXTENSION BLOCK (PT_VER 3; up_xb.h: [L][XV][section]...: the 16 extension slots' values off their defaults and the hand-set B edits;
- *      it replaces the retired 2-byte shadow marker, same place)     [PTF_MB] 7 bytes End B (morph block)
- *      npairs x (u8 parameter id, u8 value + 64)  SPARSE: only what differs from the engine's INIT (the defaults of
- *      params.c, as the factory sounds' format, sounds.c). PTF_BM (a sound that differs in more than 16 values, the encoder
- *      takes whichever is shorter): a 16-byte bitmap (bit id) instead, then nvalues x (u8 value + 64) in id order
+ *   6 u8 category (raw, 0 none)           7 12 bytes name, 0-padded                19 u8 nvalues (the bits set below)
+ *   20 PT_VER 4 (ROLL CHAINED storage, 2026-10-29): the values, SPARSE: a PT_VB (20) byte bitmap, a bit per wide id (0..126 the parameter ids, 127 never,
+ *      128..155 the extension slots) that differs from its stored default (up_def: the engine's INIT, params.c, as the factory sounds' format, sounds.c;
+ *      a slot's: XTP), then those values in wide id order, each in the bits of its range (param_desc_of: value - min, LSB first; morph.c wv_bits,
+ *      bs_put), padded to the byte. Lossless: what a load fits a value to (param_fit) is what is stored. The ranges are part of the format: from the
+ *      alpha on they stay as they are (pt_limits_ok)
+ *      [PTF_MB] End B as values: morph.c's MBV block (its differences from these values, the marks of the values set by hand, FM6's End B bytes)
  *      [PTF_PAT] 16 notes + 16 flags    [PTF_FM6] the FM6 sound's patch, UPF_PK bytes
  * A write rebuilds only the chunk that changed and saves it as any storage.c object (erase the other sector, payload, commit
  * record LAST, read back): a power cut leaves the old chunk. A record that no longer fits its chunk goes to another one
@@ -216,43 +217,48 @@ static void up_values(const up_rec_t *r, int16_t *v)   /* the record's values cl
 #define PT_HDR 4u
 #define PT_MAGIC 0x5450u                         /* "PT" */
 #define PT_FIX 20u                               /* a record's fixed part */
-#define PT_VER 3u                                /* the chunk image's version (byte 2 after "PT"): 3 = the extension block (PTF_XB: replaces the retired shadow marker), 6 records a chunk, 22 chunks; 2 = DUELL 0.2.22's DUCK SRC (2 is MIDI, the channel and the note are the device's: the sidechain setup); 2 and 1 are refused (no backward compatibility before the alpha) */
+#define PT_VER 4u                                /* the chunk image's version (byte 2 after "PT"): 4 = ROLL CHAINED storage (2026-10-29: the values by wide id in the bits of their ranges, End B as values (morph.c MBV), the AK block's steps in 7 bytes; 6 records a chunk, 22 chunks); 3 and before are refused (no backward compatibility before the alpha) */
 #define PT_NONE 0xFFFFu
 #define PT_NOCH 0xFFu                            /* a directory entry with no record */
 #define PT_FULL 4                                /* up_put: no chunk has room (a guard only: PT_MAX records always fit; reads as SAVE ERROR) */
-#define PT_BMB 16u                               /* PTF_BM's bitmap: ids 0..127 */
+#define PT_VB 20u                                /* PT_VER 4: the values' bitmap, a bit per wide id (0..126 the ids, 127 never, 128..155 the extension slots) */
 #define PTF_PAT 1u
 #define PTF_TR 2u                                /* 0.2.19: the TRIM form: the loudness is the pair of P_TRIM (the PATCH TRIM) and the record carries no MIXER LEVEL (P_LEVEL is never written). A record
                                                   * WITHOUT it (0.2.14 .. 0.2.18) stored the loudness as P_LEVEL: up_rec reads that as the trim. Always set in a record written now */
 #define PTF_FM6 4u
-#define PTF_MB 8u
-#define PTF_XB 16u                               /* PT_VER 3: the EXTENSION BLOCK (up_xb.h) sits after the fixed part, where the 2-byte shadow marker was (retired 0.2.17, never written since) */
+#define PTF_MB 8u                                /* PT_VER 4: End B as values, morph.c's MBV block (was the 7-byte seed block) */
 #define PTF_AK 32u                               /* DUELL: the ARP / KEYS / SEQUENCER block (ak_* below), the record's last part */
-#define PTF_BM 64u                               /* the record's values as a bitmap + values, not (id, value) pairs (shorter above 16) */
 #define PTF_CB 128u                              /* 0.2.14: always set in a record written now (its CRUSH BITS, INS A, is the curve of ins_bits.h); a record without it is
-                                                  * of firmware before 0.2.14 and no record (pt_rec_ok). Bit 2 (2) was the drum grid, never set: 0.2.19 uses it as PTF_TR */
-#define PTF_ALL 255u
+                                                  * of firmware before 0.2.14 and no record (pt_rec_ok). Bit 2 (2) was the drum grid, never set: 0.2.19 uses it as PTF_TR. Bits 16 (the extension
+                                                  * block) and 64 (the values' bitmap form) were PT_VER 3's: not in a record now */
+#define PTF_ALL (PTF_PAT | PTF_TR | PTF_FM6 | PTF_MB | PTF_AK | PTF_CB)
 #define UPF_PK 112u                              /* an FM6 patch, FM6_PACKED 7-bit bytes packed 8 to 7 (112 bytes) */
 #define AK_MAX 190u                              /* the AK block's most bytes with its length (ak_build) */
 #define AK_NS 16u
 #define PS_STEP_N 9u                             /* patslot.c PS_STEP */
-/* the worst record: AK_WORST is a block with all sixteen values and all sixteen steps (u16 length, g, bitmap, values, step map,
- * steps); PT_W_SEQ a record that carries it with an FM6 patch, End B, a shadow marker and every other value off its default
- * (and no pattern of its own: the block's steps are it); PT_W_PLAIN one with no block but the pattern and the patch. PT_K of the
- * worst fit a chunk (its 4-byte header included), PT_MAX = PT_NCH x PT_K always fit: the limit of the store (test: patch_test) */
-#define AK_WORST (2u + 1u + 2u + 16u + 2u + PS_STEP_N * AK_NS)
-#define PT_W_SEQ (PT_FIX + XB_BLOCK_MAX + UP_MB_N + PT_BMB + (P_COUNT - 17u) + UPF_PK + AK_WORST)       /* (0.2.19: one value fewer, the MIXER LEVEL is never written; PT_VER 3: the extension block at its biggest, every slot off its default and XB_MAX edits, up_xb.h, was the 2-byte shadow marker) */
-#define PT_W_PLAIN (PT_FIX + XB_BLOCK_MAX + UP_MB_N + PT_BMB + (P_COUNT - 1u) + 32u + UPF_PK)
+#define AK_STEP_N 7u                             /* PT_VER 4: a step in the AK block: ps_pack_step's bytes 0..5 and 8 (6 and 7, the drum lane of before 0.2.14, are always 0: left out) */
+#define AK_VMAX 8u                               /* the AK block's fifteen values at the bits of their ranges (64 bits; pt_limits_ok) */
+/* the worst record (PT_VER 4, measured on every engine's ranges, ROLL_CHAIN_CHANGE.md): PT_VMAX_SEQ the Original's values when the AK block carries its
+ * fifteen (the worst engine: 820 bits, every value off its default), PT_VMAX all of them but the MIXER LEVEL (884 bits). AK_WORST is a block with all its
+ * values and all sixteen steps (u16 length, g, ordinal bitmap, values, step map, steps); PT_W_SEQ a record that carries it with an FM6 patch and End B at
+ * its biggest (MBV_MAX: every value the morph moves differs, the marks, the FM6 bytes) and no pattern of its own (the block's steps are it); PT_W_PLAIN one
+ * with no block but the pattern and the patch. PT_K of the worst fit a chunk (its 4-byte header included), PT_MAX = PT_NCH x PT_K always fit: the limit of
+ * the store (test: patch_test) */
+#define PT_VMAX_SEQ 103u
+#define PT_VMAX 111u
+#define AK_WORST (2u + 1u + 2u + AK_VMAX + 2u + AK_STEP_N * AK_NS)
+#define PT_W_SEQ (PT_FIX + PT_VB + PT_VMAX_SEQ + MBV_MAX + UPF_PK + AK_WORST)        /* 20 + 20 + 103 + 195 + 112 + 127 = 577 */
+#define PT_W_PLAIN (PT_FIX + PT_VB + PT_VMAX + MBV_MAX + 32u + UPF_PK)               /* 490 */
 #define PT_WORST (PT_W_SEQ > PT_W_PLAIN ? PT_W_SEQ : PT_W_PLAIN)
 #define PT_K ((PT_CAP - PT_HDR) / PT_WORST)
 #define PT_MAX (PT_NCH * PT_K)                   /* 132 records of the worst size: at least the 128 slots (a chunk takes a NEW record only under PT_K) */
 #if FELUCCA_FLASH
 _Static_assert(PT_CAP + ST_PAYLOAD_OFF == ST_PAYLOAD_END && PT_CAP <= ST_PAYLOAD_MAX, "a patch chunk is one storage object whose payload ends at 0xF00");
 #endif
-_Static_assert(PT_K == 6u && PT_WORST * PT_K + PT_HDR <= PT_CAP && PT_MAX >= UP_SLOTS && AK_WORST <= AK_MAX, "the store's limit: 6 records of the worst size fit a chunk, and PT_MAX is at least the slot count (all 128 always fit)");
+_Static_assert(PT_WORST == 577u && PT_K == 6u && PT_WORST * PT_K + PT_HDR <= PT_CAP && PT_MAX >= UP_SLOTS && AK_WORST <= AK_MAX, "the store's limit: 6 records of the worst size fit a chunk, and PT_MAX is at least the slot count (all 128 always fit)");
 _Static_assert(PT_NCH == 22u, "pt_obj, the erase list (erase_data.c), the backup (editor_backup.c)");
-_Static_assert(PT_FIX + XB_BLOCK_MAX + UP_MB_N + 2u * P_COUNT + 32u + UPF_PK + AK_MAX <= 768u, "pt_enc holds a record");
-_Static_assert(P_COUNT <= PT_BMB * 8u, "PTF_BM's bitmap holds every parameter id");
+_Static_assert(PT_FIX + PT_VB + PT_VMAX + MBV_MAX + 32u + UPF_PK + AK_MAX <= 768u, "pt_enc holds a record");
+_Static_assert(EXT_P_LEN <= PT_VB * 8u && P_COUNT < 255u, "the values' bitmap holds every wide id");
 /* the directory: slot -> its record and what the lists need without reading flash */
 typedef struct {
     uint16_t off, len;                           /* the record's offset in its chunk's payload, its length */
@@ -303,28 +309,40 @@ static void upf_pk_put(const uint8_t *pk, uint8_t *d)
 }
 
 static uint32_t pt_rd16(const uint8_t *p) { return (uint32_t)p[0] | (uint32_t)p[1] << 8; }
-/* where a record's optional parts start: *xb (the extension block), *mb, *pairs, *pat, *fm, *ak (offsets); the total length. The AK block (u16 length,
- * content) is last; one that does not fit the record's own length makes the total wrong (pt_rec_ok refuses it) */
+/* PT_VER 4: the bits the values of the bitmap at bm (PT_VB bytes) take for engine eng: the sum of their ranges' bits (morph.c wv_bits); bits that name no
+ * wide id (127, past the slots) count none here and make pt_rec_ok refuse the record */
+static uint32_t pt_vbits(const uint8_t *bm, uint32_t eng)
+{
+    uint32_t w, nb = 0;
+    for (w = 0; w < PT_VB * 8u; w++)
+        if ((bm[w / 8u] >> (w % 8u) & 1u) && mbv_wid(w))
+            nb += wv_bits(eng, w);
+    return nb;
+}
+/* where a record's parts start: *xbo and *pr the values (bitmap + bits), *mb End B (morph.c MBV), *pat, *fm, *ak (offsets); the total length. The AK block
+ * (u16 length, content) is last; a part that does not fit the record's own length makes the total wrong (pt_rec_ok refuses it) */
 static uint32_t pt_layout_x(const uint8_t *p, uint32_t *xbo, uint32_t *mb, uint32_t *pr, uint32_t *pat, uint32_t *fm, uint32_t *ak)
 {
-    uint32_t f = p[4], o = PT_FIX;
-    *xbo = o;
-    if (f & PTF_XB) {
-        if (o + 1u > pt_rd16(p))                 /* no byte for the block's length */
-            return o + (1u << 16);
-        o += 1u + p[o];
-    }
+    uint32_t f = p[4], o = PT_FIX, rl = pt_rd16(p);
+    *xbo = *pr = o;
+    *mb = *pat = *fm = *ak = o;
+    if (o + PT_VB > rl || p[5] >= NENGINES)
+        return o + (1u << 16);
+    o += PT_VB + (pt_vbits(p + o, p[5]) + 7u) / 8u;
     *mb = o;
-    o += f & PTF_MB ? UP_MB_N : 0u;
-    *pr = o;
-    o += f & PTF_BM ? PT_BMB + p[19] : 2u * p[19];
+    if (f & PTF_MB) {
+        uint32_t n = o < rl ? morph_bv_size(p + o, rl - o, p[5]) : 0u;
+        if (!n)
+            return o + (1u << 16);
+        o += n;
+    }
     *pat = o;
     o += f & PTF_PAT ? 32u : 0u;
     *fm = o;
     o += f & PTF_FM6 ? UPF_PK : 0u;
     *ak = o;
     if (f & PTF_AK) {
-        if (o + 2u > pt_rd16(p))
+        if (o + 2u > rl)
             return o + (1u << 16);
         o += 2u + pt_rd16(p + o);
     }
@@ -338,22 +356,40 @@ static uint32_t pt_layout(const uint8_t *p, uint32_t *xbo, uint32_t *mb, uint32_
 static int pt_rec_ok(const uint8_t *p, uint32_t rl)   /* a well-formed record of rl bytes */
 {
     uint32_t a, b, c, d, e, i, n = 0;
-    if (rl < PT_FIX || rl > PT_WORST || pt_rd16(p) != rl || p[2] >= UP_SLOTS || p[5] >= NENGINES || (p[4] & ~PTF_ALL) || !(p[4] & PTF_CB) || !p[7])
+    if (rl < PT_FIX + PT_VB || rl > PT_WORST || pt_rd16(p) != rl || p[2] >= UP_SLOTS || p[5] >= NENGINES || (p[4] & ~PTF_ALL) || !(p[4] & PTF_CB) || !p[7])
         return 0;
     if (pt_layout(p, &a, &b, &c, &d, &e) != rl)
         return 0;
-    if ((p[4] & PTF_XB) && xb_block_ok(p + a, rl - a) != 1u + p[a])   /* the block: lengths that add up, the right version, values and ids that make sense */
-        return 0;
-    if (p[4] & PTF_BM) {                         /* the bitmap: as many bits as values, none past P_COUNT */
-        for (i = 0; i < PT_BMB * 8u; i++)
-            if (p[c + i / 8u] >> (i % 8u) & 1u) {
-                if (i >= P_COUNT)
-                    return 0;
-                n++;
-            }
-        return n == p[19];
+    for (i = 0; i < PT_VB * 8u; i++)             /* the values' bitmap: as many bits as values, each a wide id (End B's block: morph_bv_size in pt_layout) */
+        if (p[c + i / 8u] >> (i % 8u) & 1u) {
+            if (!mbv_wid(i))
+                return 0;
+            n++;
+        }
+    return n == p[19];
+}
+/* the ranges keep inside the worst record's figures (PT_VMAX_SEQ, PT_VMAX, AK_VMAX, morph.c MBV_VMAX): 1 = they do. A host test asks (the parameter ranges are
+ * part of the stored format: from the alpha on they stay as they are) */
+static uint32_t ak_grp(uint32_t id);
+static int pt_limits_ok(void)
+{
+    uint32_t e, w, all, seq, ak;
+    for (e = 0; e < NENGINES; e++) {
+        for (w = 0, all = seq = ak = 0; w < EXT_P_LEN; w++) {
+            uint32_t b;
+            if (!mbv_wid(w) || w == P_LEVEL)
+                continue;
+            b = wv_bits(e, w);
+            all += b;
+            if (w < P_COUNT && ak_grp(w))
+                ak += b;
+            else
+                seq += b;
+        }
+        if ((all + 7u) / 8u > PT_VMAX || (seq + 7u) / 8u > PT_VMAX_SEQ || (ak + 7u) / 8u > AK_VMAX)
+            return 0;
     }
-    return 1;
+    return morph_bv_limits_ok();
 }
 /* ---- the flash (or, with no flash, RAM) side of a chunk ---- */
 #if FELUCCA_FLASH
@@ -509,20 +545,18 @@ static const uint8_t *pt_raw(uint32_t k)
  * part, flag PTF_AK: u16 content length, then
  *   u8 g       groups present: AK_ARP 1 (the arp's eight values P_AMODE .. P_AORDER), AK_KEYS 2 (P_CHRD P_VOIC; the SCALE slot, ordinal 8,
  *              is retired: read and discarded, never written), AK_SEQ 4 (the sequencer pattern; written when the arp mode is SEQ, as the pattern is then the arp's)
- *   u8 np      then np x (u8 parameter id, u8 value + 64): the values of the present groups that differ from the defaults
- *              (the groups' other values are the defaults); AK_SEQ's ids are LEN DIV SWING GATE QUANTIZE (LEN at most 16).
- *              With g bit 8 (AK_BM, from 3 values on: shorter) there is no np: a u16 bitmap (bit = the value's ordinal: the arp's
- *              eight 0..7, the keys' three 8..10, the sequencer's five 11..15) then one u8 (value + 64) per set bit, in ordinal order
- *   AK_SEQ:    u16 map (bit i: step i of 16 is stored; a step not stored is empty), then 9 bytes per stored step in the
- *              multi's / pattern slots' packing (patslot.c ps_pack_step: notes, time, accent, slide, RATCH, NUDGE, velocity,
- *              CHANCE, the hits)
+ *   u16 bm     PT_VER 4: a bit per value of the present groups that differs from its default (bit = the value's ordinal: the arp's eight 0..7, the keys'
+ *              three 8..10 (8, the retired SCALE, never set), the sequencer's five 11..15), then those values in ordinal order, each in the bits of its
+ *              range (param_desc_of: value - min, LSB first, morph.c bs_put), padded to the byte; AK_SEQ's ids are LEN DIV SWING GATE QUANTIZE (LEN at most 16)
+ *   AK_SEQ:    u16 map (bit i: step i of 16 is stored; a step not stored is empty), then AK_STEP_N = 7 bytes per stored step: the multi's / pattern
+ *              slots' packing (patslot.c ps_pack_step: notes, time, accent, slide, RATCH, NUDGE, velocity, CHANCE) without its bytes 6 and 7 (the drum lane
+ *              of before 0.2.14, always 0)
  * The ids of the present groups are not stored in the record's own pairs (up_rec puts them back). ARP TARGET
  * (P_ATGT) is not in it: it is the sound's own, a pair of the record as ever. The pattern is 16 steps (the record's old pattern,
  * PTF_PAT, is these steps' notes and flags: not stored twice). A MULTI holds all of it already: every part's arp values and its 64 steps (multi.c). */
 #define AK_ARP 1u
 #define AK_KEYS 2u
 #define AK_SEQ 4u
-#define AK_BM 8u                                 /* (g's bit 8: the values as a bitmap, see above) */
 static void ps_pack_step(const step_t *s, uint8_t *b);   /* (patslot.c) */
 static int ps_unpack_step(const uint8_t *b, step_t *s);
 /* the keys' three ordinals 8..10. The SCALE (ordinal 8, once the id P_SCALE) is RETIRED (owner 2026-10-12: the scale is the instrument's, core.h): a record that holds one
@@ -578,55 +612,33 @@ static int ak_step_empty(const step_t *s)
 /* content c (n bytes) of a record of engine eng -> a; 0: it is no block (ignored) */
 static int ak_dec(const uint8_t *c, uint32_t n, uint32_t eng, ak_t *a)
 {
-    uint32_t np, at = 2u, i, map;
-    int16_t *d;
-    if (n < 2u || (c[0] & ~15u) || !(c[0] & 7u))
+    uint32_t at, i, map, bm, nb = 0;
+    if (n < 3u || (c[0] & ~7u) || !(c[0] & 7u))
         return 0;
-    if (c[0] & AK_BM) {                          /* the bitmap form: a u16 (bit = ordinal), then a value per bit */
-        uint32_t bm = (uint32_t)c[1] | (uint32_t)c[2] << 8;
-        if (n < 3u)
-            return 0;
-        for (np = 0, i = 0; i < 16u; i++)
-            np += bm >> i & 1u;
-        if (3u + np > n)
-            return 0;
-        memset(a, 0, sizeof *a);
-        a->g = c[0] & 7u;
-        for (i = 0; i < 8u; i++)
-            a->arp[i] = param_desc_of(eng, P_AMODE + i)->def;
-        for (i = 0; i < 3u; i++)
-            a->key[i] = param_desc_of(eng, AK_KEYID[i])->def;
-        for (i = 0; i < 5u; i++)
-            a->seq[i] = param_desc_of(eng, AK_SEQID[i])->def;
-        for (at = 3u, i = 0; i < 16u; i++)
-            if (bm >> i & 1u) {
-                uint32_t id = ak_id(i);
-                if (!(ak_grp(id) & a->g) || c[at] > 191u)
-                    return 0;
-                *ak_slot(a, id) = (int16_t)param_fit(param_desc_of(eng, id), (int16_t)c[at] - 64);
-                at++;
-            }
-        np = 0;
-        goto seq;
-    }
-    np = c[1];
-    if (at + 2u * np > n)
-        return 0;
+    bm = (uint32_t)c[1] | (uint32_t)c[2] << 8;
     memset(a, 0, sizeof *a);
-    a->g = c[0];
+    a->g = c[0] & 7u;
     for (i = 0; i < 8u; i++)
         a->arp[i] = param_desc_of(eng, P_AMODE + i)->def;
     for (i = 0; i < 3u; i++)
         a->key[i] = param_desc_of(eng, AK_KEYID[i])->def;
     for (i = 0; i < 5u; i++)
         a->seq[i] = param_desc_of(eng, AK_SEQID[i])->def;
-    for (i = 0; i < np; i++, at += 2u) {
-        if (c[at] >= P_COUNT || !(ak_grp(c[at]) & a->g) || c[at + 1u] > 191u)
-            return 0;
-        d = ak_slot(a, c[at]);
-        *d = (int16_t)param_fit(param_desc_of(eng, c[at]), (int16_t)c[at + 1u] - 64);
-    }
-seq:
+    for (i = 0; i < 16u; i++)
+        if (bm >> i & 1u) {
+            uint32_t id = ak_id(i);
+            if (id == AK_NOSCALE || !(ak_grp(id) & a->g))
+                return 0;
+            nb += wv_bits(eng, id);
+        }
+    if (3u + (nb + 7u) / 8u > n)
+        return 0;
+    for (at = 24u, i = 0; i < 16u; i++)                  /* (bit 24: after g and bm) */
+        if (bm >> i & 1u) {
+            uint32_t id = ak_id(i);
+            *ak_slot(a, id) = (int16_t)param_fit(param_desc_of(eng, id), wv_val(eng, id, bs_get(c, &at, wv_bits(eng, id))));
+        }
+    at = 3u + (nb + 7u) / 8u;
     if (a->g & AK_SEQ) {
         if (at + 2u > n)
             return 0;
@@ -634,9 +646,15 @@ seq:
         at += 2u;
         for (i = 0; i < AK_NS; i++) {
             if (map >> i & 1u) {
-                if (at + PS_STEP_N > n || !ps_unpack_step(c + at, &a->st[i]))
+                uint8_t q[PS_STEP_N];
+                if (at + AK_STEP_N > n)
                     return 0;
-                at += PS_STEP_N;
+                memcpy(q, c + at, 6u);
+                q[6] = q[7] = 0;
+                q[8] = c[at + 6u];
+                if (!ps_unpack_step(q, &a->st[i]))
+                    return 0;
+                at += AK_STEP_N;
             } else
                 step_clear(&a->st[i]);
         }
@@ -648,50 +666,39 @@ seq:
 /* the part's AK block -> o (AK_MAX bytes): u16 length + content; the length of all. Always a block (DUELL 1.0): the arp and keys groups, SEQ with the SEQ arp */
 static uint32_t ak_build(const track_t *t, uint8_t *o)
 {
-    uint32_t eng = t->eng_req, g = AK_ARP | AK_KEYS, i, at = 4u, np = 0, map = 0;
+    uint32_t eng = t->eng_req, g = AK_ARP | AK_KEYS, i, at, map = 0, bm = 0, j, bit;
     int32_t v;
     if (motion_base_value(t, P_AMODE) == AM_SEQ)
         g |= AK_SEQ;
-    {   /* the values of the present groups that differ from the defaults, in ordinal order (ak_id) */
-        uint8_t oid[16], ov[16];
-        uint32_t bm = 0, j;
-        for (j = 0; j < 16u; j++) {
-            i = ak_id(j);
-            if (!(ak_grp(i) & g) || i == AK_NOSCALE)
-                continue;
-            v = motion_base_value(t, i);
-            if (i == P_SLEN && v > 16)
-                v = 16;
-            if (v != param_desc_of(eng, i)->def) {
-                oid[np] = (uint8_t)i;
-                ov[np++] = (uint8_t)(v + 64);
-                bm |= 1u << j;
-            }
+    memset(o, 0, AK_MAX);
+    for (bit = 40u, j = 0; j < 16u; j++) {               /* the values of the present groups that differ from the defaults, in ordinal order (ak_id), at their ranges' bits (bit 40: after the length, g and bm) */
+        i = ak_id(j);
+        if (!(ak_grp(i) & g) || i == AK_NOSCALE)
+            continue;
+        v = motion_base_value(t, i);
+        if (i == P_SLEN && v > 16)
+            v = 16;
+        v = param_fit(param_desc_of(eng, i), v);         /* (what a load fits it to: lossless) */
+        if (v != param_desc_of(eng, i)->def) {
+            bm |= 1u << j;
+            bs_put(o, &bit, wv_code(eng, i, v), wv_bits(eng, i));
         }
-        if (np > 2u) {                           /* the bitmap form is shorter from three values on */
-            g |= AK_BM;
-            o[3] = (uint8_t)bm;
-            o[4] = (uint8_t)(bm >> 8);
-            at = 5u;
-            for (j = 0; j < np; j++)
-                o[at++] = ov[j];
-        } else {
-            o[3] = (uint8_t)np;
-            for (j = 0; j < np; j++) {
-                o[at++] = oid[j];
-                o[at++] = ov[j];
-            }
-        }
-        o[2] = (uint8_t)g;
     }
+    o[2] = (uint8_t)g;
+    o[3] = (uint8_t)bm;
+    o[4] = (uint8_t)(bm >> 8);
+    at = (bit + 7u) / 8u;
     if (g & AK_SEQ) {
         uint32_t m = at;
         at += 2u;
         for (i = 0; i < AK_NS; i++)
             if (!ak_step_empty(&t->step[i])) {
+                uint8_t q[PS_STEP_N];
                 map |= 1u << i;
-                ps_pack_step(&t->step[i], o + at);
-                at += PS_STEP_N;
+                ps_pack_step(&t->step[i], q);
+                memcpy(o + at, q, 6u);                   /* (bytes 6 and 7 always 0: left out) */
+                o[at + 6u] = q[8];
+                at += AK_STEP_N;
             }
         o[m] = (uint8_t)map;
         o[m + 1u] = (uint8_t)(map >> 8);
@@ -735,16 +742,16 @@ static up_rec_t *up_rec(uint32_t k)
     memcpy(r->name, p + 7, 12);
     for (i = 0; i < P_COUNT; i++)
         up_set_value(r, i, (int16_t)up_def(r->engine, i));
-    if (p[4] & PTF_BM) {                             /* the bitmap form: a value per set bit, in id order */
-        const uint8_t *bv = p + pr + PT_BMB;
-        uint32_t j = 0;
-        for (i = 0; i < P_COUNT; i++)
-            if (p[pr + i / 8u] >> (i % 8u) & 1u)
-                up_set_value(r, i, (int16_t)bv[j++] - 64);
-    } else {
-        for (i = 0; i < p[19]; i++)
-            if (p[pr + 2u * i] < P_COUNT)
-                up_set_value(r, p[pr + 2u * i], (int16_t)p[pr + 2u * i + 1u] - 64);
+    {                                                /* PT_VER 4: a value per set bit, in wide id order, at its range's bits (the extension slots too: the others stay at their default, xz 0) */
+        uint32_t at = (pr + PT_VB) * 8u, w;
+        for (w = 0; w < EXT_P_LEN; w++)
+            if ((p[pr + w / 8u] >> (w % 8u) & 1u) && mbv_wid(w)) {
+                int32_t v = wv_val(r->engine, w, bs_get(p, &at, wv_bits(r->engine, w)));
+                if (w < P_COUNT)
+                    up_set_value(r, w, (int16_t)v);
+                else
+                    up_set_xval(r, w - XW_BASE, (int16_t)v);
+            }
     }
     if (!(p[4] & PTF_TR)) {                          /* 0.2.19: a record of before the split: its LEVEL was the sound's loudness, the trim (and the pair of its TRIM's id was the
                                                       * legacy DUCK HOLD): the trim it is; the mixer level is no record's */
@@ -752,15 +759,7 @@ static up_rec_t *up_rec(uint32_t k)
         up_set_value(r, P_LEVEL, (int16_t)up_def(r->engine, P_LEVEL));
     }
     r->packed[UP_CAT_AT] = p[6];
-    if (p[4] & PTF_XB) {                             /* the extension block: the slots it names (the others stay at their default: xz 0), the hand-set B edits */
-        uint8_t xv[NX];
-        xb_defaults(xv);
-        r->xb_n = (uint8_t)xb_block_read(p + xbo, xv, r->xb);
-        for (i = 0; i < NX; i++)
-            r->xz[i] = (uint8_t)(xv[i] ^ xb_def(i));
-    }
-    if (p[4] & PTF_MB)
-        memcpy(r->packed + UP_MB_AT, p + mb, UP_MB_N);
+    /* (End B, PTF_MB: not decoded here; up_load hands the raw block to the morph) */
     if (p[4] & PTF_PAT) {
         memcpy(r->note, p + pat, 16);
         memcpy(r->flags, p + pat + 16u, 16);
@@ -783,19 +782,13 @@ static up_rec_t *up_rec(uint32_t k)
     }
     return r;
 }
-/* r (+ the FM6 patch pk, FM6_PACKED bytes, 0 none) -> pt_enc as slot k's record, revision rev; its length */
+/* r (+ the FM6 patch pk, FM6_PACKED bytes, 0 none; End B up_bv_in, the AK block up_ak_in) -> pt_enc as slot k's record, revision rev; its length */
+static const uint8_t *up_bv_in;                  /* ROLL CHAINED storage: End B's block (morph.c MBV, up_bv_n bytes) the record up_put writes carries (0: none) */
+static uint32_t up_bv_n;
 static uint32_t pt_encode(uint32_t k, uint32_t rev, const up_rec_t *r, const uint8_t *pk)
 {
-    uint8_t *o = pt_enc, n = 0, f = 0, did[P_COUNT], dv[P_COUNT], xv[NX];
-    uint32_t i, at, mb = 0, gm, xn;
-    for (i = 0; i < NX; i++)                         /* the extension block first, built in place after the fixed part (the memset below clears only the fixed part) */
-        xv[i] = (uint8_t)(r->xz[i] ^ xb_def(i));
-    xn = xb_block_build(xv, r->xb, r->xb_n <= XB_MAX ? r->xb_n : XB_MAX, o + PT_FIX);
-    if (xn)
-        f |= PTF_XB;
-    if (r->np <= UP_MB_AT)
-        for (i = 0; i < UP_MB_N; i++)
-            mb |= r->packed[UP_MB_AT + i];
+    uint8_t *o = pt_enc, f = 0, n = 0;
+    uint32_t at, gm, w;
     if (up_ak_in && pt_rd16(up_ak_in) && up_ak_in[2])
         f |= PTF_AK;
     else
@@ -805,43 +798,40 @@ static uint32_t pt_encode(uint32_t k, uint32_t rev, const up_rec_t *r, const uin
         f |= PTF_PAT;
     if (pk && r->engine == ENGI_FM6)
         f |= PTF_FM6;
-    if (mb)
+    if (up_bv_in && up_bv_n && up_bv_n <= MBV_MAX && morph_bv_size(up_bv_in, up_bv_n, r->engine) == up_bv_n)
         f |= PTF_MB;
-    for (i = 0; i < P_COUNT; i++) {                  /* the values off their defaults (not the AK block's: it carries them) */
-        int32_t v = i < r->np && i != P_LEVEL ? up_value(r, i) : up_def(r->engine, i);   /* (0.2.19: the MIXER LEVEL is not a patch's: never written) */
-        if (v != up_def(r->engine, i) && !(ak_grp(i) & gm)) {
-            did[n] = (uint8_t)i;
-            dv[n++] = (uint8_t)(v + 64);
-        }
-    }
-    if (n > PT_BMB)                                  /* a bitmap and a byte each is shorter than a pair each from 17 on */
-        f |= PTF_BM;
-    memset(o, 0, PT_FIX);
+    memset(o, 0, PT_FIX + PT_VB + PT_VMAX);
     o[2] = (uint8_t)k;
     o[3] = (uint8_t)rev;
     o[4] = f | PTF_CB | PTF_TR;
     o[5] = r->engine;
     o[6] = r->np <= UP_CAT_AT ? r->packed[UP_CAT_AT] : 0u;
     memcpy(o + 7, r->name, 12);
-    at = PT_FIX + xn;
-    if (f & PTF_MB) {
-        memcpy(o + at, r->packed + UP_MB_AT, UP_MB_N);
-        at += UP_MB_N;
-    }
-    if (f & PTF_BM) {
-        memset(o + at, 0, PT_BMB);
-        for (i = 0; i < n; i++)
-            o[at + did[i] / 8u] |= (uint8_t)(1u << (did[i] % 8u));
-        at += PT_BMB;
-        for (i = 0; i < n; i++)
-            o[at++] = dv[i];
-    } else {
-        for (i = 0; i < n; i++) {
-            o[at++] = did[i];
-            o[at++] = dv[i];
+    at = (PT_FIX + PT_VB) * 8u;                      /* PT_VER 4: the values off their stored defaults (not the AK block's: it carries them; never the MIXER LEVEL), a bit each in the bitmap,
+                                                      * the value in its range's bits (lossless: what a load fits it to) */
+    for (w = 0; w < EXT_P_LEN; w++) {
+        int32_t v, d;
+        if (!mbv_wid(w) || w == P_LEVEL || (w < P_COUNT && (ak_grp(w) & gm)))
+            continue;
+        if (w < P_COUNT) {
+            v = w < r->np ? up_value(r, w) : up_def(r->engine, w);
+            d = up_def(r->engine, w);
+        } else {
+            v = up_xval(r, w - XW_BASE);
+            d = (int32_t)xb_def(w - XW_BASE) - 64;
+        }
+        if (wv_code(r->engine, w, v) != wv_code(r->engine, w, d)) {   /* (equal inside the range: a load fits both to the same value) */
+            o[PT_FIX + w / 8u] |= (uint8_t)(1u << (w % 8u));
+            bs_put(o, &at, wv_code(r->engine, w, v), wv_bits(r->engine, w));
+            n++;
         }
     }
     o[19] = n;
+    at = (at + 7u) / 8u;
+    if (f & PTF_MB) {
+        memcpy(o + at, up_bv_in, up_bv_n);
+        at += up_bv_n;
+    }
     if (f & PTF_PAT) {
         memcpy(o + at, r->note, 16);
         memcpy(o + at + 16u, r->flags, 16);
@@ -958,7 +948,7 @@ static int pt_put(uint32_t k, const up_rec_t *r, const uint8_t *pk)
 static int up_put_raw(uint32_t k, const uint8_t *rec, uint32_t n)
 {
     uint8_t *o = pt_enc;
-    uint32_t i, xbo, mb, pr, pat, fm;
+    uint32_t i;
     int rc;
     if (k >= UP_SLOTS || n < PT_FIX || n > PT_WORST || n > sizeof pt_enc)
         return 1;
@@ -974,16 +964,7 @@ static int up_put_raw(uint32_t k, const uint8_t *rec, uint32_t n)
     for (; i < 12u; i++)                          /* (the name is 0-padded: nothing but 0 after its end) */
         if (o[7u + i])
             return 1;
-    pt_layout(o, &xbo, &mb, &pr, &pat, &fm);      /* every stored value inside what up_rec reads (a byte, +64) */
-    if (o[4] & PTF_BM) {
-        for (i = 0; i < o[19]; i++)
-            if (o[pr + PT_BMB + i] > 191u)
-                return 1;
-    } else {
-        for (i = 0; i < o[19]; i++)
-            if (o[pr + 2u * i] >= P_COUNT || o[pr + 2u * i + 1u] > 191u)
-                return 1;
-    }
+    /* (PT_VER 4: every stored value is inside its range by its form; pt_rec_ok checked the bitmaps and End B's block) */
     if (transport_busy()) {
         ui_message("STOP TO SAVE");
         return 2;
@@ -1121,7 +1102,7 @@ static void up_auto_name(char *b, uint32_t e, uint32_t k)
 {
     char l[6];
     e %= NENGINES;
-    str_cpy(b, ENGINES[eng_safe(e)]->name, 9);   /* (a DIGITAL record plays as FM6) */
+    str_cpy(b, eng_shown(ENGINES[eng_safe(e)]->name), 9);   /* (a DIGITAL record plays as FM6) */
     up_slot_label(l, k);
     str_cpy(b + str_len(b), " ", 2);
     str_cpy(b + str_len(b), l + 1, 4);
@@ -1145,9 +1126,6 @@ static uint32_t track_cat(const track_t *t);     /* (ui.c: the category of the s
 
 /* the selected part's sound -> slot k; name 0 or "": the automatic name (up_auto_name); cat its category (CAT_*), 0:
  * the one of the sound it came from (track_cat); up_put's result */
-static const uint8_t *up_mblk;                   /* DUELL: the morph block up_store_trk writes into the record (0: none) */
-static const xb_edit_t *up_xb_in;                /* the hand-set B edit list (up_xb.h) up_store_trk writes into the record, up_xb_nin of them (0: none); set by job G, the tests */
-static uint32_t up_xb_nin;
 static int up_store_trk(track_t *t, uint32_t k, const char *name, uint32_t cat)
 {
     up_rec_t r;
@@ -1164,12 +1142,7 @@ static int up_store_trk(track_t *t, uint32_t k, const char *name, uint32_t cat)
     up_set_cat(&r, cat ? cat : track_cat(t));
     for (i = 0; i < NX; i++)                            /* the extension slots (ext.h XV), through the accessor only */
         up_set_xval(&r, i, XV(t, i));
-    if (up_xb_in && up_xb_nin) {                        /* the hand-set B edits of the part (job G: it sets up_xb_in / up_xb_nin before the save, as up_mblk) */
-        r.xb_n = (uint8_t)(up_xb_nin < XB_MAX ? up_xb_nin : XB_MAX);
-        memcpy(r.xb, up_xb_in, r.xb_n * sizeof r.xb[0]);
-    }
-    if (up_mblk)
-        memcpy(r.packed + UP_MB_AT, up_mblk, UP_MB_N);
+    /* (End B: up_bv_in, set by the caller, up_patch_save_part; its values set by hand are in it) */
     {
         uint8_t pk[FM6_PACKED], akb[AK_MAX];
         int rc;
@@ -1269,6 +1242,7 @@ static int up_load(uint32_t k)
     up_values(r, v);
     load_begin(t, UNDO_SOUND);                          /* (ui.c: the copy for SAVE held = undo) */
     panic_req |= (uint8_t)(1u << song.sel);
+    panic_keep |= (uint8_t)(1u << song.sel);            /* (a patch load: ARP KEEPS RUNNING may keep the arp's note list, seq.c) */
     {
         fm1_irq_off();                                  /* the audio ISR must not see half a sound */
         t->eng_req = r->engine;
@@ -1294,18 +1268,30 @@ static int up_load(uint32_t k)
         dkey[1] = TP[P_VOIC].def;
         ds_arp(t, 0, has && (a.g & AK_ARP) ? a.arp : darp);        /* (a lent arp back: ui.c) */
         ds_keys(t, 0, has && (a.g & AK_KEYS) ? a.key + 1 : dkey);  /* (and the chord keys: ui.c; an old record's SCALE, key[0], is dropped) */
-        ds_seq_back(t);
-        if (has && (a.g & AK_SEQ))
-            ds_seq_lend(t, &a);
+        if (!ds_kept && !(mods_keep & MODK_SEQ)) {      /* (DUELL 1.1: ARP KEEPS RUNNING with an arp-less patch, or SEQ KEEPS RUNNING: the pattern is neither given back nor lent) */
+            ds_seq_back(t);
+            if (has && (a.g & AK_SEQ))
+                ds_seq_lend(t, &a);
+        }
     }
     t->user = (uint8_t)(k + 1u);
-    morph_ld = r->np <= UP_MB_AT ? r->packed + UP_MB_AT : 0;   /* DUELL: End B saved with it (morph.c) */
-    morph_ld_e = r->xb_n ? r->xb : 0;                   /* .. and the values set by hand on it */
-    morph_ld_n = r->xb_n;
-    load_end(t);
-    morph_ld = 0;
-    morph_ld_e = 0;
-    morph_ld_n = 0;
+    {   /* ROLL CHAINED storage: End B saved with it, as values (morph.c MBV): a copy, as the read ring moves on during the load */
+        uint8_t bv[MBV_MAX];
+        const uint8_t *p = pt_raw(k);
+        uint32_t xbo, mb, pr, pat, fm, n;
+        memset(bv, 0, sizeof bv);
+        morph_ldv = 0;
+        if (p && (p[4] & PTF_MB)) {
+            pt_layout(p, &xbo, &mb, &pr, &pat, &fm);
+            n = mb < pt_rd16(p) ? morph_bv_size(p + mb, pt_rd16(p) - mb, p[5]) : 0u;
+            if (n && n <= MBV_MAX) {
+                memcpy(bv, p + mb, n);
+                morph_ldv = bv;
+            }
+        }
+        load_end(t);
+        morph_ldv = 0;
+    }
     sync_reload = 1;
     ui.force = 1;
     return 0;
@@ -1418,14 +1404,15 @@ static uint32_t sl_cat(uint32_t k)               /* its category (category.c CAT
         return up_cat(k);
     return sl_fac(k, &e, &fk) ? preset_cat(e, fk) : CAT_OTHER;
 }
-/* slot k -> the selected part: its record, else its factory sound (the ENGINE changes as the PRESETS knob did, with its message) */
-static void sl_load(uint32_t k)
+/* slot k -> the selected part: its record, else its factory sound (the ENGINE changes with it, silently: item 157, owner: no page announces an
+ * engine change, the ENGINE page and the footer show the engine). 1 = loaded, 0 = no slot k */
+static int sl_load(uint32_t k)
 {
     uint32_t e, fk;
     if (k >= UP_SLOTS)
-        return;
-    if (up_used(k) && !up_load(k))
-        return;
+        return 0;
+    if (up_used(k) && !up_load(k))                 /* (up_load: 0 = the record loaded) */
+        return 1;
     if (!sl_fac(k, &e, &fk)) {
         e = 0;
         fk = 0;
@@ -1433,6 +1420,7 @@ static void sl_load(uint32_t k)
     if (e != TSEL->eng_req)
         select_engine(e);
     apply_preset(fk);
+    return 1;
 }
 /* slot k's values as a part would load them (the editor's UP_GET): the record's, or the factory sound's on INIT: the engine's EDIT defaults,
  * the sound's pairs, its level and its arp / chord keys. 0 ok */
@@ -1547,8 +1535,10 @@ static uint8_t both_names;                       /* 1 while both parts are saved
 static int up_patch_save_part(uint32_t pi, uint32_t k)
 {
     track_t *t = &trk[pi];
-    uint8_t blk[UP_MB_N];
+    uint8_t bv[MBV_MAX];
+    int16_t ref[EXT_P_LEN];
     char nm[16];
+    uint32_t i;
     int rc;
     if (k >= UP_SLOTS)
         return 1;
@@ -1560,16 +1550,17 @@ static int up_patch_save_part(uint32_t pi, uint32_t k)
         str_cpy(nm, ds_name(t->eng_req % NENGINES, t->preset), 13);
     if (!nm[0] || str_eq(nm, "INIT"))
         up_auto_name(nm, t->eng_req, k);
-    up_mblk = morph_blk_make(pi, blk) ? blk : 0;
-    {   /* EDITABLE B: the values set by hand go into the record's extension block (after the re-roll above, which keeps them) */
-        xb_edit_t ed[XB_MAX];
-        up_xb_nin = morph_edits(pi, ed);
-        up_xb_in = up_xb_nin ? ed : 0;
-        rc = up_store_trk(t, k, nm, 0);
-        up_xb_in = 0;
-        up_xb_nin = 0;
-    }
-    up_mblk = 0;
+    (void)morph_ready(pi);                              /* ROLL CHAINED storage: End B as its values, against the Original the record stores (the values set by hand and their marks in it) */
+    memset(ref, 0, sizeof ref);
+    for (i = 0; i < P_COUNT; i++)
+        ref[i] = motion_base_value(t, i);
+    for (i = 0; i < NX; i++)
+        ref[XW_BASE + i] = (int16_t)clamp(XV(t, i), -64, 127);
+    up_bv_n = morph_bv_make(pi, ref, bv);
+    up_bv_in = up_bv_n ? bv : 0;
+    rc = up_store_trk(t, k, nm, 0);
+    up_bv_in = 0;
+    up_bv_n = 0;
     if (rc == 0 || rc == 3)
         up_adopt(pi, k);
     return rc == 3 ? 0 : rc;
@@ -1600,38 +1591,21 @@ static void patch_save_do(uint32_t both)
     ui.force = 1;
 }
 
-/* ---- RESTORE (PATCHES K4: a turn right asks; SAVE > TOOLS: RESTORE ALL) ---- */
-static void patch_restore_ask(void)
+/* ---- RESTORE (SAVE > TOOLS: RESTORE ALL; the PATCHES page's K4 RESTORE and its dialog are removed: patch_restore_do stays, the host tests call it) ---- */
+/* K4 RESTORE (owner, 2026-10-26): the selected part loads the SAVED version of the slot it plays again, its unsaved edits gone (one undo:
+ * load_begin in up_load / apply_preset). The saved record is never touched or deleted, the factory sound only comes for a slot that holds none */
+static void patch_restore_do(uint32_t k)
 {
-    uint32_t k;
-    pl_commit();                                        /* (it acts on a settled cursor) */
-    k = pl_slot();
-    if (k >= UP_SLOTS) {
-        ui_message(list_mode() == 1u ? "NO FAVORITES" : "SELECT A PATCH");
+    char l[6];
+    if (k >= UP_SLOTS || k != slot_of(TSEL))
         return;
-    }
-    if (!up_used(k)) {
-        ui_message("ALREADY FACTORY");
-        return;
-    }
     if (transport_busy()) {
         ui_message("STOP TO SAVE");
         return;
     }
-    confirm_open(CF_RESTORE, k);
-}
-static void patch_restore_do(uint32_t k)
-{
-    char l[6];
-    int rc;
     up_slot_label(l, k);
-    rc = sl_restore(k);
-    if (rc == 0)
-        ui_say("RESTORED ", l);
-    else if (rc == 3)
-        ui_message("RESTORED (RAM)");
-    else if (rc != 2)
-        ui_message("RESTORE ERROR");
+    sl_load(k);
+    ui_say("RESTORED ", l);
     ui.force = 1;
 }
 static void patch_restore_all_do(void)

@@ -33,14 +33,14 @@ static const uint16_t BENCH_MODEL_AVG[89] BENCH_RO = {
     384, /* NOISE 4 */
     213, /* WAVE 1 */
     406, /* WAVE 4 */
-    236, /* INS SOFT */
-    233, /* INS HARD */
+    236, /* INS SOFT CLIP */
+    233, /* INS HARD CLIP */
     234, /* INS FOLD */
     235, /* INS FUZZ */
-    226, /* INS CRUSH */
-    241, /* INS PHASR */
-    234, /* INS FLANG */
-    235, /* INS CHOR */
+    226, /* INS BIT CRUSHER */
+    241, /* INS PHASER */
+    234, /* INS FLANGER */
+    235, /* INS CHORUS */
     240, /* INS TAPE */
     240, /* INS VINYL */
     222, /* SAT 64 */

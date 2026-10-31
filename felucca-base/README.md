@@ -1,6 +1,6 @@
 # Felucca
 
-> **DUELL note.** This is Felucca's README, kept as it was; parts of it no longer describe DUELL. DUELL differs: two parts instead of four tracks; ten engines (ANALOG, PHASE, LOFI, VOICE, TRIO, WHEEL, PHYS, NOISE, FM6, WAVE), as SAMPLE, GRAIN and SLICE are removed with their samples and the user sample slots (0.2.9); hold FX opens PERFORM instead of the FX layer; MOMENTARY is gone; the quick edit layers are hold EDIT, LFO, ENV, ARP and GLO (SCL held: the scale layer); REC arms recording on the sequencer pages and is the HOLD switch on the others; PLAY/STOP is green when stopped and red when playing; GLO's pages are GLO (mutes and levels), TEMPO, SIDECHAIN, BASS MONO, MIDI, MODULES and MIDI LEARN. For DUELL see [../docs/QUICKSTART.md](../docs/QUICKSTART.md) and [../SPEC.md](../SPEC.md).
+> **DUELL note.** This is Felucca's README, kept as it was; parts of it no longer describe DUELL. DUELL differs: two parts instead of four tracks; ten engines (ANALOG, PHASE, LOFI, VOICE, TRIO, WHEEL, PHYSICAL, NOISE, FM6, WAVE), as SAMPLE, GRAIN and SLICE are removed with their samples and the user sample slots (0.2.9); hold FX opens PERFORM instead of the FX layer; MOMENTARY is gone; the quick edit layers are hold EDIT, LFO, ENV, ARP and GLO (SEL held: the scale layer); REC arms recording on the sequencer pages and is the HOLD switch on the others; PLAY/STOP is green when stopped and red when playing; GLO's pages are GLO (mutes and levels), TEMPO, SIDECHAIN, BASS MONO, MIDI, MODULES and MIDI LEARN. For DUELL see [../docs/QUICKSTART.md](../docs/QUICKSTART.md) and [../SPEC.md](../SPEC.md).
 >
 > **Saves may change before version 1.0.** Until the 1.0 release, the way patches, multis, settings and everything else are saved may change. Saves may stop loading between versions, and a backup made with one version may not restore in the next. Do not rely on them yet.
 
@@ -37,22 +37,22 @@ Multi-engine synthesizer firmware for the M-VAVE FM-1. Please report what you fi
   8 voices shared between them. ALGORITHM selects the track on every page
 - **Sequencer:** 64 steps per track with chords, ties, accent, slide, per-step chance, velocity and ratchets
   (a step played 2, 3 or 4 times in its length); a piano roll of the steps, where KNOB 3 sets a note's length; a drum grid (white keys =
-  steps, black keys = lanes); automation: recording of knob moves per step (an automation icon marks the cards it
+  steps, black keys = lanes); parameter locks: recording of knob moves per step (a parameter locks icon marks the cards it
   drives); live loop recording with overdub; step recording at the cursor (REC on SEQ > STEP while stopped), one
   chord at a time or note by note (MENU > CHORD ENTRY ADD); divisions listed by length, 4 bars to 1/32; loading a
   sound never touches your patterns
 - **Timing:** live recording keeps when you played each note, as a per-step **NUDGE** (1/16 of a step, half a step
   early to 7/16 late); the track's **QUANTIZE** decides what plays: ON (the default) every step on the grid, as
   always, OFF your own timing. Nudges can also be set by hand
-- **Parameter locks and the AUTOMATION list:** hold a step on SEQ > STEP (or the drum grid) and turn a knob to set
-  that parameter for that step only; EDIT with the step held clears its locks. **SEQ > AUTOMATION** is one list of
+- **Parameter locks:** hold a step on SEQ > STEP (or the drum grid) and turn a knob to set
+  that parameter for that step only; EDIT with the step held clears its locks. **SEQ > PARAMETER LOCKS** is one list of
   everything that happens on the track's steps: PLAY / CLEAR, QUANTIZE, each step's CHANCE, RATCH, NUDGE and VEL, its
   locks and automation events; change their step, parameter or value, turn a lock into automation or back, add or
   delete one. 128 records shared by the four tracks. SAVE held undoes every edit
 - **SEQ TOOLS:** hold SEQ on any page for tools on the keys: CLEAR, REVERSE, SHIFT < / >, **RANDOM** (a new beat,
   or new notes in the scale on the same rhythm) and **COOK** (changes the pattern a little each press); on a DRUM
   track also BEAT and each lane's CLEAR, REVERSE, FILL and RANDOM; KNOB 1–4 are LEN, DIV, SWING and GATE. Each tool
-  is one undo (SAVE held); OCT− puts the track back as the layer found it
+  is one undo (SAVE held); OCT - puts the track back as the layer found it
 - **Metronome and count-in:** CLICK (OFF, while recording, or always) with three levels, and a count-in
   of 1 or 2 bars before recording from stop; the click goes to the headphones and speaker only, never to
   USB audio or into a pattern
@@ -69,7 +69,7 @@ Multi-engine synthesizer firmware for the M-VAVE FM-1. Please report what you fi
   LFO cycle, held or gliding), and **DEPTH** as a destination, so the matrix can modulate the LFO itself
 - **SPREAD** (EDIT > VOICE 2/2): the voices of a POLY or UNISON track alternate left and right of its PAN
 - **ENV SYNC** (ENV > ENV DEST): the envelope's attack, decay and release as note values of the tempo
-- **Effects:** distortion, an **INSERT** (drives, CRUSH, phaser, flanger, chorus, with a dry / wet MIX) and the
+- **Effects:** distortion, an **INSERT** (drives, BIT CRUSHER, phaser, flanger, chorus, with a dry / wet MIX) and the
   SLICER per track; chorus, delay and reverb sends (the reverb as
   **HALL**, ROOM, SPRING, SHIM, RESO or PLATE; HALL is a smooth stereo reverb, the default on a fresh start); master limiter
 - **FX layer:** hold FX for repeat, reverse, filter sweeps, tape stop, freeze, a harmonizer
@@ -77,16 +77,16 @@ Multi-engine synthesizer firmware for the M-VAVE FM-1. Please report what you fi
   any white key can hold any effect (hold the key in the layer and turn PRESETS); MENU > FX LATCH makes them toggle,
   so nothing has to stay held
 - **MOMENTARY:** hold LFO and turn a knob on HOME or a sound / FX page; let go of LFO and the value jumps back
-  (OCT+ while holding keeps it)
-- **Quick layers:** hold FX, GLO, SCL, EDIT, REC or SEQ for shortcuts on the keys and knobs, or double-tap it to
-  keep the layer open; one-step undo (SAVE held); REC on every page; OCT+ confirms, OCT- goes back; what can be
+  (OCT + while holding keeps it)
+- **Quick layers:** hold FX, GLO, SEL, EDIT, REC or SEQ for shortcuts on the keys and knobs, or double-tap it to
+  keep the layer open; one-step undo (SAVE held); REC on every page; OCT + confirms, OCT - goes back; what can be
   pressed breathes softly instead of blinking
 - **Presets:** factory presets, 32 user preset slots and 4 projects, named on the device (an FM6
   sound keeps its own patch in both); user presets get a category, and a project can get a random name; projects
   from every earlier version load. The PRESETS knob changes the sound from every page that is not a list.
   Turn the FM-1 off and on and the music is as you left it (MENU > RESTORE LAST, an autosave of its own,
   written only when stopped and idle)
-- **Hold SAVE saves your sound over a patch slot** (OVERWRITE #12 <name>?: the slot it came from, knob 1 picks another, OCT+ yes); on PATTERNS and MULTIS it saves over the
+- **Hold SAVE saves your sound over a patch slot** (OVERWRITE #12 <name>?: the slot it came from, knob 1 picks another, OCT + yes); on PATTERNS and MULTIS it saves over the
   slot picked. A short press of SAVE opens PATTERNS from the sequencer, otherwise MULTIS in LAYER and PATCHES in DUEL and STEREO
 - **Screen:** flat UI with Inter Tight and Fukiai icons, 10 palettes including
   grayscale, black and white, high contrast and NIGHT; type in sizes by role (what you read in the larger size,
@@ -116,14 +116,14 @@ Multi-engine synthesizer firmware for the M-VAVE FM-1. Please report what you fi
 
 ## New in 1.5
 
-- **An INSERT effect on every track, with a dry / wet MIX** (Discussions #78, #177): FX → INSERT. KNOB 1 TYPE: SOFT,
-  HARD, FOLD, FUZZ (drives: DRIVE, TONE, LEVEL), CRUSH (BITS, RATE, LPF), PHASR, FLANG, CHOR (RATE, DEPTH, FDBK);
+- **An INSERT effect on every track, with a dry / wet MIX** (Discussions #78, #177): FX → INSERT. KNOB 1 TYPE: SOFT CLIP,
+  HARD CLIP, FOLD, FUZZ (drives: DRIVE, TONE, LEVEL), BIT CRUSHER (BITS, RATE, LPF), PHASER, FLANGER, CHORUS (RATE, DEPTH, FDBK);
   INSERT 2: MIX. It comes after SAT and before the SLICER, is part of the sound (user presets and projects keep it)
-  and works with automation and locks. TYPE OFF, the default, plays exactly as before.
+  and works with parameter locks. TYPE OFF, the default, plays exactly as before.
 - **MIDI LEARN** (Discussion #170): on any page hold GLO and press D4 (MIDI LEARN ON), turn the FM-1 knob of a
   parameter, then move a knob or fader on your controller: that CC now sets the parameter (the header says e.g.
-  "CC74 -> T1 CUT"). Turn the next knob and move the next control; OCT− clears the picked parameter's CC, OCT+ (or
-  GLO + D4 again) ends it. Up to 16 CCs, kept with the settings; **MENU > MIDI > LEARN CLEAR** (OCT+) clears them all.
+  "CC74 -> T1 CUT"). Turn the next knob and move the next control; OCT - clears the picked parameter's CC, OCT + (or
+  GLO + D4 again) ends it. Up to 16 CCs, kept with the settings; **MENU > MIDI > LEARN CLEAR** (OCT +) clears them all.
   Nothing changes for anyone who never learns.
 - **ANALOG's filter TYPE: LP, BP, HP** (Discussion #104): EDIT → VCF, a page an ANALOG track has after EDIT 2:
   KNOB 1 TYPE (LP the low-pass as before, BP band-pass, HP high-pass), KNOB 2–4 CUT, RES, KTR.
@@ -131,10 +131,10 @@ Multi-engine synthesizer firmware for the M-VAVE FM-1. Please report what you fi
   (1/64T to 4 bars, dotted and triplets) instead of milliseconds; they follow the tempo and an external clock.
 - **A note's length on the piano roll** (Discussions #178, #173): on SEQ → STEP, KNOB 3 on a note step is its **LEN**:
   right ties the steps after it on, left takes them back. It stops before the next note ("NOTE AHEAD").
-- **Per-step velocity** (Discussion #173): SEQ → AUTOMATION, **+ ADD VEL** (OCT+: SHOW) lists every note step's
+- **Per-step velocity** (Discussion #173): SEQ → PARAMETER LOCKS, **+ ADD VEL** (OCT +: SHOW) lists every note step's
   velocity, KNOB 4 sets it (1–127). Steps entered by hand play 96, steps recorded live keep how hard you played.
 - **SAVE reaches PRESETS on its second tap** (#173): SAVE's pages go USER, PRESETS, PHRASES, PROJECT, TOOLS. The quick
-  save (SAVE, OCT+, OCT+) is unchanged.
+  save (SAVE, OCT +, OCT +) is unchanged.
 - **The FX layer's map alternates light and dark columns** (#173), so neighbouring effects are told apart at a glance.
 - **HOME LEVELS** (#134): MENU > DISPLAY > HOME has a third value, LEVELS: HOME shows the four tracks' rows and
   KNOB 1–4 set the LEVEL of T1–T4.
@@ -154,7 +154,7 @@ Multi-engine synthesizer firmware for the M-VAVE FM-1. Please report what you fi
   engine offers, and the map shows it. On a DRUM track, black keys 1–8 (F#3 … A#4) mute its lanes KICK, SNARE, CLAP,
   HATCL, HATOP, TOM, RIM and BELL, one press to mute, the next to unmute. The LEDs show which lanes sound, the drum
   grid dims a muted lane. A muted lane keeps playing unheard, so unmuting brings it back in time. The mutes are for
-  live play: never saved, not recorded, not undone; a sound or project load clears them, OCT− in the layer puts them
+  live play: never saved, not recorded, not undone; a sound or project load clears them, OCT - in the layer puts them
   back as they were when it opened. Other engines have no quick actions yet.
 - **FM6 voice bank** (Discussion #168). The web editor's 6-OP FM tab sends a whole 32-voice SysEx bank (the standard
   4096-byte file) to the FM-1 in one go, with its name. On an FM6 track SLOT (EDIT 2, KNOB 4) now goes F1–F8, OWN,
@@ -177,7 +177,7 @@ where marked here:
 - **ARP ORD now plays the held notes in the order you pressed them** (up to 1.1.5 it played them as UP): a sound
   or project using ORD sounds different when its notes were pressed in another order than low to high.
 - **SAMPLE's PIANO** was a lighter lo-fi piano in 1.4 and 1.4.1; since 1.5 it is the full piano of 1.1.5 again.
-- **The pages moved** (Discussion #153): see Controls below. In short: SEQ is STEP and AUTOMATION; **SEQ held is SEQ
+- **The pages moved** (Discussion #153): see Controls below. In short: SEQ is STEP and PARAMETER LOCKS; **SEQ held is SEQ
   TOOLS on every page** (it no longer opens SONG); PHRASES is on SAVE; HOME goes round HOME
   and MIXER; GLO opens CLOCK (TEMPO, swing, clock source) then SONG; TUNE is MENU > AUDIO, MIDI IN (ROUT) is MENU > MIDI, and the USB state
   and CPU load are MENU > SYSTEM > ABOUT and TEST. REC held is the REC layer as before.
@@ -193,12 +193,12 @@ where marked here:
 ![FM-1 controls with Felucca](docs/controls.jpg)
 
 - Tap a page button for its page, again for the next; HOME returns home. Page buttons act when let go
-- Hold FX, GLO, SCL, EDIT, REC or SEQ for its quick layer; hold SAVE to undo, HOME for the menu; hold LFO and turn a
+- Hold FX, GLO, SEL, EDIT, REC or SEQ for its quick layer; hold SAVE to undo, HOME for the menu; hold LFO and turn a
   knob for a MOMENTARY change
 - Double-tap a layer's button to keep its layer open without holding; tap it again to close
 - On SEQ > STEP, hold a step and turn KNOB 1–4 to lock those parameters on that step (PRESETS: its NUDGE)
-- On action pages and in dialogs, OCT+ does it and OCT− goes back; in the menu, OCT+ / OCT− change the value and HOME closes it
-- Save a sound: stop, tap SAVE, pick a slot with KNOB 1, then OCT+ and OCT+ again (name it with the keys)
+- On action pages and in dialogs, OCT + does it and OCT - goes back; in the menu, OCT + / OCT - change the value and HOME closes it
+- Save a sound: stop, tap SAVE, pick a slot with KNOB 1, then OCT + and OCT + again (name it with the keys)
 
 **SELECT** (DUELL) turns to the previous / next page of the button's round shown (the same pages a tap of the button
 goes round), wrapping; in the menu it moves the row. It is never the tempo: the tempo is GLO > CLOCK, KNOB 1 (TEMPO).
@@ -208,12 +208,12 @@ The pages by button:
 | Button | Taps go round | Held |
 |---|---|---|
 | HOME | HOME, MIXER | the menu |
-| SEQ | STEP (the piano roll, or the drum grid), AUTOMATION | SEQ TOOLS, on every page |
+| SEQ | STEP (the piano roll, or the drum grid), PARAMETER LOCKS | SEQ TOOLS, on every page |
 | GLO | CLOCK (KNOB 1 TEMPO, EXT with an external clock; swing, clock source), SONG | the GLO layer (mutes, solos, levels, TAP tempo, D4: MIDI LEARN) |
 | SAVE | USER, PRESETS, PHRASES (the pattern loader), PROJECT, TOOLS | UNDO |
 | LFO | LFO, LFO 2, LFO DEST, MOD | MOMENTARY (with a knob) |
 | EDIT | EDIT 1, EDIT 2, VOICE 1/2, VOICE 2/2 (FM6 adds OPERATOR, OP ENV, OPERATOR 2; DRUM LANES; SLICE SLICES; ANALOG VCF) | the EDIT layer (the engines; on DRUM the black keys mute lanes) |
-| FX, SCL, ENV, ARP | their pages (FX: INSERT and INSERT 2 after the SLICER) | FX and SCL: their layers |
+| FX, SEL, ENV, ARP | their pages (FX: INSERT and INSERT 2 after the SLICER) | FX and SEL: their layers |
 | REC | arms the track | the REC layer (CLEAR, CLICK, COUNT-IN, CLICK LEVEL) |
 
 ## Menu
@@ -222,13 +222,13 @@ Hold **HOME** for the menu, in four tabs: **DISPLAY** (COLOR, ANIM, LEDS, SCREEN
 **CONTROL** (HOLD, KNOB ACCEL, FX LATCH, SCALE LEDS, STEP PREVIEW, CHORD ENTRY), **AUDIO** (SPEAKER EQ,
 CLICK, CLICK LEVEL, COUNT-IN, TUNE) and **SYSTEM** (USB SERIAL,
 RESTORE LAST, HARDWARE CALIBRATION, TEST, ABOUT, ERASE DATA).
-ALGORITHM moves between the tabs and PRESETS through the rows of one; any of KNOB 1–4, or OCT+ / OCT−,
-changes the value (OCT+ opens HARDWARE CALIBRATION, TEST and ABOUT); press HOME to close the menu. Every new
+ALGORITHM moves between the tabs and PRESETS through the rows of one; any of KNOB 1–4, or OCT + / OCT -,
+changes the value (OCT + opens HARDWARE CALIBRATION, TEST and ABOUT); press HOME to close the menu. Every new
 setting defaults to the earlier behaviour. The web editor's Settings tab reads and changes them too, saved the same
 way as from the menu, in the same tabs.
 
 - **COLOR:** the palette. GREY (grayscale, called MONO up to 1.0.1), GREEN, AMBER, ICE, VIOLET, ROSE,
-  PAPER (light), HI-CON (high contrast), NIGHT (the 0.9 look: true black, green-tinted text) and MONO
+  PAPER (light), POLICE (high contrast), NIGHT (the 0.9 look: true black, green-tinted text) and MONO
   (black and white)
 - **ANIM:** ON, OFF or IDLE. OFF shows every change at once, without rolling digits, a gliding piano roll or
   the LED sweep at power-on. IDLE is ON plus a gentle LED animation after a minute without input: a soft light drifts
@@ -249,7 +249,7 @@ way as from the menu, in the same tabs.
   per click, up to 8 on values of more than 64 steps, the FX and GLO layers' knobs included; lists never
   jump. ON or OFF, every click of a fast turn counts
 - **FX LATCH:** ON, FX + an effect key turns the effect on until pressed again, the knob macros stay
-  where you leave them, and FX + OCT− turns everything off
+  where you leave them, and FX + OCT - turns everything off
 - **SCALE LEDS:** AUTO (default) or OFF: with a scale other than CHROMATIC the keys show it all the time (the root
   fully lit, the scale's other keys a little dimmer); not on DRUM or SLICE tracks
 - **STEP PREVIEW:** OFF (default) or ON: on SEQ > STEP with the transport stopped, moving the cursor plays the step
@@ -266,7 +266,7 @@ way as from the menu, in the same tabs.
   CLICK OFF), and a note played in the last half beat lands on step 1. Not with an external clock
 - **TUNE:** the master tuning as the frequency of A4 in Hz, 415.3 to 466.2 Hz in steps of 0.1 Hz (440.0 Hz at first; DUELL 0.2.22: up to 0.2.21 it was −50 to +50 cents). It is the project's, saved and loaded with it
 - **MIDI IN:** CH1-4 (default), SEL, CH5-8, CH9-12 or CH13-16 (see MIDI above). The project's too
-- **LEARN CLEAR:** how many CCs MIDI LEARN has set (NONE, 1 CC … 16 CC); OCT+ clears them all
+- **LEARN CLEAR:** how many CCs MIDI LEARN has set (NONE, 1 CC … 16 CC); OCT + clears them all
 - **USB SERIAL** (developer builds only since memory trim 1; the product has no serial console and no such row): ON or OFF, applied when the menu closes (the FM-1 reconnects). OFF leaves out the
   serial console, a developer tool, so the FM-1 is a plain audio + MIDI device; this lets macOS 13–15
   see its USB audio input. MIDI, the editor and the installer work either way
@@ -293,7 +293,7 @@ In the order the device lists them:
 - **TRIO**: 3 oscillators with ring modulation and sync, multimode filter
 - **WHEEL**: tonewheel-style organ; drawbar registrations, percussion, key click, drive, rotary speaker
 - **GRAIN**: granular textures from the built-in samples or a user slot
-- **PHYS**: physical models: modal resonators, strings, struck membranes, sympathetic strings
+- **PHYSICAL**: physical models: modal resonators, strings, struck membranes, sympathetic strings
 - **NOISE**: noise from analog to digital: colours, crackle, shift-register and metallic tones
 - **SLICE**: a drum break, a piano note (both built in) or your own sample cut into slices, one per key;
   set the slices by hand on the SLICES page
@@ -325,10 +325,10 @@ default up to 1.1.5), **SPRING**, **SHIM** (ROOM with an octave-up shimmer fed b
 
 ## Scale keyboard
 
-DUELL has ONE global scale for the whole instrument (both parts, every output mode). On the **SCL** button's first page, **SCALE** (global),
+DUELL has ONE global scale for the whole instrument (both parts, every output mode). On the first page of the scale button (**SEL**), **SCALE** (global),
 K1 sets the SCALE, K2 the ROOT and K3 **OFF-SCALE**: **SNAP** (the default) moves a key or MIDI note outside the scale to the nearest scale
 note (a tie goes down), **PLAY** lets it sound as it is. The default scale is CHROMATIC (nothing to snap; OFF-SCALE is faded and says so).
-**TRN** (the part's, on the CHORD page) transposes the keys; the octave buttons shift them by full octaves. The scale is a device setting:
+**TRN** (the part's, on the CHORD page) transposes the keys; the OCT - and OCT + buttons shift them by full octaves. The scale is a device setting:
 no patch, part, multi or factory sound stores it. The arp and the SEQUENCER steps follow it (steps move onto the scale, or in semitones
 when CHROMATIC).
 
@@ -339,7 +339,7 @@ minor blues (BLUES), whole tone (WHOLE), half-whole diminished (DIMHW), and
 whole-half diminished (DIMWH).
 Drum kits keep their own note mapping (never snapped); incoming MIDI notes follow the same SNAP / PLAY rule as the keys.
 
-Press **SCL** again for the **CHORD** page: CHRD picks the chord keys (OFF, the scale's triads or
+Press the scale button (**SEL**) again for the **CHORD** page: CHRD picks the chord keys (OFF, the scale's triads or
 sevenths, or a fixed shape) and VOIC the voicing.
 
 ## Layout
@@ -392,7 +392,7 @@ For more details, see [On AI-Assisted Development and Responsibility](https://gi
   the browser emulator's labels: [DotGothic16](https://github.com/fontworks-fonts/DotGothic16) by The DotGothic16 Project Authors, [SIL OFL 1.1](LICENSES/OFL-DotGothic16.txt)
 - Samples: [Versilian Studios](https://versilian-studios.com/) [VSCO-2 Community Edition](https://github.com/sgossner/VSCO-2-CE) and [VCSL](https://github.com/sgossner/VCSL), CC0 1.0: the SAMPLE sets, also SLICE's PIANO and PIANO HD ([attribution](assets/samples-cc0/ATTRIBUTION.txt))
 - VOICE engine: after [klattsch](https://github.com/tgies/klattsch) by Tony Gies (MIT); formant data from Klatt (1980) and Hillenbrand et al. (1995)
-- PHYS engine: models ported from [DaisySP](https://github.com/electro-smith/DaisySP) by Electrosmith and Emilie Gillet ([MIT](LICENSES/MIT-DaisySP.txt)) and from Emilie Gillet's [eurorack](https://github.com/pichenettes/eurorack) code ([MIT](LICENSES/MIT-Rings.txt))
+- PHYSICAL engine: models ported from [DaisySP](https://github.com/electro-smith/DaisySP) by Electrosmith and Emilie Gillet ([MIT](LICENSES/MIT-DaisySP.txt)) and from Emilie Gillet's [eurorack](https://github.com/pichenettes/eurorack) code ([MIT](LICENSES/MIT-Rings.txt))
 - FM6 engine: msfa from [Dexed](https://github.com/asb2m10/dexed) by Google Inc. and Pascal Gauthier ([Apache-2.0](LICENSES/Apache-2.0-msfa.txt))
 - Browser emulator: after [X0X](https://github.com/charlesvestal/fm1-x0x) by [charlesvestal](https://github.com/charlesvestal) (GPL-3.0), a Felucca fork whose browser build showed the way
 - Package format and boot files: [JieLi AC79 SDK](https://gitee.com/Jieli-Tech/fw-AC79_AIoT_SDK) ([Apache-2.0](LICENSES/Apache-2.0.txt); three of its files are in every package, none in this tree)

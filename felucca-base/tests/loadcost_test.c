@@ -452,7 +452,7 @@ static void pre_mods(uint32_t a) { mods_put(a, 1u); }
 /* ------------------------------------------------------------------ the table --- */
 static const char *const ENGN[12] = {"ANALOG", "FM6", "PHASE", "LOFI", "SAMPLE", "VOICE", "TRIO", "WHEEL", "GRAIN", "PHYS", "NOISE", "SLICE"};
 static const char *const RN[6] = {"ROOM", "SPRING", "HALL", "SHIM", "RESO", "PLATE"};
-static const char *const IN[9] = {"OFF", "SOFT", "HARD", "FOLD", "FUZZ", "CRUSH", "PHASER", "FLANGER", "CHORUS"};
+static const char *const IN[9] = {"OFF", "SOFT CLIP", "HARD CLIP", "FOLD", "FUZZ", "BIT CRUSHER", "PHASER", "FLANGER", "CHORUS"};
 static char cname[112];
 
 static void guards(void)

@@ -10,46 +10,61 @@
  * makes the numbers depend on the settings only, not on the order of the calls, on what plays or on a half-solved other number, and switching an item on
  * can only lower them (an earlier version that gave the cheaper part the leftover notes raised one part's number when the other got dearer). A part that
  * is muted costs nothing. Never below 1 a part.
- * This is the ONE-core definition: one core runs everything. Nothing here runs per sample: flash code, called when a setting changes
+ * DUELL 1.1 (HANDOFF_V2 item 90) THE TWO-CORE RULE (release_drafts/TWO_CORE_DESIGN.md 3.4): while core 1 plays a part (bd_two_now), each part has its own core and its number
+ * no longer depends on the other part: notes(part) = floor((limit - global - this part's stages) / this part's cost) (item 132: the hand-over BUDGET_HO no longer charged). The globals are counted on BOTH cores:
+ * core 0 runs them after it has waited for core 1's part (fx.c mix_block: post, part 1, wait, gather, sends, master), so they are on core 1's path too. The moment core 1
+ * pauses or stops, the one-core numbers (bnotes1, always worked out) are in force again (voice.c trk_nvoice reads them while bd_one_now is set by the runner, which fades
+ * the notes above them at once: twocore_run.c).
+ * The one-core rule: one core runs everything. Nothing here runs per sample: flash code, called when a setting changes
  * (budget_poll, once a UI frame) and by the tests; the note-on path (voice.c trk_nvoice) reads the numbers it left in bnotes[].
  *
- * The cost table is ONE table, in the units of tests/bench_baseline.txt (host instructions a sample, the bench's Mac figures); BD_U turns
- * them into 1/100 % and applies BUDGET_MARGIN. Where a line says "bench" it is a row of that file; the other lines are marked:
- *   (lin)  measured on Linux with valgrind (callgrind) in the bench's way, 4 ANALOG voices, a slot / an LFO / the arp against none: gcc's
- *          counts differ from the Mac's (the multimode filter and the EQ read 1.5 to 2 x there), so only the ratios were used;
- *   (old)  the VOICE CAP's figures of 0.2.11 (voice.c VC_MORPH, VC_FADE: 0.5 % and 2 % a voice).
- * They are for the model only: the unit is not measured yet (stage 2 of CPU_PLAN). The device runs 0.75 to 0.9 of these; the margin and
- * the 20 % kept back are the cover. */
+ * The cost table is ONE table, in host instructions a sample (the load bench's scale, tests/cpu_bench.c: 3281.25 = 100 % of a half); BD_U turns them into 1/100 % and
+ * applies BUDGET_MARGIN. DUELL 1.1 item 90 re-measured it on the 1.1 sources (2026-10-25):
+ *   (cal)    tests/poly_calib.c: the cost of ONE MORE note (5 notes less 1 note, over 4), every factory sound of the engine cleaned of TWIN / SUB / matrix, the dearest one;
+ *            the filter and TWIN rows are the dearest paired difference (the same sound with and without). The part's own work that runs once while it sounds is BD_PART_ON
+ *            (before item 90 every voice paid it, and the TWIN rows were estimates: the old table read 1.2 to 1.4 x the measured note);
+ *   (bench)  tests/cpu_bench.c on the same sources (inserts, SAT, EQ, DUCK, the buses, the master stages);
+ *   (lin)    measured on Linux with valgrind in the bench's way (a slot, an LFO, the arp): only the ratios were used;
+ *   (old)    the VOICE CAP's figures of 0.2.11 (voice.c VC_MORPH, VC_FADE).
+ * The unit: the one-core bench B2 of 2026-10-18 on the owner's unit read 0.90 .. 1.08 x the same host model for every engine's voice rows (release_drafts/bench_results/
+ * bench_B2_run1_core1off_2026-10-18.csv); BUDGET_MARGIN (1.15) stays. DUELL 1.1 item 132 (owner): BUDGET_LIMIT 80 -> 90 % (both rules), the hand-over no longer charged; the
+ * two-core runner's deadline (twocore_run.c tcr_deadline: part_fixed, part_cost, global_cost, i.e. BD_U with the margin) reads neither and is unchanged (tests/deadline_test.c).
+ * DUELL 1.1 item 137 (owner): BUDGET_MARGIN 1.15 -> 1.00 (the caps charge the measured cost) and BUDGET_LIMIT 88 -> 81 (model + 6 points of peak fits core 0 and core 1: budget.h); the runner's
+ * deadline and wait limit read the _dl figures (BD_UDL, BUDGET_DL_MARGIN 1.15) and stay bit for bit (tests/deadline_test.c).
+ * DUELL 1.1 item 142 (owner-approved, HANDOFF_V2 items 139 / 140): a part's MORPH ends are charged as they SOUND (bd_end: morph_apply on the live values), not as stored, so an edit
+ * after a load (TWIN OFF, 24 -> 12 dB) is no longer charged at both ends; every factory patch and multi as loaded gives the same items as before (tests/budget_test.c). BUDGET_LIMIT
+ * 81 -> 84 with the runner's wait limit at true cost (twocore_run.c tcr_deadline, budget.h).
+ * DUELL 1.1 item 147 (owner): SAT is charged like the filters and the TWIN, from its played value at the morph's ends (live on, or on at either end as it sounds), not from the live value only;
+ * the cap may differ for a patch whose SAT is on at End B only (tests/budget_test.c item 147 (f)). */
 
 #include "budget.h"
 
-#define BD_U(i) ((((uint32_t)(i)) * 64u * BUDGET_MARGIN + 2099u) / 2100u)   /* host instructions a sample -> 1/100 % (3281.25 = 100 %), margin applied, rounded up */
+#define BD_UM(i, m) ((((uint32_t)(i)) * 64u * (m) + 2099u) / 2100u)   /* host instructions a sample -> 1/100 % (3281.25 = 100 %), margin m (percent) applied, rounded up */
+#define BD_U(i) BD_UM(i, BUDGET_MARGIN)                 /* the NOTES caps (item 137: margin 1.00) */
+#define BD_UDL(i) BD_UM(i, BUDGET_DL_MARGIN)            /* the two-core runner's deadline and wait limit (item 137: the 1.15 they always had) */
 
 /* ----------------------------------------------------------------- the table (host instructions a sample) --- */
-/* one voice of an engine: bench voice/<ENGINE> is its dearest factory sound, and every factory sound runs the 12 dB multimode filter (KEY TRK 32 keeps it
- * out of the bypass), so the filter's BD_F12 is taken out of the row here and put back by the slope the part really has */
-#define BD_F12 39u              /* the multimode filter a voice, 12 dB: 4.8 % for 4 voices (uf_test.c: under 70 a voice) */
-#define BD_F24 71u              /* .. 24 dB: 8.6 % for 4 voices (uf_test.c: under 110 a voice) */
-/* cloud job J (the engine filters left): ANALOG, TRIO and NOISE no longer run a filter of their own, so their rows drop by what it cost (est.: the mid values of TWIN_FILTER_DESIGN_2 4.1, 13 .. 20,
- * 20 .. 26 and 23 .. 30 host instructions a sample; no instruction counter here, the owner's Mac bench replaces them). Their filter is filter 1 now (bd_slope), which the bench rows already
- * had in (KEY TRK 32 kept it out of the bypass) */
-#define BD_RM_ANALOG 17u        /* est. */
-#define BD_RM_TRIO 23u          /* est. */
-#define BD_RM_NOISE 27u         /* est. */
-static const struct { const engine_t *e; uint16_t c; } BD_ENG[] = {
-    {&ENG_ANALOG, 235 - BD_F12 - BD_RM_ANALOG}, {&ENG_FM6, 266 - BD_F12}, {&ENG_PHASE, 210 - BD_F12}, {&ENG_LOFI, 159 - BD_F12}, {&ENG_FORMANT, 270 - BD_F12},   /* (FORMANT is the engine VOICE) */
-    {&ENG_TRIO, 238 - BD_F12 - BD_RM_TRIO}, {&ENG_WHEEL, 253 - BD_F12}, {&ENG_PHYS, 511 - BD_F12}, {&ENG_NOISE, 232 - BD_F12 - BD_RM_NOISE}, {&ENG_WAVE, 234 - BD_F12},
+/* one more note of an engine with the multimode filter bypassed (cal); the filter (MULTI) is added by the slope the part really has. BD_F12 holds the chain path too: with
+ * CHAIN_ALL every note whose filter 1 runs goes through the voice chain (voice_chain.c), and the calibration measured them together */
+#define BD_F12 89u              /* MULTI 12 dB a note, the chain path included (cal: the dearest paired difference, all engines 83 .. 89) */
+#define BD_F24 123u             /* .. 24 dB (cal: 115 .. 123) */
+/* DUELL 1.1 item 116: COST-CAL (bench_runs/cost_merged/cost_fit/report.txt, 625 + 124 runs on the unit's own counter, 2026-10-26): per engine the DEARER of the one-core row and the two-core
+ * critical-path row, rounded up (the model charges one row on both paths; only WAVE differs by more than 3 %: 93 one core, 119 on the critical path) */
+static const struct { const engine_t *e; uint16_t c; } BD_ENG[] = {   /* (cal) */
+    {&ENG_ANALOG, 115}, {&ENG_FM6, 152}, {&ENG_PHASE, 99}, {&ENG_LOFI, 53}, {&ENG_FORMANT, 173},   /* (FORMANT is the engine VOICE) */
+    {&ENG_TRIO, 105}, {&ENG_WHEEL, 154}, {&ENG_PHYS, 406}, {&ENG_NOISE, 87}, {&ENG_WAVE, 119},
 };
-#define BD_ENG_DEF (270u - BD_F12)   /* an engine not in the table: as the dearest of the normal ones */
+#define BD_ENG_DEF 200u         /* an engine not in the table: above the dearest of the normal ones */
+#define BD_PART_ON 64u          /* the part's own work while it sounds, once whatever the number of notes (cal: the first note's extra over the next ones, 39 .. 64) */
 #define BD_MORPH 16u            /* the MORPH a voice (old: 0.5 %) */
 #define BD_FADE 66u             /* .. an engine choice cross-faded, both shapes made (old: 2 %) */
 /* the part's own stages */
-static const uint8_t BD_INS[] = {0, 79, 72, 74, 80, 48, 96, 73, 76, 94, 95};   /* bench insert/<TYPE>, P_ITYPE order (N_ITYPE): OFF SOFT HARD FOLD FUZZ CRUSH PHASR FLANG CHOR TAPE VINYL */
-#define BD_INS_MAX 96u          /* a type out of the table: the dearest */
-#define BD_SAT 49u              /* bench part/SAT */
-#define BD_EQ_BASE 6u           /* bench part/EQ is 87 for three bands: this + 3 x BD_EQ_BAND (the lin ratio: a small fixed part) */
-#define BD_EQ_BAND 27u          /* .. a band whose gain is not 0 (a flat band is not run) */
-#define BD_DUCK 33u             /* bench part/DUCK */
+static const uint8_t BD_INS[] = {0, 69, 65, 65, 70, 52, 68, 62, 65, 75, 88};   /* COST-CAL item 116 (rounded up; HARD CLIP .. VINYL slope -2 a voice: the mean over the key counts),  P_ITYPE order (N_ITYPE): OFF SOFT CLIP, HARD CLIP, FOLD, FUZZ, BIT CRUSHER, PHASER, FLANGER, CHORUS TAPE VINYL */
+#define BD_INS_MAX 88u          /* a type out of the table: the dearest */
+#define BD_SAT 29u              /* COST-CAL item 116: SAT 64 a part 28.3 (OK) */
+#define BD_EQ_BASE 11u          /* COST-CAL item 116: EQ 1, 2, 3 bands measured 35.2, 61.9, 83.6 (GOOD): this + n x BD_EQ_BAND = 36, 61, 86 */
+#define BD_EQ_BAND 25u          /* .. a band whose gain is not 0 (a flat band is not run) */
+#define BD_DUCK 31u             /* COST-CAL item 116: DUCK a part 30.5 (OK) */
 #define BD_KTRK 1u              /* KEY TRK with the filter on: uf_test.c "under 1 instruction a sample" */
 #define BD_MX_SLOT 8u           /* a matrix slot with SRC, DST and AMT set (lin: 7 a slot, 4 voices; the voice share is in the margin) */
 #define BD_LFO 5u               /* an LFO that a slot reads (lin: under 5; LFO 1 / LFO 2) */
@@ -57,21 +72,25 @@ static const uint8_t BD_INS[] = {0, 79, 72, 74, 80, 48, 96, 73, 76, 94, 95};   /
 /* the mix with nothing playing, by MODE [0 STEREO and LAYER, 1 DUEL]: BD_IDLE is the mix with SENDS OFF (bench idle 455 less bench bus/STEREO/nothing_fed 221;
  * DUEL: CPU_PLAN section 1, 21.7 % less the bench's 492), then the buses (bench bus/<MODE>/<row>: the whole bus section against SENDS OFF with only that effect fed;
  * the delay and the reverb run whenever SENDS is ON, the chorus only while some part sends to it) */
-static const uint16_t BD_IDLE[2] = {234, 220};
-static const uint16_t BD_BUS[2] = {221, 492};                                   /* nothing fed, HALL + DIGITAL (the power-on) */
-static const uint16_t BD_CHO[2] = {301, 561};                                   /* + the chorus fed */
-static const uint16_t BD_DLY[2][4] = {{229, 256, 353, 352}, {500, 499, 622, 620}};   /* DIGITAL PING-PONG RANDOM OCT UP, fed */
-static const uint16_t BD_REV[2][6] = {{187, 198, 221, 259, 177, 222}, {430, 458, 481, 579, 413, 482}};   /* ROOM SPRING HALL SHIM(UP) RESO PLATE, fed */
-static const uint16_t BD_SHD[2] = {296, 652};                                   /* SHIM PITCH DOWN */
-static const uint16_t BD_SHM[2] = {299, 659};                                   /* SHIM PITCH UP + MOD 50 (DOWN + MOD: the two extras added, not measured) */
+/* (DUELL 1.1 item 90: re-measured on the 1.1 sources, tests/cpu_bench.c and tests/poly_calib.c: idle with the power-on sends 501 STEREO, 745 DUEL, less the bus row) */
+static const uint16_t BD_IDLE[2] = {317, 319};                                 /* COST-CAL item 116 (OK: one run spreads 21 %), rounded up */
+static const uint16_t BD_BUS[2] = {238, 496};                                   /* nothing fed, HALL + DIGITAL (the power-on) */
+static const uint16_t BD_CHO[2] = {305, 553};                                   /* + the chorus fed */
+static const uint16_t BD_DLY[2][4] = {{295, 320, 365, 413}, {539, 537, 673, 712}};   /* DIGITAL PING-PONG RANDOM OCT UP, fed */
+static const uint16_t BD_REV[2][6] = {{246, 272, 295, 289, 299, 312}, {463, 516, 535, 590, 555, 565}};   /* ROOM SPRING HALL SHIM(UP) RESO PLATE, fed */
+static const uint16_t BD_SHD[2] = {386, 752};                                   /* SHIM PITCH DOWN */
+static const uint16_t BD_SHM[2] = {390, 758};                                   /* SHIM PITCH UP + MOD 50 */
+#define BD_SHDM 387u            /* SHIM PITCH DOWN + MOD 50, STEREO / LAYER (measured 386.8, GOOD; the DUEL row was not measured: its two extras are added) */
+#define BD_REV_BYP 121u         /* the bus section (STEREO / LAYER) with the REVERB BYPASS on: HALL fed 294.9 less the 173.9 the bypass saved (item 116; DUEL not measured) */
 #define BD_COMP 54u             /* bench master/COMP, WIDTH, BASSMONO (none runs in DUEL) */
-#define BD_WIDTH 37u
+#define BD_WIDTH 39u
 #define BD_BMONO 38u
 
 /* ----------------------------------------------------------------- the parts --- */
 typedef struct {                /* one part's items, host instructions a sample (the ablations of budget_reason zero one) */
     uint32_t eng, filt, ext;    /* a voice: the engine, the multimode filter's slope, the morph's extras */
     uint32_t ins, sat, eq, misc;/* fixed: INSERT, SAT, EQ, the rest (ducker, KEY TRK, matrix, LFOs, arp) */
+    uint32_t base;              /* fixed: the part's own work while it sounds (BD_PART_ON; no ablation removes it) */
     uint32_t cap;               /* the most notes it can have: NOTES_MAX, the pool, the engine's own limit */
     uint32_t on;                /* sounds at all (not muted) */
 } bd_part_t;
@@ -80,19 +99,26 @@ typedef struct { uint32_t idle, fx; bd_part_t p[2]; } bd_t;   /* the global item
 _Static_assert(NLIVE >= BD_N, "budget.c: two parts");
 #include "budget_feat.h"        /* the new features' items: TWIN FILTER, SUB, CYCLE (cloud job B's stub; jobs E, F fill budget_feat.c) */
 
-static uint32_t bd_slope(const engine_t *e, const int16_t *p)  /* filter 1, the multimode filter, on every engine since cloud job J: 0 bypassed or none, 1 12 dB, 2 24 dB (voice.c vc_filter's rule) */
+static uint32_t bd_slope(const engine_t *e, const int16_t *p)  /* filter 1, the multimode filter, on every engine since cloud job J: 0 bypassed or none, 1 12 dB, 2 24 dB */
 {
-    if (!e->ufilt || (p[P_FREEA] >= (int16_t)UF_STEPS && p[P_FREEC] <= 0 && !p[P_KTRK]))
+    uint32_t i, mc = 0;
+    for (i = 0; i < NMSLOT; i++)
+        mc |= p[MSLOT_ID(i)] && p[MSLOT_ID(i) + 1] == MD_CUT && p[MSLOT_ID(i) + 2];
+    if (!e->ufilt || (p[P_FREEA] >= (int16_t)UF_STEPS && p[P_FREEC] <= 0 && !p[P_KTRK] &&   /* (item 90: as voice.c's real bypass, the effective cut at the open end: */
+                      !p[P_LD_FLT] && !p[P_E2FLT] && !p[P_ED_FLT] && !p[P_L2FLT] && !mc && e != &ENG_NOISE))   /* no depth or route that moves the cut; NOISE's DRFT moves it) */
         return 0;
     return p[P_FREED] == 2 ? 2u : 1u;
 }
-static uint32_t bd_slope8(const engine_t *e, const int8_t *p)
+/* DUELL 1.1 item 142 (HANDOFF_V2 item 140): end e (0 = A, 1 = B) of the part's MORPH as it SOUNDS: morph.c morph_apply on a copy of the live values with the fader at that end
+ * and no ramp (= morph_effective_x). A continuous value is live + (end - Original); a choice the player changed (live != Original, not pinned at End B) stays the player's and is never
+ * faded; a value End B holds by hand (pinned) is End B's. Before item 142 the budget read the ends' STORED values (morph_cur): a loaded patch edited to TWIN OFF / 12 dB was
+ * still charged its Original's TWIN and 24 dB at both ends, which can never sound. q: EXT_P_LEN values */
+static void bd_end(const track_t *t, const morph_part_t *mp, uint32_t e, int16_t *q)
 {
-    int16_t q[P_COUNT];
-    uint32_t i;
-    for (i = 0; i < P_COUNT; i++)
-        q[i] = p[i];
-    return bd_slope(e, q);
+    mxf_t xf;
+    memcpy(q, t->p, EXT_P_LEN * sizeof q[0]);
+    xf.on = 0;
+    morph_apply(mp, q, e ? 32768 : 0, 0, &xf);          /* (at the ends nothing is cross-faded: xf is never written) */
 }
 
 #include "budget_feat.c"
@@ -100,7 +126,9 @@ static void bd_part(const track_t *t, bd_part_t *r)
 {
     const engine_t *e = ENGINES[eng_idx(t->eng_req)];   /* (the sound's engine: a switch fades first, eng_req leads) */
     const int16_t *p = t->p;
-    uint32_t i, sl, bands, pi = (uint32_t)(t - trk), lf = 0;
+    uint32_t i, sl, bands, pi = (uint32_t)(t - trk), lf = 0, by = pi < 2u ? byp_m[pi] : 0u;   /* by: the BYPASS switches of the part (item 116: SAT, INSERT and EQ bypassed measured as not running) */
+    uint32_t sat = p[P_DIST] != 0;                      /* SAT on in the live values or at either morph end as it sounds (item 147) */
+    bd_tw_t w = {0, 0, 0, 0};                           /* item 142: the TWIN FILTER of the morph's two ends as they sound (budget_feat.c adds the live one) */
     memset(r, 0, sizeof *r);
     r->cap = vc_eng_cap(e);
     r->cap = r->cap < NOTES_MAX ? r->cap : NOTES_MAX;
@@ -113,28 +141,45 @@ static void bd_part(const track_t *t, bd_part_t *r)
         if (BD_ENG[i].e == e)
             r->eng = BD_ENG[i].c;
     sl = bd_slope(e, p);
-    if (pi < NSHOWN && (mph[pi].nid || mph[pi].fnid) && !morph_stale(t, &mph[pi])) {   /* the MORPH on this part: as voice.c vc_voice */
+    if (pi < NSHOWN && (mph[pi].nid || mph[pi].fnid) && !morph_stale(t, &mph[pi])) {   /* the MORPH on this part: each end as morph.c morph_apply plays it (item 142) */
         const morph_part_t *mp = &mph[pi];
-        uint32_t fa = bd_slope8(e, morph_cur(mp, 0)), fb = bd_slope8(e, morph_cur(mp, 1));
-        sl = fa > sl ? fa : sl;
-        sl = fb > sl ? fb : sl;
-        if (fa && fb && morph_cur(mp, 0)[P_FREED] != morph_cur(mp, 1)[P_FREED])
-            sl = 2;                                     /* (the slopes cross-fade: both stages run) */
-        for (i = 0; i < mp->nid; i++)
-            if ((mp->ent[i].kind & 0x7Fu) == MK_FADE && mp->ent[i].id >= P_E0 && mp->ent[i].id < P_E0 + 8u &&
-                morph_cur(mp, 0)[mp->ent[i].id] != morph_cur(mp, 1)[mp->ent[i].id]) {
-                r->ext += BD_FADE;                      /* an engine choice cross-faded: both shapes */
-                break;
+        int16_t q[EXT_P_LEN], d0 = 0, c0[8] = {0};      /* (one end at a time: End A's slope, SLOPE and engine choices are kept for the comparison with End B) */
+        uint32_t s0 = 0, s1, fade = 0, k;
+        for (k = 0; k < 2u; k++) {
+            const int16_t *v = q;
+            if (!k && !memcmp(morph_cur(mp, 0), mp->base, P_COUNT) && !memcmp(morph_curx(mp, 0), mp->base + XW_BASE, NX))
+                v = p;                                  /* End A is the Original (every load; a ROLL of B only): at the A end morph_apply gives the live values back (each kind at w 0 with A = the
+                                                         * Original; only its range clamp could differ, for a live value already out of range). One blend less: tcr_deadline runs this at block 0 */
+            else
+                bd_end(t, mp, k, q);
+            s1 = bd_slope(e, v);
+            sat |= v[P_DIST] != 0;                      /* (item 147: SAT is charged from the played ends like the filters and the TWIN) */
+            if (v != p)
+                bd_tw_of(&w, e, v);                     /* (the live TWIN: bd_feat) */
+            if (!k) {
+                s0 = s1, d0 = v[P_FREED];
+                memcpy(c0, &v[P_E0], sizeof c0);
+                continue;
             }
-        r->ext += BD_MORPH;
+            for (i = 0; i < mp->nid; i++)
+                if ((mp->ent[i].kind & 0x7Fu) == MK_FADE && mp->ent[i].id >= P_E0 && mp->ent[i].id < P_E0 + 8u && q[mp->ent[i].id] != c0[mp->ent[i].id - P_E0])
+                    fade = 1;                           /* an engine choice cross-faded between the ends as they sound: both shapes (a choice the player changed is his at both ends: none) */
+        }
+        sl = s0 > sl ? s0 : sl;
+        sl = s1 > sl ? s1 : sl;
+        if (s0 && s1 && d0 != q[P_FREED])
+            sl = 2;                                     /* (the slopes cross-fade: both stages run) */
+        r->ext += (fade ? BD_FADE : 0u) + BD_MORPH;
     }
     r->filt = sl == 2u ? BD_F24 : sl ? BD_F12 : 0;
+    if (mods_off & MODS_PFX)                            /* (item 125: GLO > MODULES, PART FX OFF: the part's DIST, INSERT, EQ and DUCK are skipped, fx.c: they cost nothing; was charged as if on) */
+        by |= BY_INS | BY_SAT | BY_EQ;
     i = (uint32_t)p[P_ITYPE];
-    r->ins = i == 0 ? 0 : i < NELEM(BD_INS) ? BD_INS[i] : BD_INS_MAX;
-    r->sat = p[P_DIST] ? BD_SAT : 0;
+    r->ins = i == 0 || (by & BY_INS) ? 0 : i < NELEM(BD_INS) ? BD_INS[i] : BD_INS_MAX;
+    r->sat = sat && !(by & BY_SAT) ? BD_SAT : 0;
     bands = (p[P_EQLG] != 0) + (p[P_EQMG] != 0) + (p[P_EQHG] != 0);
-    r->eq = bands ? BD_EQ_BASE + bands * BD_EQ_BAND : 0;
-    r->misc = p[P_DKDEP] > 0 ? BD_DUCK : 0;
+    r->eq = bands && !(by & BY_EQ) ? BD_EQ_BASE + bands * BD_EQ_BAND : 0;
+    r->misc = p[P_DKDEP] > 0 && !(mods_off & MODS_PFX) ? BD_DUCK : 0;
     r->misc += sl && p[P_KTRK] ? BD_KTRK : 0;
     for (i = 0; i < NMSLOT; i++) {
         const int16_t *q = &p[MSLOT_ID(i)];
@@ -144,8 +189,9 @@ static void bd_part(const track_t *t, bd_part_t *r)
         }
     }
     r->misc += ((lf & 1u) + (lf >> 1)) * BD_LFO;
-    r->misc += p[P_AMODE] ? BD_ARP : 0;
-    bd_feat(t, r);                                      /* TWIN FILTER, SUB, CYCLE (budget_feat.c) */
+    r->misc += arp_mode(t) ? BD_ARP : 0;                /* (item 125: the arp as it plays now: MODULES' ARP OFF costs nothing; was p[P_AMODE]) */
+    r->base = BD_PART_ON;
+    bd_feat(t, r, &w);                                  /* TWIN FILTER (live, and the morph ends' from above), SUB, CYCLE (budget_feat.c) */
 }
 
 static uint32_t part_cost(const track_t *t)
@@ -158,7 +204,15 @@ static uint32_t part_fixed(const track_t *t)
 {
     bd_part_t r;
     bd_part(t, &r);
-    return BD_U(r.ins + r.sat + r.eq + r.misc);
+    return BD_U(r.ins + r.sat + r.eq + r.misc + r.base);
+}
+static void part_dl(const track_t *t, uint32_t *fixed, uint32_t *voice)   /* item 137: the deadline's figures, BUDGET_DL_MARGIN (= part_fixed / part_cost of before item 137 bit for bit);
+                                                         * item 142: both from ONE bd_part (it blends each morph end once: tcr_deadline asks it for both parts at every half's block 0) */
+{
+    bd_part_t r;
+    bd_part(t, &r);
+    *fixed = BD_UDL(r.ins + r.sat + r.eq + r.misc + r.base);
+    *voice = BD_UDL(r.eng + r.filt + r.ext);
 }
 
 /* ----------------------------------------------------------------- the globals --- */
@@ -174,7 +228,11 @@ static void bd_global(uint32_t *idle, uint32_t *fx)     /* host instructions a s
         rt = rt < 6u ? rt : 2u;
         mod = (uint32_t)clamp(song.g[G_SHMOD], 0, 100);
         t = (int32_t)BD_BUS[m] + ((int32_t)BD_DLY[m][dm] - (int32_t)BD_BUS[m]);
-        if (rt == 3u && song.g[G_SHPITCH] == SHP_DOWN)
+        if (!m && (byp_sh & BYS_REV))                   /* item 116: the REVERB BYPASS skips the reverb (measured -173.9 of 294.9, STEREO / LAYER): the bus section is the rest; the chorus and delay BYPASS saved nothing (+16, +26) and stay charged. DUEL: not measured, charged as before */
+            t += (int32_t)BD_REV_BYP - (int32_t)BD_BUS[m];
+        else if (rt == 3u && song.g[G_SHPITCH] == SHP_DOWN && mod && !m)
+            t += (int32_t)BD_SHDM - (int32_t)BD_BUS[m];   /* (item 116: SHIM DOWN + MOD measured) */
+        else if (rt == 3u && song.g[G_SHPITCH] == SHP_DOWN)
             t += (int32_t)BD_SHD[m] - (int32_t)BD_BUS[m] + (mod ? (int32_t)BD_SHM[m] - (int32_t)BD_REV[m][3] : 0);
         else if (rt == 3u && mod)
             t += (int32_t)BD_SHM[m] - (int32_t)BD_BUS[m];
@@ -183,9 +241,9 @@ static void bd_global(uint32_t *idle, uint32_t *fx)     /* host instructions a s
         t += cho ? (int32_t)BD_CHO[m] - (int32_t)BD_BUS[m] : 0;
     }
     if (!m) {                                           /* the master stages (none runs in DUEL) */
-        t += (cmp_cfg & 0xF00u) ? (int32_t)BD_COMP : 0;
-        t += wd_sel != 100u ? (int32_t)BD_WIDTH : 0;
-        t += bm_sel ? (int32_t)BD_BMONO : 0;
+        t += (cmp_cfg & 0xF00u) && !(byp_sh & BYS_CMP) ? (int32_t)BD_COMP : 0;   /* (item 116: the master and compressor BYPASS measured as skipping all three, -146) */
+        t += wd_sel != 100u && !(byp_sh & BYS_MST) ? (int32_t)BD_WIDTH : 0;
+        t += bm_sel && !(byp_sh & BYS_MST) ? (int32_t)BD_BMONO : 0;
     }
 #if DUELL_VELO
     t += sense_running() ? 57 : 0;                      /* KEY SENSE (after Velo's method; est.: the key scan is not on the CPU bar): a fixed core-0 load of 2 % after the margin, 57 host instructions a sample, not measured */
@@ -198,6 +256,12 @@ static uint32_t global_cost(void)
     bd_global(&i, &f);
     return BD_U(i + f);
 }
+static uint32_t global_cost_dl(void)
+{
+    uint32_t i, f;
+    bd_global(&i, &f);
+    return BD_UDL(i + f);
+}
 
 /* ----------------------------------------------------------------- the pair --- */
 static void bd_build(bd_t *b)
@@ -207,23 +271,33 @@ static void bd_build(bd_t *b)
     for (p = 0; p < BD_N; p++)
         bd_part(&trk[p], &b->p[p]);
 }
-static uint32_t bd_worst(const uint32_t *c, const uint32_t *n)   /* the dearest the voice pool can be split: the dearer part first */
+static uint32_t bd_worst(const uint32_t *c, const uint32_t *n)   /* both parts' notes (DUELL 1.1 item 90: each part has its own NVOICE voices, no shared pool any more) */
 {
-    uint32_t h = c[1] > c[0], nh = n[h] < NVOICE ? n[h] : NVOICE, nl = n[!h] < NVOICE - nh ? n[!h] : NVOICE - nh;
-    return nh * c[h] + nl * c[!h];
+    return n[0] * c[0] + n[1] * c[1];
 }
 /* The numbers of both parts. A part's number is the most notes it can play while the other part plays the same number (or its own limit, when that is
  * lower): the worst case of that pair, whatever way the shared pool is split, stays under the limit. So a pair (a, b) from here always fits: with a >= b,
  * the pair (a, min(a, cap of the other)) is the one a was checked with and b is not above it. Each number depends on the settings only (never on what
  * plays, on the order of the calls or on the other number), and switching an item on in a part can only lower the numbers: its stages and voices
  * make the pair dearer. Never below 1. */
-static void budget_solve(const bd_t *b, uint32_t *out)
+static void budget_solve2(const bd_t *b, uint32_t *out, uint32_t two)
 {
     uint32_t c[2], fx[2], g = BD_U(b->idle + b->fx), lim = BUDGET_LIMIT * 100u, p;
     for (p = 0; p < 2u; p++) {
         const bd_part_t *r = &b->p[p];
         c[p] = r->on ? BD_U(r->eng + r->filt + r->ext) : 0;
-        fx[p] = r->on ? BD_U(r->ins + r->sat + r->eq + r->misc) : 0;
+        fx[p] = r->on ? BD_U(r->ins + r->sat + r->eq + r->misc + r->base) : 0;
+    }
+    if (two) {                                          /* the two-core rule: each part on its own core, the globals on both paths (item 132, owner: the hand-over BUDGET_HO is not charged:
+                                                         * COST-CAL's estimate of it was -28, nothing) */
+        for (p = 0; p < 2u; p++) {
+            uint32_t k;
+            for (k = b->p[p].cap; k > 1u; k--)
+                if (g + fx[p] + k * c[p] <= lim)
+                    break;
+            out[p] = k;
+        }
+        return;
     }
     for (p = 0; p < 2u; p++) {
         uint32_t n[2], k;
@@ -235,6 +309,17 @@ static void budget_solve(const bd_t *b, uint32_t *out)
         }
         out[p] = k;
     }
+}
+static void budget_solve(const bd_t *b, uint32_t *out) { budget_solve2(b, out, bd_two_now()); }   /* the rule in force */
+
+/* the two-core rule is in force: core 1 answered at power-on, has not failed, its jobs are not paused (a flash park is short: the runner trims to the one-core numbers for it) */
+static uint32_t bd_two_now(void)
+{
+#if DUELL_TWOCORE
+    return tc.up && !tc.failed && !tcr.paused TCR_AND_NOT_NOCORE1;   /* (the bench word `core1 off`; the macro is empty outside the bench) */
+#else
+    return 0;
+#endif
 }
 
 static uint32_t part_notes(int part)
@@ -298,12 +383,16 @@ static void budget_poll(void)                           /* main loop, every fram
     if (bench_bopen) {                                 /* (bench builds: a cost row of src/bench.c holds the budget open: no numbers, every voice the
                                                         * VOICE CAP and the pool give, as the bench of 0.2.25 measured) */
         for (p = 0; p < BD_N; p++)
-            bnotes[p] = 0;
+            bnotes[p] = bnotes1[p] = 0;
         return;
     }
 #endif
     bd_build(&b);
-    budget_solve(&b, n);
+    budget_solve2(&b, n, 0);
+    for (p = 0; p < BD_N; p++)
+        bnotes1[p] = (uint8_t)n[p];                     /* the one-core numbers, always (the runner falls back to them at once) */
+    if (bd_two_now())
+        budget_solve2(&b, n, 1);
     for (p = 0; p < BD_N; p++)
         bnotes[p] = (uint8_t)n[p];
 }

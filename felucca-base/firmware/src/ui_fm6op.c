@@ -7,7 +7,7 @@
  *   OP ENV      OP  STAGE (1 ATK, 2 DEC, 3 SUS, 4 REL: the envelope's stage KNOB 3 / 4 edit)  RATE  LEVEL (0..99)
  *   OPERATOR 2  OP  MODE (RATIO / FIXED)  DTUN (-7..+7)  VEL (the velocity sensitivity, 0..7)
  * The panel: OPERATOR and OPERATOR 2 the algorithm chart (ui_graph.c graph_fm6) with the operator picked in the accent
- * and its frequency top right ("x1.50", "440 HZ"); OP ENV its envelope (graph_fm6env), the stage picked in the accent.
+ * and its frequency top right ("x1.50", "440HZ"); OP ENV its envelope (graph_fm6env), the stage picked in the accent.
  * A detent writes one byte of the patch (fm6_set_patch: the audio ISR takes it at its next block) and makes the patch
  * the track's own: SLOT OWN (as a patch from the editor; a factory F n edited is OWN from then on). Each knob gesture is
  * one undo (SAVE held: the sound before it, the patch and SLOT with it; ui.c edit_undo_take). The patch is saved with
@@ -96,7 +96,7 @@ static void fop_dec(char *s, uint32_t w, uint32_t frac, uint32_t digits)
     *s++ = (char)('0' + frac % 10u);
     *s = 0;
 }
-/* the operator's frequency (op: its 21 bytes): "x1.50" (ratio: COARSE, 0 = 0.50, x (1 + FINE / 100)) or "440 HZ"
+/* the operator's frequency (op: its 21 bytes): "x1.50" (ratio: COARSE, 0 = 0.50, x (1 + FINE / 100)) or "440HZ"
  * (fixed: 10 ^ (COARSE & 3 + FINE / 100) Hz, as fm6_core.c fm6_op_freq); s holds 12 */
 static void fop_freq(const uint8_t *op, char *s)
 {
@@ -119,7 +119,7 @@ static void fop_freq(const uint8_t *op, char *s)
         fmt_int(s, (int32_t)(m / 1000u));
     else
         fop_dec(s, m / 1000000u, m % 1000000u / 10000u, 2u);
-    str_cpy(s + str_len(s), m < 1000000u ? " HZ" : " KHZ", 5);
+    str_cpy(s + str_len(s), m < 1000000u ? "HZ" : "KHZ", 5);
 }
 
 /* card slot of an operator page: its label, value (12), unit, gauge (0..1000, -1 none), icon; 0 = shown DIM (a level

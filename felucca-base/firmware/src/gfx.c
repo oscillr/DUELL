@@ -24,7 +24,8 @@ typedef struct {
  * colours (fills), r the same readable as values, a the accent; hc: no gradients (the morph colour jumps at the middle) */
 typedef struct { const char *name; uint16_t bg[2], bgl, surf[2], text, mid, line[2], raise[2], rec, c[4], r[4], a[4], g, ga; uint8_t hc; } ui_pal_t;   /* (0.2.24: g / ga the GLOBAL colour and its accent) */
 typedef struct { uint16_t off; uint8_t w; const char *label; } kc_t;
-#include "ui_fonts.h"                   /* AF_S 12 px / 400, AF_M 15 px / 500, AF_L 28 px / 600 */
+#include "ui_fonts.h"                   /* the faces S M L T D N X B (tools/gen_aa_font.py preset barlow) */
+#include "ui_tokens.h"                  /* the FACE ROLE MAP (aliases of retired faces) and the shared UI numbers */
 #include "ui_palettes.h"
 #include "splash_logo.h"            /* the splash lockup mask (tools/gen_splash_logo.py) */
 #include "ui_keycaps.h"                 /* KC_*: the keycaps / badges (tools/gen_aa_keycaps.py), KNOB_* arcs */
@@ -44,6 +45,10 @@ typedef struct { uint16_t off; uint8_t w; const char *label; } kc_t;
 #ifndef GFX_HOOK_CELL
 #define GFX_HOOK_CELL(x0, y0, x1, y1) ((void)0)    /* a cell, card, row or button (cv_rrect): a box touching it lies inside it */
 #endif
+#ifndef GFX_HOOK_ALLOW
+#define GFX_HOOK_ALLOW(x0, y0, x1, y1) ((void)0)   /* item 122: the fill drawn here is an ALLOWED one (a selected row / option, a lit card, a meter, data); the box lint skips it */
+#endif
+#define CV_HL(x, y, w, h) GFX_HOOK_ALLOW((x), (y), (x) + (w), (y) + (h))
 #ifndef GFX_HOOK_INK
 #define GFX_HOOK_INK(ink, bg) ((void)0)            /* a text, icon or keycap label's ink and what it is drawn on */
 #endif
@@ -54,9 +59,11 @@ typedef struct { uint16_t off; uint8_t w; const char *label; } kc_t;
  * along AL_H and / or AL_V; AL_N(n): the next n items together. A text's ink is measured across (its glyphs' boxes)
  * and its capitals' band up and down (GFX_HOOK_PEN: its line top and face); an icon's ink from its cell
  * (GFX_HOOK_ITEM). The tag names the place in the report. */
+#ifndef GFX_HOOK_PEN
+#define GFX_HOOK_PEN(y, f) ((void)0)
+#endif
 #ifndef GFX_HOOK_ALIGN
 #define GFX_HOOK_ALIGN(x0, y0, x1, y1, mode, tag) ((void)0)
-#define GFX_HOOK_PEN(y, f) ((void)0)
 #define GFX_HOOK_ITEM(x0, y0, x1, y1) ((void)0)
 #define GFX_HOOK_ICON(x, y, size, id) ((void)0)        /* (an icon drawn: GFX_HOOK_ITEM with its ink, icons.c icon_ink) */
 #endif
@@ -83,7 +90,7 @@ static uint8_t cv_flip;          /* cv_alpha_hc: the cell mirrored left <-> righ
 /* ------------------------------------------------------------- theme --- */
 /* Five stored colours per palette, the rest derived with fixed blends (tools/gen_ui_palettes.py) */
 static struct {
-    uint16_t bg, surf, text, theme, accent;
+    uint16_t bg, base, text, theme, accent;
     uint16_t mid, dim, line, sel, tint, ink, rec, raise, key, lane, grid;
     uint16_t kink;               /* a keycap label: the background (INK, the label on a THEME / SEL fill, follows the part colour) */
     uint8_t light, mono;
@@ -101,7 +108,8 @@ static struct {
 } ux;
 /* The look is FLAT only (DUELL 0.2.2: the LINE style, black areas divided by 1 px rules, was removed) */
 #define T_BG ux.bg               /* background */
-#define T_SURF ux.surf           /* dialogs, menu rows, mixer strips */
+#define T_BASE ux.base           /* the palette's card tone: the BASE of every derived colour (bar tracks, greys, data fills, roll lanes); never drawn as a fill (no boxes) */
+#define T_BASE_P1 (UI_PALETTES[ux.pal % NPALETTES].surf[0])   /* part 1's tone whatever the page (the MIXER's greys and tracks) */
 #define T_TEXT ux.text           /* primary text */
 #define T_THEME ux.theme         /* values, curves, the gauge's end line */
 #define T_ACCENT ux.accent       /* the one active thing: hot knob, cursor, playhead */
@@ -162,7 +170,7 @@ static uint32_t ux_cr(uint16_t a, uint16_t b)
 static uint16_t vt(uint16_t c, uint16_t bg) { return ux_cr(c, bg) >= 300u ? c : ux.text; }
 
 /* The whole screen's theme follows the selected part: its background (LAYER mode: the layer one), its THEME / ACCENT, and
- * the colour travels A -> B with the part's MORPH fader (High Contrast: the end it is nearer to). Both parts' pth / psel /
+ * the colour travels A -> B with the part's MORPH fader (POLICE: a smooth blend like the others). Both parts' pth / psel /
  * ptint / plane / pacc are kept (T_PTHEME(k) ...). Runs when the palette, the style, the part, a fader or the mode changed
  * (theme_follow), never per pixel */
 static void part_theme(uint32_t part)
@@ -176,7 +184,7 @@ static void part_theme(uint32_t part)
     /* panel, borders and elevated surface are per part like the background (LAYER, a global page: the mix of both) */
     {
         uint16_t sf = both ? ux_mix(p->surf[0], p->surf[1], 50) : p->surf[part];
-        ux.surf = sf;
+        ux.base = sf;
         ux.line = both ? ux_mix(p->line[0], p->line[1], 50) : p->line[part];
         ux.raise = both ? ux_mix(p->raise[0], p->raise[1], 50) : p->raise[part];
     }
@@ -184,7 +192,7 @@ static void part_theme(uint32_t part)
     ux.key = ux_mix(ux.bg, p->text, UI_KEY_PCT);
     ux.kink = ux.bg;
     ux.light = ux_luma(ux.bg) > 128u;
-    ux.grid = ux_mix(ux.surf, p->text, 6);
+    ux.grid = ux_mix(ux.base, p->text, 6);
     for (k = 0; k < 2u; k++) {
         uint32_t f = ux.fader[k] > 127u ? 127u : ux.fader[k], i = 2u * k;
         ux.pend[k][0] = p->r[i];
@@ -200,7 +208,7 @@ static void part_theme(uint32_t part)
         }
         ux.psel[k] = ux_mix(ux.bg, ux.pth[k], UI_SEL_PCT);
         ux.ptint[k] = ux_mix(ux.bg, ux.pth[k], UI_TINT_PCT);
-        ux.plane[k] = ux_mix(ux.surf, ux.pth[k], 10);
+        ux.plane[k] = ux_mix(ux.base, ux.pth[k], 10);
     }
     if (ux.bw) {                                 /* MONO: black and white, set, not blended (tools/gen_ui_palettes.py) */
         ux.mid = ux.key = ux.rec = p->text;      /* a selection, a keycap, REC: white, its INK black */
@@ -210,8 +218,10 @@ static void part_theme(uint32_t part)
         ux.ptint[0] = ux.ptint[1] = p->bg[0];
         ux.plane[0] = ux.plane[1] = UI_BW_GREY;
     }
-    ux.gth = p->g;
-    ux.gacc = p->ga;
+    /* DUELL 1.1 (owner 2026-10-25, items 65b, 67, 78): a GLOBAL page's colour is the smooth gradient between the palette's two colours (part 1's and part 2's first colour: #DC38FF to #FF1F8E in
+     * the violet palette), no third colour: gth is its middle (what a flat fill takes), gacc that lightened toward the text colour; grad_col(x) is the colour at a screen column */
+    ux.gth = ux_mix(p->r[0], p->r[2], 50);
+    ux.gacc = ux_mix(ux.gth, p->text, 45);
     if (ux.bw)
         ux.gth = ux.gacc = p->text;
     if (ux.glob) {                                      /* a GLOBAL page: the third colour as THEME, SEL, TINT, LANE and its accent (0.2.24) */
@@ -220,7 +230,7 @@ static void part_theme(uint32_t part)
         ux.accent = ux.gacc;
         ux.sel = ux.bw ? p->text : ux_mix(ux.bg, ux.gth, UI_SEL_PCT);
         ux.tint = ux.bw ? p->bg[0] : ux_mix(ux.bg, ux.gth, UI_TINT_PCT);
-        ux.lane = ux.bw ? UI_BW_GREY : ux_mix(ux.surf, ux.gth, 10);
+        ux.lane = ux.bw ? UI_BW_GREY : ux_mix(ux.base, ux.gth, 10);
     } else {
         ux.ink = ux_cr(ux.bg, ux.pth[part]) >= ux_cr(p->text, ux.pth[part]) ? ux.bg : p->text;   /* text on a part-colour fill */
         ux.theme = ux.pth[part];
@@ -231,6 +241,13 @@ static void part_theme(uint32_t part)
     }
     if (ux.bw) { ux.tint = p->bg[0]; ux.ink = ux.bg; }
     ux.gen++;                                    /* the text ramps change with the coverage curve and the background */
+}
+/* the global gradient's colour at screen column x (0 .. 239): part 1's first colour to part 2's first colour; MONO: the text colour */
+static uint16_t grad_col(int32_t x)
+{
+    if (ux.bw)
+        return ux.text;
+    return ux_mix(ux.pend[0][0], ux.pend[1][0], (x < 0 ? 0 : x > 239 ? 239 : x) * 100 / 239);
 }
 /* the selected part, the parts' MORPH faders, the layer mode and whether a GLOBAL page is shown (0.2.24) into the theme; 1 if anything changed (redraw all) */
 static int theme_follow(uint32_t part, uint32_t f0, uint32_t f1, uint32_t layer, uint32_t glob)
@@ -392,6 +409,22 @@ static void cv_rrect(int32_t x, int32_t y, int32_t w, int32_t h, int32_t r, uint
         }
 }
 
+/* the template-1 card (item 114, ui_tokens.h UT_CARD_CORNER_*): a filled rectangle with HARD corners as the design pictures draw them (row 0 loses 2 px at each end, row 1 loses 1, no anti-aliasing);
+ * `under` is what lies behind it. The graph area's card and the four cards of a part page */
+static void cv_card(int32_t x, int32_t y, int32_t w, int32_t h, uint16_t c, uint16_t under)
+{
+    GFX_HOOK_CELL(x, y + cv_oy, x + w, y + h + cv_oy);
+    cv_rect(x, y, w, h, c);
+    cv_rect(x, y, UT_CARD_CORNER_A, 1, under);
+    cv_rect(x + w - UT_CARD_CORNER_A, y, UT_CARD_CORNER_A, 1, under);
+    cv_rect(x, y + h - 1, UT_CARD_CORNER_A, 1, under);
+    cv_rect(x + w - UT_CARD_CORNER_A, y + h - 1, UT_CARD_CORNER_A, 1, under);
+    cv_rect(x, y + 1, UT_CARD_CORNER_B, 1, under);
+    cv_rect(x + w - UT_CARD_CORNER_B, y + 1, UT_CARD_CORNER_B, 1, under);
+    cv_rect(x, y + h - 2, UT_CARD_CORNER_B, 1, under);
+    cv_rect(x + w - UT_CARD_CORNER_B, y + h - 2, UT_CARD_CORNER_B, 1, under);
+}
+
 /* ------------------------------------------------- 4-bit alpha blit --- */
 /* coverage curves: a little heavier for light ink on dark, lighter for dark ink on light */
 static const uint8_t CURVE_DARK[16] = {0, 24, 43, 62, 80, 97, 114, 130, 147, 163, 178, 194, 210, 225, 240, 255};
@@ -441,6 +474,31 @@ static const uint16_t *ramp(uint16_t fg, uint16_t bg)
         v[a] = swap16(out);
     }
     return v;
+}
+
+/* the 16 panel values of the LINEAR ramp bg -> fg (coverage n / 15: the design pictures' text and battery; ramp's curve is a little heavier) into v (byte-swapped), no cache: the caller's
+ * own array (the stack), so it costs no RAM */
+static void ramp_lin(uint16_t *v, uint16_t fg, uint16_t bg)
+{
+    static const uint8_t SH[3] = {11, 5, 0}, MK[3] = {31, 63, 31};
+    uint32_t a, k;
+    if (fg == bg)
+        fg = ux.bg;
+    GFX_HOOK_INK(fg, bg);
+    for (a = 0; a < 16u; a++) {
+        uint32_t out = 0;
+        int32_t w = (int32_t)a * 17;
+        if (ux.mono) {
+            int32_t x = bg >> 11;
+            out = ux_gray((uint32_t)(x + ((((fg >> 11) - x) * w + 128) >> 8)));
+        } else {
+            for (k = 0; k < 3u; k++) {
+                int32_t x = (bg >> SH[k]) & MK[k], y = (fg >> SH[k]) & MK[k];
+                out |= (uint32_t)(x + (((y - x) * w + 128) >> 8)) << SH[k];
+            }
+        }
+        v[a] = swap16(out);
+    }
 }
 
 /* w x h nibbles, rows back to back, at canvas (x, y) */
@@ -559,12 +617,12 @@ static int32_t glyph_at(const aafont_t *f, uint32_t ch)
 }
 
 /* the table entry of ch at phase 0 (its other phases follow it). Not in the face: the ellipsis as '.',
- * else '?', else the face's first glyph (L is sparse: its space) */
+ * else '?', else the face's first glyph (D, N, X, B are figures only: their space) */
 static uint32_t glyph(const aafont_t *f, uint32_t ch)
 {
     int32_t k;
     if (ch >= 'a' && ch <= 'z' && f->last < 'a')
-        ch -= 32u;                                   /* L has capitals only */
+        ch -= 32u;                                   /* a capitals-only face (T) */
     if ((k = glyph_at(f, ch)) < 0 && (ch != (uint8_t)ELLIPSIS || (k = glyph_at(f, '.')) < 0) &&
         (k = glyph_at(f, '?')) < 0)
         k = 0;
@@ -588,6 +646,20 @@ static int32_t kern(const aafont_t *f, uint32_t a, uint32_t b)       /* 1/16 px 
 
 static uint32_t fold(const aafont_t *f, uint32_t c) { return c >= 'a' && c <= 'z' && f->last < 'a' ? c - 32u : c; }
 
+static int32_t text_w16(const aafont_t *f, const char *s)   /* the advance, 1/16 px (kerning included): for placing a text on a fraction of a pixel */
+{
+    int32_t pen = 0;
+    uint32_t prev = 0;
+    for (; *s; s++) {
+        uint32_t c = fold(f, (uint8_t)*s);
+        if (prev)
+            pen += kern(f, prev, c);
+        pen += f->g[glyph(f, c)].adv;
+        prev = c;
+    }
+    return pen;
+}
+
 static int32_t text_w(const aafont_t *f, const char *s)
 {
     int32_t pen = 0;
@@ -602,9 +674,13 @@ static int32_t text_w(const aafont_t *f, const char *s)
     return (pen + 8) >> 4;
 }
 
+static const uint16_t *text_rv;                      /* cv_text_x16: its linear ramp (on its caller's stack) while it draws, else 0: ramp() */
+static uint8_t text_exact;                           /* cv_text_x16: the design pictures' placement: every glyph on the phase nearest its own pen (a tie to the even phase), no memory of the glyph before */
+static int32_t text_trk;                             /* item 158: added to every glyph's advance, 1/16 px (0, or negative: a card label tightened to fit its card, ui_draw.c lbl_trk) */
+static int32_t text_pen0;                            /* the pen the next text_run starts at, 1/16 px (0 .. 15: cv_text_x16's fraction; every other caller: 0) */
 static int32_t text_run(int32_t x, int32_t y, const aafont_t *f, const char *s, const uint16_t *rv, int32_t *bb)
 {
-    int32_t pen = 0, err = 0, x0 = 0x7FFF, y0 = 0x7FFF, x1 = -0x7FFF, y1 = -0x7FFF;
+    int32_t pen = text_pen0, err = 0, x0 = 0x7FFF, y0 = 0x7FFF, x1 = -0x7FFF, y1 = -0x7FFF;
     const int32_t step = 16 >> f->psh;
     uint32_t prev = 0;
     for (; *s; s++) {
@@ -614,7 +690,14 @@ static int32_t text_run(int32_t x, int32_t y, const aafont_t *f, const char *s, 
         if (prev)
             pen += kern(f, prev, c);
         g = &f->g[glyph(f, c)];
-        if (f->psh && g[1].off != g->off) {
+        if (text_exact) {                            /* (the header / footer words, ui_tokens.h: as the pictures set them: round, half to even, per glyph) */
+            int32_t st = f->psh && g[1].off != g->off ? step : 16, q = pen / st, rm = pen - q * st;
+            if (rm * 2 > st || (rm * 2 == st && (q & 1)))
+                q++;
+            pos = q * st;
+            if (st != 16)
+                g += ((uint32_t)pos >> (4u - f->psh)) & ((1u << f->psh) - 1u);
+        } else if (f->psh && g[1].off != g->off) {
             pos = pen - (pen & (step - 1));          /* the phase position at or left of the pen */
             d0 = pos - pen - err;                    /* .. and the one right of it: which keeps the gap truer */
             d1 = d0 + step;
@@ -638,7 +721,7 @@ static int32_t text_run(int32_t x, int32_t y, const aafont_t *f, const char *s, 
             if (GFX_HOOKS && gy < y0) y0 = gy;       /* (the rows: for the host's lint only) */
             if (GFX_HOOKS && gy + g->bh > y1) y1 = gy + g->bh;
         }
-        pen += g->adv;
+        pen += g->adv + text_trk;
         prev = c;
     }
     bb[0] = x0;
@@ -659,7 +742,7 @@ static int32_t text_run(int32_t x, int32_t y, const aafont_t *f, const char *s, 
 static int32_t cv_text_flags(int32_t x, int32_t y, const aafont_t *f, const char *s, uint16_t fg, uint16_t bg,
                              uint32_t flags)
 {
-    int32_t b[4], pen = text_run(x, y, f, s, ramp(fg, bg), b);
+    int32_t b[4], pen = text_run(x, y, f, s, text_rv ? text_rv : ramp(fg, bg), b);
     if (GFX_HOOKS && b[2] > b[0]) {
         int32_t y0 = b[1], y1 = b[3];
         if (b[0] < 0 || b[2] > (int32_t)cv_w || y0 + cv_oy < cv_cy0 || y1 + cv_oy > cv_cy1)
@@ -679,10 +762,61 @@ static int32_t cv_text_on(int32_t x, int32_t y, const aafont_t *f, const char *s
 {
     return cv_text_flags(x, y, f, s, fg, bg, 0);
 }
+/* a text whose pen starts at x16 / 16 px (the header's centred title, the capsules' letters, the footer's words: the design pictures place them on a fraction of a pixel; the glyph
+ * phases take it up, text_run); returns the pen x at the end (whole px) */
+static int32_t cv_text_x16(int32_t x16, int32_t y, const aafont_t *f, const char *s, uint16_t fg, uint16_t bg)
+{
+    int32_t r;
+    uint16_t v[16];
+    ramp_lin(v, fg, bg);
+    text_rv = v;
+    text_pen0 = x16 & 15;
+    text_exact = 1;
+    r = cv_text_flags(x16 >> 4, y, f, s, fg, bg, 0);
+    text_exact = 0;
+    text_pen0 = 0;
+    text_rv = 0;
+    return r;
+}
 /* .. on the canvas background */
 static int32_t cv_text(int32_t x, int32_t y, const aafont_t *f, const char *s, uint16_t fg)
 {
     return cv_text_flags(x, y, f, s, fg, cv_bg, 0);
+}
+/* a text in the global gradient: each character in the colour of its own screen column (x0 = the screen column of x, for a canvas that sits elsewhere); the pens are the string's own
+ * (the width of the prefix up to the character, kerning with its left neighbour included) */
+static int32_t cv_text_grad(int32_t x, int32_t y, const aafont_t *f, const char *s, int32_t x0)
+{
+    char pre[48], ch[2] = {0, 0};
+    uint32_t i;
+    if (ux.bw)
+        return cv_text(x, y, f, s, ux.text);
+    for (i = 0; s[i] && i + 1u < sizeof pre; i++) {
+        int32_t px;
+        pre[i] = s[i];
+        pre[i + 1u] = 0;
+        ch[0] = s[i];
+        px = x + text_w(f, pre) - text_w(f, ch);
+        cv_text(px, y, f, ch, grad_col(x0 + (px - x) + text_w(f, ch) / 2));
+    }
+    return x + text_w(f, s);
+}
+/* a page TITLE in the global gradient. POLICE: (a) the title plain white, the gradient on the rule, the bars and the values (owner 2026-10-25, the default); (b) the gradient on the title too: set POLICE_TITLE_PLAIN to 0 (the one line to change) */
+#define POLICE_TITLE_PLAIN 1
+static int32_t cv_text_title(int32_t x, int32_t y, const aafont_t *f, const char *s, int32_t x0)
+{
+    if (POLICE_TITLE_PLAIN && str_eq(UI_PALETTES[ux.pal % NPALETTES].name, "POLICE"))
+        return cv_text(x, y, f, s, ux.text);
+    return cv_text_grad(x, y, f, s, x0);
+}
+/* a horizontal rule or bar in the global gradient: 6 px slices, each its own colour (x0: the screen column of x) */
+static void cv_rect_grad(int32_t x, int32_t y, int32_t w, int32_t h, int32_t x0)
+{
+    int32_t i, n;
+    for (i = 0; i < w; i += 6) {
+        n = w - i < 6 ? w - i : 6;
+        cv_rect(x + i, y, n, h, grad_col(x0 + i + n / 2));
+    }
 }
 /* right-aligned: the advance ends at xr */
 static int32_t cv_text_r(int32_t xr, int32_t y, const aafont_t *f, const char *s, uint16_t fg, uint16_t bg)
@@ -792,13 +926,21 @@ static const uint16_t *kc_ramp(uint16_t under, uint16_t fill, uint16_t ink)
     }
     return v;
 }
-static int32_t kc_w(uint32_t id) { return id < KC_COUNT ? KC[id].w : 0; }
+#define KC_IS_KNOB(id) ((id) >= KC_K1 && (id) <= KC_K4)       /* DUELL 1.1: the knob legends are the numbered white dot of the pages, not a keycap */
+static int32_t kc_w(uint32_t id) { return KC_IS_KNOB(id) ? 12 : id < KC_COUNT ? KC[id].w : 0; }
 /* keycap / badge `id` with its top-left at (x, y), KC_H tall: fill and label tinted with tokens, `under` what lies
  * behind its corners; returns its right edge */
 static int32_t cv_keycap(int32_t x, int32_t y, uint32_t id, uint16_t fill, uint16_t ink, uint16_t under)
 {
     const kc_t *k = &KC[id < KC_COUNT ? id : 0u];
-    const uint16_t *rv = kc_ramp(under, fill, ink);
+    const uint16_t *rv;
+    if (KC_IS_KNOB(id)) {                                                  /* the numbered dot: 1 .. 4 */
+        char d[2] = {(char)('1' + (id - KC_K1)), 0};
+        cv_rrect(x, y, 11, 11, 5, T_TEXT, under);
+        cv_text_in(x, y + HALF_UP(11 - AF_D_CAP_H) - AF_D_CAP_Y, 11, &AF_DOT, d, T_BG, T_TEXT);
+        return x + 12;
+    }
+    rv = kc_ramp(under, fill, ink);
     cv_alpha(x, y, k->w, KC_H, KC_DATA + k->off, rv);
     if (x < 0 || x + k->w > (int32_t)cv_w || y + cv_oy < 0 || y + KC_H + cv_oy > (int32_t)cv_h)
         GFX_HOOK_TEXT(x, y + cv_oy, x + k->w, y + KC_H + cv_oy, k->label, 6u);      /* cut by the canvas */
@@ -808,7 +950,7 @@ static int32_t cv_keycap(int32_t x, int32_t y, uint32_t id, uint16_t fill, uint1
 }
 
 /* a key hint: the keycap, then what it does (S, TEXT); unavailable: a DIM keycap and a DIM word. The word sits on
- * the keycap's centre line (S caps 9 rows, the keycap's 7). act may be 0 (the keycap alone); returns the end x */
+ * the keycap's centre line (item 122: S 15's 11 capital rows centred on the pill's 13: the word's line top is 3 rows above the pill's). act may be 0 (the keycap alone); returns the end x */
 #define KH_GAP 4                                  /* keycap -> its word */
 static int32_t kh_w(uint32_t id, const char *act) { return kc_w(id) + (act && act[0] ? KH_GAP + text_w(&AF_S, act) : 0); }
 /* .. its ink: the keycap to the word's last inked column (centring a hint by what is seen) */
@@ -825,7 +967,7 @@ static int32_t cv_key_hint(int32_t x, int32_t y, uint32_t id, const char *act, i
     x = cv_keycap(x, y, id, on ? T_KEY : T_DIM, T_KINK, under);
     if (act && act[0]) {
         GFX_HOOK_ALIGN(0, y, 0, y + KC_H, AL_V | AL_PASS, "key hint word on its keycap's line");
-        x = cv_text_on(x + KH_GAP, y - 1, &AF_S, act, on ? T_TEXT : T_DIM, under);
+        x = cv_text_on(x + KH_GAP, y - 3, &AF_S, act, on ? T_TEXT : T_DIM, under);   /* item 122: the word's capitals are centred on the pill's rows (S 15: 11 capital rows, the pill 13: the word's line top 3 rows above the pill's, was 1) */
     }
     return x;
 }
@@ -876,31 +1018,37 @@ static int32_t kc_tag(const char *s, uint32_t *len)
     }
     return -1;
 }
-/* free text (S) that may start with a keycap, "[SAVE] HOLD TO UNDO", or have one after its first word,
- * "HOLD [GLO] QUICK": the word, the keycap, then the rest, cut to maxw */
+/* free text (S) with ONE keycap tag anywhere in it: "[SAVE] HOLD TO UNDO", "HOLD [GLO] QUICK", "HOLD A NOTE + [OCT+], TURN A KNOB" (item 124: any words before it): the words before, the keycap
+ * (its centre on the capitals' centre, y + 3), a mark right after it ("," ".") with no gap, then the rest, cut to maxw. A keycap that does not fit leaves the text as it is, plain */
 static int32_t cv_free_hint(int32_t x, int32_t y, const char *s, uint16_t fg, uint16_t bg, int32_t maxw)
 {
-    uint32_t n, i;
-    int32_t id = kc_tag(s, &n), x0 = x;
-    for (i = 0; id < 0 && i < 7u && s[i] && s[i] != ' '; i++)
-        ;
-    if (id < 0 && i && s[i] == ' ' && (id = kc_tag(s + i + 1u, &n)) >= 0) {
-        char w[8] = {0};
-        uint32_t j;
-        for (j = 0; j < i; j++)
+    uint32_t n = 0, p;
+    int32_t id = -1, x0 = x;
+    for (p = 0; s[p]; p++)
+        if (s[p] == '[' && (id = kc_tag(s + p, &n)) >= 0)
+            break;
+    if (id >= 0 && p) {
+        char w[48];
+        uint32_t j, e = p;
+        while (e && s[e - 1u] == ' ')
+            e--;
+        for (j = 0; j < e && j + 1u < sizeof w; j++)
             w[j] = s[j];
-        GFX_HOOK_ALIGN(0, y + 1, 0, y + 1 + KC_H, AL_V | AL_PASS, "free hint words on the keycap's line");
+        w[j] = 0;
+        GFX_HOOK_ALIGN(0, y + 3, 0, y + 3 + KC_H, AL_V | AL_PASS, "free hint words on the keycap's line");
         x = cv_text_on(x, y, &AF_S, w, fg, bg) + KH_GAP;
-        s += i + 1u;
+        s += p;
     }
     if (id >= 0 && kc_w((uint32_t)id) + KH_GAP < maxw - (x - x0)) {
-        x = cv_keycap(x, y + 1, (uint32_t)id, T_KEY, T_KINK, bg) + KH_GAP;
+        x = cv_keycap(x, y + 3, (uint32_t)id, T_KEY, T_KINK, bg);
         s += n;
+        if (*s != ',' && *s != '.' && *s != ':' && *s != ';')
+            x += KH_GAP;
         while (*s == ' ')
             s++;
         if (!*s)
             return x - KH_GAP;
-        GFX_HOOK_ALIGN(0, y + 1, 0, y + 1 + KC_H, AL_V | AL_PASS, "free hint words on the keycap's line");
+        GFX_HOOK_ALIGN(0, y + 3, 0, y + 3 + KC_H, AL_V | AL_PASS, "free hint words on the keycap's line");
     }
     return cv_free_text(x, y, &AF_S, s, fg, bg, maxw - (x - x0));
 }

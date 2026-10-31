@@ -128,6 +128,11 @@ static void lcd_init(void)
     fm1_lcd_baud(LCD_BAUD);
     lcd_fill(0, 0, 240, 240, 0);
     lcd_cmd(0x29);
+#if defined(FM1_LCD_BL_LATE) && FM1_LCD_BL_LATE
+    fm1_lcd_backlight(1);          /* item 163 (main firmware only, hal/fm1_lcd_hw.h): the backlight (and the key matrix 595's
+                                    * /OE, the same PA2) on only now, over the black frame: no old panel memory before the splash.
+                                    * IRQs are still off here (main.c: fm1_irq_enable_all later), so the port A write needs no guard */
+#endif
 }
 
 /* MENU > SCREEN OFF (ui.c scr_frame): the panel dark while the sound goes on. s 0: DISPOFF, SLPIN; 1: SLPOUT (the

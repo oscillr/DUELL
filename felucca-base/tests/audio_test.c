@@ -89,7 +89,7 @@ static void overload(void)
 
     for (mode = V_MONO; mode <= V_LEGATO; mode++) {
         fresh(); trk[0].p[P_VOICE] = V_POLY;
-        for (i = 0; i < NVOICE; i++) trk_note_on(&trk[0], 48u + 2u * i, 100);
+        for (i = 0; i < NVOICE; i++) { vs_block(); trk_note_on(&trk[0], 48u + 2u * i, 100); }   /* (one key a block: item 144's start limit is 3 a block) */
         trk[0].p[P_VOICE] = (int16_t)mode;
         shed_voice(); mix_block(out, CTL);
         check("overload can reclaim stale POLY voices after a MONO / LEGATO change",

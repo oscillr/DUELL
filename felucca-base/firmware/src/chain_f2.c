@@ -15,6 +15,7 @@
 #define F2_DSLEW 32                                     /* DRIVE moves at most this much a block (127 in 4 blocks, 3 ms) */
 #define F2_BSLEW 16                                     /* BLEND moves at most this much a block (-64 to +63 in 8 blocks) */
 #define F2_FADE 8u                                      /* blocks a TYPE / ROUTE / LINK switch takes (6 ms) */
+#define F2_LGLIDE 32u                                   /* item 138: blocks the cutoff glides after a LINK switch (24 ms; 8 blocks clicked: tests/twin_test.c LINK off -> on, 14 / 1000 against 9); a power of two (the >> below) */
 typedef struct { int32_t s[5]; } f2k_t;                 /* a type's state: SVF ic1, ic2; LADDER s1..s4 and the last output; COMB the loop's low-pass, the write index, the samples since the start, the high-pass */
 typedef struct {                                        /* one voice's filter 2 (the arrays below: v->chn VCH_NEW starts it) */
     f2k_t k, o;                                         /* the running type's state; the outgoing type's while it fades */
@@ -22,7 +23,7 @@ typedef struct {                                        /* one voice's filter 2 
     int32_t cl, cf, dly;                                /* the cutoff of the last block (Q8 dial steps), where a LINK switch's glide starts, the comb's delay of the last block (Q8 samples) */
     uint8_t ty, oty, fade, par, dv, lk, lg, dk;         /* TYPE run last block, the outgoing; fade blocks left; ROUTE weight 0..8; DRIVE; LINK; its glide's blocks left; what dry holds */
     int8_t bv;                                          /* BLEND of the last block */
-    uint8_t rsv;
+    uint8_t byp;                                        /* DUELL 1.1 BYPASS: the TWIN FILTER was bypassed last block */
     uint16_t dcp;                                       /* DRIVE's level factor for dv (F2_COMP's law), 0 = not worked out */
 } f2s_t;
 static f2s_t f2s[NLIVE][NVOICE];   /* 72 B a voice, 1,152 B: ordinary RAM (.bss), not the pool (pool-tail rule: wave 5; it was in the pool in waves 3 and 4) */
@@ -340,13 +341,13 @@ __attribute__((noinline)) void chain_f2_pre(track_t *t, voice_t *v, int32_t *tmp
  *   LINK on   uc (filter 1's effective cutoff: its knob, its four depths, KEY TRK, the matrix's CUT; the accent's lift where filter 1 does not take it: every engine but ANALOG, TRIO and NOISE) + OFFSET (whole semitones, TW_OFF_Q8)
  *   LINK off  CUTOFF 2 as a dial
  *   + KEY TRK 2 (voice.c's UF_KT) + ENV 2, LFO 1, LFO 2 (the same forms as track_render's FLT depths) + the matrix's CUTOFF 2 (mod.c mod_f2_voice)
- * A LINK switch (the stored CUTOFF 2 changes its meaning with it) glides the cutoff from the last block's over F2_FADE blocks. q->tune: COMB's TUNE in 1/16 semitone (CUTOFF 2 is semitones around the
+ * A LINK switch (the stored CUTOFF 2 changes its meaning with it) glides the cutoff from the last block's over F2_LGLIDE blocks. q->tune: COMB's TUNE in 1/16 semitone (CUTOFF 2 is semitones around the
  * note there; LINK and KEY TRK 2 are not read; ENV 2 and LFO 1 / 2 and the matrix move it by their dial steps x 1.32 semitones) */
 static __attribute__((noinline)) void f2_cut(track_t *t, voice_t *v, const vmod_t *m, int32_t uc, f2q_t *q, f2s_t *s)
 {
     const int16_t *p = t->p;
     const mod_win_t *mod = &MODW(t);
-    int32_t ms = ((v->env2 >> 9) * DEP_AMT(XV(t, X_ENV2))) >> 7, lf = mulq15(t->lfo_val, t->lfo_fade), c, ac, link = XV(t, X_LINK) != 0;
+    int32_t ms = (E2Q(t, v) * DEP_AMT(XV(t, X_ENV2))) >> 7, lf = mulq15(t->lfo_val, t->lfo_fade), c, ac, link = XV(t, X_LINK) != 0;
     if (mod->on && mod->ldep < 32767)
         lf = mulq15(lf, mod->ldep);
     ms += (lf * DEP_AMT(XV(t, X_LFO1))) >> 7;
@@ -359,20 +360,20 @@ static __attribute__((noinline)) void f2_cut(track_t *t, voice_t *v, const vmod_
     if (mod->on)
         ms += mod_f2_voice(t, v);
     q->tune = clamp((clamp(p[P_CUT2], -24, 24) << 4) + ((ms * 2711) >> 15), -768, 768);
-    ac = v->vel > 110 ? (m->envq15 * 24) >> 7 : 0;      /* the accent's lift: on ANALOG, TRIO and NOISE (ACCENT_BOTH) filter 1's uc has it already and filter 2 takes it even with LINK off (cloud job J); on the other engines only filter 2 with LINK on */
-    c = link ? uc + TW_OFF_Q8(clamp(p[P_CUT2], -TW_OFF_MAX, TW_OFF_MAX)) + (ACCENT_BOTH(ENGINES[t->engine]) ? 0 : ac) : clamp(p[P_CUT2], 0, UF_STEPS) * 256 + (ACCENT_BOTH(ENGINES[t->engine]) ? ac : 0);
+    ac = accent_dir(accent_lift(v->vel, m->envq15), accent_dir_type(q->ty));   /* the accent's lift, the way filter 2's TYPE opens (LP up, HP down, BP / NOTCH / COMB none); uc is filter 1's cutoff WITHOUT its own lift (voice_chain.c passes m->ucn) */
+    c = link ? uc + TW_OFF_Q8(clamp(p[P_CUT2], -TW_OFF_MAX, TW_OFF_MAX)) + ac : clamp(p[P_CUT2], 0, UF_STEPS) * 256 + (ACCENT_BOTH(ENGINES[t->engine]) ? ac : 0);   /* LINK off: the lift only on ANALOG, TRIO, NOISE, as before */
     if (XV(t, X_KTRK2))
         c += UF_KT(XV(t, X_KTRK2), v->pitch_cur);
     c = clamp(c + ms, 0, UF_TOP);
     if (q->fresh) {
         s->lg = 0;
     } else if (s->lk != link && q->ty != TT_COMB) {
-        s->lg = F2_FADE;
+        s->lg = F2_LGLIDE;
         s->cf = s->cl;
     }
     s->lk = (uint8_t)link;
     if (s->lg) {
-        c = s->cf + (((c - s->cf) * (int32_t)(F2_FADE + 1u - s->lg)) >> 3);
+        c = s->cf + (((c - s->cf) * (int32_t)(F2_LGLIDE + 1u - s->lg)) >> 5);
         s->lg--;
     }
     s->cl = c;
@@ -401,6 +402,22 @@ static void f2_go(const track_t *t, const voice_t *v, const vmod_t *m, f2s_t *s,
             out[i] = in[i];
     }
 }
+/* DUELL 1.1 BYPASS of the TWIN FILTER (in the flash: it runs only while the switch is on or just changed). f2_bypsave keeps the stage's input where the filter writes in place; f2_bypmix swaps the filter's output for it: by now fully, on the block where the switch changes in a line (wby: it was bypassed last block) */
+static __attribute__((noinline)) const int32_t *f2_bypsave(int32_t *a, const int32_t *tmp, uint32_t n)
+{
+    uint32_t i;
+    for (i = 0; i < n; i++)
+        a[i] = tmp[i];
+    return a;
+}
+static __attribute__((noinline)) void f2_bypmix(int32_t *ob, const int32_t *dc, uint32_t n, uint32_t by, uint32_t wby)
+{
+    uint32_t i;
+    for (i = 0; i < n; i++) {
+        int32_t w = by ? (wby ? (int32_t)n : (int32_t)(i + 1u)) : (int32_t)(n - 1u - i);   /* the share of the input, 0..n */
+        ob[i] += ((dc[i] - ob[i]) * w) / (int32_t)n;
+    }
+}
 /* filter 2 on the block (tmp: filter 1's output, or the engine's while filter 1 is bypassed; dry: chain_f2_pre's), and the DRIVE, ROUTE and BLEND around it:
  *   SERIES    f2 in = tmp slid towards the unfiltered input by BLEND above 0, then DRIVE; out = f2, slid towards tmp (filter 1) by BLEND below 0
  *   PARALLEL  f2 in = the driven input (dry); out = tmp (filter 1) and f2 mixed, BLEND -64 filter 1 alone, 0 about equal, +63 filter 2 alone
@@ -413,7 +430,8 @@ __attribute__((noinline)) void chain_f2(track_t *t, voice_t *v, int32_t *tmp, in
     f2q_t q;
     int32_t a[CTL], b[CTL];
     const int32_t *in;
-    uint32_t i, sers, para, bl, plain;
+    uint32_t i, sers, para, bl, plain, by = BYP(t, BY_TWIN), wby = s->byp;
+    const int32_t *dc = 0;                              /* BYPASS: the stage's input, kept when it is (or just was) bypassed */
     if (v->chn == VCH_NEW) {
         s->ty = TT_OFF;
         s->fade = 0;
@@ -463,6 +481,8 @@ __attribute__((noinline)) void chain_f2(track_t *t, voice_t *v, int32_t *tmp, in
     }
     if (s->ty != q.ty && q.ty)
         f2_start(t, v, s, &s->k, q.ty, in[0], q.res);
+    if (by | wby)                                       /* DUELL 1.1 BYPASS: the filter keeps running (in step when it comes back), its output is swapped for its input (after DRIVE and BLEND) over this block */
+        dc = plain ? f2_bypsave(a, tmp, n) : in;
     f2_go(t, v, m, s, &s->k, q.ty, &q, in, plain ? tmp : b, n);
     if (s->fade) {                                      /* the outgoing type, on the same input, mixed out */
         uint32_t base = (F2_FADE - s->fade) * 32u;
@@ -471,6 +491,9 @@ __attribute__((noinline)) void chain_f2(track_t *t, voice_t *v, int32_t *tmp, in
             b[i] = a[i] + (((b[i] - a[i]) * (int32_t)(base + i + 1u)) >> 8);
         s->fade--;
     }
+    if (by | wby)
+        f2_bypmix(plain ? tmp : b, dc, n, by, wby);
+    s->byp = (uint8_t)by;
     if (!plain) {
         if (para) {
             for (i = 0; i < n; i++)

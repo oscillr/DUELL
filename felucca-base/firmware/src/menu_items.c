@@ -20,7 +20,7 @@
  * BUTTON MAP), new groups (SCALE LEDS in DISPLAY), SCOPE and OVERVIEW removed (their editor ids 18 and 23 retired, never reused).
  * MI order = the order the device shows (a tab's rows follow each other); the editor's ids are editor_menu.c ED_MENU's, by row, so
  * the order is no id. MI_NAME is the editor's name (at most 12 characters, ed_str) and the device's label unless MI_LABEL has one */
-enum { MI_COLOR, MI_LEDS, MI_SCLLED, MI_ANIM, MI_SCROFF, MI_CPU,                    /* DISPLAY */
+enum { MI_COLOR, MI_LEDS, MI_SCLLED, MI_ANIM, MI_SCROFF, MI_NOTESLEFT, MI_CPU,                    /* DISPLAY */
        MI_MODERECALL, MI_HOMEPG, MI_ACCEL, MI_HOLD, MI_CHADD, MI_PREVIEW, MI_PERFLEAVE,  /* CONTROL (MULTI LOAD .. STEP KEYS .., PERF LEAVE) */
 #if DUELL_VELO
        MI_KEYVEL,                                      /* (KEY VELOCITY OFF / ON: builds with KEY SENSE built in only, DUELL_VELO; no row, no editor id otherwise) */
@@ -53,7 +53,7 @@ static int menu_valued(uint32_t row);
 #endif
 static int menu_valued(uint32_t row) { return row < MI_COUNT && row != MI_PANEL && row != MI_ERASE && !MI_READONLY(row); }   /* (a row with a value) */
 #define MI_PROJECT(row) ((row) == MI_TUNE)   /* the project's value (song.g), not a setting */
-static const char *const MI_NAME[MI_COUNT] = {"COLOR", "LEDS", "SCALE LEDS", "ANIMATION", "SCREEN OFF", "CPU METER",
+static const char *const MI_NAME[MI_COUNT] = {"COLOR", "LEDS", "SCALE LEDS", "ANIMATION", "SCREEN OFF", "NOTES LEFT", "CPU METER",
                                               "MULTI LOAD", "HOME OPENS", "KNOB ACCEL", "BUTTON HOLD", "STEP KEYS", "STEP PREVIEW", "PERF LEAVE",
 #if DUELL_VELO
                                               "KEY VELOCITY", "AFTERTOUCH",
@@ -76,10 +76,10 @@ static const char *const MI_NAME[MI_COUNT] = {"COLOR", "LEDS", "SCALE LEDS", "AN
 /* DUELL 0.2.14: the device's label where it is not MI_NAME (0: MI_NAME). One '\n' at most, a designed break (nothing wraps by itself):
  * the line after it is drawn small (S, MID: a hint, or the rest of a long name) and the row takes two units (ui_menu.c) */
 static const char *const MI_LABEL[MI_COUNT] = {
+    [MI_LEDS] = "LIGHTS", [MI_SCLLED] = "SCALE LIGHTS", [MI_PERFLEAVE] = "LEAVING PERFORM",   /* (owner 2026-10-25; MI_NAME stays the editor's key, the editor says it in MENU_LONG) */
+    [MI_ACCEL] = "KNOB ACCELERATION",                 /* (DUELL 1.1 label audit, owner: no cryptic ACCEL; MI_NAME stays the editor's key, the editor says it in MENU_LONG) */
 #if FELUCCA_CDC
     [MI_SERIAL] = "USB SERIAL\nDEVELOPER CONSOLE"      /* (USB SERIAL: its hint) */
-#else
-    0
 #endif
 };
 static const char *menu_label(uint32_t row)
@@ -95,7 +95,7 @@ enum { MTAB_DISPLAY, MTAB_CONTROL, MTAB_AUDIO, MTAB_SYSTEM, MTAB_COUNT };   /* (
 #define MPAGE_UNITS 7u
 static const char *const MTAB_NAME[MTAB_COUNT] = {"DISPLAY", "CONTROL", "AUDIO", "SYSTEM"};
 static const uint8_t MI_TAB[MI_COUNT] = {
-    MTAB_DISPLAY, MTAB_DISPLAY, MTAB_DISPLAY, MTAB_DISPLAY, MTAB_DISPLAY, MTAB_DISPLAY,   /* COLOR LEDS SCALE LEDS ANIMATION SCREEN OFF CPU METER */
+    MTAB_DISPLAY, MTAB_DISPLAY, MTAB_DISPLAY, MTAB_DISPLAY, MTAB_DISPLAY, MTAB_DISPLAY, 0xFFu,   /* COLOR LEDS SCALE LEDS ANIMATION SCREEN OFF NOTES LEFT (CPU METER, last of its group: no tab, no row: the CPU bar is gone in DUELL 1.1; the row, its stored bit and its editor id 26 stay reserved) */
     MTAB_CONTROL, MTAB_CONTROL, MTAB_CONTROL, MTAB_CONTROL, MTAB_CONTROL, MTAB_CONTROL,   /* MULTI LOAD HOME OPENS KNOB ACCEL BUTTON HOLD STEP KEYS
                                                                                           * STEP PREVIEW */
     MTAB_CONTROL,                                                                         /* PERF LEAVE (FADE / KEEP; the 7th unit: one page is full) */
@@ -178,7 +178,7 @@ static const menu_flag_t MENU_FLAGS[] = {
     {MI_PREVIEW, PREF_PREVIEW, {"OFF", "ON"}},         /* 1.2, Discussion #169: ON, the cursor's step sounds (ui_input.c) */
     {MI_CPU, PREF_CPU_OFF, {"ON", "OFF"}},             /* DUELL 0.2.9: OFF, no CPU bar under the header's battery (ui_draw.c); bit clear = ON, as every older setting */
     {MI_MODERECALL, PREF_MODE_RECALL, {"KEEPS MODE", "SETS MODE"}},   /* DUELL 0.2.11 MODE RECALL, 0.2.14 MULTI LOAD: KEEPS MODE (default, bit clear) a multi load
-                                                       * leaves the MODE page (MODE, BALANCE, XFADE, SPLIT) as it is; SETS MODE, it sets the ones saved in the multi (multi.c) */
+                                                       * leaves the MODE page (MODE, XFADE, SPLIT) as it is; SETS MODE, it sets the ones saved in the multi (multi.c) */
     {MI_CHADD, PREF_CHORD_ADD, {"WRITE", "ADD"}},      /* 1.2, #155 CHORD ENTRY HOLD / ADD, 0.2.14 STEP KEYS WRITE / ADD: ADD, keys add to the cursor step (ui_input.c) */
 };
 /* (OUTPUT EQ, the low cut and BASS+, was removed in 0.2.19) */
@@ -239,6 +239,10 @@ static const menu_flag_t *menu_flag(uint32_t row)
 /* a row's value as 0..menu_n(row) - 1 in the order the menu steps it (LEDS: OFF LOW MEDIUM MAX, LEDS_MENU) */
 static uint32_t menu_n(uint32_t row)
 {
+#if DUELL_VELO
+    if (row == MI_KEYVEL || row == MI_AFTERT)
+        return SC_TYPE_N + 1u;                         /* OFF + 5 types */
+#endif
     return row == MI_COLOR ? NPALETTES : (row >= MI_CLICK && row <= MI_COUNTIN) ? 3u :
            row == MI_HOLD ? 4u : row == MI_LEDS ? LEDS_COUNT : row == MI_SCROFF ? NELEM(SCROFF_N) :
            row == MI_TUNE ? TUNE_N : row == MI_ANIM ? 3u : row == MI_HOMEPG ? (uint32_t)HP_COUNT : 2u;
@@ -256,9 +260,10 @@ static uint32_t menu_get(uint32_t row)
     case MI_ANIM: return ui_prefs & PREF_ANIM_OFF ? 1u : (ui_idle & 1u) ? 2u : 0u;
     case MI_HOMEPG: return ui_home_pg < HP_COUNT ? ui_home_pg : HP_MORPH;
     case MI_PERFLEAVE: return perf_keep();
+    case MI_NOTESLEFT: return notes_show_on();         /* 1 = ON (the stored bit is OFF: set = OFF, clear = ON, the default) */
 #if DUELL_VELO
-    case MI_KEYVEL: return keyvel_on();                /* 1 = ON (the stored bit is ON: set = ON, clear = OFF, the default) */
-    case MI_AFTERT: return aftert_on();                /* the same, bit 7 */
+    case MI_KEYVEL: return keyvel_on() ? 1u + keyvel_type() : 0u;   /* 0 OFF, 1..5 SOFTER .. HARDER (the ON bit: set = ON, clear = OFF, the default; the type in ui_sense_type) */
+    case MI_AFTERT: return aftert_on() ? 1u + aftert_type() : 0u;   /* the same (ON = bit 7 clear) */
 #endif
     case MI_CLICK: case MI_CLKLVL: case MI_COUNTIN: return rp_get(row - MI_CLICK);
     case MI_TUNE: return (uint32_t)((song.g[G_TUNE] >= TUNE_MIN && song.g[G_TUNE] <= TUNE_MAX ? song.g[G_TUNE] : TUNE_DEF) - TUNE_MIN);   /* (out of range: 440.0) */
@@ -284,8 +289,12 @@ static const char *menu_vname(uint32_t row, uint32_t v)
     case MI_ANIM: return ANIM_N[v % 3u];
     case MI_HOMEPG: return HOMEPG_N[v % HP_COUNT];
 #if DUELL_VELO
-    case MI_KEYVEL: case MI_AFTERT: return v & 1u ? "ON" : "OFF";
+    case MI_KEYVEL: case MI_AFTERT: {                  /* DUELL 1.1: OFF + 5 types, the same words on the unit and in the editor (list names are PV_LEN 32: spelled out) */
+        static const char *const TYPE_N[6] = {"OFF", "SOFTER", "SOFT", "NORMAL", "HARD", "HARDER"};
+        return TYPE_N[v % 6u];
+    }
 #endif
+    case MI_NOTESLEFT: return v & 1u ? "ON" : "OFF";
     case MI_PERFLEAVE: return v & 1u ? "KEEP" : "FADE";   /* DUELL 0.2.14: leaving PERFORM / loading a sound: SPACE and KILL fade to neutral (default) / stay */
     case MI_LEDS: return LEDS_NAME[LEDS_MENU[v % LEDS_COUNT]];
     case MI_TUNE: {                                    /* A4 in Hz with one decimal ("440.0"; the menu adds "Hz") */
@@ -327,15 +336,22 @@ static void menu_put(uint32_t row, uint32_t v)
     case MI_HOMEPG: ui_home_pg = (uint8_t)(v < HP_COUNT ? v : HP_MORPH); break;   /* (read where HOME opens: go_main) */
     case MI_LEDS: settings_leds = LEDS_MENU[v]; break;
 #if DUELL_VELO
-    case MI_KEYVEL:                                    /* (ON = the bit set; sense.c takes it at once, ui_input.c again every frame) */
+    case MI_KEYVEL:                                    /* (v 0 OFF, 1..5 a type; ON = the bit set; sense.c takes it at once, ui_input.c again every frame) */
         ui_idle = (uint8_t)(v ? ui_idle | KEYVEL_ON_BIT : ui_idle & ~KEYVEL_ON_BIT);
+        if (v)
+            ui_sense_type = (uint8_t)((ui_sense_type & ~7u) | (v <= SC_TYPE_N ? v : SC_TYPE_NORMAL + 1u));   /* (stored type + 1 = the menu value) */
         sense_enable(v != 0u);
+        sense_vel_type_set(keyvel_type());
         break;
     case MI_AFTERT:                                    /* (its own bit, inverted: the bit set = OFF, so the default is ON; the keys' channel pressure) */
         ui_idle = (uint8_t)(v ? ui_idle & ~AFTERT_OFF_BIT : ui_idle | AFTERT_OFF_BIT);
+        if (v)
+            ui_sense_type = (uint8_t)((ui_sense_type & ~(7u << 3)) | ((v <= SC_TYPE_N ? v : SC_TYPE_NORMAL + 1u) << 3));
         sense_at_enable(v != 0u);
+        sense_at_type_set(aftert_type());
         break;
 #endif
+    case MI_NOTESLEFT: ui_notes_off = (uint8_t)(v ? ui_notes_off & ~NOTES_OFF_BIT : ui_notes_off | NOTES_OFF_BIT); break;   /* (read where the header is drawn: ui_draw.c) */
     case MI_PERFLEAVE: ui_idle = (uint8_t)(v ? ui_idle | PERF_KEEP_BIT : ui_idle & ~PERF_KEEP_BIT); break;   /* (read where PERFORM is left: ui_perform.c) */
     case MI_CLICK: case MI_CLKLVL: case MI_COUNTIN: rp_put(row - MI_CLICK, v); break;   /* (at once: click.c, seq.c) */
     case MI_TUNE: song.g[G_TUNE] = (int16_t)((int32_t)v + TUNE_MIN); break;

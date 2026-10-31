@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 /* DUELL NOTES budget (firmware/src/budget.c; docs/CPU_PLAN.md section 5; host_tests.sh "budget"). No instruction counter is needed: the model is
- * checked against the figures of tests/bench_baseline.txt (the bench's Mac run), so it runs on any host.
+ * checked against the figures of tests/cost_cal.txt (DUELL 1.1 item 116: COST-CAL, measured on the unit) and, for the rows not re-measured (the master stages, the worst-case
+ * scene), tests/bench_baseline.txt (the bench's Mac run), so it runs on any host.
  *   (a) MODEL    the cost table reproduces the bench rows within 5 %: one voice of each engine, each INSERT type, SAT, EQ, DUCK, each bus effect in STEREO and
  *                DUEL, the master stages; the worst-case scene of each MODE: its fixed part within 5 %, the totals at 1 + 1 and 4 + 4 notes never below the bench
  *                (the model errs high: a first voice costs more than the following ones) and within 12 % over it
@@ -19,6 +20,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
+#include <stdlib.h>
 #include <unistd.h>
 #include <sys/wait.h>
 #include "memfast.h"
@@ -91,14 +93,16 @@ static void slug(char *d, const char *s, uint32_t n)       /* cpu_bench.c slug *
         d[i] = s[i] == ' ' || s[i] == '/' ? '_' : s[i];
     d[i] = 0;
 }
-static uint32_t within(const char *what, double model, double bench, double tol)
+static uint32_t within2(const char *what, double model, double bench, double lo, double tol)
 {
     double d = (model - bench) / bench;
-    int ok = d >= -tol && d <= tol;
+    int ok = d >= -lo && d <= tol;
     if (!ok || getenv("VERBOSE"))
         printf("budget:   %-44s model %7.1f bench %7.1f  %+5.1f %% %s\n", what, model, bench, d * 100.0, ok ? "" : "<-- OUT");
     return ok;
 }
+static uint32_t within(const char *what, double model, double bench, double tol) { return within2(what, model, bench, tol, tol); }
+#define FIXED_RAW(t) (raw(part_fixed(t)) - BD_PART_ON)   /* a part's stages without its own work while it sounds (item 90: BD_PART_ON, in no bench row of a stage) */
 
 /* a neutral part: the engine's voice only (filter bypassed, nothing else on) */
 static void neutral(track_t *t, uint32_t e)
@@ -152,6 +156,22 @@ static void t_table(void)
     printf("budget: master (STEREO/LAYER only): COMP %.1f, WIDTH %.1f, BASS MONO %.1f\n", BD_U(BD_COMP) / 100.0, BD_U(BD_WIDTH) / 100.0, BD_U(BD_BMONO) / 100.0);
 }
 
+/* tests/cost_cal.txt (DUELL 1.1 item 116: the COST-CAL rows measured on the unit, host instructions a sample, from bench_runs/cost_merged/cost_fit/cost_rows.csv): "key value tag" */
+static double cal_get(const char *key)
+{
+    FILE *f = fopen("tests/cost_cal.txt", "r");
+    char line[160], nm[96];
+    double v;
+    if (!f)
+        return -1.0;
+    while (fgets(line, sizeof line, f))
+        if (line[0] != '#' && sscanf(line, "%95s %lf", nm, &v) == 2 && !strcmp(nm, key)) {
+            fclose(f);
+            return v;
+        }
+    fclose(f);
+    return -1.0;
+}
 static void t_model(void)
 {
     static const char *const ENG[10] = {"ANALOG", "FM6", "PHASE", "LOFI", "VOICE", "TRIO", "WHEEL", "PHYS", "NOISE", "WAVE"};
@@ -167,41 +187,50 @@ static void t_model(void)
     double b;
     power();
     clean_globals(DM_STEREO);
-    for (i = 0; i < NELEM(ENG); i++) {                              /* one voice of each engine */
+    for (i = 0; i < NELEM(ENG); i++) {                              /* one more note of each engine (item 116: tests/cost_cal.txt, the dearer of the one-core and the two-core critical-path row, plus the shared MULTI 12 dB row) */
+        double e1, e2, f12 = cal_get("f12");
         neutral(&trk[0], eng_named(ENG[i]));
-        trk[0].p[P_KTRK] = 32;                                      /* (the factory default: the 12 dB filter runs, as in the bench's sounds) */
-        snprintf(nm, sizeof nm, "voice/%s", ENG[i]);
-        b = base_get(nm);
-        if (b > 0) {                                                /* (cloud job J: the bench rows are of the engines as they were: ANALOG, TRIO, NOISE less their own filter (est.), every engine plus the chain path CHAIN_ALL puts a note with filter 1 on (est.)) */
-            b += (CHAIN_ALL || !strcmp(ENG[i], "ANALOG") || !strcmp(ENG[i], "TRIO") || !strcmp(ENG[i], "NOISE")) ? BD_TW_CHAIN : 0;
-            b -= !strcmp(ENG[i], "ANALOG") ? BD_RM_ANALOG : !strcmp(ENG[i], "TRIO") ? BD_RM_TRIO : !strcmp(ENG[i], "NOISE") ? BD_RM_NOISE : 0;
-        }
-        ok &= b > 0 && within(nm, raw(part_cost(&trk[0])), b, 0.05);
+        trk[0].p[P_KTRK] = 32;                                      /* (the 12 dB filter runs) */
+        snprintf(nm, sizeof nm, "note/%s", ENG[i]);
+        snprintf(s1, sizeof s1, "eng.%s", ENG[i]);
+        e1 = cal_get(s1);
+        snprintf(s1, sizeof s1, "eng2.%s", ENG[i]);
+        e2 = cal_get(s1);
+        b = (e1 > e2 ? e1 : e2) + f12;
+        ok &= e1 > 0 && e2 > 0 && f12 > 0 && within(nm, raw(part_cost(&trk[0])), b, 0.05);
+        neutral(&trk[0], eng_named(ENG[i]));                        /* (the engine alone: never below the dearer row, at most 1.3 instructions over: the row is rounded up, and BD_U) */
+        if (trk[0].eng_req != eng_named("NOISE"))                   /* (NOISE's drift keeps the filter running) */
+            ok &= (raw(part_cost(&trk[0])) >= (e1 > e2 ? e1 : e2) - 0.01 && raw(part_cost(&trk[0])) <= (e1 > e2 ? e1 : e2) + 1.3) || (printf("budget:   engine alone %s model %.2f rows %.2f %.2f <-- OUT\n", ENG[i], raw(part_cost(&trk[0])), e1, e2), 0);
         n++;
     }
-    bchk("model: one voice of each of the 10 engines within 5 % of the bench", ok);
+    bchk("model: one more note of each of the 10 engines within 5 % of the COST-CAL rows (MULTI 12 dB: the shared row, LOW); the engine alone never below the dearer row", ok);
     ok = 1;
     for (i = 1; i < NELEM(N_ITYPE); i++) {                          /* the INSERT types */
         neutral(&trk[0], eng_named("ANALOG"));
         trk[0].p[P_ITYPE] = (int16_t)i;
         snprintf(nm, sizeof nm, "insert/%s", N_ITYPE[i]);
-        b = base_get(nm);
-        ok &= b > 0 && within(nm, raw(part_fixed(&trk[0])), b, 0.05);
+        for (char *q = nm; *q; q++)                                  /* (the two-line names: SOFT\nCLIP -> insert/SOFT_CLIP) */
+            *q = *q == '\n' || *q == ' ' ? '_' : *q;
+        snprintf(s1, sizeof s1, "ins.%u", i);
+        b = cal_get(s1);
+        ok &= b > 0 && within(nm, FIXED_RAW(&trk[0]), b, 0.05) && FIXED_RAW(&trk[0]) >= b - 0.01;
     }
-    bchk("model: every INSERT type within 5 % of the bench", ok);
+    bchk("model: every INSERT type within 5 % of the COST-CAL rows, never below", ok);
     ok = 1;
     neutral(&trk[0], eng_named("ANALOG"));
     trk[0].p[P_DIST] = 64;
-    ok &= within("part/SAT", raw(part_fixed(&trk[0])), base_get("part/SAT"), 0.05);
+    ok &= within("part/SAT", FIXED_RAW(&trk[0]), cal_get("sat"), 0.05);
     neutral(&trk[0], eng_named("ANALOG"));
     trk[0].p[P_EQLG] = 5;
+    ok &= within("part/EQ 1 band", FIXED_RAW(&trk[0]), cal_get("eq.1"), 0.05);
     trk[0].p[P_EQMG] = -4;
+    ok &= within("part/EQ 2 bands", FIXED_RAW(&trk[0]), cal_get("eq.2"), 0.05);
     trk[0].p[P_EQHG] = 6;
-    ok &= within("part/EQ", raw(part_fixed(&trk[0])), base_get("part/EQ"), 0.05);
+    ok &= within("part/EQ 3 bands", FIXED_RAW(&trk[0]), cal_get("eq.3"), 0.05);
     neutral(&trk[0], eng_named("ANALOG"));
     trk[0].p[P_DKDEP] = 90;
-    ok &= within("part/DUCK", raw(part_fixed(&trk[0])), base_get("part/DUCK"), 0.05);
-    bchk("model: SAT, the 3-band EQ and the ducker within 5 % of the bench", ok);
+    ok &= within("part/DUCK", FIXED_RAW(&trk[0]), cal_get("duck"), 0.05);
+    bchk("model: SAT, the EQ (1, 2, 3 bands) and the ducker within 5 % of the COST-CAL rows", ok);
     {   /* the buses: the whole bus section against SENDS OFF, STEREO and DUEL */
         uint32_t m;
         ok = 1;
@@ -220,12 +249,21 @@ static void t_model(void)
                 idle_off = raw(global_cost());
                 mods_off = 0;
                 v = raw(global_cost()) - idle_off;
-                slug(s1, BN[i], 32);
-                snprintf(nm, sizeof nm, "bus/%s/%s", m ? "DUEL" : "STEREO", s1);
-                b = base_get(nm);
-                ok &= b > 0 && within(nm, v, b, 0.05);
+                {   /* (the COST-CAL key of BS[i]; STEREO is read against the LAYER rows, as the model does) */
+                    static const char *const CK[14] = {"bus.", "cho.", "dly.%s.0", "dly.%s.1", "dly.%s.2", "dly.%s.3", "rev.%s.0", "rev.%s.1", "rev.%s.2", "rev.%s.3", "rev.%s.4", "rev.%s.5", "shd.", "shm."};
+                    const char *mk = m ? "DUEL" : "LAYER";
+                    char k[40];
+                    if (strchr(CK[i], '%'))
+                        snprintf(k, sizeof k, CK[i], mk);
+                    else
+                        snprintf(k, sizeof k, "%s%s", CK[i], mk);
+                    b = cal_get(k);
+                    slug(s1, BN[i], 32);
+                    snprintf(nm, sizeof nm, "bus/%s/%s", m ? "DUEL" : "STEREO", s1);
+                }
+                ok &= b > 0 && within2(nm, v, b, 0.05, 0.50);
             }
-        bchk("model: every bus row (chorus, 4 delay modes, 6 reverbs, SHIM DOWN / MOD) in STEREO and DUEL within 5 % of the bench", ok);
+        bchk("model: every bus row (chorus, 4 delay modes, 6 reverbs, SHIM DOWN / MOD) in STEREO and DUEL never below the COST-CAL row (5 %), at most 50 % over it (item 90, 116: the model takes the delay and the reverb as fed, each +57 over the unfed bus: the nothing-fed row reads +48 %)", ok);
     }
     {   /* the master stages (STEREO) */
         double g0, v;
@@ -267,7 +305,7 @@ static void t_model(void)
                 track_t *t = &trk[p];
                 t->eng_req = (uint8_t)e;
                 apply_preset_to(t, k);
-                t->p[P_ITYPE] = 6;                                  /* PHASR, the dearest */
+                t->p[P_ITYPE] = 10;                                 /* VINYL, the dearest (item 116) */
                 t->p[P_IA] = t->p[P_IB] = t->p[P_IC] = 64;
                 t->p[P_DIST] = 64;
                 t->p[P_EQLG] = 5, t->p[P_EQMG] = -4, t->p[P_EQHG] = 6;
@@ -286,18 +324,55 @@ static void t_model(void)
             c4 = F + 6.0 * V;                                       /* (PHYS plays 3 a part: the bench's 4 + 4 sound 6 voices) */
             snprintf(nm, sizeof nm, "scene/%s/fixed", MODE_NAME[MODES[m]]);
             f0 = base_get(nm);
-            okf &= within(nm, F, f0, 0.05);
+            okf &= within2(nm, F, f0, 0.05, 0.25);
             snprintf(nm, sizeof nm, "scene/%s/1+1", MODE_NAME[MODES[m]]);
-            v0 = base_get(nm) + (CHAIN_ALL ? 2.0 * BD_TW_CHAIN : 0.0);   /* (cloud job J: the bench is of the code before CHAIN_ALL; each voice, whose filter runs, takes the chain path now: est. BD_TW_CHAIN) */
+            v0 = base_get(nm);                                      /* (item 90: the bench baseline is of the 1.1 code, the chain path in) */
             okt &= within(nm, c1, v0, 0.12) && c1 >= v0 * 0.995;
             snprintf(nm, sizeof nm, "scene/%s/4+4", MODE_NAME[MODES[m]]);
-            v0 = base_get(nm) + (CHAIN_ALL ? 6.0 * BD_TW_CHAIN : 0.0);
-            okt &= within(nm, c4, v0, 0.12) && c4 >= v0 * 0.995;
+            v0 = base_get(nm);
+            okt &= within(nm, c4, v0, 0.12) && c4 >= v0 * 0.93;   /* (item 116: the scene is the Mac's count of the heaviest PHYS scene, no unit run of it exists; the unit-measured PHYS voice and stages put the model 3.5 .. 4.1 % under it at 4 + 4, so the limit is 7 % (was 2 %): the unit's own held-out runs read the model +8.5 % on average, 0 below; item 90: the measured note is the cleaned sound's; the scene's PHYS with its arp reads up to 1.1 % more at 4 + 4 in DUEL, inside the 15 % margin) */
             printf("budget:   scene %-6s fixed model %6.0f bench %6.0f | 1+1 model %6.0f | 4+4 (6 voices) model %6.0f bench %6.0f | a voice %4.0f (scene bench %4.0f)\n",
                    MODE_NAME[MODES[m]], F, f0, c1, c4, v0, V, base_get("scene/LAYER/voice"));
         }
-        bchk("model: the worst-case scene of each MODE, fixed part within 5 % of the bench", okf);
-        bchk("model: .. and its totals at 1 + 1 and 4 + 4 notes never below the bench, within 12 % over it", okt);
+        bchk("model: the worst-case scene of each MODE, fixed part never below the bench (5 %), at most 25 % over it (the delay and the reverb taken as fed, the parts' own work in it)", okf);
+        bchk("model: .. and its totals at 1 + 1 and 4 + 4 notes never below the Mac bench (1 + 1: 0.5 %, 4 + 4: 7 %, item 116), within 12 % over it", okt);
+    }
+    {   /* item 116: the BYPASS switches the measurements proved (SAT, INSERT, EQ of a part; the master and compressor; the reverb in STEREO / LAYER). The chorus and delay BYPASS saved nothing (+16, +26): charged as before */
+        uint32_t g0, g1, f0, f1;
+        ok = 1;
+        byp_m[0] = byp_m[1] = 0;
+        byp_sh = 0;
+        neutral(&trk[0], eng_named("ANALOG"));
+        trk[0].p[P_ITYPE] = 4, trk[0].p[P_DIST] = 64, trk[0].p[P_EQLG] = 5, trk[0].p[P_EQMG] = -4, trk[0].p[P_EQHG] = 6;
+        f0 = part_fixed(&trk[0]);
+        byp_m[0] = BY_SAT;
+        ok &= part_fixed(&trk[0]) < f0;
+        byp_m[0] = BY_SAT | BY_INS | BY_EQ;
+        f1 = part_fixed(&trk[0]);
+        ok &= f1 + BD_U(BD_SAT) + BD_U(BD_INS[4]) + BD_U(BD_EQ_BASE + 3u * BD_EQ_BAND) >= f0 && f1 + BD_U(BD_SAT) + BD_U(BD_INS[4]) + BD_U(BD_EQ_BASE + 3u * BD_EQ_BAND) <= f0 + 3u;
+        byp_m[0] = 0;
+        bchk("model (item 116): the BYPASS of SAT, INSERT and EQ takes each stage out of the part's fixed cost (and only that part's)", ok);
+        ok = 1;
+        clean_globals(DM_STEREO);
+        cmp_cfg = 4u << 8, wd_sel = 150, bm_sel = 5;
+        g0 = global_cost();
+        byp_sh = BYS_CHO | BYS_DLY;
+        ok &= global_cost() == g0;                              /* (the chorus and delay BYPASS: no saving measured) */
+        byp_sh = BYS_MST | BYS_CMP;
+        g1 = global_cost();
+        ok &= g1 + BD_U(BD_COMP) + BD_U(BD_WIDTH) + BD_U(BD_BMONO) >= g0 && g1 + BD_U(BD_COMP) + BD_U(BD_WIDTH) + BD_U(BD_BMONO) <= g0 + 3u;
+        byp_sh = BYS_REV;
+        ok &= global_cost() < g0 - BD_U(BD_REV[0][2]) / 2u;     /* (HALL: 294.9 -> 121, the bypass saved 173.9) */
+        {
+            double sv = raw(g0) - raw(global_cost());
+            ok &= sv > 160.0 && sv < 190.0;
+        }
+        clean_globals(DM_SPLIT);
+        g0 = global_cost();
+        byp_sh = BYS_REV;
+        ok &= global_cost() == g0;                              /* (DUEL: the saving was not measured, charged as before) */
+        byp_sh = 0;
+        bchk("model (item 116): the master and compressor BYPASS drop COMP, WIDTH and BASS MONO; the REVERB BYPASS drops 174 (STEREO / LAYER, not DUEL); chorus and delay BYPASS change nothing", ok);
     }
     (void)n;
 }
@@ -409,13 +484,13 @@ static void t_factory(void)
 static uint32_t rnd_state = 0x9E3779B9u;
 static uint32_t rnd(void) { rnd_state ^= rnd_state << 13; rnd_state ^= rnd_state >> 17; rnd_state ^= rnd_state << 5; return rnd_state; }
 typedef struct { const char *what; void (*on)(track_t *t); } bstep_t;
-static void s_ins(track_t *t) { t->p[P_ITYPE] = 6; }
+static void s_ins(track_t *t) { t->p[P_ITYPE] = 10; }   /* VINYL: the dearest type since item 116 (PHASER was before) */
 static void s_f24(track_t *t) { t->p[P_FREEA] = 52; t->p[P_FREEB] = 20; t->p[P_FREEC] = 0; t->p[P_FREED] = 2; }
 static void s_sat(track_t *t) { t->p[P_DIST] = 64; }
 static void s_eq(track_t *t) { t->p[P_EQMG] = -4; }
 static void s_duck(track_t *t) { t->p[P_DKDEP] = 90; }
 static void s_mx(track_t *t) { t->p[P_M1SRC] = MS_LFO; t->p[P_M1DST] = MD_CUT; t->p[P_M1AMT] = 30; }
-static void s_twin(track_t *t) { t->p[P_TWTYPE] = TT_LADDER; t->p[P_DRV2] = 64; XV(t, X_ROUTE) = 1; XV(t, X_LFO1) = 20; }
+static void s_twin(track_t *t) { t->p[P_TWTYPE] = TT_COMB; t->p[P_DRV2] = 64; XV(t, X_ROUTE) = 1; XV(t, X_LFO1) = 20; }
 static const bstep_t STEPS[] = {{"INSERT", s_ins}, {"24 dB slope", s_f24}, {"SAT", s_sat}, {"EQ band", s_eq}, {"ducker", s_duck}, {"matrix slot", s_mx}, {"TWIN filter 2", s_twin}};
 static void g_rand(void) { song.g[G_DMODE] = DMD_RAND; }
 static void g_shim(void) { song.g[G_RTYPE] = 3; song.g[G_SHPITCH] = SHP_DOWN; song.g[G_SHMOD] = 50; }
@@ -829,6 +904,215 @@ static void t_pure(void)
     }
 }
 
+/* ---- DUELL 1.1 item 142 (HANDOFF_V2 item 140): the morph ends charged as they SOUND (budget.c bd_end: morph_apply on the live values), not as stored ---- */
+#define LOADED_REF 0x94a8602e9043143full                /* RE-BASED 2026-10-27 (item 147: SAT charged from the played ends, so the sat item of the patches with SAT on at End B only moves; was 0x066513d172b83ac7). Earlier: RE-BASED (item 146: SMART no longer rolls a switch, so 16 factory patches' and 4 multis' End B differ; was 0xcea8e1e6db6eb3b7): the hash below on the sources BEFORE item 142 (scratch copy of 2026-10-27 01:10, bd_slope8 / morph_cur), this test */
+static uint64_t lh = 1469598103934665603ull;
+static void lput(uint32_t v)
+{
+    uint32_t i;
+    for (i = 0; i < 4u; i++) {
+        lh ^= (v >> (8u * i)) & 0xFFu;
+        lh *= 1099511628211ull;
+    }
+}
+static void spin(uint32_t n)                            /* blocks and frames: a load's MORPH roll and its settling, as on the unit */
+{
+    int32_t o[2 * CTL];
+    uint32_t i;
+    for (i = 0; i < n; i++) {
+        mix_block(o, CTL);
+        frame();
+    }
+}
+static void load_both(uint32_t mode, uint32_t slot)    /* patch slot #slot+1 on both parts, as PATCHES / a program change loads it (sl_load: MORPH at A, its End B rolled) */
+{
+    uint32_t k;
+    power();
+    duell_mode_force(mode);
+    for (k = 0; k < 2u; k++) {
+        pc_recall(k, slot, 0);
+        spin(40);
+    }
+}
+static void items_put(const bd_t *b)                    /* every item of both parts and the globals: the caps (budget_solve2 at BUDGET_LIMIT) and the runner's deadline items (BD_UDL) are made of
+                                                         * these only (the limit itself is not in the hash: item 142 also moved it 81 -> 84; at 81 the caps were checked equal too, HANDOFF_V2 item 142) */
+{
+    uint32_t p;
+    lput(b->idle), lput(b->fx);
+    for (p = 0; p < 2u; p++) {
+        const bd_part_t *r = &b->p[p];
+        lput(r->eng), lput(r->filt), lput(r->ext), lput(r->ins), lput(r->sat), lput(r->eq), lput(r->misc), lput(r->base), lput(r->cap), lput(r->on);
+    }
+}
+/* the two-core number of part 0 with KEY SENSE (+57, the device builds) */
+static uint32_t two_of(const bd_t *b0)
+{
+    bd_t b = *b0;
+    uint32_t n[2];
+    b.fx += 57u;
+    budget_solve2(&b, n, 1);
+    return n[0];
+}
+static uint32_t eng_of_slot_named(const char *nm)       /* (a check that the slot holds the engine the test means) */
+{
+    return str_eq(ENGINES[eng_idx(trk[0].eng_req)]->name, nm);
+}
+static void t_loaded(void)
+{
+    static const uint32_t MODES[3] = {DM_LAYER, DM_STEREO, DM_SPLIT};
+    uint32_t m, s, nl = 0, nm = 0;
+    bd_t b, bo;
+    printf("budget: --- item 142: every factory patch AS LOADED (both parts, LAYER / STEREO / DUEL; its MORPH End B rolled by the load): the items, the caps and the deadline items as before\n");
+    for (m = 0; m < 3u; m++)
+        for (s = 0; s < UP_SLOTS; s++) {
+            load_both(MODES[m], s);
+            nm += (mph[0].nid || mph[0].fnid) && (mph[1].nid || mph[1].fnid) && !morph_stale(&trk[0], &mph[0]) && !morph_stale(&trk[1], &mph[1]);
+            bd_build(&b);
+            items_put(&b);
+            nl++;
+        }
+    for (s = 1; s <= MU_SLOTS; s++) {                   /* and the 16 factory multis (MODE RECALL) */
+        load_multi(s - 1u);
+        spin(40);                                       /* (the parts' engines settle: before that the morph is stale and not charged at all) */
+        nm += (mph[0].nid || mph[0].fnid) && (mph[1].nid || mph[1].fnid) && !morph_stale(&trk[0], &mph[0]) && !morph_stale(&trk[1], &mph[1]);
+        bd_build(&b);
+        items_put(&b);
+        nl++;
+    }
+    printf("budget:     %u loads (%u with a live morph on both parts), items hash 0x%016llx (before item 142: 0x%016llx)\n", nl, nm, (unsigned long long)lh, (unsigned long long)LOADED_REF);
+    bchk("item 142 (a): every factory patch and multi as loaded gives the items of the reference (re-based for item 147: SAT from the played ends)", lh == LOADED_REF && nm > 100u);
+
+    /* (b) #01 BEHIVE edited after the load: TWIN OFF, SLOPE 12 dB. Its morph ends hold the Original's TWIN BP and 24 dB, which can never sound now: the charge equals the same
+     *     state with the morph switched off, plus BD_MORPH a voice */
+    {
+        uint32_t k, n, no, ok;
+        load_both(DM_LAYER, 0);
+        ok = eng_of_slot_named("ANALOG") && mph[0].nid;
+        for (k = 0; k < 2u; k++)
+            trk[k].p[P_TWTYPE] = TT_OFF, trk[k].p[P_FREED] = 1;
+        frame();
+        bd_build(&b);
+        n = two_of(&b);
+        for (k = 0; k < 2u; k++)
+            mph[k].nid = mph[k].fnid = 0;               /* (the bench's `morph 1 OFF`: no morph list) */
+        bd_build(&bo);
+        for (k = 0; k < 2u; k++)
+            bo.p[k].ext += 16u;                         /* + BD_MORPH */
+        no = two_of(&bo);
+        printf("budget:     #01 BEHIVE, TWIN OFF + 12 dB after the load: voice %u + %u + %u (morph off + 16: %u + %u + %u), two cores %u a part (morph off + 16: %u; item 140: was 4)\n",
+               b.p[0].eng, b.p[0].filt, b.p[0].ext, bo.p[0].eng, bo.p[0].filt, bo.p[0].ext, n, no);
+        bchk("item 142 (b): #01 BEHIVE with TWIN OFF and 12 dB after the load is charged as the same state with the morph off plus BD_MORPH (two cores 6 at limit 84, was 4 at 81 before the fix)",
+             ok && b.p[0].eng == bo.p[0].eng && b.p[0].filt == bo.p[0].filt && b.p[0].ext == bo.p[0].ext && n == no && n == 6u);
+    }
+    /* (c) a choice set by hand at End B (EDITABLE B, pinned) is End B's whatever the live value: TWIN LP pinned at B, live TWIN OFF -> TWIN charged; not pinned -> not */
+    {
+        uint32_t tw_pin, tw_free, tw_live;
+        load_both(DM_LAYER, 0);
+        trk[0].p[P_TWTYPE] = TT_OFF;
+        frame();
+        bd_build(&b);
+        tw_free = b.p[0].ext;
+        load_both(DM_LAYER, 0);
+        mph[0].fader = 127;
+        morph_b_set(0, P_TWTYPE, TT_LP);
+        mph[0].fader = 0;
+        trk[0].p[P_TWTYPE] = TT_OFF;
+        frame();
+        bd_build(&b);
+        tw_pin = b.p[0].ext;
+        trk[0].p[P_TWTYPE] = TT_LP;                     /* (the live TWIN on as well: the dearest of the states) */
+        bd_build(&b);
+        tw_live = b.p[0].ext;
+        printf("budget:     #01 BEHIVE part 1, live TWIN OFF: extras %u a voice; with TWIN LP pinned at End B %u; live TWIN LP too %u\n", tw_free, tw_pin, tw_live);
+        bchk("item 142 (c): a TWIN TYPE pinned at End B (set by hand) is charged although the live TWIN is OFF; without the pin it is not",
+             tw_pin >= tw_free + 55u && tw_pin == tw_live);
+    }
+    /* (d) End B moves the cutoff: TRIO's first patch with MULTI off (cutoff open, no depth, no slot) runs the filter toward End B (live + (B - Original) closes it): charged.
+     *     A mutant that blends both ends at A (bd_end with w = 0) fails here */
+    {
+        uint32_t k, i, f;
+        load_both(DM_LAYER, 14);                        /* #15 TRIO's first patch (tools/gen_polymax_suite.py) */
+        for (k = 0; k < 2u; k++) {
+            track_t *t = &trk[k];
+            for (i = 0; i < NMSLOT; i++)
+                t->p[MSLOT_ID(i)] = t->p[MSLOT_ID(i) + 1] = t->p[MSLOT_ID(i) + 2] = 0;
+            t->p[P_KTRK] = 0, t->p[P_LD_FLT] = t->p[P_E2FLT] = t->p[P_ED_FLT] = t->p[P_L2FLT] = 0;
+            t->p[P_FREEA] = (int16_t)UF_STEPS, t->p[P_FREEC] = 0, t->p[P_FREED] = 1, t->p[P_TWTYPE] = TT_OFF;
+        }
+        frame();
+        bd_build(&b);
+        f = b.p[0].filt;
+        for (k = 0; k < 2u; k++)
+            mph[k].nid = mph[k].fnid = 0;
+        bd_build(&bo);
+        printf("budget:     TRIO #15 MULTI off (open, no depth): filter %u a voice with its morph (End B closes it), %u with the morph off\n", f, bo.p[0].filt);
+        bchk("item 142 (d): End B's own cutoff (TRIO, MULTI off) is still charged: the filter runs toward B", eng_of_slot_named("TRIO") && f == 89u && bo.p[0].filt == 0u);
+    }
+    /* (e) End A rolled away from the Original (ROLL on A, WILD, AMOUNT 100; 64 seeds, TRIO MULTI off as in (d)): bd_part's End A shortcut (End A = the Original -> the live values) must not
+     *     be taken; the filter charged is the one of the live values and both ends as morph.c plays them (morph_effective_x) */
+    {
+        uint32_t sd, k, i, bad = 0, adiff = 0;
+        int16_t qa[EXT_P_LEN], qb[EXT_P_LEN];
+        for (sd = 0; sd < 64u; sd++) {
+            uint32_t sa, sb, sl, want;
+            load_both(DM_LAYER, 14);
+            for (k = 0; k < 2u; k++) {
+                track_t *t = &trk[k];
+                for (i = 0; i < NMSLOT; i++)
+                    t->p[MSLOT_ID(i)] = t->p[MSLOT_ID(i) + 1] = t->p[MSLOT_ID(i) + 2] = 0;
+                t->p[P_KTRK] = 0, t->p[P_LD_FLT] = t->p[P_E2FLT] = t->p[P_ED_FLT] = t->p[P_L2FLT] = 0;
+                t->p[P_FREEA] = (int16_t)UF_STEPS, t->p[P_FREEC] = 0, t->p[P_FREED] = 1, t->p[P_TWTYPE] = TT_OFF;
+            }
+            morph_roll_cfg(0, 0u, 1000u + sd, 100u, MC_WILD);
+            frame();
+            bd_build(&b);
+            morph_effective_x(0, 0, qa);
+            morph_effective_x(0, 1, qb);
+            sa = bd_slope(ENGINES[eng_idx(trk[0].eng_req)], qa), sb = bd_slope(ENGINES[eng_idx(trk[0].eng_req)], qb), sl = bd_slope(ENGINES[eng_idx(trk[0].eng_req)], trk[0].p);
+            sl = sa > sl ? sa : sl;
+            sl = sb > sl ? sb : sl;
+            if (sa && sb && qa[P_FREED] != qb[P_FREED])
+                sl = 2;
+            want = sl == 2u ? 123u : sl ? 89u : 0u;
+            adiff += sa != bd_slope(ENGINES[eng_idx(trk[0].eng_req)], trk[0].p);
+            bad += b.p[0].filt != want;
+        }
+        printf("budget:     End A rolled (64 seeds): End A's filter differs from the live one in %u, the charge is wrong in %u\n", adiff, bad);
+        bchk("item 142 (e): with End A rolled away from the Original the charge follows End A as it sounds (the End A shortcut is not taken)", !bad && adiff > 0u);
+    }
+    /* (f) item 147 (owner): SAT is charged from its played value at the morph's ends like the filters and the TWIN, not from the live value only. SAT OFF live and ON at End B (pinned by hand,
+     *     the fader at B or at A): charged BD_SAT; SAT off at both ends: 0; SAT ON live, off at End B: still charged (live is charged as before). The budget has no fader input (it charges the
+     *     dearest end, as for the filters), so the fader position changes nothing. A mutant that reads the live value only fails the first line */
+    {
+        uint32_t sat_b, sat_b_a, sat_none, sat_live, fx_none, fx_b;
+        load_both(DM_LAYER, 0);
+        trk[0].p[P_DIST] = 0;
+        mph[0].fader = 127;
+        morph_b_set(0, P_DIST, 0);
+        mph[0].fader = 0;
+        frame();
+        bd_build(&b);
+        sat_none = b.p[0].sat, fx_none = BD_U(b.p[0].ins + b.p[0].sat + b.p[0].eq + b.p[0].misc + b.p[0].base);
+        mph[0].fader = 127;
+        morph_b_set(0, P_DIST, 64);
+        trk[0].p[P_DIST] = 0;
+        bd_build(&b);
+        sat_b = b.p[0].sat, fx_b = BD_U(b.p[0].ins + b.p[0].sat + b.p[0].eq + b.p[0].misc + b.p[0].base);
+        mph[0].fader = 0;
+        bd_build(&b);
+        sat_b_a = b.p[0].sat;
+        mph[0].fader = 127;
+        morph_b_set(0, P_DIST, 0);
+        trk[0].p[P_DIST] = 64;
+        bd_build(&b);
+        sat_live = b.p[0].sat;
+        printf("budget:     SAT live OFF: charged %u with SAT off at both ends, %u with SAT 64 pinned at End B (fader at B), %u (fader at A); live SAT on, off at B: %u (BD_SAT %u); part fixed %u -> %u\n",
+               sat_none, sat_b, sat_b_a, sat_live, BD_SAT, fx_none, fx_b);
+        bchk("item 147 (f): SAT off live and on at End B is charged BD_SAT (more than SAT off at both ends) at fader B and at fader A; live SAT is still charged",
+             sat_none == 0u && sat_b == BD_SAT && sat_b_a == BD_SAT && sat_live == BD_SAT && fx_b > fx_none);
+    }
+}
+
 int main(void)
 {
     setvbuf(stdout, NULL, _IONBF, 0);
@@ -840,6 +1124,7 @@ int main(void)
     t_steal();
     t_bits();
     t_pure();
+    t_loaded();
     printf("budget: %s\n", fails ? "FAIL" : "ok");
     return fails != 0;
 }

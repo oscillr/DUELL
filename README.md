@@ -3,7 +3,7 @@
 **MultiMorphing Bitimbral Synthesizer**  
 **by OSCILL/R**
 
-**Two synths in one small box.** DUELL is free, open-source firmware (GPL-3.0) for the M-VAVE FM-1. It turns the FM-1 into a bitimbral instrument: two complete parts, three ways to play them together, and a morph that glides between two versions of every sound. This is **DUELL 1.0**.
+**Two synths in one small box.** DUELL is free, open-source firmware (GPL-3.0) for the M-VAVE FM-1. It turns the FM-1 into a bitimbral instrument: two complete parts, three ways to play them together, and a morph that glides between two versions of every sound. This is **DUELL 1.1**.
 
 **Try it in your browser, no FM-1 needed:** <https://oscillr.github.io/DUELL/emu/>
 
@@ -18,7 +18,7 @@
 3. While the new firmware is written, the unit shows the **update screen**: the DUELL word over moving wave lines, WRITING, a percent number, a bar of 20 segments and DO NOT SWITCH OFF. Do not unplug until it is done. If the screen stays dark the write may still be running: wait for the installer to say Done.
 4. Details, the checklist and the way back to the official firmware: [docs/INSTALL.md](docs/INSTALL.md). If something goes wrong: [docs/RECOVERY.md](docs/RECOVERY.md).
 
-The package is `duell-1.0.fwsc` (compare its SHA-256 with `SHA256SUMS` on the release page).
+The package is `duell-1.1.fwsc` (compare its SHA-256 with `SHA256SUMS` on the release page).
 
 ## What is in it
 
@@ -53,7 +53,7 @@ A part has two levels, as on a hardware synth. The sound has a **TRIM** (its own
 Per part: distortion, INSERT (including TAPE, VINYL, FOLD, HARD, CRUSH), EQ, a ducker with sidechain from MIDI. Shared: chorus (stereo), a delay with four modes (DIGI, PING, RAND, OCT+), six reverbs (ROOM, SPRING, HALL, SHIM, RESO, PLATE) with a low cut, BASS MONO, a master compressor and a stereo WIDTH on the GLO pages.
 
 ### Keys
-Key velocity and aftertouch (KEY SENSE): the menu has **AFTERTOUCH** (on by default) and **KEY VELOCITY** (off by default: with it on, a very hard press can come out quiet; the method is Velo's, see [NOTICE.md](NOTICE.md)).
+Key velocity and aftertouch (KEY SENSE): the menu has **AFTERTOUCH** (on by default) and **KEY VELOCITY** (on by default; a very hard press can come out quiet, and you can switch it off; the method is Velo's, see [NOTICE.md](NOTICE.md)).
 
 ### Two cores
 Part 2 plays on the chip's second core. It starts at every power-on and needs nothing from you. If the second core does not answer, misreads or stalls, DUELL plays on **one core** for the rest of that session without a break in the music; after a crash or hang that involved the second core, the next start uses one core too and the one after tries two again. The unit also keeps a limit on the number of notes per part (the NOTES budget) so that it does not crackle. There is no menu switch or on-screen notice for the second core yet.
@@ -144,7 +144,7 @@ One map for the whole unit. A CC on a part's channel moves that part; "both part
 | 118 | CYCLE SYNC | Undefined | the part of the channel |
 
 
-**Input numbers** (read as performance controls for the modulation matrix): CC1 mod wheel (it also moves the morph fader), CC11 expression, CC64 sustain pedal. **CC2 (breath) and CC4 (foot)** are reserved as matrix sources.
+**Input numbers:** CC 1, 2, 4, 11 and 64 are inputs (mod wheel, breath, foot, expression, sustain pedal) that you can use as sources in the mod matrix; they cannot be assigned to parameters. CC 1 also moves the morph fader.
 
 **Locked numbers** (the MIDI standard's own): 0 and 32 bank select, 6 and 38 data entry, 96 to 101 data increment / decrement and NRPN / RPN select, 120 to 127 the channel mode messages (all sound off, reset all controllers, local control, all notes off, omni, mono, poly).
 
@@ -152,8 +152,8 @@ One map for the whole unit. A CC on a part's channel moves that part; "both part
 
 **Learn-only parameters** have no CC of their own: the matrix choices and amounts, EQ, ARP and SEQ set-up, DUCK, the LFOs beyond the vibrato rows, the voice set-up, the master settings, UNDO, the four MORPH switches (TARGET, SMART, ARP, PITCH) and the settings that belong to both parts (BALANCE, XFADE, SPLIT, MODE). Teach a CC to one with MIDI LEARN on the unit.
 
-## What is not in 1.0
-The editor's MIDI MAP tab, BREATH and FOOT as matrix sources, switching multis with preset changes, the SUB HARMONICS card (switched off). The full list is in [docs/KNOWN_LIMITS.md](docs/KNOWN_LIMITS.md).
+## What is not in 1.1
+The editor's MIDI MAP tab, switching multis with preset changes, the SUB HARMONICS card (switched off). The full list is in [docs/KNOWN_LIMITS.md](docs/KNOWN_LIMITS.md).
 
 ## Build and test
 

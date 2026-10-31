@@ -74,7 +74,7 @@ GROUPS = [
              (("HOME",), 0, ("Home screen", "ホーム画面"), None),
              (("SAVE",), 0, ("Presets, user sounds, projects", "プリセット、ユーザー音色、プロジェクト"), None),
              (("ARP",), 0, ("Arpeggiator; flashes on the beat", "アルペジエーター（拍で点滅）"), None),
-             (("SEQ",), 0, ("Sequencer: steps, pattern, automation", "シーケンサー（ステップ、パターン、オートメーション）"), None),
+             (("SEQ",), 0, ("Sequencer: steps, pattern, parameter locks", "シーケンサー（ステップ、パターン、パラメータロック）"), None),
          ]),
     dict(n=3, col=0, title=("Keys", "鍵盤"), note=None,
          bands=[("KEYS",)],
@@ -268,7 +268,11 @@ CAP_H, CAP_R, CAP_SIZE, CAP_PAD = 24, 7.5, 14, 6.5     # gen_aa_keycaps' 13 / 4 
 bad_caps = []
 
 
+LEGEND = {"SCL": "SEL"}    # the scale button is printed SEL: the drawn keycap reads SEL (SCL stays the internal name)
+
+
 def cap_ink(label):
+    label = LEGEND.get(label, label)
     f = FACES["lat", 600]
     items, pen_x = [], 0.0
     for c in label:
@@ -287,6 +291,7 @@ def cap_w(label):
 
 def keycap(label, x, ymid, inside):
     """the pill CAP_PAD each side of the label's ink, the caps centred on ymid; returns its right edge"""
+    label = LEGEND.get(label, label)
     f = FACES["lat", 600]
     ix0, ix1 = cap_ink(label)
     w = ix1 - ix0 + 2 * CAP_PAD

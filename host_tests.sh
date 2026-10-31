@@ -1,7 +1,9 @@
 #!/bin/sh
 # DUELL host tests that run on a Mac without the JieLi toolchain (subset of felucca-base/tests/run_tests.sh).
-# Usage: ./host_tests.sh [name ...]   names: level benchsim benchrun benchaudio stereochorus chorusskip bassmono comp master bench shimmer locut duck dlymod regress chord mod mxstep modinert halltail perform ui select step3 engine morph morphui mode dlymod stereochorus dlyev hang atgt patslot multi release patch patchraw dx7import dx7compat splash sounds mrender fmbass fm6 loadcost cpuscen uf wave hold guide wtab wavetable sidechain
-#   mixsplit partindep duckpart twocore tcmeas tcstage1 tcbench poolrule budget modules uitest project fun10 motion persist backup editor editorjson midictl audio erase flashled usb insert rollbrowser xvalues twin subcyc pages scope2 editb velo midimap midimapmut emu   (default: all; emu only when ~/emsdk exists)
+# Usage: ./host_tests.sh [name ...]   names: midiout level benchsim benchrun benchaudio stereochorus chorusskip bassmono comp master bench shimmer locut duck dlymod regress chord strum mod mxstep modinert halltail perform performcap ui select step3 engine morph morphui mode dlymod stereochorus dlyev hang atgt patslot multi release patch patchraw dx7import dx7compat splash sounds mrender fmbass fm6 loadcost cpuscen uf wave hold guide guidesetup wtab wavetable sidechain
+#   mixsplit partindep duckpart twocore tcmeas tcstage1 bootguard tcbench poolrule budget modules uitest project fun10 motion persist backup editor editorjson midictl audio erase flashled usb insert rollbrowser xvalues twin subcyc pages scope2 editb velo midimap midimapmut emu   (default: all; emu only when ~/emsdk exists)
+# strum: tests/strum_test.c (DUELL 1.1 item 144): the CHORD page's STRUM (ext slot X27: the chord's tones low to high, STRUM ms apart; release cancels; pedal, HOLD ALL, ARP / MONO / CHRD OFF hide it,
+#   LAYER, panics) and the NOTE-START STAGGER (voice.c: at most VS_MAX = 2 (item 148; 3 before) new voices a POLY part starts in one block; 8 at once start 2 + 2 + 2 + 2), a random walk that must leave nothing sounding or waiting
 # chorusskip: tests/chorusskip_test.c (0.2.21), built twice (as it is, and -DCHO_NOSKIP = the firmware without fx_bus.c cho_zrun's skip): the plain bus leaves the chorus out of a block whose chorus input is 0 while the whole chorus
 #   line is 0 (a send of 0 or nothing playing: ~46 host instructions a sample saved in STEREO and LAYER); both runs hash every output sample and the chorus lines and states over silence, notes starting and stopping, DEPTH / RATE changes,
 #   the delay (plain, modulation, PING-PONG, RANDOM), the reverb alone and a random fuzz, in STEREO, LAYER and DUEL; the hash lists must be equal
@@ -41,9 +43,9 @@
 #   record's bytes [15][18..21], ui.c ms_sync): 100 % bit for bit (the sources-before hash; zero code run), WIDTH: the mid exactly untouched, 0 % mono, the side against frequency (only above the 125 Hz crossover
 #   when wider, all of it when narrower), BASS MONO after it, no click, back to rest; DUEL bypassed (and cleared at a mode change), LAYER runs it; the pages, card, hide rule, stored bytes (a 0.2.24 record's DRIVE byte is ignored),
 #   ERASE, not in multis / project; cost. 0.2.25: the master saturator (and its tests) is removed
-# mxstep: tests/mx_step_test.c (0.2.25, the matrix round; release_drafts/MATRIX_DESTINATIONS.md): the source slew (mod.c mx_slew: a MODW jump -> CUT, an LFO at RATE's top and a 10 ms attack pass unchanged),
+# mxstep: tests/mx_step_test.c (0.2.25, the matrix round; working docs/MATRIX_DESTINATIONS.md): the source slew (mod.c mx_slew: a MODW jump -> CUT, an LFO at RATE's top and a 10 ms attack pass unchanged),
 #   the in-block ramps of PAN, PATCH LEVEL and the sends when the matrix moves them (fx.c mix_ramp: the jump, an 8 Hz LFO, a route switched off), SAT's blend zone (fx.c track_dist_ramp); 2nd differences in 1/1000 of the peak
-#   hunt1 (release_drafts/CLICK_HUNT1.md): the same for the MORPH fader (mod.c mod_mixmv counts the open window), SAT out of / into 0, a SPREAD part (fx.c spread_run / spread_post: jumps, LFO, the way back, the fader; steady
+#   hunt1 (working docs/CLICK_HUNT1.md): the same for the MORPH fader (mod.c mod_mixmv counts the open window), SAT out of / into 0, a SPREAD part (fx.c spread_run / spread_post: jumps, LFO, the way back, the fader; steady
 #   SPREAD renders bit for bit; the mid is the plain mix's, the side within 2 LSB), and LFO 1 / LFO 2 for their own depths (voice.c: a SAW / SQUARE edge on the VOICE engine's SHAPE, seam ratio). tools/hunt_probe.py: the click hunt's trace
 # modinert: tests/mod_inert_test.c (0.2.25, docs/MOD_INERT_TABLE.md): the table of what a wave leaves without effect proved by rendering (SHAPE on the ten engines and every ANALOG / LOFI / TRIO wave,
 #   TRIO INT2 INT3 DTN PW and LOFI DUTY end to end), and the list of removed matrix destinations
@@ -70,7 +72,14 @@
 #   firmware/src/twocore.{h,c} with the computer's hal (tests/twocore_hal_host.h), one thread, core 1's step called by hand: claim / done, take before and after the claim (yld / done),
 #   a check value read wrong (refused, BADJOB) and one that fits at the re-read, a wrong job number, a stale and a too-new done word, the heartbeat (HANG), the read check (MISREAD),
 #   the flash park (at once; a job left open: FLASH after 20 ms), the record across a reset and the armed one-shot start, which reasons are strikes, the stack mark. docs/TWOCORE_STAGE1.md
-# budget: tests/budget_test.c (job 4, branch cloud/notes), the NOTES budget (firmware/src/budget.c, docs/MIXSPLIT_NOTES.md section 8): how many notes each part may play, from the settings, one core, 80 % of the time with a margin of 1.15.
+# velomono: tests/velo_mono_test.c (DUELL 1.1): harder never quieter: the key velocity over every reading and every curve, never calibrated and calibrated, and the whole press through sense_update.
+# polylimits: tests/poly_limits_test.c (DUELL 1.1 item 90): the NOTES limits per engine, one core and two cores, the counter, each part its own voices, the instant fall-back.
+# deadline: tests/deadline_test.c (DUELL 1.1 item 132): the two-core runner's deadline and wait limit (twocore_run.c tcr_deadline) are bit for bit the values before item 132 raised BUDGET_LIMIT
+#   to 90 and stopped charging the hand-over: every engine pair x filter x MODE x SENDS / PART FX, every factory sound, the 16 multis, both rules, every block and voice count, one hash
+#   (item 137: margin 1.00 for the caps, item 142: limit 84 (was 81); the deadline keeps 1.15: the same hash; the posted deadline's true-cost take-over when the 1.15 one is past, checked at 16 post moments;
+#   core 1's block-0 job + 6 points before the wait limit at the caps in every setup)
+# polycalib: tests/poly_calib.c (report only, macOS): the measured cost of one more note per engine and filter (the budget table's source; writes nothing unless given a CSV path).
+# budget: tests/budget_test.c (job 4, branch cloud/notes), the NOTES budget (firmware/src/budget.c, docs/MIXSPLIT_NOTES.md section 8): how many notes each part may play, from the settings, one core, 84 % of the time with a margin of 1.00 (item 132: was 80 %, owner chose 88 over 90 at 1.15; item 137: margin 1.00, limit 81; item 142: limit 84).
 #   (a) the cost table reproduces tests/bench_baseline.txt (the bench's figures; no counter needed): every engine's voice, INSERT type, SAT, EQ, DUCK, bus effect in STEREO and DUEL, master stage within 5 %, the worst-case scene of each MODE (fixed part within 5 %,
 #   totals never below the bench and within 12 %); (b) the 16 factory multis: NOTES a part, what limits it, the VOICE CAP of 0.2.11 beside it (printed, as loaded and in cpuscen's MORPH state); (c) switching on an INSERT, 24 dB, SAT, an EQ band, the ducker, a matrix slot,
 #   RANDOM, SHIM DOWN, COMP, WIDTH or the chorus never raises that part's number (16 multis and 5000 random settings); (d) 12 note-ons on a part with a budget of 4 (also 1, and one worked out from settings): at most that many voices, no step at a steal over 1.5 x
@@ -130,6 +139,8 @@
 # dx7compat: tests/dx7_compat.sh (optional, local: DX7_BANKS=<dir of 32-voice .syx banks> runs the engine / reference / parser comparison; without it 'skipped: no banks', PASS)
 # fmbass: tests/fm_bass_diff_test.c (0.2.17), FRETLESS and SLAP DOCTOR (both FM6 basses) must not sound alike: the energy above 250 Hz at 200 ms differs >= 6 dB, the transient peak over the body >= 4 dB
 # guide: tests/guide_test.c, 0.2.11's first-start GUIDE: the settings bit (fresh, seen, an older record, MENU's replay), its keys, playing under it, no stuck state
+#   (DUELL 1.1, item 127: the five pages SETUP 1/5, GUIDE 2/5 .. 4/5, SETUP 5/5 read from the texts drawn; the first start's splash waits for OCT+ or HOME)
+# guidesetup: tests/guide_setup_test.c, the SETUP questions (K1..K4 and SELECT pick the option, no HOME message on a turn, the key legend)
 # level: tests/level_test.c (0.2.19, the level split: PATCH TRIM P_TRIM, stored with a patch, and MIXER LEVEL P_LEVEL, the player's, kept with a multi and the project): a sound load (factory, stored, engine change, INIT, UNDO) keeps the mixer level, SAVE stores the
 #   trim only, RESTORE brings the factory trim, a record of before the split reads its LEVEL as the trim, a multi / the project hold both (revisions), the factory multis' mixer is unity, CC7 is the mixer, the audio gain is trim x mixer
 #   (bit for bit across splits of one product, silence at 0, the +7.5 dB ceiling), VOICE 2/2 K4 TRIM / MIXER K4 LEVEL
@@ -163,11 +174,18 @@
 #   ST7789): the same checks pass both ways, the flash after the whole test hashes the same (the write is bit for bit the same with the screen on and off), the percent goes 0 -> 100 without
 #   going back, the bar has the right segments at 0 / 45 / 100 percent (PPMs in build/host/ldr_screen_*.ppm), a failing or a very slow panel switches the screen off for good and the install
 #   is still the package's, bit for bit. Needs two packages: LDR_OLD and LDR_NEW (default: the newest two .fwsc under build/ or the bench site)
+# lcdboot: tests/lcd_boot_test.c (item 163, the owner: no screen before the splash): the real hal/fm1_lcd_hw.h + src/lcd.c with host registers, built twice: FM1_LCD_BL_LATE 1 (the main
+#   firmware): PA2 (backlight + the key matrix 595's /OE) an output and high (dark) through SWRESET .. the black frame .. DISPON, low when lcd_init returns; plain (the update loader): low from
+#   fm1_lcd_hw_init on, as before. Then the builds' own sources: src/felucca.c sets FM1_LCD_BL_LATE 1, loader/loader.c has 0 (LDR_SCREEN 0: no panel code at all), and the preprocessed lcd_init turns the
+#   backlight on once in the main firmware and never in the loader (its own fm1_lcd_backlight(1) after lcd_init in ldr_screen.c is untouched)
 # midimap: tests/midimap_test.c (job C, the MIDI MAP: docs/design/MIDI_MAP_DESIGN_2.md, docs/MIDI_MAP_DEFAULTS.csv, firmware/src/midi_map.h): cloud/base3's midi_control.c / midi_learn.c
 #   (tests/midimap_ref_*.c) under the prefix ref_ (tests/midimap_refgen.py) and the table are fed the same CC script (every CC x 13 values x 3 channels, PARTS / SEL, SPLIT / STEREO / LAYER, every engine, with and
 #   without learned CCs): identical parameter writes; the shipped map writes the same for each of today's 24 targets on its NEW number; the morph's triggers follow the target; a taken number is refused / forced; learn
 #   writes a line (16 at most); the settings record at its exact size (cloud/base3's size is no record); the extension values, the effects block, map_target_info. Built twice: the tests' power-on map is the legacy list
 #   (tests/midimap_legacy.csv), and once with the shipped list as the firmware's own (the two must pass); midimapgen: the generator's failures (tests/midimap_gen_test.py)
+# perflevel: tests/perf_level_test.c (item 160): PERFORM's SELECT = BALANCE moves the MIXER's LEVEL 1 against LEVEL 2 (push-pull, 0.5 dB a step, never above 0 dB, never into OFF, no memory); the old balance stage
+#   (mix_bal, fx.c bal_lvl) gone: every mode's render bit for bit as the tree before with the old balance 0; the knob mid-render = the same levels written straight; the owner's worked example both ways
+# perflevelmut: its mutations, run once each (perflevel must FAIL): a boost allowed, the direction swapped, the total not kept, a memory of its own (the MIXER's writes between the steps ignored)
 # midimapmut: the safety rules' mutations, run once each (midimap_test must FAIL): the lock check removed, two parameters allowed on one CC, the morph's trigger back on the CC number
 cd "$(dirname "$0")/felucca-base" || exit 1
 OUT=build/host; mkdir -p "$OUT" build/mod_demo build/ui_new build/ui_slot
@@ -185,7 +203,7 @@ python3 tools/gen_midi_map.py --sym MIDI_MAP_SHIPPED build/gen_test/midi_map_shi
 python3 tools/gen_version.py build/gen/duell_version.h || exit 1   # VERSION file -> build/gen/duell_version.h
 FV=$(sed -n 's/^#define DUELL_VERSION_STR "\(.*\)"/\1/p' build/gen/duell_version.h)
 [ -f "$HOME/emsdk/emsdk_env.sh" ] && EMU=emu || EMU=
-want="${*:-regress chord mod perform ui select step3 engine morph morphui mode dlymod dlyev hang atgt patslot multi release menuproduct patch patchraw bank dx7import dx7compat splash sounds mrender fmbass fm6 loadcost cpuscen uf wave hold reset resetwalk pan mixsplit partindep duckpart twocore tcmeas tcstage1 tcbench poolrule budget sat mxstep modinert eqon eq32 ovlguard matrixpack engswitch level guide wtab wavetable modules uitest project fun10 motion persist backup editor editorjson midictl audio erase flashled usb elfcheck reverb halltail plate locut shimmer panic insert bassmono comp master stereochorus chorusskip sidechain tune bench benchsim benchrun benchaudio ownerimport rollbrowser sliders xb xbmut fuzz xvalues twin subcyc pages scope2 editb velo midimap midimapmut ldrscreen $EMU converttwin}"
+want="${*:-velaccent regress chord strum mod perform perflevel perflevelmut performcap ui select step3 engine morph morphui mode dlymod dlyev hang atgt patslot multi release menuproduct patch patchraw bank dx7import dx7compat splash sounds mrender fmbass fm6 loadcost cpuscen uf wave hold reset resetwalk pan mixsplit partindep duckpart twocore tcmeas tcstage1 bootguard tcbench poolrule budget polylimits deadline velomono sat mxstep modinert eqon eq32 ovlguard matrixpack engswitch level guide guidesetup wtab wavetable modules uitest project fun10 motion persist backup editor editorjson midictl audio erase flashled usb elfcheck reverb halltail plate locut shimmer panic insert bassmono comp master stereochorus chorusskip sidechain tune bench benchsim benchrun benchaudio ownerimport rollbrowser sliders xb xbmut fuzz xvalues twin subcyc pages scope2 editb velo midimap midimapmut ldrscreen lcdboot $EMU converttwin}"
 fail=0
 # mxstep's PHASE self-check (hunt4): tests/mx_step_test.c built against a COPY of firmware/ and tests/ in which eng_phase.c's bridge of a moved DCW is switched off (the bend steps at
 # every block seam again); the PHASE check must FAIL, a pass means it cannot see the seam
@@ -240,9 +258,12 @@ twocore_mut() {
 run() { echo "== $1"; shift; "$@" > "$OUT/last.log" 2>&1 && echo "   PASS" || { echo "   FAIL"; tail -15 "$OUT/last.log"; fail=1; }; }
 for t in $want; do case $t in
   regress) $CC -DNPART=4 -o $OUT/regress tests/regress.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run regress $OUT/regress tests/golden.txt tests/cpu_baseline.txt ;;
+  midiout) $CC -o $OUT/midi_out_seq_test tests/midi_out_seq_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run midiout $OUT/midi_out_seq_test ;;
   chord)   $CC -o $OUT/chord_test tests/chord_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run chord $OUT/chord_test ;;
+  strum)   $CC -o $OUT/strum_test tests/strum_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run strum $OUT/strum_test ;;
   mod)     $CC -o $OUT/mod_test tests/mod_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run mod $OUT/mod_test build/mod_demo ;;
   perform) $CC "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/perform_test tests/perform_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run perform $OUT/perform_test ;;
+  performcap) $CC "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/perform_cap_test tests/perform_cap_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run performcap $OUT/perform_cap_test ;;
   ui)      $CC -O1 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/ui_render tests/ui_render.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run ui $OUT/ui_render build/ui_new build/ui_slot ;;
   select)  $CC -O1 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/select_test tests/select_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run select $OUT/select_test ;;
   step3)   $CC -o $OUT/step3_test tests/step3_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run step3 $OUT/step3_test ;;
@@ -255,6 +276,23 @@ for t in $want; do case $t in
            run chorusskip sh -c "$OUT/chorusskip_test > $OUT/cs_skip.txt && $OUT/chorusskip_ref > $OUT/cs_ref.txt && grep HASH $OUT/cs_skip.txt > $OUT/cs_skip.h && grep HASH $OUT/cs_ref.txt > $OUT/cs_ref.h && cmp $OUT/cs_skip.h $OUT/cs_ref.h && tail -3 $OUT/cs_skip.txt" ;;
   stereochorus)  $CC -O1 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/stereochorus_test tests/stereochorus_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run stereochorus $OUT/stereochorus_test ;;
   dlyev)   $CC -O1 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/dlyev_test tests/dlyev_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run dlyev $OUT/dlyev_test ;;
+  perflevel) $CC "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/perf_level_test tests/perf_level_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run perflevel $OUT/perf_level_test ;;
+  perflevelmut) plm() {                                # perflevel's self-check: a COPY of firmware/ and tests/ with the rule broken must make tests/perf_level_test.c FAIL
+             name=$1; f0=$2; ex=$3
+             echo "== perflevel_mut $name"
+             rm -rf build/perflevel_mut; mkdir -p build/perflevel_mut
+             cp -R firmware tests build/perflevel_mut/ || { echo "   FAIL (copy)"; fail=1; return; }
+             f=build/perflevel_mut/$f0; sed "$ex" "$f" > "$f.new" && mv "$f.new" "$f"
+             if cmp -s "$f" "$f0"; then echo "   FAIL (the mutation changed nothing in $f0)"; fail=1; return; fi
+             if ! $CC "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/perflevel_mut build/perflevel_mut/tests/perf_level_test.c -lm > $OUT/last.log 2>&1; then
+               echo "   FAIL (the mutated build does not compile)"; tail -5 $OUT/last.log; fail=1; return
+             fi
+             if $OUT/perflevel_mut > $OUT/last.log 2>&1; then echo "   FAIL (the mutation was NOT detected)"; fail=1; else echo "   PASS (detected: $(grep -c ' FAIL$' $OUT/last.log) checks failed)"; fi
+           }
+           plm "a boost allowed (the part that takes raised up to the table's top, +7.5 dB)" firmware/src/ui_input.c 's/if (up->p\[P_LEVEL\] < PERF_BAL_HOME) {/if (up->p[P_LEVEL] < 127) {/'
+           plm "the direction swapped (right toward part 1)" firmware/src/ui_input.c 's/track_t \*up = &trk\[s > 0 ? 1 : 0\], \*dn = &trk\[s > 0 ? 0 : 1\];/track_t *up = \&trk[s > 0 ? 0 : 1], *dn = \&trk[s > 0 ? 1 : 0];/'
+           plm "the total not kept (the other part never raised: item 160's first rule without its raise)" firmware/src/ui_input.c 's/if (up->p\[P_LEVEL\] < PERF_BAL_HOME) {/if (0 \&\& up->p[P_LEVEL] < PERF_BAL_HOME) {/'
+           plm "a memory of its own (steps from the knob's last levels, the MIXER's writes ignored)" firmware/src/ui_input.c 's/^static void perf_balance(int32_t s)$/static int16_t pb_mem[2] = {-1, -1}; static void perf_balance_(int32_t s); static void perf_balance(int32_t s) { if (pb_mem[0] >= 0) trk[0].p[P_LEVEL] = pb_mem[0], trk[1].p[P_LEVEL] = pb_mem[1]; perf_balance_(s); pb_mem[0] = trk[0].p[P_LEVEL], pb_mem[1] = trk[1].p[P_LEVEL]; } static void perf_balance_(int32_t s)/' ;;
   mode)    $CC "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/mode_test tests/mode_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run mode $OUT/mode_test ;;
   hang)    $CC -O1 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/hang_test tests/hang_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run hang $OUT/hang_test ;;
   atgt)    $CC -o $OUT/atgt_test tests/atgt_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run atgt $OUT/atgt_test ;;
@@ -278,6 +316,8 @@ for t in $want; do case $t in
   converttwin) run converttwin python3 -I tests/convert_twin_test.py ;;   # cloud job J: tools/convert_twin.py against the 43 rows of docs/design/TWIN_FILTER_DESIGN_2.md 1.5, the committed data == the tool's output, the guards
   mrender) $CC -O1 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/multi_render_test tests/multi_render_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run mrender $OUT/multi_render_test tests/multi_render_golden.txt ;;
   uf)      $CC -O1 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/uf_test tests/uf_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run uf $OUT/uf_test ;;
+  velaccent) # the velocity ACCENT LIFT is smooth (tests/velaccent_test.c, core.h accent_lift; working docs/VELOCITY_AFTERTOUCH_V1.md): 127 sounds (presets + factory sounds of every engine but LOFI) x velocity 1..127, no sound quieter at a harder velocity beyond the lift-free floor (1.5 dB)
+           $CC -O1 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/velaccent_test tests/velaccent_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run velaccent $OUT/velaccent_test ;;
   level)   $CC -O1 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/level_test tests/level_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run level $OUT/level_test ;;
   reset)   $CC -O1 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/reset_test tests/reset_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run reset $OUT/reset_test ;;
   pan)     $CC -O1 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/pan_test tests/pan_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run pan $OUT/pan_test ;;
@@ -312,9 +352,14 @@ for t in $want; do case $t in
              twocore_mut "BENCHT4: the window rule (vwin 8, switched on) is ignored (twocore_run.c tcr_vlate_done)" firmware/src/twocore_run.c 's/else if (win)/else if (0)/';
              twocore_mut "BENCHT3: the floor never says 'does not fit' (twocore_run.c nofit)" firmware/src/twocore_run.c 's/\*nofit = 1;/*nofit = 0;/';
              twocore_mut "BENCHT3: the floor ignores the cap (twocore_run.c: can be later than core 0's own latest moment)" firmware/src/twocore_run.c 's/dl = (int32_t)(tgt - cap) > 0 ? cap : tgt;/dl = tgt;/'; MUTFLAGS= ;;
+  bootguard) $CC -O1 -DDUELL_TWOCORE=1 -o $OUT/bootguard_test tests/bootguard_test.c || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run bootguard $OUT/bootguard_test ;;
   tcbench) $CC -O1 -o $OUT/twocore_bench_test tests/twocore_bench_test.c || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run tcbench $OUT/twocore_bench_test ;;
   poolrule) run poolrule python3 tests/pool_rule_test.py ;;
   tcstage1) $CC -O1 -o $OUT/twocore_stage1_test tests/twocore_stage1_test.c || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run tcstage1 $OUT/twocore_stage1_test ;;
+  velomono) $CC -O2 -o $OUT/velo_mono tests/velo_mono_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run velomono $OUT/velo_mono ;;
+  polylimits) $CC -O1 -fno-builtin -D_FORTIFY_SOURCE=0 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/poly_limits tests/poly_limits_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run polylimits $OUT/poly_limits ;;
+  polycalib) $CC -O1 -fno-builtin -D_FORTIFY_SOURCE=0 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/poly_calib tests/poly_calib.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run polycalib $OUT/poly_calib ;;
+  deadline) $CC -O1 -fno-builtin -D_FORTIFY_SOURCE=0 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/deadline_test tests/deadline_test.c -lm -lpthread || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run deadline $OUT/deadline_test ;;
   budget)  $CC -O1 -fno-builtin -D_FORTIFY_SOURCE=0 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/budget_test tests/budget_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run budget $OUT/budget_test ;;
   sat)     $CC -O1 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/sat_test tests/sat_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run sat $OUT/sat_test ;;
   mxstep)  $CC -O1 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/mx_step_test tests/mx_step_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run mxstep $OUT/mx_step_test &&
@@ -329,6 +374,7 @@ for t in $want; do case $t in
   resetwalk) $CC -O1 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/reset_walk_test tests/reset_walk_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run resetwalk $OUT/reset_walk_test ;;
   modules) $CC -O1 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/modules_test tests/modules_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run modules $OUT/modules_test ;;
   guide)   $CC -O1 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/guide_test tests/guide_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run guide $OUT/guide_test ;;
+  guidesetup) $CC -O1 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/guide_setup_test tests/guide_setup_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run guidesetup $OUT/guide_setup_test ;;
   reverb)  mkdir -p build/fx_demo build/reverb_demo; $CC -O2 -o $OUT/reverb_test tests/reverb_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run reverb $OUT/reverb_test build/fx_demo build/reverb_demo ;;
   bassmono) $CC -O1 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/bassmono_test tests/bassmono_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run bassmono $OUT/bassmono_test ;;
   sidechain) $CC -O1 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/sidechain_test tests/sidechain_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run sidechain $OUT/sidechain_test ;;
@@ -608,12 +654,13 @@ static void midi_cc_set(track_t *t, uint32_t id, uint32_t value)
              fi
              if $OUT/velo/velo_mut > $OUT/last.log 2>&1; then echo "   FAIL (the mutation was NOT detected)"; fail=1; else echo "   PASS (detected: $(grep -c ' FAIL$' $OUT/last.log) checks failed)"; fi
            }
-           $VC -o $OUT/velo/velo_test tests/velo_test.c -lm &&
+           $VC -o $OUT/velo/velo_test tests/velo_test.c -lm && $VC -o $OUT/velo/velo_owner tests/velo_owner_test.c -lm &&
            $VC -DDUELL_VELO=1 -o $OUT/velo/vtick1 tests/velo_tick_test.c -lm && $VC -DDUELL_VELO=0 -o $OUT/velo/vtick0 tests/velo_tick_test.c -lm &&
            $VC -o $OUT/velo/vadc tests/velo_adc_test.c &&
            $CC -O1 -w "-DFELUCCA_VERSION=\"$FV\"" -DDUELL_VELO=1 -Ifirmware/hal -o $OUT/velo/vhook1 tests/velo_hook_test.c -lm &&
            $CC -O1 -w "-DFELUCCA_VERSION=\"$FV\"" -DDUELL_VELO=0 -Ifirmware/hal -o $OUT/velo/vhook0 tests/velo_hook_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } &&
-           run "velo: the sense core: the simulated hand (median 50..70, <= 3 % at 110+, <= 5 % below 10), gaps, bounce, chords, calibration both ways, aftertouch, the setting, the store" $OUT/velo/velo_test &&
+           run "velo: the sense core: the simulated hand (median 60..90, <= 8 % at 110+, <= 5 % below 10), gaps, bounce, chords, calibration both ways, aftertouch, the setting, the store" $OUT/velo/velo_test &&
+           run "velo: the OWNER'S recording (tests/data/velo_owner_20261026.csv, item 123) replayed on a fresh unit: hard > normal > soft on every key, hard >= 110, soft <= 40, monotonic, one wild reading cannot define a range, the store after 60 s" $OUT/velo/velo_owner &&
            run "velo: the converter stage of the tick (flag on) and the digital scan of the tick as it was (flag off): the same edges" sh -c "$OUT/velo/vtick1 > $OUT/velo/vtick1.txt; r=\$?; cat $OUT/velo/vtick1.txt | tail -5; $OUT/velo/vtick0 > $OUT/velo/vtick0.txt || exit 1; [ \$r = 0 ] && grep HASH $OUT/velo/vtick1.txt > $OUT/velo/vtick1.h && grep HASH $OUT/velo/vtick0.txt > $OUT/velo/vtick0.h && cmp $OUT/velo/vtick1.h $OUT/velo/vtick0.h" &&
            run "velo: fm1_adc.h non-blocking read: the register sequence of the blocking one" $OUT/velo/vadc &&
            run "velo: the hooks (key_on / keyboard_block / aftertouch) with the real sound code; the setting OFF renders every sample as the flag-off build" sh -c "$OUT/velo/vhook1 > $OUT/velo/vhook1.txt; r=\$?; tail -22 $OUT/velo/vhook1.txt; $OUT/velo/vhook0 > $OUT/velo/vhook0.txt || exit 1; [ \$r = 0 ] && [ \$(grep -c HASH $OUT/velo/vhook0.txt) = 6 ] && grep HASH $OUT/velo/vhook1.txt > $OUT/velo/vhook1.h && grep HASH $OUT/velo/vhook0.txt > $OUT/velo/vhook0.h && cmp $OUT/velo/vhook1.h $OUT/velo/vhook0.h" &&
@@ -637,6 +684,16 @@ static void midi_cc_set(track_t *t, uint32_t id, uint32_t value)
   ldrscreen) P=$(ls -t build/duell-*.fwsc 2>/dev/null); O=${LDR_OLD:-$(echo "$P" | sed -n 2p)}; N=${LDR_NEW:-$(echo "$P" | sed -n 1p)}; [ -n "$O" ] || O=$N   # (LDR_OLD and LDR_NEW, else the newest two packages in build/; one package is used as both)
            $CC -O1 -DLDR_SCREEN_TEST=1 -o $OUT/ldr_test_screen tests/ldr_test.c -lm && $CC -O1 -o $OUT/ldr_test_plain tests/ldr_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } &&
            run ldrscreen sh -c "$OUT/ldr_test_screen $O $N > $OUT/ldr_s.log && $OUT/ldr_test_plain $O $N > $OUT/ldr_p.log && [ \"\$(grep FINAL $OUT/ldr_s.log)\" = \"\$(grep FINAL $OUT/ldr_p.log)\" ] && grep -q 'loader test passed' $OUT/ldr_s.log && grep -q 'loader test passed' $OUT/ldr_p.log || { grep -E 'FAIL|FINAL' $OUT/ldr_s.log $OUT/ldr_p.log; exit 1; }" ;;
+  lcdboot) cc -O1 -w -Ifirmware/hal -Ifirmware/src -o $OUT/lcd_boot_late -DFM1_LCD_BL_LATE=1 tests/lcd_boot_test.c && cc -O1 -w -Ifirmware/hal -Ifirmware/src -o $OUT/lcd_boot_ldr tests/lcd_boot_test.c || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } &&
+           { run lcdboot_main $OUT/lcd_boot_late; run lcdboot_loader $OUT/lcd_boot_ldr
+             run lcdboot_sources sh -c 'li() { awk "/^static void lcd_init\\(void\\)/,/^}/" | grep -c fm1_lcd_backlight; }
+               m=$(cc -E -dM -w -Ifirmware/hal -Ifirmware/src -Ibuild/gen firmware/src/felucca.c | grep "define FM1_LCD_BL_LATE ")
+               l1=$(cc -E -dM -w -DLDR_SCREEN=1 -Ifirmware/hal -Ifirmware/src firmware/loader/loader.c | grep "define FM1_LCD_BL_LATE ")
+               l0=$(cc -E -dM -w -DLDR_SCREEN=0 -Ifirmware/hal -Ifirmware/src firmware/loader/loader.c | grep "define FM1_LCD_BL_LATE ")
+               mi=$(cc -E -P -w -Ifirmware/hal -Ifirmware/src -Ibuild/gen firmware/src/felucca.c | li)
+               ldi=$(cc -E -P -w -DLDR_SCREEN=1 -Ifirmware/hal -Ifirmware/src firmware/loader/loader.c | li)
+               echo "main: $m, lcd_init backlight calls $mi; loader: $l1 / $l0, lcd_init backlight calls $ldi"
+               [ "$m" = "#define FM1_LCD_BL_LATE 1" ] && [ "$l1" = "#define FM1_LCD_BL_LATE 0" ] && [ "$l0" != "#define FM1_LCD_BL_LATE 1" ] && [ "$mi" = 1 ] && [ "$ldi" = 0 ]'; } ;;
   midimap) mkdir -p build/gen_test_shipped
            python3 tools/gen_midi_map.py build/gen_test_shipped/midi_map_defaults.h >/dev/null && python3 tests/midimap_refgen.py build/gen_test >/dev/null || { echo "== midimap generators"; echo "   FAIL"; fail=1; false; }
            MMF="-w -DDUELL_TEST_MODE=1 -Ibuild/gen_test -Ibuild/gen -Ifirmware/src -Itests"; MMS="-w -DDUELL_TEST_MODE=1 -Ibuild/gen_test_shipped -Ibuild/gen_test -Ibuild/gen -Ifirmware/src -Itests"

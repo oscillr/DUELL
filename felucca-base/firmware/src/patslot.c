@@ -366,16 +366,6 @@ static int ps_save_trk(const track_t *t, uint32_t k, const char *name)
     return ps_splice(k, r, n);
 }
 
-/* ERASE: slot k gets its default back. 0 ok, 1 bad slot or it holds its default already, 2 no room (the default is longer than what
- * is there and the object is full of the neighbours' patterns: nothing changed) */
-static int ps_erase(uint32_t k)
-{
-    uint8_t r[PS_REC_MAX];
-    if (k >= PS_SLOTS || !ps_changed(k))
-        return 1;
-    return ps_splice(k, r, ps_def_rec(r, k));
-}
-
 /* slot k -> track t's steps (all 64) and LEN DIV SWING GATE QUANTIZE; the sound stays (ui.c pat_load: the undo copy). 0 ok, 1 bad slot */
 static int ps_load_trk(track_t *t, uint32_t k)
 {

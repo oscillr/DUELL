@@ -112,6 +112,14 @@ int main(void)
         frames(8);
         en = ENGINES[e];
         n++;
+        if (e == ENGI_FM6) {   /* item 138: on FM6 the four AMP ENV knobs are the DX7 numbers of the patch's carriers (DUELL 1.1, FM6_ENV_MAP_V2 case 1; eng_fm6.c fm6_track_loaded:
+                                * an engine change is a sound load, FM6_LOOK_NEW), so they move to the patch's numbers; from here on they are the values carried */
+            for (k = 0, ok = 1; k < 4u; k++)
+                ok &= TSEL->p[P_ATK + k] == fm6_env_value(TSEL, k);
+            expect("-> FM6: the AMP ENV knobs on the numbers of its patch's carriers (FM6_ENV_MAP_V2)", ok);
+            for (k = 0; k < 4u; k++)
+                want[P_ATK + k] = TSEL->p[P_ATK + k];
+        }
         snprintf(what, sizeof what, "-> %s: every common parameter as it was", en->name);
         if (!common_same(want, TSEL->p, &first)) {
             snprintf(what, sizeof what, "-> %s: common parameter %u (%s) changed: %d -> %d", en->name, first, TP[first].label ? TP[first].label : "?", want[first], TSEL->p[first]);

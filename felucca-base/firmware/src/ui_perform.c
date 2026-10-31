@@ -6,22 +6,26 @@
  *              page_entered). A tap of FX outside PERFORM opens the FX pages as ever. PERFORM starts OFF at power-on.
  *   PAGE       PERFORM (PERF_PAGE, FAM_FX: FX's LED lit): the header names it with the part badges (BOTH: both lit) and the REC mark;
  *              the cards K1 MORPH (the MORPH page's fader: morph_act MQ_FADER on the part(s) chosen), K2 SPACE, K3 KILL (-100 .. 100,
- *              0 = neutral; back to 0 when PERFORM is left), K4 DEPTH (0 .. 100 %, kept until power-off); the panel the 4 x 4 map of
- *              the white keys, a row per group of four keys: a held key's cell in the accent, one that cannot run now greyed (its key
- *              pressed says why); the footer's first row what SELECT (BALANCE) and ALGORITHM (PART 1 / BOTH / PART 2) do here, its
- *              second row the engine and the patch name as on every page (PRESETS changes it; ui_draw.c draw_foot).
+ *              0 = neutral; back to 0 when PERFORM is left), K4 DEPTH (0 .. 100 %, kept until power-off). DUELL 1.0 layout
+ *              (PERFORM_NEW_LAYOUT_V4.png): an AREA page (template 9, grid_on 16): K1 MORPH is the knob-1 line with SELECT = BALANCE after its
+ *              value (ui_draw.c), the big area the 4 x 4 box grid of the white keys (ui_boxes.c box_grid; a row per group of four keys, names
+ *              centred, a held key's box in the accent, one that cannot run now dimmed: its key pressed says why), K2 .. K4 the card row.
+ *              The footer has no hint rows on grid_on 16, only the engine and the patch name as on every page (perf_foot stays for the old
+ *              layout's footer and the host tests).
  *   PRESETS    the sound of the part(s) ALGORITHM chose, as on every page (BOTH: each part one step on from its own sound); perf_presets.
  *   ALGORITHM  PART 1 / BOTH / PART 2: the part(s) K1 MORPH and ROLL A / B act on. 0.2.9: the same state as the MORPH page's
  *              (ui_input.c algo_step; leaving PERFORM keeps it; other pages pick PART 1 / PART 2 only).
- *   SELECT     BALANCE (the MODE page's: mode_knob; page_select does nothing here: PERFORM is one page). MASTER as ever.
+ *   SELECT     BALANCE (item 160: LEVEL 1 against LEVEL 2 of the MIXER, push-pull, 0.5 dB a step, never above 0 dB: ui_input.c perf_balance; page_select does nothing here: PERFORM is one page). MASTER as ever.
  *   LEDS       the white keys their map: an effect that can run at the mid level, a held key lit, one that cannot run dark; the black
  *              keys (notes) lit while held or playing. */
-static const char *const PF_CELL[PF_KEYS][2] = {
-    {"REPEAT", "1/8"}, {"REPEAT", "1/16"}, {"REPEAT", "1/32"}, {"REVERSE", 0},
-    {"TAPE", "STOP"}, {"FREEZE", 0}, {"OCT UP", 0}, {"OCT DN", 0},
-    {"FLANGER", 0}, {"PHASER", 0}, {"DRIVE", 0}, {"PUMP", 0},
-    {"ROLL A", 0}, {"ROLL B", 0}, {"MUTE 1", 0}, {"MUTE 2", 0},
+/* the box of each effect (PERFORM_NEW_LAYOUT_V4.png, row by row): its name and whether the picture shows it in the larger size */
+static const char *const PF_NAME[PF_KEYS] = {
+    "1/8", "1/16", "1/32", "REV",
+    "TAPE", "FREEZE", "OCT+", "OCT-",
+    "FLG", "PHS", "DRV", "PUMP",
+    "RND A", "RND B", "MUTE 1", "MUTE 2",
 };
+#define PF_SMALL ((1u << 5) | (1u << 14) | (1u << 15))  /* FREEZE, MUTE 1, MUTE 2: the smaller size in the picture */
 
 static uint8_t perf_nw_said;           /* "DUEL: NO WIDTH" shown since PERFORM opened (perf_knob: SPACE turned in DUEL) */
 /* PUMP needs the beats of the tempo: with an external clock they come only while it runs (the arp's steps: seq.c events_block) */
@@ -94,7 +98,7 @@ static void perf_input(uint32_t pressed, uint32_t now, uint32_t lay)
         perf_leave();
     }
     perf_fxb = ok && !ui.perf && !lay && !(ui.fx_t0 & 2u) ? fxbit : 0u;   /* (the ISR: a key with FX down is PERFORM's) */
-    perf_keys = (uint8_t)(ui.perf && ok);
+    perf_keys = (uint8_t)(ui.perf && ok && !lay);       /* (a quick layer held over PERFORM: its keys are the layer's, not PERFORM's effects) */
     perf_fade_step();
     if (!ok)
         perf_kill = 1;                                  /* (the menu, a dialog, NAME: every effect off until its keys are let go) */
@@ -165,7 +169,7 @@ static void perf_knob(uint32_t slot, int32_t s)
 static void perf_presets(int32_t s)
 {
     uint32_t was = song.sel;
-    if (morph.target != MT_BOTH || lock_held()) {
+    if (morph.target != MT_BOTH) {
         presets_turn(s);
         return;
     }
@@ -200,14 +204,14 @@ static void perf_cards(void)
     fmt_int(val, perf_depth);
     draw_column(3, "DEPTH", val, "%", VAL(3u), perf_depth * 10, ICON_LEVEL);
 }
-/* the footer's first row in PERFORM: what SELECT and ALGORITHM do here (l, r hold 24); 0 = not PERFORM */
+/* the footer's first row in PERFORM: what SELECT and ALGORITHM do here (l, r hold 24); 0 = not PERFORM. (DUELL 1.0: not drawn on the area page, grid_on 16;
+ * ui_draw.c draw_foot asks only on the other layouts; the host tests read it) */
 static int perf_foot(char *l, char *r)
 {
     if (!ui.perf || cur_page()->scope != SC_PERF)
         return 0;
-    str_cpy(l, "SELECT: BALANCE ", 24);
-    perf_signed(l + str_len(l), mix_bal);
-    str_cpy(r, "ALGO: ", 24);
+    str_cpy(l, "SELECT = BALANCE", 24);                /* (item 160: the old balance number is gone with its value; SELECT moves LEVEL 1 / LEVEL 2, shown on the MIXER page) */
+    str_cpy(r, "ALGORITHM = ", 24);
     str_cpy(r + str_len(r), morph.target == MT_BOTH ? "BOTH" : song.sel ? "PART 2" : "PART 1", 24 - str_len(r));
     return 1;
 }
@@ -218,30 +222,20 @@ static uint32_t perf_sig(void)
         h = (h ^ (uint32_t)perf_can(k)) * 16777619u;
     return h ^ ((uint32_t)(uint8_t)perf_space | (uint32_t)(uint8_t)perf_filt << 8 | (uint32_t)(uint8_t)perf_depth << 16) * 0x9E3779B1u;
 }
-/* the map: a cell per white key, four a row (the keyboard's groups), a held key in the accent, one that cannot run greyed */
-#define PF_CY(r) (4 + 30 * (int32_t)(r))                /* rows at y 4 34 64 94, 26 px (to 120 of the panel's 122) */
-#define PF_CH 26
+/* the 4 x 4 box grid in the big area (ui_boxes.c box_grid; rows UT_BOX_PF_*): a box per white key, four a row (the keyboard's groups), a held key in
+ * the accent, one waiting for the next 1/16 (REPEAT, REVERSE) in the theme fill, one that cannot run now dimmed */
 static void graph_perf(void)
 {
+    box_t b[PF_KEYS];
     uint32_t p, held = perf_places();
     for (p = 0; p < PF_KEYS; p++) {
-        int32_t x = LC_X(p % 4u), y = PF_CY(p / 4u);
-        uint32_t st = !perf_can(p) ? LS_DIM : !((held >> p) & 1u) ? LS_OFF
-                    : (PF_Q >> p) & 1u && !((perf_act >> p) & 1u) ? LS_WAIT : LS_HELD;   /* (REPEAT, REVERSE: waiting for the 1/16) */
-        uint16_t ink, fill = lc_fill(st, &ink);
-        fill = lc_box(x, y, LC_W, PF_CH, fill);
-        if (PF_CELL[p][1]) {                            /* two lines, their capitals 4 px apart, together on the cell's middle */
-            int32_t t = y + HALF_UP(PF_CH - (2 * AF_S_CAP_H + 4)) - AF_S_CAP_Y;
-            GFX_HOOK_ALIGN(0, y, 0, y + PF_CH, AL_V | AL_N(2), "perform cell lines centred up/down");
-            GFX_HOOK_ALIGN(x, 0, x + LC_W, 0, AL_H | AL_PASS, "perform cell line centred across");
-            cv_text_in(x, t, LC_W, &AF_S, PF_CELL[p][0], ink, fill);
-            GFX_HOOK_ALIGN(x, 0, x + LC_W, 0, AL_H | AL_PASS, "perform cell line centred across");
-            cv_text_in(x, t + AF_S_CAP_H + 4, LC_W, &AF_S, PF_CELL[p][1], ink, fill);
-        } else {
-            GFX_HOOK_ALIGN(x, y, x + LC_W, y + PF_CH, AL_HV, "perform cell name centred");
-            cv_text_in(x, y + CAP_IN(S, PF_CH), LC_W, &AF_S, PF_CELL[p][0], ink, fill);
-        }
+        b[p].name = PF_NAME[p];
+        b[p].key = 0;
+        b[p].big = (uint8_t)!((PF_SMALL >> p) & 1u);
+        b[p].state = (uint8_t)(!perf_can(p) ? LS_DIM : !((held >> p) & 1u) ? LS_OFF
+                             : (PF_Q >> p) & 1u && !((perf_act >> p) & 1u) ? LS_WAIT : LS_HELD);
     }
+    box_grid(UT_BOX_PF_Y0, 4u, 4u, UT_BOX_PF_DY, UT_BOX_PF_H, b);
 }
 /* the keys' LEDs in PERFORM: returns the lit ones (the held PERFORM keys, the black keys held or playing); *mid the row markers
  * (0.2.11, owner: the 1st, 5th, 9th and 13th key of the 16, to count the rows by; the UI lights them steadily at the LEDS

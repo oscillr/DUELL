@@ -53,7 +53,7 @@ lines, rev = gen.build(ROOT.parent / "docs" / "MIDI_MAP_DEFAULTS.csv")
 direct = [c for c, v in lines.items() if v[2] != 3]
 check("the shipped csv builds: 70 direct lines and the 23 locked numbers (MIDI_MAP_FINAL), a revision 1..255", len(direct) == 70 and len(lines) - len(direct) == 23 and 1 <= rev <= 255)
 lines, _ = gen.build(HERE / "midimap_legacy.csv")
-check("the legacy csv builds: today's 24 CCs and the 23 locked numbers", len([c for c, v in lines.items() if v[2] != 3]) == 24 and len(lines) == 47)
+check("the legacy csv builds: today's 24 CCs but BALANCE (REMOVED, item 157) and the 23 locked numbers", len([c for c, v in lines.items() if v[2] != 3]) == 23 and len(lines) == 46)
 check("the shipped csv runs through the command line", run(shipped, None))
 
 check("FAIL 1: a duplicate CC", run(shipped + "5,P_PAN,P,SHIPPED\n", "duplicate CC 5"))

@@ -46,8 +46,8 @@
 static const uint16_t DRW_LV[9] = {0, 2920, 4125, 5827, 8231, 11627, 16423, 23198, 32767};
 
 /* the 16 registrations, one digit per bar: 16' 5 1/3' 8' 4' 2 2/3' 2' 1 3/5' 1 1/3' 1' */
-static const char *const N_DRW_REG[] = {"FLUTE", "MELLO", "HOLLW", "SMOOT", "3BAR", "BLUES", "GOSPL", "ROCK",
-                                        "TOPS", "CLARI", "REED", "STRNG", "CHAPL", "BRITE", "BASS", "FULL"};
+static const char *const N_DRW_REG[] = {"FLUTE", "MELLOW", "HOLLOW", "SMOOTH", "3 BARS", "BLUES", "GOSPEL", "ROCK",
+                                        "TOPS", "CLARI", "REED", "STRING", "CHAPL", "BRITE", "BASS", "FULL"};
 static const char DRW_REG[16][DRW_NP + 1] = {
     "008000000", /* FLUTE  one soft flute */
     "008400000", /* MELLO  flute and octave */

@@ -33,8 +33,8 @@ typedef struct {
     int16_t g[3];                /* Q15 levels (0: silent; osc 3 still runs for RING) */
 } trio_set_t;
 
-static const char *const N_TRIO_WAVE[] = {"SAW3", "PLS3", "PPT", "SST", "TRI3", "S&T", "P&S", "P+N",
-                                          "NOIS", "SYNC", "SYNCP", "SYNC3", "RING", "RING3", "R+S", "R+SP"};
+static const char *const N_TRIO_WAVE[] = {"3xSAW", "3xPULSE", "2xPULSE+TRI", "2xSAW+TRI", "3xTRI", "SAW&TRI", "PULSE&SAW", "PULSE&NOISE",
+                                          "NOISE", "SAW\nSYNC", "PULSE\nSYNC", "SAW+TRI\nSYNC", "TRI\nRING", "RING+2xTRI", "TRI+SAW\nRING SYNC", "TRI+PULSE\nRING SYNC"};
 static const trio_set_t TRIO_SETS[16] = {
     {{TW_SAW, TW_SAW, TW_SAW}, 0, {TRIO_G3, TRIO_G3, TRIO_G3}},                 /* SAW3 */
     {{TW_PLS, TW_PLS, TW_PLS}, 0, {TRIO_G3, TRIO_G3, TRIO_G3}},                 /* PLS3 */

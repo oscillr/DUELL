@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
 /* NOISE: from analog-style noise to shift-register noise. No filter of its own since the engine filters left (TWIN_FILTER_DESIGN_2, cloud job J): its FREQ / RES / TRK are filter 1, the MULTI FILTER
- * (voice.c uf_run; RES as MODE LP > BP and the damping). What stays here is the loudness make-up, which now reads filter 1's effective cutoff (vmod_t.ucut, set by the voice path):
+ * (voice.c uf_run; RES as MODE LP > BP and the damping). What stays here is the loudness make-up, which now reads filter 1's effective cutoff WITHOUT the velocity accent (vmod_t.ucn, set by the voice path; 1.1: it fell as the accent opened the filter):
  * the source is made louder the lower the filter will close, BEFORE the filter (the amp ramp is applied to the signal scaled down by 2^sh, sh 0..4, and the shift put back, so the
  * x16 of a low cutoff cannot overflow mulq15). DRFT's wander of the cutoff is handed to filter 1 one block late (v->s[0], voice.c track_render adds it to the voice's cutoff routes while
  * filter 1 is on). CRSH is the last thing the engine does, so it runs before filter 1 and the filter smooths its steps.
@@ -19,13 +19,13 @@
  * note from silence sounds the same each time), s[3] the drift target and its countdown, s[4..6] the pink
  * poles, s[7] the brown pole; ph[0] the clock phase (LFSR, META) or the hold count (CRSH), ph[1] the
  * register, the held sample or META's DC blocker, ph[2] the drift. */
-static const char *const N_NOISE_MODE[] = {"ANLG", "DUST", "LFSR", "META"};
+static const char *const N_NOISE_MODE[] = {"ANALOG", "DUST", "DIGITAL", "METAL"};
 enum { NZ_ANLG, NZ_DUST, NZ_LFSR, NZ_META };
-static const char *const N_NOISE_LONG[] = {"L23", "L20", "L17", "L15", "L13", "L11", "L9", "L7", 0};
-static const char *const N_NOISE_META[] = {"127", "127B", "93", "63", "63B", "31", "15", "7", 0};
-static const param_desc_t NOISE_LONG = {"LEN", F_INT, 0, 127, 0, N_NOISE_LONG, 0};   /* = edit[5] but the names */
-static const param_desc_t NOISE_META = {"LEN", F_INT, 0, 127, 0, N_NOISE_META, 0};
-static const param_desc_t NOISE_CLK = {"CLK", F_INT, 0, 127, 0, 0, "st"};           /* = edit[7]: above the key */
+static const char *const N_NOISE_LONG[] = {"23 BIT", "20 BIT", "17 BIT", "15 BIT", "13 BIT", "11 BIT", "9 BIT", "7 BIT", 0};
+static const char *const N_NOISE_META[] = {"127 A", "127 B", "93", "63 A", "63 B", "31", "15", "7", 0};
+static const param_desc_t NOISE_LONG = {"LENGTH", F_INT, 0, 127, 0, N_NOISE_LONG, 0};   /* = edit[5] but the names */
+static const param_desc_t NOISE_META = {"LENGTH", F_INT, 0, 127, 0, N_NOISE_META, 0};
+static const param_desc_t NOISE_CLK = {"PITCH", F_INT, 0, 127, 0, 0, "st"};           /* = edit[7]: above the key */
 
 /* Galois taps of the long registers (maximal length: 2^n - 1 clocks) */
 static const uint32_t NOISE_TAPS[8] = {0x420000u, 0x90000u, 1u << 16 | 1u << 13, 0x6000u, 0x100Du, 0x500u, 0x110u, 0x60u};
@@ -122,7 +122,7 @@ static void noise_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const
     colr = clamp((p[P_E1] << 8) + m->shape - (64 << 8), 0, 127 << 8);
     cf = colr <= (64 << 8) ? colr << 1 : ((colr - (64 << 8)) * 520) >> 8;   /* the crossfade, Q15 */
     /* filter 1's effective cutoff (voice.c: the dial, its routes, KEY TRK, the wander of the block before) as the SVF table's index, Q8 (uf_run's idx: 40 + 396 a dial step; 127 << 8 at the open end) */
-    cut = clamp(40 + ((m->ucut * 99) >> 6), 0, 127 << 8);
+    cut = clamp(40 + ((m->ucn * 99) >> 6), 0, 127 << 8);
     if (d16 && (p[P_FREEA] < (int16_t)UF_STEPS || p[P_FREEC] > 0))   /* DRFT's wander of the cutoff, for the next block: 3093 / 256 dial steps a 1/16 semitone (the 0.86 semitone a table index and the 1.547 table indices a dial step); not while filter 1 is open (it would switch it on) */
         wand = (d16 * 3093) >> 8;
     {   /* level: make up most of what the filter takes from white noise (less for pink and brown), +12 dB for

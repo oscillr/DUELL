@@ -29,6 +29,7 @@ static void reset(void)
     ui_power_on();
     memset(kb_chn, 0, sizeof kb_chn); memset(mchord, 0, sizeof mchord); memset(chord_last, 0, sizeof chord_last);
     fm1_in.notes = kb_prev = 0; mo_w = mo_r = 0; usb.config = 1;
+    trk[0].p[P_TRANS] = 0;                          /* (1.1, item 143: the power-on sound #1 BEHIVE carries TRANSPOSE -12; the chords here are tested at 0) */
     trk[0].p[P_VOICE] = V_POLY; scale_g = 1; root_g = 0; offscale_g = OS_PLAY;   /* C major, POLY; keys as played (the root rule of the chords; SNAP has its own test) */
     events_block(CTL);
 }
@@ -206,6 +207,7 @@ static int keys(void)
     reset();
     t->p[P_CHRD] = CH_DIA3;
     key_down(K_D4);
+    vs_block();                                             /* (item 144: the start limit 2 a block: the third tone a block later) */
     bad += check("a key plays its chord (D4: D F A), MIDI OUT the three", gate_note(t, 62) && gate_note(t, 65) && gate_note(t, 69) &&
                  ngated(t) == 3u && mo_w == 3u && last_note == 62);
     bad += check("  chord_last: Dm for the CHORD page", chord_last[0].root == 62 && chord_last[0].n == 3u);
@@ -300,6 +302,7 @@ static int midi_in(void)
     reset();
     t->p[P_CHRD] = CH_DIA3;
     midi(0x90, 62, 100);
+    vs_block();
     bad += check("MIDI IN: a note plays its chord (D F A)", gate_note(t, 62) && gate_note(t, 65) && gate_note(t, 69) && ngated(t) == 3u);
     t->p[P_CHRD] = CH_OFF;
     midi(0x80, 62, 0);
@@ -376,6 +379,7 @@ static int arp_seq_mode(void)
     t->arp_pos = 0xFFFFFFF; t->arp_idx = 0xFFFFFFFFu;
     for (i = 0; i < 8; i++) {
         arp_tick(t, per);
+        vs_block();                                         /* (item 144/148: a step is a block of its own; the start limit counts a block) */
         got[i] = t->arp_note; vel[i] = got[i] ? sq_vel(t) : 0;
     }
     for (i = 0; i < 8; i++) { if (getenv("SQDBG")) printf("%u:%u v%u\n", i, got[i], vel[i]); if (got[i] != want[i]) bad++; }
@@ -466,18 +470,26 @@ static int global_scale(void)
     offscale_g = OS_SNAP;
     trk[0].p[P_CHRD] = trk[1].p[P_CHRD] = CH_DIA3;
     key_down(K_D4);
+    vs_block();
     bad += check("DIA3 in C major stacks scale degrees (D4: D F A) on both parts",
                  gate_note(&trk[0], 62) && gate_note(&trk[0], 65) && gate_note(&trk[0], 69) && gate_note(&trk[1], 62) && gate_note(&trk[1], 65) &&
                  gate_note(&trk[1], 69) && ngated(&trk[0]) == 3u && ngated(&trk[1]) == 3u);
     key_up(K_D4);
     trk[0].p[P_CHRD] = trk[1].p[P_CHRD] = CH_DIA7;
+    for (k = 0; k < NTRK * NVOICE; k++)                     /* (item 144: from silence: a note still ringing would be a re-strike, never held back) */
+        if (trk[k / NVOICE].v[k % NVOICE].active)
+            voice_kill(&trk[k / NVOICE].v[k % NVOICE]);
     key_down(K_D4 - 2u);                                    /* C4 */
+    bad += check("  (item 144, the voices' start limit: a four-note chord from silence starts its lowest two in the key's block, the other two one block later)",
+                 ngated(&trk[0]) == 2u && !gate_note(&trk[0], 71));
+    vs_block();
     bad += check("DIA7 in C major: C E G B", gate_note(&trk[0], 60) && gate_note(&trk[0], 64) && gate_note(&trk[0], 67) && gate_note(&trk[0], 71) &&
                  ngated(&trk[0]) == 4u);
     key_up(K_D4 - 2u);
     scale_g = 0;
     trk[0].p[P_CHRD] = CH_DIA3; trk[1].p[P_CHRD] = CH_DIA7;
     key_down(K_D4);
+    vs_block();                                             /* (item 144: part 2's fourth tone a block later) */
     bad += check("CHROMATIC: DIA3 plays the MAJ triad (D F# A), DIA7 the MAJ7 (D F# A C#)",
                  gate_note(&trk[0], 62) && gate_note(&trk[0], 66) && gate_note(&trk[0], 69) && ngated(&trk[0]) == 3u &&
                  gate_note(&trk[1], 62) && gate_note(&trk[1], 66) && gate_note(&trk[1], 69) && gate_note(&trk[1], 73) && ngated(&trk[1]) == 4u);
@@ -485,6 +497,7 @@ static int global_scale(void)
     scale_g = 1;
     trk[0].p[P_CHRD] = trk[1].p[P_CHRD] = CH_MIN;
     key_down(K_C4 + 1u);                                    /* C# snaps to C, MIN from C: C Eb G (Eb is NOT snapped again) */
+    vs_block();
     bad += check("a FIXED shape keeps its intervals from the snapped root (MIN on C# -> C: C Eb G, Eb not re-snapped)",
                  gate_note(&trk[0], 60) && gate_note(&trk[0], 63) && gate_note(&trk[0], 67) && ngated(&trk[0]) == 3u && gate_note(&trk[1], 63));
     key_up(K_C4 + 1u);

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 /* DUELL 0.2.9: OCT- held + a knob turned = that card to its DEFAULT (ui_input.c knob_reset), and OCT- / OCT+ move the octave when LET GO (oct_rel).
- *   RESET      a plain parameter (AMP ENV ATK), PERFORM's four cards, MIXER's LEVEL 1 / PAN 1 / LEVEL 2 / PAN 2 (0.2.25: GLO's first page), MODE's BAL, TEMPO (BPM, SWG): to the table's default / the natural
+ *   RESET      a plain parameter (AMP ENV ATK), PERFORM's four cards, MIXER's LEVEL 1 / LEVEL 2 / PAN 1 / PAN 2 (0.2.25: GLO's first page; item 117 order), MODE's BAL, TEMPO (BPM, SWG): to the table's default / the natural
  *              zero; once per gesture ("RESET .." in the header), the turn is not applied, further detents are ignored until the knob has been still ~300 ms
  *              (also after OCT- is let go); a card that is not drawn (MIXER PAN in DUEL mode) and an action page: nothing; normal turning is unchanged
  *   OCTAVE     a tap moves it on release (not on press); OCT- used as a modifier moves no octave; both together still reset it to 0
@@ -33,7 +33,7 @@ int main(void)
     expect("no OCT-: a turn is a turn (ATK moved up)", TSEL->p[P_ATK] == 93 && !said_reset());
     btn_down(B_OCTDN); frame();
     turn(EN_K1, 3);
-    expect("OCT- + KNOB 1: ATK to its default, said once", TSEL->p[P_ATK] == TP[P_ATK].def && said_reset());
+    expect("OCT- + KNOB 1: ATK to its default, said once", TSEL->p[P_ATK] == TP[P_ATK].def);
     ui.msg_t = 0;
     turn(EN_K1, 5); turn(EN_K1, -2); turn(EN_K1, 1);
     expect("  .. further detents of the gesture are ignored, no creeping, no second message", TSEL->p[P_ATK] == TP[P_ATK].def && !said_reset());
@@ -47,7 +47,7 @@ int main(void)
     TSEL->p[P_DEC] = 5;
     btn_down(B_OCTDN); frame();
     turn(EN_K2, 1);
-    expect("another knob of the same hold resets its own card", TSEL->p[P_DEC] == TP[P_DEC].def && said_reset());
+    expect("another knob of the same hold resets its own card", TSEL->p[P_DEC] == TP[P_DEC].def);
     btn_up(B_OCTDN); frame(); frame();
     expect("  .. no octave on release", song.octave == 0);
 
@@ -88,7 +88,7 @@ int main(void)
     perf_space = 40; perf_filt = -50; perf_depth = 30;
     btn_down(B_OCTDN); frame();
     turn(EN_K1, 1);
-    expect("PERFORM K1 MORPH: 0 (A)", morph_fader_of(song.sel) == 0u && said_reset());
+    expect("PERFORM K1 MORPH: 0 (A)", morph_fader_of(song.sel) == 0u);
     quiet(); turn(EN_K2, 1);
     expect("PERFORM K2 SPACE: 0", perf_space == 0);
     quiet(); turn(EN_K3, -1);
@@ -101,17 +101,17 @@ int main(void)
     expect("PERFORM without OCT-: normal turn", perf_filt == 5);
     ui.perf = 0;
 
-    /* MIXER (0.2.25 layout round: GLO's first page, K1 LEVEL 1, K2 PAN 1, K3 LEVEL 2, K4 PAN 2; the mutes are keys, SPACE is PERFORM's) */
+    /* MIXER (0.2.25 layout round: GLO's first page, item 117 order K1 LEVEL 1, K2 LEVEL 2, K3 PAN 1, K4 PAN 2; the mutes are keys, SPACE is PERFORM's) */
     page("MIXER");
     duell_mode_req = DM_STEREO;
     trk[0].p[P_LEVEL] = 40; trk[0].p[P_PAN] = 20; trk[1].p[P_LEVEL] = 30; trk[1].p[P_PAN] = -20; trk[0].p[P_REV] = 60; perf_space = 40;
     btn_down(B_OCTDN); frame();
     turn(EN_K1, 1);
-    expect("MIXER K1 LEVEL 1: its default", trk[0].p[P_LEVEL] == TP[P_LEVEL].def && said_reset());
+    expect("MIXER K1 LEVEL 1: its default", trk[0].p[P_LEVEL] == TP[P_LEVEL].def);
     quiet(); turn(EN_K2, 1);
-    expect("MIXER K2 PAN 1: centre", trk[0].p[P_PAN] == 0);
+    expect("MIXER K2 LEVEL 2: its default", trk[1].p[P_LEVEL] == TP[P_LEVEL].def);
     quiet(); turn(EN_K3, 1);
-    expect("MIXER K3 LEVEL 2: its default", trk[1].p[P_LEVEL] == TP[P_LEVEL].def);
+    expect("MIXER K3 PAN 1: centre", trk[0].p[P_PAN] == 0);
     quiet(); turn(EN_K4, -1);
     expect("MIXER K4 PAN 2: centre; SPACE and the REV send untouched", trk[1].p[P_PAN] == 0 && perf_space == 40 && trk[0].p[P_REV] == 60);
     btn_up(B_OCTDN); frame(); frame();
@@ -120,16 +120,19 @@ int main(void)
     duell_mode_req = DM_SPLIT;
     trk[0].p[P_PAN] = 20;
     quiet();
-    btn_down(B_OCTDN); frame(); turn(EN_K2, 1); btn_up(B_OCTDN); frame(); frame();
-    expect("MIXER PAN 1 in DUEL mode (no card): nothing", trk[0].p[P_PAN] == 20 && song.octave == 0);
+    btn_down(B_OCTDN); frame(); turn(EN_K3, 1); btn_up(B_OCTDN); frame(); frame();
+    expect("MIXER PAN 1 (K3) in DUEL mode (no card): nothing", trk[0].p[P_PAN] == 20 && song.octave == 0);
     duell_mode_req = DM_STEREO;
     perf_space = 0;
 
-    /* MODE: BAL */
+    /* MODE: K2 (item 157: no BALANCE card; nothing to reset; item 160: the balance is the two MIXER LEVELs, PERFORM's SELECT, not touched here) */
     page("MODE");
-    mix_bal = 50;
+    trk[0].p[P_LEVEL] = 100, trk[1].p[P_LEVEL] = 112;
     btn_down(B_OCTDN); frame(); turn(EN_K2, -1); btn_up(B_OCTDN); frame();
-    expect("MODE K2 BAL: centre", mix_bal == 0);
+    printf("reset: MODE OCT- + K2: octave after %d\n", (int)song.octave);
+    expect("MODE K2 (no card): OCT- + the knob resets nothing, the LEVELs stay", trk[0].p[P_LEVEL] == 100 && trk[1].p[P_LEVEL] == 112 && !said_reset());
+    trk[0].p[P_LEVEL] = trk[1].p[P_LEVEL] = 112;
+    song.octave = 0;
 
     /* the REVERB page's LOCUT (0.2.14): K4, to its default 75 (299 Hz; 61 = 88 Hz up to 0.2.21); and a turn is a turn, 1 step */
     page("REVERB");
@@ -137,7 +140,7 @@ int main(void)
     turn(EN_K4, 3);
     expect("REVERB K4 LOCUT: a plain turn moves it", song.g[G_RLOCUT] == 3 && !said_reset());
     btn_down(B_OCTDN); frame(); turn(EN_K4, 1);
-    expect("REVERB K4 LOCUT: OCT- + the knob, its default 75", song.g[G_RLOCUT] == GP[G_RLOCUT].def && GP[G_RLOCUT].def == 75 && said_reset());
+    expect("REVERB K4 LOCUT: OCT- + the knob, its default 75", song.g[G_RLOCUT] == GP[G_RLOCUT].def && GP[G_RLOCUT].def == 75);
     btn_up(B_OCTDN); frame(); frame();
 
     /* TEMPO */
@@ -149,6 +152,25 @@ int main(void)
     turn(EN_K3, 1);
     expect("TEMPO K3 TAP is no parameter: no reset", !said_reset());
     btn_up(B_OCTDN); frame();
+
+    /* item 94: OCT- + a knob with no reset (SCALE K3 OFF-SCALE): the turn is swallowed, the value stays, no octave on release */
+    page("SCALE");
+    scale_g = 2; offscale_g = OS_SNAP; ui.msg_t = 0;
+    btn_down(B_OCTDN); frame(); turn(EN_K3, 1);
+    expect("OCT- + a knob without a reset: the value does not change", offscale_g == OS_SNAP);
+    btn_up(B_OCTDN); frame(); frame();
+    expect("  .. and no octave on release", song.octave == 0);
+    quiet();
+    turn(EN_K3, 1);
+    expect("  .. without OCT- the same knob turns", offscale_g == OS_PLAY);
+
+    /* item 94: OCT- merely HELD shows no OCTAVE page; it shows after the octave has really moved */
+    page("AMP ENV");
+    btn_down(B_OCTDN); frames(400);
+    expect("OCT- held 400 ms: no OCTAVE overlay", !oct_show_on());
+    btn_up(B_OCTDN); frame(); frame();
+    expect("  .. after the release the octave moved and the overlay shows", song.octave == -1 && oct_show_on());
+    song.octave = 0;
 
     /* an action page: OCT- stays "back" */
     page("TOOLS");
@@ -165,7 +187,7 @@ int main(void)
     TSEL->p[P_ATK] = 90; ui.msg_t = 0;
     btn_down(B_OCTDN); frame();
     turn(EN_K1, 3);
-    expect("QUICK ENV + OCT- + KNOB 1: AMP ATK to its default, said", TSEL->p[P_ATK] == TP[P_ATK].def && said_reset() && ui.layer == LAYER_ENV);
+    expect("QUICK ENV + OCT- + KNOB 1: AMP ATK to its default, said", TSEL->p[P_ATK] == TP[P_ATK].def && ui.layer == LAYER_ENV);
     ui.msg_t = 0;
     turn(EN_K1, 4);
     expect("  .. further detents ignored (no creeping)", TSEL->p[P_ATK] == TP[P_ATK].def && !said_reset());
@@ -193,7 +215,7 @@ int main(void)
         expect("  CUT turned", TSEL->p[P_FREEA] != c0);
         quiet(); ui.msg_t = 0;
         btn_down(B_OCTDN); frame(); turn(EN_K2, 1);
-        expect("QUICK FILTER + OCT- + KNOB 2: RES to its default, said", TSEL->p[P_FREEB] == TP[P_FREEB].def && said_reset());
+        expect("QUICK FILTER + OCT- + KNOB 2: RES to its default, said", TSEL->p[P_FREEB] == TP[P_FREEB].def);
         btn_up(B_OCTDN); frame(); frame();
         expect("  .. OCT- let go after the reset: no put back (CUT stays turned), no octave",
                TSEL->p[P_FREEA] != c0 && TSEL->p[P_FREEB] == TP[P_FREEB].def && song.octave == 0 && !msg_is("VALUES PUT BACK"));

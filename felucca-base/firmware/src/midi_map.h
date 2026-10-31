@@ -35,7 +35,7 @@ enum {
     MAP_T_TARGET,                       /* the morph TARGET 0-42 PART 1, 43-85 PART 2, 86-127 BOTH */
     MAP_T_SMART, MAP_T_ARP, MAP_T_PITCH,    /* the morph's three switches: 64 and up on */
     MAP_T_MODE,                         /* the output MODE 0-42 SPLIT, 43-85 STEREO, 86-127 LAYER (global) */
-    MAP_T_BALANCE,                      /* -100..+100, 64 = 0 (global) */
+    MAP_T_SPARE_BAL,                    /* item 157: BALANCE's code until it left the MODE page, kept so no later code moves (stored maps, EDITOR_PROTOCOL); no target: map_code_ok refuses it */
     MAP_T_XFADE,                        /* 0..100 % (global) */
     MAP_T_SPLIT,                        /* 0 OFF, 1..127 the note (global) */
     MAP_T_CUTOFF_SMART,                 /* CC74: the engine's own cutoff, or the multimode filter's (MIDI_CC_ENG) */
@@ -73,7 +73,7 @@ enum { MAP_W_SHIPPED, MAP_W_TYPED, MAP_W_LEARNED, MAP_W_LOCKED };
 enum { MAP_K_CONTINUOUS, MAP_K_SWITCH, MAP_K_STEPPED, MAP_K_ACTION };      /* kind */
 enum { MAP_S_PATCH, MAP_S_MULTI, MAP_S_DEVICE };                          /* where the value is saved */
 typedef struct {
-    uint8_t kind, saved, automation, inert;     /* automation: AUTOMATION records a CC move of it (1/0); inert: does nothing now (1/0) */
+    uint8_t kind, saved, automation, inert;     /* automation: PARAMETER LOCKS records a CC move of it (1/0); inert: does nothing now (1/0) */
 } map_info_t;
 
 /* --- results of map_set / map_clear ------------------------------------------------------------------------------------ */

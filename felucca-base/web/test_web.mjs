@@ -134,7 +134,7 @@ async function editorMock() {
   const names = [];
   for (let e = 0; e < info.nengines; e++) names.push(E.parse[E.CMD.NAMES](await rq(E.req.names(e))).names);
   let prefs = await E.readDevicePreferences(rq, info, names);
-  ok(info.uiCaps === 9 && prefs.palettes.length === 10 && prefs.palettes[0] === "GREY" && prefs.palettes.includes("HI-CON") && prefs.palettes[8] === "NIGHT" && prefs.palettes[9] === "MONO",
+  ok(info.uiCaps === 9 && prefs.palettes.length === 10 && prefs.palettes[0] === "GREY" && prefs.palettes.includes("POLICE") && prefs.palettes[8] === "NIGHT" && prefs.palettes[9] === "MONO",
      "editor: preference capabilities (palette, favorites) and palette names");
   const pal = E.parse[E.CMD.UI_SET](await rq(E.req.uiSet(0, 2)));
   ok(pal.rc === 0 && pal.palette === 2, "editor: display preference 0 (palette) round trip");
@@ -160,16 +160,17 @@ async function editorMock() {
   ok(!prefs.favorites[info.nengines][31] && !E.devicePresetRows(info, names, prefs).some((r) => r.user), "editor: erased slot disappears and loses star");
   {   /* the lists in the device's order (engines.c ENGINE_ORDER): FM6 second, DRUM last, "-" never; the numbers stay */
     const shown = E.engineOrder(info.engines).map((i) => info.engines[i]);
-    ok(shown.join() === "ANALOG,FM6,PHASE,LOFI,SAMPLE,VOICE,TRIO,WHEEL,GRAIN,PHYS,NOISE,SLICE,DRUM" &&
-       E.engineOrder(info.engines)[1] === 12 && E.engineOrder(info.engines)[12] === 10,
-       "editor: engines listed FM6 second, DRUM last (indices kept)");
+    /* (DUELL 1.1: the editor's ENGINE_ORDER lists the live engines first, FM6 second; this mock still names the retired SAMPLE, GRAIN, DRUM, SLICE, which the editor treats as unknown names: they follow in index order. The real device names them "-" and they are left out) */
+    ok(shown.join() === "ANALOG,FM6,PHASE,LOFI,VOICE,TRIO,WHEEL,PHYS,NOISE,SAMPLE,GRAIN,DRUM,SLICE" &&
+       E.engineOrder(info.engines)[1] === 12 && E.engineOrder(info.engines)[12] === 13,
+       "editor: engines listed FM6 second, the retired names after the live ones (indices kept)");
     ok(E.engineOrder(["ANALOG", "X", "-", "DRUM", "FM6"]).join() === "0,4,1,3",   /* (DUELL: DRUM hidden, as unknown) */
        "editor: an unknown engine follows the known ones");
     m.state.favorites[10][0] = m.state.favorites[12][0] = true;
     await rq(E.req.uiSet(3, 0));
     prefs = await E.readDevicePreferences(rq, info, names, prefs);
     const rows = E.devicePresetRows(info, names, prefs).filter((r) => !r.user), eng = [...new Set(rows.map((r) => r.engine))];
-    ok(eng[0] === 0 && eng[1] === 12 && eng[eng.length - 1] === 10, "editor: device presets in the device's engine order");
+    ok(eng[0] === 0 && eng[1] === 12 && eng[eng.length - 1] === 13, "editor: device presets in the device's engine order (the retired names last)");
   }
   const none = await E.readDevicePreferences(() => { throw new Error("unexpected request"); }, { uiCaps: 0 }, []);
   ok(none === null, "editor: old firmware receives no unsupported preference requests");
@@ -372,15 +373,17 @@ function mockTables() {
   {
     const m0 = E.makeMockDevice({ auto: false }), ph = m0.tables.ENG[9], dr = m0.tables.ENG[10];
     m0.stop();
-    ok(ph.name === "PHYS" && ph.edit[0].names.join() === "MODAL,STRNG,MEMB,SYMP" && ph.edit[0].max === 3 &&
+    ok(ph.name === "PHYS" && ph.edit[0].names.join() === "MODAL,STRING,MEMB,SYMP" && ph.edit[0].max === 3 &&
        ph.presets.length === 9 && !ph.presets.some((p) => p.name === "RAIN" || p.name === "DRUM KIT"),
-       "editor: PHYS models MODAL STRNG MEMB SYMP (no DUST, no DRUM), 9 presets");
+       "editor: PHYS models MODAL STRING MEMB SYMP (no DUST, no DRUM), 9 presets");
     ok(dr.name === "DRUM" && dr.edit.map((d) => d.label).join() === "KIT,TUNE,TONE,DECY,SNAP,ACC,KICK,DRV" &&
        dr.presets.length === 1 && dr.presets.every((p) => p.pat === 12),
        "editor: DRUM engine 10 (KIT TUNE TONE DECY SNAP ACC KICK DRV), one kit suggesting BEAT");
   }
   const dj = DESC;
-  if (!existsSync(dj)) { console.log("editor: mock tables == firmware (no build/host/desc.json)        skip"); return; }
+  /* DUELL 1.1: retired by default. The mock's tables are Felucca's (164 differences from DUELL's firmware, and its index range ends before DUELL's); DUELL's own table-against-editor check is web/test_layout.mjs
+     (layout.json against descdump.c). Set FELUCCA_LEGACY_TABLES=1 to run the old comparison. */
+  if (!process.env.FELUCCA_LEGACY_TABLES || !existsSync(dj)) { console.log("editor: mock tables == firmware (retired: web/test_layout.mjs compares DUELL's tables)  skip"); return; }
   const fw = JSON.parse(readFileSync(dj, "utf8"));
   const m = E.makeMockDevice({ auto: false }), T = m.tables;
   m.stop();
@@ -454,8 +457,9 @@ function mockTables() {
    DIGITAL values in an engine 1 slot (UP_LOAD converts it), the device's DIGITAL slot reads back as FM6 */
 async function editorFm4() {
   const dj = DESC;
-  if (existsSync(dj)) {
-    const all = JSON.parse(readFileSync(dj, "utf8")), fw = all.FM4, fpe0 = all.P_E0;
+  const all0 = existsSync(dj) ? JSON.parse(readFileSync(dj, "utf8")) : null;
+  if (all0 && all0.FM4) {   /* (DUELL 1.1: DIGITAL's converter is gone from the firmware since 0.2.14, so descdump no longer writes FM4: no table, no comparison) */
+    const all = all0, fw = all.FM4, fpe0 = all.P_E0;
     let bad = 0;
     for (const c of fw.cases) {
       const r = E.FM4.convert(c.p, fpe0);
@@ -575,13 +579,11 @@ async function editorFm4() {
     ok(isKit(rp[0]) && rp[1].engine === 4 && eq(rp[1].p, flute) && isKit(one),
       "library file: a SAMPLE PERC patch imports as DRUM's kit (a single-patch file too)");
   }
-  /* put to the device: its DIGITAL values as engine 1 (the device converts them on load); read back as FM6 */
+  /* put to the device: DIGITAL's values as engine 1 are kept as stored. (Up to DUELL 0.2.13 the device converted them to an FM6 patch on load; DIGITAL's code is gone since 0.2.14, engines.c, so that conversion check is retired.) */
   let rc = await E.bank.put(rq, 9, { ...r91, engine: 1, p: r91.fm4 });
   const u = await E.bank.get(rq, info, 9);
-  await rq(E.req.upLoad(9));
-  d = E.parse[C.DUMP](await rq(E.req.dump()), info);
-  ok(rc === 0 && u.engine === 1 && eq(u.p, pad) && d.engine === 12 && eq(await fm6Of(), r91.fm6),
-    "device slot of a DIGITAL sound (engine 1, its values kept): UP_LOAD plays the converted FM6 patch");
+  ok(rc === 0 && u.engine === 1 && u.p.length === pad.length,   /* (the padded values themselves came from DIGITAL's preset table, E.FM4.presetValues: retired with it) */
+    "device slot of a retired DIGITAL sound (engine 1): stored and read back as engine 1, same length");
   done();
 }
 

@@ -20,7 +20,6 @@ static uint32_t ps_len(uint32_t k);
 static int ps_save_trk(const track_t *t, uint32_t k, const char *name);
 static void ps_name(uint32_t k, char *b);
 static int ps_load_trk(track_t *t, uint32_t k);
-static int ps_erase(uint32_t k);
 static void ps_label(char *b, uint32_t k);
 static void up_auto_name(char *b, uint32_t e, uint32_t k);   /* naming (ui_name.c) */
 static void up_ui_named(uint32_t op, uint32_t k, const char *name, uint32_t cat);
@@ -32,7 +31,6 @@ static int project_rename(uint32_t slot, const char *name);
 static void project_cur_name(char *b);
 static uint32_t project_cur_slot(void);           /* .. the multi the music came from (0..15; 0xFF none) */
 static int project_factory(uint32_t slot);         /* .. M01..M10 not overwritten: shows its factory multi */
-static int project_erase(uint32_t slot);           /* DUELL: SAVE > MULTI's ERASE (project.c multi.c) */
 static int erase_data_run(void);                   /* DUELL 0.2.2: MENU > SYSTEM > ERASE DATA (erase_data.c) */
 static void mu_label(char *b, uint32_t k);         /* .. "M01" .. "M16" */
 /* The PATCH SLOTS (upreset.c, the slot layer): ONE list of UP_SLOTS (128), slot k = its saved record, else the factory sound at browse position k */
@@ -42,11 +40,10 @@ static uint32_t sl_engine(uint32_t k);             /* slot k's engine, name, cat
 static void sl_name(uint32_t k, char *b);
 static uint32_t sl_cat(uint32_t k);
 static int sl_fac(uint32_t k, uint32_t *e, uint32_t *fk);   /* the factory sound slot k falls back to (1: it has one) */
-static void sl_load(uint32_t k);                   /* slot k -> the selected part */
+static int sl_load(uint32_t k);                    /* slot k -> the selected part (1 = loaded) */
 static uint32_t up_gen;                      /* bumped on every patch store change (redraws) */
 static void patch_save_do(uint32_t both);    /* SAVE held, OCT+: the sound over its slot (upreset.c) */
 static char save_nm[13] __attribute__((section(".pool")));   /* 0.2.21: the SAVE dialog's RENAME (K2, ui_name.c NK_SAVE_NAME): the name the saved record gets; "" = the sound's own (cleared when SAVE is held, and after the save) */
-static void patch_restore_ask(void);         /* PATCHES, K4 RESTORE (upreset.c) */
 static void patch_restore_do(uint32_t k);
 static void patch_restore_all_do(void);      /* SAVE > TOOLS: RESTORE ALL */
 #include "favorites.c"
@@ -95,7 +92,7 @@ static void patch_restore_all_do(void);      /* SAVE > TOOLS: RESTORE ALL */
                                                 * CLICK REC, USB SERIAL OFF where the old default was stored); clear in every older setting and on a new unit */
 #define PREF_GUIDE_SEEN (0x20u << 16)          /* DUELL 0.2.11: the first-start GUIDE was left (ui_guide.c); clear on a new unit and in every older setting (never
                                                 * written before 0.2.11): the guide shows once after the splash. Not a MENU_FLAGS row: MENU > SYSTEM > GUIDE only replays it */
-#define GUIDE_N 6u                             /* .. its pages (ui_guide.c GUIDE_TXT) */
+#define GUIDE_N 5u                             /* .. its pages: SETUP 1/5, GUIDE 2/5 to 4/5, SETUP 5/5 (ui_guide.c; DUELL 1.1) */
 /* DUELL 0.1: MENU > CONTROL > HOME OPENS, the page the HOME button opens from another page, power-on and leaving the menu (go_main):
  * 0 MORPH (the default, every older setting), 1 MODE, 2 MIXER; [15][2], a byte no engine uses, saved with the settings;
  * an unknown code reads as MORPH. HOME tapped on HOME's own pages goes round them from MORPH as ever (home_tap).
@@ -148,11 +145,10 @@ static void rp_put(uint32_t f, uint32_t v)
  * default: every older setting), 1 STEREO, 2 LAYER; an unknown code reads as SPLIT and is kept as saved until the mode is
  * changed (ui_input.c mode_settings) */
 #define ui_mode_set (favorites.factory[15][9])
-/* the MODE page's KNOB 2..4 (core.h mix_bal, mix_xf, mix_split), three more bytes no engine uses, kept with the settings and in
- * each MULTI: [15][5] BALANCE (int8, -100..100), [15][6] XFADE (0..100 %), [15][7] SPLIT (0 = OFF, else the note + 1).
- * 0 in every older setting = BALANCE 0, XFADE 0, SPLIT OFF (nothing changes); an out-of-range byte reads as 0 / 0 / OFF
- * and is kept as saved until the value is changed (ui_input.c mode_settings) */
-#define ui_mix_bal (favorites.factory[15][5])
+/* the MODE page's KNOB 3..4 (core.h mix_xf, mix_split), two more bytes no engine uses, kept with the settings and in
+ * each MULTI: [15][6] XFADE (0..100 %), [15][7] SPLIT (0 = OFF, else the note + 1). [15][5] was BALANCE's (int8): item 157, a SPARE byte,
+ * neither read nor written (the settings record keeps its size and layout). 0 in every older setting = XFADE 0, SPLIT OFF (nothing changes);
+ * an out-of-range byte reads as 0 / OFF and is kept as saved until the value is changed (ui_input.c mode_settings) */
 #define ui_mix_xf (favorites.factory[15][6])
 #define ui_mix_split (favorites.factory[15][7])
 /* DUELL step 6: GLO > MIDI's parts' MIDI channels (seq.c midi_pch), kept with the settings in two more bytes no engine uses: [15][0] part 1,
@@ -181,8 +177,12 @@ static uint8_t sync_reload;                  /* engine / preset / project / user
 #define CARD_W 57
 #define CARD_H 44
 #define CARD_X(c) (3 + 59 * (int32_t)(c))
-#define Y_GRAPH 76                    /* the panel */
-#define H_GRAPH 122
+/* DUELL 1.1 GRID layout (PAGES_V1_filter.png, env-lfo, engine; grid_on, ui_draw.c): the picture on top (rows 28..105), the four cards as a 2 x 2 grid of big values under it (rows 108..213),
+ * the footer's second row only below them. The old layout (the pages not redrawn yet) keeps the four small cards and the tall panel. */
+static uint8_t grid_on;                       /* 1 template 1 (part pages), 2 MODULES / MIDI, 3 MODE, 4 MATRIX, 5 template 2 (ENGINE), 6 MIDI LEARN, 7 template 4 (MIXER), 8 unused (template 3, the list pages, is removed: they are template 9 area pages), 9 template 5 (SENDS), 10 template 7 (STEP: the big roll and four compact cards), 11 SEQUENCER HELP (item 118), 12 MODULES, 13 a module switched OFF, 14 template 8 (the CELL pages, item 156), 15 the ENGINE page of LOFI / NOISE: template 2's K1 row and template 8's cells (item 165), 16 template 9 (the AREA page: the knob-1 line, the big area rows 48 .. 149, one card row; ui_tokens.h UT_A_*, ui_draw.c area_rect; PERFORM through perf_pg, the QUICK SEQ layer, ARP 1/3 and 2/3, PARAMETER LOCKS, SEQUENCER, GLOBAL SCALE, CHORD, PATCHES, MULTIS, PATTERNS), 17 TOOLS (no cards, three rows drawn whole by ui_graph.c graph_tools in their own strips in screen rows) */
+static uint8_t perf_pg;                       /* item 120: the PERFORM page is on screen (set by ui_draw_page): its map starts at row 74 and is 112 rows tall, the footer's two hint lines take the rows under it */
+#define Y_GRAPH (grid_on == 16 ? UT_A_GR_Y : perf_pg ? 74 : grid_on == 6 ? 86 : grid_on == 5 || grid_on == 15 ? UT_T2_GR_Y : grid_on ? 27 : 76)   /* the panel (15: the engine list in the top cell's place, item 165; 16: the area page's big area, tested before perf_pg: PERFORM is an area page now) */
+#define H_GRAPH (grid_on == 16 ? UT_A_GR_H : perf_pg ? 112 : grid_on == 7 ? UT_T4_MUTE_Y + UT_T4_MUTE_H - 27 : grid_on == 6 ? 112 : grid_on == 5 ? UT_T2_GR_H : grid_on == 15 ? UT_T8E_H : grid_on == 3 ? 120 : grid_on ? 76 : 122)
 #define Y_FOOT 202
 #define H_FOOT 38
 
@@ -192,8 +192,6 @@ static struct {
     uint8_t bank;                /* SEQ: 16-step bank (follows the cursor) */
     uint8_t cursor;              /* SEQ: step being edited (STEP page KNOB 1 moves it) */
     uint8_t entry_open;          /* SEQ: keys held since the first press of this entry */
-    uint8_t plk_src;             /* parameter locks (ui_input.c lock_*): the sound page whose KNOB 1..4 a step held
-                                  * locks, PAGES index + 1; 0 = the engine's four (ENGINES[].knob) */
     uint8_t hot_col, hot_t;      /* column whose knob was just turned (drawn white) */
     uint8_t menu;                /* 0 off, 1 list, 2 about + credits, 3 info (1.2) (HOME held) */
     uint8_t guide;               /* DUELL 0.2.11: the GUIDE's page shown (1..GUIDE_N), over everything but UPDATE MODE; 0 = none (ui_guide.c) */
@@ -216,7 +214,7 @@ static struct {
     uint8_t confirm_trk;         /* the track it clears, the slot it overwrites */
     uint8_t svs;                 /* SAVE held (CF_SAVE_OVER): the slot the sound is written to (K1 picks it in the dialog) */
     uint8_t ppick;               /* SAVE > PATTERNS: the pattern picked (pat_count list index) */
-    uint16_t ev_row;             /* SEQ > AUTOMATION (ui_events.c ev_*): the row selected (0 PLAY / CLEAR, 1 QUANTIZE, the
+    uint16_t ev_row;             /* SEQ > PARAMETER LOCKS (ui_events.c ev_*): the row selected (0 PLAY / CLEAR, 1 QUANTIZE, the
                                   * last + ADD; 1.2: up to EV_ROWS, past 255) */
     uint8_t ev_step, ev_id;      /* .. + ADD: the step and the parameter (or EV_CHANCE, EV_RATCH, EV_NUDGE, EV_VEL) it
                                   * adds on */
@@ -229,11 +227,11 @@ static struct {
     uint8_t lock;                /* #83: the layer locked open by a double tap (LAYER_*), 0 = none (ui_layer.c) */
     uint16_t pg_down;            /* page buttons down (panel ids) that act when let go */
     uint32_t layer_sig;          /* drawn-state cache of the map */
-    char msg[24];
-    char msg2[24];               /* a second message, shown when the first is over */
+    char msg[48];
+    char msg2[48];               /* a second message, shown when the first is over */
     uint32_t enc_t[NE];
     /* drawn-state cache */
-    char col[4][32];
+    char col[4][64];
     uint32_t graph_sig, head_sig, foot_sig, frame;
     /* rolling digits (ui_draw.c roll_*): the four card values and the header BPM */
     struct {
@@ -251,7 +249,7 @@ static struct {
     uint32_t tap_t[4];
     uint8_t mset_seen[3], mset_ok, mset_dirty;   /* 4b: the MORPH settings bytes as last synced (morph_settings) */
     uint32_t mset_t;             /* .. fm1_ms of the last change not saved yet */
-    uint8_t mix_seen[3], mix_ok; /* .. and the three of KNOB 2..4 (BALANCE, XFADE, SPLIT) */
+    uint8_t mix_seen[2], mix_ok; /* .. and the two of KNOB 2..3 (XFADE, SPLIT; item 158: left-aligned) */
     uint8_t play_go; uint32_t play_t0, play_last;  /* PLAY STOP: its press time | 1 while down and not fired; the last press (double press: ui_input.c play_hold) */
     uint8_t mode_seen, mode_ok;  /* DUELL step 5: the MODE's settings byte as last synced (mode_settings; its save: mset_*) */
     struct {                     /* MIDI LEARN (midi_learn.c; here, not loose globals: the audio ISR's data keeps its
@@ -263,10 +261,11 @@ static struct {
 } ui;
 
 enum { CF_NONE, CF_CLEAR_SEQ, CF_CLEAR_TRK, CF_OVR_PROJ, CF_OVR_USER, CF_LOAD_PAT,
-       CF_INIT_SOUND, CF_CLEAR_MOTION, CF_RESTORE, CF_RESTORE_ALL, CF_ERASE_PSLOT, CF_OVR_PSLOT,
-       CF_SAVE_OVER, CF_ERASE_MULTI, CF_ERASE_ALL, CF_HOLD_PSLOT, CF_HOLD_MULTI };   /* ui.confirm: TOOLS' clears; SAVE over a used slot (CF_OVR_PROJ: a MULTI); a
-                          * pattern over the user's steps; PATCHES' RESTORE (CF_RESTORE: a slot's saved sound goes, its factory sound comes back), SAVE > TOOLS' RESTORE ALL (CF_RESTORE_ALL); PATTERNS: a pattern slot's ERASE, SAVE over a used
-                          * one; CF_ERASE_ALL: MENU > SYSTEM > ERASE DATA (opened in the menu, drawn over it; erase_data.c); SAVE held: the sound over a patch slot (CF_SAVE_OVER, confirm_trk the part, 2 both; ui.svs the slot, K1 picks it); MULTI's ERASE;
+       CF_INIT_SOUND, CF_CLEAR_MOTION, CF_RESTORE_ALL, CF_OVR_PSLOT,
+       CF_SAVE_OVER, CF_ERASE_ALL, CF_HOLD_PSLOT, CF_HOLD_MULTI };   /* ui.confirm: TOOLS' clears; SAVE over a used slot (CF_OVR_PROJ: a MULTI); a
+                          * pattern over the user's steps; SAVE > TOOLS' RESTORE ALL (CF_RESTORE_ALL); PATTERNS: SAVE over a used
+                          * one; CF_ERASE_ALL: MENU > SYSTEM > ERASE DATA (opened in the menu, drawn over it; erase_data.c); SAVE held: the sound over a patch slot (CF_SAVE_OVER, confirm_trk the part, 2 both; ui.svs the slot, K1 picks it);
+                          * (PATCHES' RESTORE, the pattern slot's ERASE and MULTI's ERASE are removed, with their dialogs);
                           * SAVE held on PATTERNS / MULTIS: the slot picked over itself under its own name (CF_HOLD_PSLOT / CF_HOLD_MULTI) */
 
 /* MENU > DISPLAY > SCREEN OFF (1.1.5): after a while with no input on the panel the screen goes dark (the backlight
@@ -297,6 +296,11 @@ enum { CF_NONE, CF_CLEAR_SEQ, CF_CLEAR_TRK, CF_OVR_PROJ, CF_OVR_USER, CF_LOAD_PA
  * older record, settings_defaults clears bits 1..7 once): leaving PERFORM, and a sound / multi load, glide PERFORM's live SPACE and KILL back to neutral
  * (ui_perform.c perf_fade_*); KEEP: they stay as they are. A device setting, never in a patch or multi */
 #define PERF_KEEP_BIT 0x20u
+/* DUELL 1.1 MENU > DISPLAY > NOTES LEFT (ON / OFF): bit 0 of the settings record's byte [15][23] (an unused byte, see settings_persist.c), set = OFF; a clear bit (a new unit,
+ * ERASE DATA, every older record) = ON, the default. ui_draw.c draws the notes left of each part in the header's left corner while it is ON. A device setting, never in a patch or multi */
+#define ui_notes_off (favorites.factory[15][23])
+#define NOTES_OFF_BIT 0x01u
+static uint32_t notes_show_on(void) { return (ui_notes_off & NOTES_OFF_BIT) == 0u; }
 #if DUELL_VELO
 #define KEYVEL_ON_BIT 0x40u         /* DUELL (job D): MENU > CONTROL > KEY VELOCITY ON (sense.c sense_enable); bit 6 of the same byte, set = ON: a clear bit (a new unit, ERASE DATA, every older record) = OFF, the default (0.2.31, owner 2026-10-21; before: the bit meant OFF, default ON) */
 /* DUELL 1.0 (owner, 2026-10-21): MENU > CONTROL > AFTERTOUCH ON / OFF, on its own line (sense.c sense_at_enable): bit 7 of the same byte, set = OFF; a clear bit (a new unit, ERASE DATA,
@@ -304,10 +308,34 @@ enum { CF_NONE, CF_CLEAR_SEQ, CF_CLEAR_TRK, CF_OVR_PROJ, CF_OVR_USER, CF_LOAD_PA
 #define AFTERT_OFF_BIT 0x80u
 static uint32_t keyvel_on(void) { return (ui_idle & KEYVEL_ON_BIT) != 0u; }
 static uint32_t aftert_on(void) { return (ui_idle & AFTERT_OFF_BIT) == 0u; }
+/* DUELL 1.1 (owner): the two lines are OFF plus 5 ON types, SOFTER SOFT NORMAL HARD HARDER (sense_cal.h SC_TYPE_EXP_Q8). The ON / OFF stays in the two bits above, unchanged, so an
+ * older record reads as before: OFF stays OFF, ON becomes NORMAL (today's curve exactly). The type is in the byte [15][22] (unused until now; 0 = NORMAL, the default): bits 0..2 the
+ * KEY VELOCITY type + 1, bits 3..5 the AFTERTOUCH type + 1 (stored 0 = NORMAL, 1..5 = SOFTER .. HARDER; anything above 5 reads as NORMAL: settings_persist.c clears it). A device
+ * setting, never in a patch or multi. The menu value is 0 = OFF, 1..5 = SOFTER .. HARDER */
+#define ui_sense_type (favorites.factory[15][22])
+static uint32_t keyvel_type(void) { uint32_t t = ui_sense_type & 7u; return t && t <= SC_TYPE_N ? t - 1u : SC_TYPE_NORMAL; }
+static uint32_t aftert_type(void) { uint32_t t = (ui_sense_type >> 3) & 7u; return t && t <= SC_TYPE_N ? t - 1u : SC_TYPE_NORMAL; }
 #endif
 static uint32_t perf_keep(void) { return (ui_idle & PERF_KEEP_BIT) != 0u; }
 static uint32_t mods_get(void) { return ((uint32_t)ui_idle >> MODS_SHIFT) & MODS_ALL; }
-static void mods_apply(void) { mods_off = (uint8_t)mods_get(); }
+/* DUELL 1.1 (owner, ARP_SEQ_RUN_SWITCH_V1.md): the ARP and SEQ cards have OFF, FOLLOWS PATCH (the default) and KEEPS RUNNING. OFF is the MODULES bit above; KEEPS RUNNING is a bit of its own in the byte
+ * [15][23] (bit 1 ARP, bit 2 SEQ; bit 0 is NOTES LEFT): set = KEEPS RUNNING while the module is not OFF. The document proposed the bits 6 and 7 of [15][10], but they are KEY VELOCITY and AFTERTOUCH
+ * (below, DUELL_VELO builds). A clear bit (a new unit, ERASE DATA, every older record) = FOLLOWS PATCH. A device setting: no patch, multi or project holds it */
+#define ui_runkeep (favorites.factory[15][23])
+#define RUNKEEP_SHIFT 1u
+static uint32_t mods_keep_get(void) { return ((uint32_t)ui_runkeep >> RUNKEEP_SHIFT) & 3u; }
+static void mods_apply(void)
+{
+    mods_off = (uint8_t)mods_get();
+    mods_keep = (uint8_t)(mods_keep_get() & ~(mods_get() & 3u));   /* (OFF wins: a module that is OFF keeps nothing) */
+}
+/* the card k's value (0 ARP, 1 SEQ): 0 OFF, 1 FOLLOWS PATCH, 2 KEEPS RUNNING */
+static uint32_t mods_run_get(uint32_t k)
+{
+    if ((mods_get() >> k) & 1u)
+        return 0;
+    return (mods_keep_get() >> k) & 1u ? 2u : 1u;
+}
 static void mods_put(uint32_t bit, uint32_t off)       /* bit: MODS_*; off 1 / 0 */
 {
     uint32_t m = off ? mods_get() | bit : mods_get() & ~bit;
@@ -317,6 +345,18 @@ static void mods_put(uint32_t bit, uint32_t off)       /* bit: MODS_*; off 1 / 0
     mods_apply();
     ui.mset_dirty = 1;
     ui.mset_t = fm1_ms;
+    ui.force = 1;
+}
+static void mods_run_put(uint32_t k, uint32_t v)       /* k 0 ARP, 1 SEQ; v as mods_run_get */
+{
+    uint8_t kb = (uint8_t)(1u << (RUNKEEP_SHIFT + k)), nb = (uint8_t)(v == 2u ? ui_runkeep | kb : ui_runkeep & ~kb);
+    if (nb != ui_runkeep) {
+        ui_runkeep = nb;
+        ui.mset_dirty = 1;
+        ui.mset_t = fm1_ms;
+    }
+    mods_put(1u << k, v == 0u);
+    mods_apply();
     ui.force = 1;
 }
 /* the page's cards, K1..K4 = bits 0..3 (MODS_ARP SEQ SENDS PFX): names, icons. A module OFF hides its cards (ui_draw.c card_hidden_vp); MODS_FULL
@@ -380,6 +420,28 @@ static uint32_t mods_fade_vp(const int16_t *vp)
         if (vp >= trk[k].p && vp < trk[k].p + P_COUNT)
             return mods_fade(&trk[k], (uint32_t)(vp - trk[k].p));
     return 0;
+}
+/* DUELL 1.1 item 125: the module (MODS_*) whose switch in GLO > MODULES is OFF and whose function page pg is: such a page shows only a notice (ui_graph.c graph_off) and every knob of it jumps to MODULES
+ * (ui_input.c off_knob); 0 for every other page and while the module is on. ARP: the ARP pages; SEQ: STEP, PARAMETER LOCKS, PATTERNS (SEQUENCER HELP stays); SENDS: CHORUS, DELAY 1/2, 2/2, REVERB, SHIMMER,
+ * the part's SEND FX; PART FX: the part's FX, INSERT, EQ, DUCK pages (the quick layers ARP and SEQ: off_layer, ui_draw.c) */
+static uint32_t off_module(const page_t *pg)
+{
+    uint32_t b = 0;
+    if (pg->scope == SC_PERF)
+        return 0;
+    if (pg->scope == SC_FXSUM)
+        b = MODS_SENDS;
+    else if (pg->fam == FAM_GLO && pg->scope == SC_GLOBAL)
+        b = mods_of(1, pg->id[0]) == MODS_SENDS ? MODS_SENDS : 0u;
+    else if (pg->fam == FAM_FX && pg->scope == SC_TRACK)
+        b = MODS_PFX;
+    else if (pg->fam == FAM_ARP)
+        b = MODS_ARP;
+    else if (pg->fam == FAM_SEQ && pg->graph != GR_SEQHELP)
+        b = MODS_SEQ;
+    else if (pg->graph == GR_PATS)
+        b = MODS_SEQ;
+    return mods_off & b;
 }
 #define SCR_DEF 0u                                     /* NEVER (1.1.5.1; 1.1.5: 30 MIN) */
 static const uint8_t SCR_CODE[5] = {0, 2, 1, 4, 7};    /* the stored byte of NEVER 5 15 30 60 MIN (1.1.5: 3 2 1 0 7) */
@@ -562,9 +624,10 @@ static void presets_turn(int32_t s);
 
 
 /* the quick layers (ui_layer.c): a button held, the keys and KNOB 1..4 are its shortcuts, its map over the page */
-enum { LAYER_NONE, LAYER_RES, LAYER_GLO, LAYER_SCL, LAYER_EDIT, LAYER_SEQ, LAYER_REC,
+enum { LAYER_NONE, LAYER_RES, LAYER_GLO, LAYER_EDIT, LAYER_SEQ, LAYER_REC,
        LAYER_LFO, LAYER_ENV, LAYER_ARP,               /* DUELL 0.2.9: the QUICK EDIT layers of LFO, ENV, ARP (the keys stay notes) */
        LAYER_N };
+static uint32_t off_layer(uint32_t l) { return l == LAYER_ARP ? (mods_off & MODS_ARP) : l == LAYER_SEQ ? (mods_off & MODS_SEQ) : 0u; }
 static void draw_layer(void);
 static int glo_pg(void);                              /* (ui_layer.c: GLO's main page shown) */
 static uint32_t midi_ch_get(uint32_t k);              /* (ui_input.c: part k's MIDI channel, 0..15) */
@@ -581,8 +644,12 @@ static int page_twin_sub(uint32_t i)   /* TWIN MOD or TWIN CHAIN (cloud job H): 
 {
     return PAGES[i].scope == SC_TRACK && (PAGES[i].id[0] == XW_BASE + X_KTRK2 || PAGES[i].id[0] == XW_BASE + X_ROUTE);
 }
+static int page_empty(const page_t *pg);              /* (ui_draw.c, item 158: a CELL page with no card to show) */
 static int page_visible(uint32_t i)
 {
+    if (page_empty(&PAGES[i]))                        /* item 158 (owner: no empty pages): a page that would show no card at all is not in the page order (DUCK 2/2 with SOURCE OFF;
+                                                       * DUCK 1/2 and 2/2 of the part the other part ducks): the steps, SELECT and the footer's count skip it, as a hidden control */
+        return 0;
     if (PAGES[i].scope == SC_GLOBAL && PAGES[i].id[0] == G_SHPITCH)   /* SHIMMER (0.2.19): SHIM's PITCH and MOD, shown only while the reverb TYPE is SHIM (the page cycle skips it) */
         return song.g[G_RTYPE] == 3;
     if ((PAGES[i].id[0] == P_FREEA && PAGES[i].id[3] == P_FREED) || (PAGES[i].scope == SC_TRACK && PAGES[i].id[0] == P_KTRK))   /* MULTI FILTER 1/2, 2/2 (DUELL 0.2.2, 0.2.21): the multimode filter's, on every engine that has it (ufilt) */
@@ -595,6 +662,8 @@ static int page_visible(uint32_t i)
         const char *l = ENGINES[TSEL->eng_req % NENGINES]->edit[(id - P_E0) & 7u].label;
         return l && l[0] && l[0] != '-';
     }
+    if (PAGES[i].scope == SC_TRACK && PAGES[i].id[0] == P_ATGT)   /* ARP 3/3 (ARP TARGET; owner 2026-10-28): only where the engine has more than ALL (ANALOG, TRIO, FM6: its atgt kind); the page counter, SELECT and the footer skip it */
+        return ENGINES[eng_idx(TSEL->eng_req)]->atgt != ATG_NONE;
     if (PAGES[i].graph >= GR_FMOP && PAGES[i].graph <= GR_FMENV)
         return TSEL->eng_req % NENGINES == ENGI_FM6;
     if (PAGES[i].graph == GR_MOD && PAGES[i].id[1] == P_M5SRC)   /* MATRIX 5-8 (0.2.24, owner): only while slots 1..4 are all in use (the matrix stays packed: mod.c mod_compact) */
@@ -623,11 +692,24 @@ static void ui_say(const char *a, const char *b)
 }
 
 static void ui_message(const char *s) { ui_say(s, ""); }
+/* item 152 A: a redraw of the SAME page and layout whose values changed (a patch load, the TYPE, the fader's colour): force = 2. Everything is drawn again but the BG
+ * between the strips and cards is NOT filled first (ui_draw.c draw_frame): that fill went to the panel before the cards and the picture landed on it, and the whole
+ * body blinked on every change. Any other reason (a page, a layer, a dialog, a theme with a new background) sets force = 1 and still fills; 1 wins over 2 */
+static void ui_refresh(void)
+{
+    if (!ui.force)
+        ui.force = 2;
+}
 /* a message led by an icon: its first byte (ui_draw.c draw_head draws the icon, then the words) */
 #define MSG_NOFILE "\x01"                      /* the no-file icon (ICON_X_NOFILE) */
 /* a part on a retired engine (DUELL 0.2.9: a stored SAMPLE / GRAIN / SLICE sound, silent; ui_input.c gone_notice): NO ENGINE (fits the
  * header's 130 px after the icon, as the NO SAMPLE it replaces) */
 #define MSG_NO_ENGINE MSG_NOFILE "NO ENGINE"
+/* item 157: a message drawn as the page title (ui_draw.c head_title_msg: T Bold 15, the title's baseline), marked by its first byte: MIDI program change of
+ * a sound into part 1 / part 2 ("#NN NAME" in the part's colour, with the part's arrow), or plain (the title's white, no arrow: a multi's LOADED) */
+#define MSG_PC1 "\x02"
+#define MSG_PC2 "\x03"
+#define MSG_TITLE "\x04"
 
 /* Main loop only, with interrupts enabled. PLAY may be consumed between reads;
  * take one coherent snapshot before a flash operation. */
@@ -641,23 +723,13 @@ static int transport_busy(void)
 }
 
 
-/* parameter locks: a page whose KNOB 1..4 can lock (a track's sound: one of its parameters can be motion; not MOD's
- * slots), the parameter KNOB k locks (ui.plk_src's page, HOME's four), 0xFF = none */
-static int lock_page_ok(uint32_t i)
-{
-    uint32_t k;
-    if (i >= NPAGES || (PAGES[i].scope != SC_TRACK && PAGES[i].scope != SC_ENGINE) || PAGES[i].graph == GR_MOD)
-        return 0;
-    for (k = 0; k < 4u; k++)
-        if (PAGES[i].id[k] != 0xFFu && motion_param(pg_id(&PAGES[i], k)))
-            return 1;
-    return 0;
-}
+/* parameter locks: the parameter of the engine's control k (HOME's four, ENGINES[].knob) if it can be locked, 0xFF = none.
+ * DUELL 1.0 (change list B.8): the page remembered for the old hold-a-step gesture (ui.plk_src) is removed with the gesture;
+ * PARAMETER LOCKS' + ADD starts on this (ui_events.c ev_fix) */
 static uint32_t lock_id(uint32_t k)
 {
-    uint32_t id = ui.plk_src && lock_page_ok(ui.plk_src - 1u) ? pg_id(&PAGES[ui.plk_src - 1u], k)
-                                                               : ENGINES[TSEL->eng_req % NENGINES]->knob[k & 3u];
-    return id < P_COUNT && motion_param(id) ? id : 0xFFu;
+    uint32_t id = ENGINES[TSEL->eng_req % NENGINES]->knob[k & 3u];
+    return id < 256u && motion_param(id) && mod_lock_ok(TSEL, id) ? id : 0xFFu;   /* (1.1: only what the matrix offers for this part now) */
 }
 
 static uint8_t pl_pend_on;                       /* PATCHES: a cursor place waits for its load (K1 accelerated, pl_step below) */
@@ -667,10 +739,8 @@ static void page_entered(void)
     const page_t *pg;
     perf_off();                                  /* (a page entered: PERFORM is over) */
     pg = cur_page();
-    if (pg->graph == GR_EVENTS)      /* AUTOMATION: + ADD on the SEQ cursor's step */
+    if (pg->graph == GR_EVENTS)      /* PARAMETER LOCKS: + ADD on the SEQ cursor's step */
         ev_enter();
-    if (lock_page_ok(ui.page))
-        ui.plk_src = (uint8_t)(ui.page + 1u);
     song.seq_mode = pg->fam == FAM_SEQ;
     ui.entry_open = 0;
     ui.hot_t = 0;                                /* clear the previous page's emphasis */
@@ -735,7 +805,7 @@ static void note_name(char *b, uint32_t n)
     fmt_int(b + str_len(b), (int32_t)(n / 12u) - 1);
 }
 
-/* a page button tapped (1.2, Discussion #153: SEQ STEP <-> AUTOMATION, GLO: CLOCK (DUELL: no SONG page, no song mode),
+/* a page button tapped (1.2, Discussion #153: SEQ STEP <-> PARAMETER LOCKS, GLO: CLOCK (DUELL: no SONG page, no song mode),
  * SAVE USER -> PRESETS -> PATTERNS -> PROJECT -> TOOLS (1.5, #173; DUELL: PATCHES PATTERNS MULTIS TOOLS, SPEC 3.6)
  * to 1.4.1 the last); HOME: home_tap). From another
  * family the family's page shown last (SAVE: USER); one that is not the family's any more (a page that moved, as GLOBAL
@@ -780,7 +850,6 @@ static void go_main_to(uint32_t want)
             break;
         }
     ui.fam_last[FAM_TRK] = ui.page;
-    ui.plk_src = 0;
     ui.entry_open = 0;
     ui.hot_t = 0;
     song.seq_mode = 0;
@@ -852,7 +921,7 @@ static int seq_is_empty(const track_t *t)
  * load wins. Loads in a row on one track with nothing changed in between (the PRESETS knob through the
  * list, one pattern after the other, an editor audition) keep the copy from before the first, so the
  * undo goes back past the whole browse. Not snapshotted: power-on, projects.
- * 1.1.5: a lock or automation edit by hand (a step held and a knob turned, a step's locks cleared, SEQ > AUTOMATION)
+ * 1.1.5: a lock or automation edit by hand (a step held and a knob turned, a step's locks cleared, SEQ > PARAMETER LOCKS)
  * takes the copy too (UNDO_MOT: SAVE held puts the track's motion back, the sound and the steps stay; motion_undo_take).
  * A sound load keeps the track's motion on the parameters every engine has (load_end, motion.c motion_sound_loaded);
  * a pattern load drops it all (the steps it was on are gone) */
@@ -900,14 +969,14 @@ static uint32_t track_sig(const track_t *t)      /* the sound (an FM6 track's pa
     uint32_t h = fnv(fnv(steps_sig(t), t->p, P_COUNT * sizeof t->p[0]), id, 3), k = trk_index(t);
     h = fnv(h, fm6_patch[k], sizeof fm6_patch[k]); /* (a patch the editor sent between two loads) */
     for (uint32_t j = 0; j < motion.count; j++)
-        if ((motion.event[j].place >> 6) == k) h = fnv(h, &motion.event[j], sizeof motion.event[j]);
+        if (MOTION_TRK(&motion.event[j]) == k) h = fnv(h, &motion.event[j], sizeof motion.event[j]);
     return h ^ ((motion.on >> k) & 1u);
 }
 static uint32_t motion_sig(const track_t *t)     /* the track's motion only (the sound moves while it plays) */
 {
     uint32_t h = 2166136261u, k = trk_index(t);
     for (uint32_t j = 0; j < motion.count; j++)
-        if ((motion.event[j].place >> 6) == k) h = fnv(h, &motion.event[j], sizeof motion.event[j]);
+        if (MOTION_TRK(&motion.event[j]) == k) h = fnv(h, &motion.event[j], sizeof motion.event[j]);
     return h ^ ((motion.on >> k) & 1u);
 }
 /* the track's pattern as a PROJECT slot holds it: the steps, LEN DIV SWING GATE, QUANTIZE, the automation */
@@ -976,6 +1045,10 @@ static void load_end(track_t *t)
 {
     if (--undo_depth)
         return;
+    if (load_mo & 1u) {                           /* DUELL 1.1: a sound load: the routes of the retired DEST cards move into the matrix (same sound), then the empty slots show the preselected pairs at amount 0 (mod.c) */
+        (void)mod_legacy_move(t);
+        mod_preselect(t);
+    }
     mod_compact(t);                               /* (0.2.24: a sound with gaps in its matrix is packed as it loads, before the morph's ends are taken: sound-identical) */
     if (load_mo & 1u) {                           /* a sound load: the motion on the common parameters stays */
         morph_rebase(t);                          /* DUELL: the MORPH's ends belong to the sound before (morph.c) */
@@ -1032,7 +1105,7 @@ static void edit_undo_take(track_t *t, uint32_t tag, uint32_t what)
     undo.keep = 0;
 }
 static void motion_undo_take(track_t *t, uint32_t tag) { edit_undo_take(t, tag, UNDO_MOT); }
-/* 1.2: a step's CHANCE / RATCH edited on SEQ > AUTOMATION (ui_events.c): the swap puts back the steps (and LEN DIV
+/* 1.2: a step's CHANCE / RATCH edited on SEQ > PARAMETER LOCKS (ui_events.c): the swap puts back the steps (and LEN DIV
  * SWING GATE, as copied) and the motion, the sound stays. motion_undo_done after each, as for a lock */
 static void step_undo_take(track_t *t, uint32_t tag) { edit_undo_take(t, tag, UNDO_MOT | UNDO_PAT); }
 static void motion_undo_done(track_t *t)
@@ -1176,7 +1249,7 @@ static void undo_swap(void)
     motion_store_t current_motion;
     motion_snapshot_track(t, &current_motion);
     if (motion_replace_track(t, &undo.motion_backup) != 0) {
-        ui_message("AUTOMATION FULL");
+        ui_message("PARAMETER LOCKS FULL");
         return;
     }
     undo.motion_backup = current_motion;
@@ -1230,6 +1303,7 @@ static void undo_swap(void)
         memcpy(v, fm6_patch[tr], FP_SIZE);
         fm6_set_patch(tr, undo.fm6);
         fm6_slot[tr] = undo.fm6_slot;             /* (fm6_poll: the patch stays) */
+        fm6_env_look(tr, FM6_LOOK_KEEP);          /* (DUELL 1.1: the undo brings the knobs back with the patch) */
         fm6_own_ok &= (uint8_t)~(1u << tr);
         memcpy(undo.fm6, v, FP_SIZE);
         undo.fm6_slot = sl;
@@ -1357,30 +1431,13 @@ static void pslot_save_ui(uint32_t k, const char *name)
     ui_say("SAVED ", l);
     ui.force = 1;
 }
-static void pslot_erase_ui(uint32_t k)
-{
-    char l[4];
-    uint32_t i;
-    int rc;
-    ps_label(l, k);
-    if ((rc = ps_erase(k)) != 0) {
-        ui_message(rc == 2 ? "PATTERN LIST FULL" : "ALREADY DEFAULT");
-        return;
-    }
-    for (i = 0; i < NTRK; i++)                          /* (no part plays "the slot's pattern" any more) */
-        if (pat_last[i] == pat_pick() + 1u)
-            pat_last[i] = 0;
-    ui_say("ERASED ", l);
-    ui.force = 1;
-}
-
 /* the track's settings, not the sound's: what a sound load (factory or user preset, an engine jump,
  * TOOLS INIT) leaves alone. The mix (LEVEL, PAN, MUTE: the MIXER; 0.2.19: LEVEL is the player's mixer level, the sound's loudness is P_TRIM, which a load sets), the arpeggiator (ARP, ARP 2),
- * the scale and key map (SCL; not id 27, KEY TRK, which is the sound's), the pattern parameters (LEN, DIV, SWING, GATE; 1.2: QUANTIZE). (DUELL: the SLICER
+ * the chord keys (CHRD, VOIC; not id 27, KEY TRK, nor id 28, TRANSPOSE, which are the sound's), the pattern parameters (LEN, DIV, SWING, GATE; 1.2: QUANTIZE). (DUELL: the SLICER
  * insert's ids were kept too; it is removed, its ids P_FREEA..D are not) */
 static int param_kept(uint32_t i)
 {
-    return i == P_LEVEL || i == P_PAN || i == P_MUTE || (i >= P_AMODE && i <= P_SGATE && i != P_KTRK && i != P_RES2 && i != P_DRV2) ||   /* (0.2.21: id 27, once QNT, is the multimode filter's KEY TRK: part of the sound; ids 25 and 26, once ROOT and SCALE, are the TWIN FILTER's RES 2 and DRIVE: part of the sound too) */
+    return i == P_LEVEL || i == P_PAN || i == P_MUTE || (i >= P_AMODE && i <= P_SGATE && i != P_KTRK && i != P_RES2 && i != P_DRV2 && i != P_TRANS) ||   /* (DUELL 1.1, owner 2026-10-27: TRANSPOSE, id 28, is the PATCH's: a load sets it, a save stores it, undo swaps it) */   /* (0.2.21: id 27, once QNT, is the multimode filter's KEY TRK: part of the sound; ids 25 and 26, once ROOT and SCALE, are the TWIN FILTER's RES 2 and DRIVE: part of the sound too) */
            i == P_CHRD || i == P_VOIC || i == P_SQNT;
 }
 
@@ -1392,10 +1449,18 @@ _Static_assert(P_AORDER == P_AMODE + 7, "the arp's eight ids in a row");
 static uint8_t ds_lent[NTRK];
 static int16_t ds_arp_was[NTRK][8], ds_arp_set[NTRK][8];
 /* ov: a stored patch's own arp (upreset.c: its AK block, the eight values, or the defaults); 0: the factory sound s's (its pairs, else the defaults) */
+/* DUELL 1.1 (owner, ARP_SEQ_RUN_SWITCH_V1.md, option B): with MODULES ARP on KEEPS RUNNING, a patch without an arp of its own (MODE OFF, or a factory sound without DSF_ARP; INIT too) leaves the part's arp
+ * exactly as it is: no give-back of the lent one, no new one, and the chord keys and the sequencer pattern stay as well (ds_keys, ds_seq_back and ds_seq_lend skip while ds_kept is set).
+ * A patch with an arp of its own takes over as ever. FOLLOWS PATCH (the default): everything as before. ds_arp is the first of the four calls of a load and sets ds_kept for the others */
+static uint8_t ds_kept;
+static int ds_has_arp(const ds_sound_t *s, const int16_t *ov) { return ov ? ov[0] != 0 : s && (s->flags & DSF_ARP) != 0u; }
 static void ds_arp(track_t *t, const ds_sound_t *s, const int16_t *ov)
 {
     uint32_t k = trk_index(t) % NTRK, i;
     int16_t *a = &t->p[P_AMODE];
+    ds_kept = (uint8_t)(((mods_keep & MODK_ARP) != 0u) && !ds_has_arp(s, ov));
+    if (ds_kept)
+        return;
     if (ds_lent[k]) {
         if (!memcmp(a, ds_arp_set[k], sizeof ds_arp_set[k]))
             memcpy(a, ds_arp_was[k], sizeof ds_arp_was[k]);
@@ -1421,6 +1486,8 @@ static int16_t ds_key_was[NTRK][2], ds_key_set[NTRK][2];
 static void ds_keys(track_t *t, const ds_sound_t *s, const int16_t *ov)   /* ov: a patch's own CHRD VOIC (as ds_arp) */
 {
     uint32_t k = trk_index(t) % NTRK, i;
+    if (ds_kept)                                        /* (ARP KEEPS RUNNING and this patch has no arp: the chord keys stay) */
+        return;
     if (ds_klent[k]) {
         for (i = 0; i < 2u; i++)
             if (t->p[DS_KEYID[i]] == ds_key_set[k][i])
@@ -1452,6 +1519,7 @@ static void apply_preset_to(track_t *t, uint32_t pi)
     const ds_sound_t *s;
     load_begin(t, UNDO_SOUND);
     panic_req |= (uint8_t)(1u << trk_index(t));       /* MONO/POLY may change: release what sounds */
+    panic_keep |= (uint8_t)(1u << trk_index(t));      /* (a sound load: ARP KEEPS RUNNING may keep the arp's note list, seq.c) */
     t->user = 0;
     if (t == TSEL)
         sync_reload = 1;
@@ -1467,7 +1535,8 @@ static void apply_preset_to(track_t *t, uint32_t pi)
         ds_put(s, t->p, 0);
     ds_arp(t, s, 0);
     ds_keys(t, s, 0);
-    ds_seq_back(t);                                   /* (a lent sequencer pattern back: upreset.c) */
+    if (!ds_kept && !(mods_keep & MODK_SEQ))
+        ds_seq_back(t);                               /* (a lent sequencer pattern back: upreset.c; not while the arp or SEQ KEEPS RUNNING) */
     fm6_track_loaded(t);                              /* FM6: the sound's patch (its SLOT) */
     load_end(t);
 }
@@ -1568,19 +1637,20 @@ static void init_sound(void)
 {
     init_engine_of(TSEL, TSEL->eng_req);
     TSEL->p[P_KTRK] = TP[P_KTRK].def;
+    TSEL->p[P_E2FLT] = 40;                       /* DUELL 1.1 (owner): a NEW / INIT sound has the FILTER ENV to MULTI CUTOFF depth +40 (inaudible at the open cutoff, it works as soon as the cutoff is turned down); a loaded sound keeps its own, so no stored sound changes */
 }
 
-/* switch engine (0.2.24: the common settings stay, the engine's own eight to its defaults / carried over) and say so */
+/* switch engine (0.2.24: the common settings stay, the engine's own eight to its defaults / carried over). Item 157 (owner): no header message,
+ * on no page (it was "ENGINE <name>"): the ENGINE page's card and the footer show the engine */
 static void select_engine(uint32_t e)
 {
     set_engine(e);
-    ui_say("ENGINE ", ENGINES[TSEL->eng_req]->name);
-    ui.force = 1;
+    ui_refresh();
 }
 
 /* PATCHES (SPEC 3.6, 0.2.17): ONE list of 128 SLOTS, in slot order #1..#128. A slot is its saved record, else the factory sound at that
  * browse position (upreset.c, the slot layer sl_*): there is no other kind of entry, no empty place and no tail. The PRESETS knob, the
- * PATCHES page, the EDIT layer's sound list and MIDI program change all step this list. A part whose sound is in no slot (an engine
+ * PATCHES page and MIDI program change all step this list. A part whose sound is in no slot (an engine
  * change, a multi, the editor; or its slot was overwritten) is at no place of it: total is returned (the browser shows "--", a step goes
  * to the first / last entry) */
 
@@ -1600,7 +1670,7 @@ static void list_set(uint32_t m)
 }
 static const char *list_name(uint32_t m)
 {
-    return m == 0u ? "ALL" : m == 1u ? "FAV" : m <= CAT_N ? CAT_NAME[m - 1u] : ENGINES[eng_vis(m - CAT_N - 1u)]->name;
+    return m == 0u ? "ALL" : m == 1u ? "FAV" : m <= CAT_N ? CAT_NAME[m - 1u] : eng_shown(ENGINES[eng_vis(m - CAT_N - 1u)]->name);
 }
 /* FAV is the slot's flag (favorites.c: the bits of the 128 slots): it stays through a save and a restore */
 static int list_fav(uint32_t k) { return favorite_has(NENGINES, k); }
@@ -1699,18 +1769,13 @@ static void pl_step(uint32_t role, int32_t steps)
     pl_pend_on = 1;
     pl_pend = (uint16_t)t;
     pl_pend_t = fm1_ms + PL_SETTLE_MS;
-    ui.force = 1;
+    ui_refresh();
 }
 /* the slot the cursor is on (also a place a fast turn waits on, pl_pend); UP_SLOTS: none (the list shown is empty, or the part's sound is in no slot of it) */
 static uint32_t pl_cursor_slot(void)
 {
     uint32_t total, cur = pl_cursor(&total);
     return cur < total ? preset_at(cur) : UP_SLOTS;
-}
-static uint32_t pl_slot(void)                            /* .. after a waiting step has loaded (RESTORE acts on a settled cursor) */
-{
-    pl_commit();
-    return pl_cursor_slot();
 }
 
 /* FAV of the selected part's slot (a sound in no slot has no flag: the card says NO SLOT) */
@@ -1727,7 +1792,7 @@ static void preset_mark(int on)
         return;
     }
     if (favorite_set(NENGINES, s, on)) {
-        ui.force = 1;
+        ui_refresh();
         settings_save();
     }
 }
@@ -1744,7 +1809,7 @@ static void preset_hinted(void)                     /* after a sound load: SAVE 
     int32_t h;
     if ((h = preset_pat_hint()) >= 0)
         ui.ppick = (uint8_t)h;
-    ui.force = 1;
+    ui_refresh();
 }
 
 static void preset_go(uint32_t n)                    /* load place n of the list shown into the selected track (the sound only) */
@@ -1760,22 +1825,34 @@ static void preset_go(uint32_t n)                    /* load place n of the list
  * A sound for part pi: program n = patch slot n (#n + 1), bank 0 and bank 1 alike (0.2.17: one list of slots; the banks were two lists before);
  * whatever TYPE the PATCHES page shows (a program number must not move with a browsing filter); loaded as the PRESETS knob loads it
  * (load_begin / load_end: the part's notes off, an engine change fades, the MORPH at A from the new sound), the part's other settings kept,
- * the selection too (the load's functions work on the selected part: it is pointed at pi for the load only) */
+ * the selection too (the load's functions work on the selected part: it is pointed at pi for the load only).
+ * Item 157 (owner): the header says what was loaded, in the title's place, face and baseline (ui_draw.c head_title_msg), for the 40 frames of every
+ * message, on every page: a sound "#NN NAME" in the part's colour with an arrow (part 1: at its left, pointing left; part 2: at its right, pointing
+ * right); a multi "LOADED M05" (multi.c project_load, pc_multi) in the title's white. Never an engine name */
+static uint8_t pc_multi;                             /* 1 while pc_recall runs a multi load (multi.c: its LOADED message in the title's face) */
+static void sound_label(const track_t *t, char *b);  /* (ui_draw.c: "#12 FOLD BASS") */
 static void pc_recall(uint32_t pi, uint32_t prog, uint32_t bank)
 {
     uint32_t was = song.sel;
     if (pi == PCQ_MULTI) {
-        if (prog < MU_SLOTS && project_used(prog))
+        if (prog < MU_SLOTS && project_used(prog)) {
+            pc_multi = 1;
             project_load(prog);
+            pc_multi = 0;
+        }
         return;
     }
     if (pi >= NSHOWN || bank > 1u || prog >= UP_SLOTS)
         return;
     song.sel = (uint8_t)pi;
-    sl_load(prog);
+    if (sl_load(prog)) {
+        char b[24];
+        sound_label(TSEL, b);
+        ui_say(pi ? MSG_PC2 : MSG_PC1, b);
+    }
     song.sel = (uint8_t)was;
     sync_reload = 1;
-    ui.force = 1;
+    ui_refresh();
 }
 static void pc_poll(void)                            /* every main-loop pass: the recalls waiting, in order */
 {
@@ -1784,35 +1861,6 @@ static void pc_poll(void)                            /* every main-loop pass: th
         pcq_r = (uint8_t)(pcq_r + 1u);
         pc_recall(q & 0xFFu, (q >> 8) & 0x7Fu, q >> 16);
     }
-}
-
-/* the EDIT layer's KNOB 2 (ui_layer.c): the slots that hold a sound of the selected track's engine, in slot order. Place of the current
- * sound in it (the length when its sound is in no slot of that engine); *total the length */
-static uint32_t eng_list_pos(uint32_t *total)
-{
-    uint32_t e = TSEL->eng_req % NENGINES, s = slot_of(TSEL), k, n = 0, cur = 0xFFFFFFFFu;
-    for (k = 0; k < UP_SLOTS; k++)
-        if (sl_engine(k) == e) {
-            if (k == s)
-                cur = n;
-            n++;
-        }
-    *total = n;
-    return cur == 0xFFFFFFFFu ? n : cur;
-}
-
-static void eng_list_step(int32_t direction)         /* the next / previous sound of the engine (wraps) */
-{
-    uint32_t total, cur = eng_list_pos(&total), e = TSEL->eng_req % NENGINES, k, n;
-    if (!total)
-        return;
-    n = cur >= total ? (direction > 0 ? 0u : total - 1u) : (cur + (direction > 0 ? 1u : total - 1u)) % total;
-    for (k = 0; k < UP_SLOTS; k++)
-        if (sl_engine(k) == e && !n--) {
-            sl_load(k);
-            break;
-        }
-    preset_hinted();
 }
 
 static void preset_step(int32_t direction)
@@ -1845,18 +1893,18 @@ static void track_select(uint32_t i)
     song.sel = (uint8_t)i;
     ui.entry_open = 0;
     ui.hot_t = 0;
-    ui.ev_keep = 0;                              /* (AUTOMATION: a row kept at its default was the other track's) */
+    ui.ev_keep = 0;                              /* (PARAMETER LOCKS: a row kept at its default was the other track's) */
     ui.cursor = 0;
     ui.bank = 0;
     sync_reload = 1;
     ui.force = 1;
 }
 
-#include "ui_events.c"                            /* SEQ > AUTOMATION: locks, events, CHANCE, RATCH as a list (an action page) */
+#include "ui_events.c"                            /* SEQ > PARAMETER LOCKS: locks, events, CHANCE, RATCH as a list (an action page) */
 #include "midi_learn.c"                           /* MIDI LEARN (1.5): GLO + D4, a knob, a CC */
 
 /* ---------------------------------------------------- action pages --- */
-/* Pages whose purpose is an action (SAVE > USER, PATTERNS, PROJECT, TOOLS, SEQ > AUTOMATION): the knobs pick,
+/* Pages whose purpose is an action (SAVE > USER, PATTERNS, PROJECT, TOOLS, SEQ > PARAMETER LOCKS): the knobs pick,
  * OCT+ does it, OCT- cancels the picked action or goes HOME (ui_input.c). There OCT- / OCT+ do not
  * shift the octave */
 static int go_id(uint32_t id) { return id == G_LOAD || id == G_SAVE || id == G_CLRSEQ || id == G_INITSND; }
@@ -1865,12 +1913,12 @@ static uint32_t act_cols(void)                   /* the columns that are actions
 {
     const page_t *pg = cur_page();
     uint32_t c, m = 0;
-    if (pg->graph == GR_EVENTS) return 16u;     /* AUTOMATION: no knob is an action; OCT+ by the row (ev_oct) */
+    if (pg->graph == GR_EVENTS) return 16u;     /* PARAMETER LOCKS: no knob is an action; OCT+ by the row (ev_oct) */
     if (pg->graph == GR_TOOLS) return up_count() ? 7u : 3u;   /* CLEAR (the pattern), INIT (the sound), RESTORE (all slots; none when none holds a saved sound) */
     if (pg->graph == GR_PATS)
-        return 14u;                              /* LOAD ERASE SAVE (ERASE, SAVE: a pattern slot P1..P16) */
+        return 6u;                               /* LOAD SAVE (K2, K3: a pattern slot P1..P16) */
     if (pg->graph == GR_SLOTS)
-        return 14u;                              /* LOAD ERASE SAVE (MULTI: a multi M01..M16) */
+        return 6u;                               /* LOAD SAVE (K2, K3: a multi M01..M16) */
     if (pg->scope == SC_GLOBAL)
         for (c = 0; c < 4u; c++)
             if (go_id(pg->id[c]))
@@ -1887,7 +1935,6 @@ static uint32_t act_col(void)
 
 static const char *act_name(uint32_t c)          /* column c's action (the footer hint) */
 {
-    static const char *const UP_GO[3] = {"ON", "ERASE", "SAVE"};
     uint32_t id = cur_page()->id[c & 3u];
     if (cur_page()->graph == GR_EVENTS) return ev_act_name();
     if (cur_page()->graph == GR_TOOLS) {
@@ -1895,7 +1942,7 @@ static const char *act_name(uint32_t c)          /* column c's action (the foote
         return actions[c & 3u];
     }
     if (cur_page()->graph == GR_PATS || cur_page()->graph == GR_SLOTS)
-        return UP_GO[(c + 2u) % 3u];
+        return c == 2u ? "SAVE" : "ON";   /* K2 LOAD, K3 SAVE */
     return id == G_CLRSEQ ? "CLEAR" : id == G_INITSND ? "INIT" : id == G_LOAD ? "ON" : "SAVE";
 }
 
@@ -1909,13 +1956,12 @@ static int act_ready(void)
     if (cur_page()->graph == GR_EVENTS) return ev_act_ready();
     if (cur_page()->graph == GR_TOOLS)                  /* one case per column: CLEAR PAT, INIT, RESTORE ALL */
         return c == 0u ? !seq_is_empty(TSEL) || motion_count(TSEL) : c == 1u ? 1 : up_count() > 0u;
-    if (cur_page()->graph == GR_PATS) {                 /* LOAD: another pattern; ERASE: a saved slot; SAVE: any slot */
-        if (c == 2u) return ps_changed(pat_pick());
-        if (c == 3u) return 1;
+    if (cur_page()->graph == GR_PATS) {                 /* LOAD: another pattern; SAVE: any slot */
+        if (c == 2u) return 1;
         return pat_last[s] != pat_pick() + 1u || steps_sig(TSEL) != pat_sig[s];
     }
-    if (cur_page()->graph == GR_SLOTS)                  /* MULTI: LOAD a used one (playing too), ERASE / SAVE stopped */
-        return c == 3u ? !song.playing : project_used((uint32_t)song.g[G_SLOT] - 1u) && (c == 1u || (!song.playing && !(c == 2u && project_factory((uint32_t)song.g[G_SLOT] - 1u))));
+    if (cur_page()->graph == GR_SLOTS)                  /* MULTI: LOAD a used one (playing too), SAVE stopped */
+        return c == 2u ? !song.playing : project_used((uint32_t)song.g[G_SLOT] - 1u);
     id = cur_page()->id[c & 3u];
     if (id == G_LOAD)
         return project_used((uint32_t)song.g[G_SLOT] - 1u);

@@ -595,7 +595,7 @@ int main(void)
         const param_desc_t *d;
         int16_t *vp;
         uint32_t p1 = 0, p2 = 0, i, m, k, ok;
-        static const char *const FULLN[4] = {"DIGITAL", "PING-PONG", "RANDOM", "OCT UP"};
+        static const char *const FULLN[4] = {"DIGITAL", "PING-PONG", "RANDOM", "OCTAVE UP"};
         static const char *const CARD[4] = {"DIGI", "PING", "RAND", "OCT+"};
         for (i = 0; i < NPAGES; i++) {
             if (str_eq(PAGES[i].title, "DELAY 1/2")) p1 = i;
@@ -616,7 +616,7 @@ int main(void)
             song.g[G_DMODE] = (int16_t)m;
             ok &= !strcmp(dly_mode_full(), FULLN[m]);
         }
-        expect("UI: the modes in full (header): DIGITAL, PING-PONG, RANDOM, OCT UP", ok);
+        expect("UI: the modes in full (header): DIGITAL, PING-PONG, RANDOM, OCTAVE UP", ok);
         expect("UI: MODE is a SENDS card (MODULES SENDS OFF fades it), carried by a multi; the engine switch (G_ENGSEL) is not", mods_of(1, G_DMODE) == MODS_SENDS && MU_GLOBAL(G_DMODE) &&
                !MU_GLOBAL(G_ENGSEL) && mods_of(1, G_PINGSPREAD) == MODS_SENDS);
         /* every mode: which cards are faded, with which reason (STEREO, LAYER, DUEL: 0.2.22 the same but SPREAD, which DUEL hides in every mode) */
@@ -683,9 +683,9 @@ int main(void)
         expect("MODE DIGITAL -> PING-PONG: no CHANCE, the header says the mode in full", song.g[G_DMODE] == DMD_PING && song.g[G_DMDEP] == 0 && !strcmp(ui.msg, "PING-PONG"));
         edit_param(0, 1);
         expect("DEFAULT: PING-PONG -> RANDOM with DEPTH 0: CHANCE starts at 40, said in the header",
-               song.g[G_DMODE] == DMD_RAND && song.g[G_DMDEP] == 40 && DMD_CHANCE_DEF == 40 && !strcmp(ui.msg, "RANDOM: CHANCE 40 %"));
+               song.g[G_DMODE] == DMD_RAND && song.g[G_DMDEP] == 40 && DMD_CHANCE_DEF == 40 && !strcmp(ui.msg, "RANDOM: CHANCE 40%"));
         edit_param(0, 1);
-        expect("DEFAULT: RANDOM -> OCT UP keeps CHANCE", song.g[G_DMODE] == DMD_OCTUP && song.g[G_DMDEP] == 40 && !strcmp(ui.msg, "OCT UP"));
+        expect("DEFAULT: RANDOM -> OCT UP keeps CHANCE", song.g[G_DMODE] == DMD_OCTUP && song.g[G_DMDEP] == 40 && !strcmp(ui.msg, "OCTAVE UP"));
         edit_param(0, -1); edit_param(0, -1);
         expect("DEFAULT: back to PING-PONG: the modulation DEPTH is 0 again (the delay as it was)", song.g[G_DMODE] == DMD_PING && song.g[G_DMDEP] == 0);
         edit_param(0, 1);

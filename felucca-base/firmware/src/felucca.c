@@ -44,6 +44,12 @@
 #ifndef DUELL_VELO
 #define DUELL_VELO 0             /* DUELL: key velocity and aftertouch from the keys (sense.c, docs/design/VELO_STUDY.md; developer builds until the recording tunes sense_cal.h) */
 #endif
+#ifndef DUELL_VELO_CAPTURE
+#define DUELL_VELO_CAPTURE 0     /* DUELL developer build ONLY (tools/build.py: env DUELL_VELO_CAPTURE=1 with FELUCCA_CDC=1; never with --release): the raw key readings over the USB serial console (velocap.h, velocap.c, docs/VELO_CSV.md) */
+#endif
+#if DUELL_VELO_CAPTURE && !(DUELL_VELO && FELUCCA_CDC)
+#error "DUELL_VELO_CAPTURE is a developer build: it needs DUELL_VELO and the USB serial console (FELUCCA_CDC=1, which no release build has)"
+#endif
 #include "duell_version.h"       /* generated from the VERSION file (tools/gen_version.py) */
 #ifndef FELUCCA_VERSION
 #define FELUCCA_VERSION DUELL_VERSION_STR /* "DUELL 0.MINOR.BUILD beta": shown in the splash, ABOUT, INFO, the console and the editor */
@@ -62,6 +68,7 @@
 #include "fm1_timer.h"
 #include "fm1_audio.h"
 #include "fm1_adc.h"
+#define FM1_LCD_BL_LATE 1        /* item 163: the backlight on only after the panel's first black frame (lcd.c lcd_init); the loader keeps 0 */
 #include "fm1_lcd_hw.h"
 #if DUELL_TWOCORE
 #include "fm1_core1.h"           /* the second core's start, entry and waiting loop; the hal of twocore.h */
@@ -129,8 +136,12 @@
 #endif
 #if FELUCCA_CDC
 #include "console.c"
+#if DUELL_VELO_CAPTURE
+#include "velocap.c"            /* developer capture build: the readings' main-loop side (never in a release or normal build) */
+#endif
 #endif
 #include "master.c"              /* the MASTER pot (#137: read before the audio starts) */
+#include "bootguard.h"          /* the boot guard's rules (main.c; tests/bootguard_test.c runs the same lines) */
 #include "main.c"
 
 /* ------------------------------------------------- DUELL BENCH (bench builds only) --- */

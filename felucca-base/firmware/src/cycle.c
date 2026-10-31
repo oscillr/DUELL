@@ -93,7 +93,7 @@ static __attribute__((noinline)) void cycle_tick(track_t *t, voice_t *v)
 __attribute__((noinline)) int32_t cycle_value(track_t *t, voice_t *v)
 {
     uint32_t ti = (uint32_t)(t - trk), vi = (uint32_t)(v - t->v);
-    return ti < NLIVE && vi < NVOICE ? cy_y[ti][vi] : 0;          /* (a track of a test's own is none of the parts') */
+    return ti < NLIVE && vi < NVOICE && !BYP(t, BY_CYC) ? cy_y[ti][vi] : 0;   /* (DUELL 1.1 BYPASS: sends 0, the generator runs on) */          /* (a track of a test's own is none of the parts') */
 }
 /* a note starts on voice v (voice_start; sounding: the voice already played, a retrigger or a steal): the rise from where the generator stands (no jump), from 0 on a fresh voice */
 static __attribute__((noinline)) void cycle_start(track_t *t, voice_t *v, int sounding)

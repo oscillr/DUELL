@@ -6,7 +6,7 @@
  *
  * Job 2 (partstate) changed where the helpers keep their scratch and take their inputs, so the text below was adapted in the places marked
  * "(partstate ...)" and in these mechanical ways only: part_buf, pfx_dry and spread_on are the part's pscr[pp] fields; mod is MODW(t); mod_gon is
- * mod_gon_any(); eq_live is the pair of t->eqlv; the helpers that now take the block's snapshot (pfx_snap, pfx_mode, pfx_mix, bal_lvl, the mute functions) get ref_bs, filled by
+ * mod_gon_any(); eq_live is the pair of t->eqlv; the helpers that now take the block's snapshot (pfx_snap, pfx_mode, pfx_mix, the mute functions; item 160: bal_lvl is gone) get ref_bs, filled by
  * blk_snap before the parts; mix_spread and space_tap add into an accumulator that is added into the shared arrays at once, which is what the old
  * += did; split_stash (no longer in the firmware) lives here. The arithmetic and the order are the old ones: tests/partindep_test.c pins this file
  * to the hashes of the commit before the change (OLD_HASH).
@@ -150,7 +150,7 @@ static void ref_mix_part(track_t *t, uint32_t n)
     }
     if (!pscr[pp].spread_on) {                                   /* (the mix's values read after the calls: none is held over
                                                          * them, no spill in the loop: the ISR's cost as before 1.5) */
-        int32_t lvl = bal_lvl(t, part_lvl(t), mix_bal);
+        int32_t lvl = part_lvl(t);                      /* (item 160: the BALANCE stage, bal_lvl / mix_bal, is gone from the firmware; at the old balance 0 it was this) */
         int32_t gl = 4096 - (pq > 0 ? pq >> 2 : 0), gr = 4096 + (pq < 0 ? pq >> 2 : 0);   /* (pq Q8: pq >> 2 = pan x 64, the gains of before) */
         int32_t c = t->p[P_CHOR] * 258, d = t->p[P_DLY] * 258, r = t->p[P_REV] * 258, pk = t->peak;
         int ramp = 0;

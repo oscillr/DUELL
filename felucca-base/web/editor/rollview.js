@@ -9,9 +9,10 @@
 import { h, clear } from "./ui_util.js";
 import { noteName, CMD, parseMenu } from "./proto.js";
 import { ID } from "./layout.js";
+import { SCALE_SHOWN } from "./labels.js";
 import * as R from "./roll.js";
 
-const KW = 56, EDGE = 7, LANES = [["vel", "VEL", "Velocity of each step"], ["chance", "CHANCE", "Chance of each step, in %"], ["ratchet", "RATCH", "Ratchet of each step, 1 to 4 hits"]];
+const KW = 56, EDGE = 7, LANES = [["vel", "VEL", "Velocity of each step"], ["chance", "CHANCE", "Chance of each step, in %"], ["ratchet", "RATCHET", "Ratchet of each step, 1 to 4 hits"]];
 const SCALE_KEY = "duell-roll-scale";
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
@@ -43,7 +44,7 @@ export function createRollView(app, p, opts) {
   const bRevert = btn("Revert", "Throw the waiting edits away and read the pattern from the unit again", () => st.revert(), "ghost small");
   const pend = h("span", { class: "small rollpend" });
   const selRoot = h("select", { "aria-label": "Highlight: root note", title: "Highlight only: the unit's SCALE and ROOT cannot be read by the editor, so choose them here to see them in the roll (nothing is sent)", onchange: () => { root = +selRoot.value; saveScale(); paintRows(); } },
-    ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"].map((n, i) => h("option", { value: i, text: n })));
+    ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"].map((n, i) => h("option", { value: i, text: SCALE_SHOWN[n] ?? n })));
   const selScale = h("select", { "aria-label": "Highlight: scale", title: "Highlight only (see ROOT)", onchange: () => { scale = +selScale.value; saveScale(); paintRows(); } }, R.SCALES.map(([n], i) => h("option", { value: i, text: n })));
   selRoot.value = root; selScale.value = scale;
   const bZoomOut = btn("-", "Zoom out: narrower steps", () => setZoom(zoom / 1.25), "zb"), bZoomIn = btn("+", "Zoom in: wider steps", () => setZoom(zoom * 1.25), "zb");

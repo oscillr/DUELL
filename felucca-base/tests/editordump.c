@@ -15,6 +15,11 @@ static void js_str(const char *s)
 {
     putchar('"');
     for (; s && *s; s++) {
+        if (*s == '\n') {                           /* DUELL 1.1: a list name with its card break (DOUBLE\nSINE) is a JSON \n */
+            putchar('\\');
+            putchar('n');
+            continue;
+        }
         if (*s == '"' || *s == '\\')
             putchar('\\');
         putchar(*s);
@@ -98,8 +103,8 @@ static const char *const FAMN[] = {"HOME", "ENV", "LFO", "FX", "SCL", "EDIT", "G
 static const char *const SCN[] = {"TRACK", "GLOBAL", "ENGINE", "STEP", "TRK", "MORPH", "MODE", "TEST", "SCALE", "MIDI", "PERF", "MODS", "FXSUM", "GMIX"};   /* (every SC_* of params.c, MODS and FXSUM too: an index past the table read whatever string lay after it) */
 static const char *const GRN[] = {"NONE", "ADSR", "LFO", "STEPS", "ARP", "SCALE", "FX", "ROLL", "BROWSE", "SLOTS", "USER", "TRK", "SLCR", "MOD", "PATS",
                                   "TOOLS", "CHORD", "SLICES", "EVENTS", "FMOP", "FMOP2", "FMENV", "INS", "ENGINE", "MORPH", "MORPHSET", "MODE", "GLO",
-                                  "MIDI", "MLEARN", "SCHAIN", "TEST", "TEMPO", "PERF", "MODS", "MSTG", "FXSUM", "EQ", "COMP", "FILT", "SUB", "CYCLE"};   /* (every GR_* of params.c: MODS was missing, so MODULES' name was whatever string lay after the table; 0.2.25: FXSUM was missing too, then EQ COMP FILT) */
-_Static_assert(sizeof GRN / sizeof GRN[0] == GR_CYCLE + 1u && sizeof SCN / sizeof SCN[0] == SC_GMIX + 1u, "editordump: a name for every GR_* and SC_* (0.2.25)");
+                                  "MIDI", "MLEARN", "SCHAIN", "TEST", "TEMPO", "PERF", "MODS", "MSTG", "FXSUM", "EQ", "COMP", "FILT", "SUB", "CYCLE", "SEQHELP"};   /* (every GR_* of params.c: MODS was missing, so MODULES' name was whatever string lay after the table; 0.2.25: FXSUM was missing too, then EQ COMP FILT) */
+_Static_assert(sizeof GRN / sizeof GRN[0] == GR_SEQHELP + 1u && sizeof SCN / sizeof SCN[0] == SC_GMIX + 1u, "editordump: a name for every GR_* and SC_* (0.2.25)");
 
 /* page_visible (ui.c), by the page's ids: which engines show the page. "all" or a list of engine names */
 static void js_vis(const page_t *pg)
@@ -340,6 +345,8 @@ int main(void)
     }
     printf("],\n\"ESYNC\":");
     js_descs(ESYNC_DESC, 6);
+    printf(",\n\"FM6ENV\":");                              /* DUELL 1.1: FM6's AMP ENV knobs (ATTACK DECAY SUSTAIN RELEASE) as DX7 numbers 0..99 (params.c FM6_ENV_DESC, fmt F_N99) */
+    js_descs(FM6_ENV_DESC, 4);
     printf(",\n\"ATG\":");
     js_descs(ATG_DESC, ATG_KINDS);
     printf(",\n\"MD\":{\"E1\":%d,\"INSA\":%d,\"IMIX\":%d,\"RES\":%d,\"PAN\":%d,\"BUS\":%d,\"N\":%d,\"SHP\":%d,\"E2SHP\":%d,\"FMODE\":%d,\"AATK\":%d,"
@@ -416,7 +423,7 @@ int main(void)
         int32_t v;
         printf("%s\n [", i ? "," : "");
         for (v = sig[i].min; v <= sig[i].max; v++) {
-            char val[16];
+            char val[PV_LEN];
             const char *unit;
             param_format(sig[i].d, v, val, &unit);
             printf("%s[", v > sig[i].min ? "," : "");

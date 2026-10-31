@@ -3,8 +3,9 @@
 /* Chip voice: pulse/triangle/saw/noise/wave RAM, quantised amplitude and a held
  * (downsampled) output; SWEEP bends the pitch down after note-on.
  *
- * WAVE = WRAM plays a 32-sample, 4-bit wave table, read step-wise (no interpolation);
- * DUTY then picks one of 16 built-in tables (DUTY / 8, shown as "WAV#" with its name).
+ * WAVE is ONE list (DUELL 1.1): PLS TRI SAW NOISE, then 11 wave-RAM tables (SIN .. STAIR), each a 32-sample, 4-bit wave,
+ * read step-wise (no interpolation). K4 (E2, "PULSE WIDTH") is the pulse width and is shown with WAVE = PLS only
+ * (ui_draw.c card_hidden_vp); the table is WAVE - RW_SINE.
  * BITS = STEP: a 4-bit stepped volume envelope with a frame-clock divider replaces the
  * ADSR curve (lofi_amp), the triangle becomes a 32-step 4-bit staircase, the pulse
  * duties are 12.5 / 25 / 50 / 75 %; CRSH then sets the envelope (shown as "DCY").
@@ -13,23 +14,18 @@
  * WRAM table: a table switch is a step, and the morph fades the SHP depths (tests/morph_test.c: no cliff). Centre
  * (64 << 8): DUTY as set, bit for bit. */
 static const char *const N_BITS[] = {"4BIT", "4B/2", "8BIT", "1BIT", "STEP"};
-static const char *const N_RWAVE[] = {"PLS", "TRI", "SAW", "NOIS", "WRAM"};
+static const char *const N_RWAVE[] = {"PLS", "TRI", "SAW", "NOISE", "SIN", "SAW 2", "BASS 1", "BASS 2",
+                                      "ORGAN", "HOLLOW", "AH", "OH", "EE", "BUZZ", "STAIR"};
 static const char *const N_RARP[] = {"OFF", "OCT", "MAJ", "MIN"};
 enum { BITS_4BIT, BITS_4B2, BITS_8BIT, BITS_1BIT, BITS_STEP };
-enum { RW_PLS, RW_TRI, RW_SAW, RW_NOIS, RW_WRAM };
+enum { RW_PLS, RW_TRI, RW_SAW, RW_NOIS, RW_SINE, RW_SAW2, RW_BAS1, RW_BAS2, RW_ORGN, RW_HOLW, RW_VOXA, RW_VOXO, RW_VOXE,
+       RW_BUZZ, RW_STAIR, RW_NWAVE };   /* RW_SINE .. RW_STAIR: wave RAM, table RW - RW_SINE */
 
-/* wave RAM: 16 tables x 32 samples x 4 bits, two samples a byte (high nibble first);
+/* wave RAM: 11 tables x 32 samples x 4 bits, two samples a byte (high nibble first);
  * our own shapes, from simple formulas (squares, sine, triangle, saws, harmonic sums,
  * one formant peak for the vowels). DC is taken out per table in lofi_render. */
-static const char *const N_WRAM[] = {"SQ50", "SQ25", "SQ12", "SINE", "TRI", "SAW", "SAW2", "BAS1",
-                                     "BAS2", "ORGN", "HOLW", "VOXA", "VOXO", "VOXE", "BUZZ", "STAIR", 0};
-static const uint8_t WRAM[16][16] = {
-    {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},   /* SQ50 */
-    {0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},   /* SQ25 */
-    {0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},   /* SQ12 */
+static const uint8_t WRAM[11][16] = {
     {0x89, 0xAC, 0xDE, 0xEF, 0xFF, 0xEE, 0xDC, 0xA9, 0x86, 0x53, 0x21, 0x10, 0x00, 0x11, 0x23, 0x56},   /* SINE */
-    {0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF, 0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10},   /* TRI */
-    {0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF},   /* SAW */
     {0x01, 0x12, 0x33, 0x45, 0x56, 0x77, 0x89, 0x9A, 0x56, 0x67, 0x88, 0x9A, 0xAB, 0xCC, 0xDE, 0xEF},   /* SAW2: + its octave */
     {0xEE, 0xEF, 0xFF, 0xFF, 0xFF, 0xEE, 0xED, 0xDC, 0x11, 0x10, 0x00, 0x00, 0x00, 0x11, 0x12, 0x23},   /* BAS1: sloped square */
     {0xCE, 0xFF, 0xED, 0xBA, 0x9A, 0xBD, 0xEF, 0xFE, 0xC9, 0x64, 0x21, 0x00, 0x00, 0x01, 0x24, 0x69},   /* BAS2: 1 + 2 + 3 */
@@ -48,13 +44,10 @@ static const uint8_t WRAM[16][16] = {
 static const char *const N_DCY[] = {"CONST", "D0", "D1", "D2", "D3", "D4", "D5", "D6", "D7", "D8", "D9", "D10",
                                     "D11", "D12", "D13", "D14", "D15", "L1", "L2", "L3", "L4", "L5", "L6", "L7",
                                     "L8", "L9", "L10", "L11", "L12", "L13", "L14", "L15", 0};
-static const param_desc_t LOFI_WAVNUM = {"WAV#", F_INT, 0, 127, 64, N_WRAM, 0};   /* = edit[2] but the names */
 static const param_desc_t LOFI_DCY = {"DCY", F_INT, 0, 127, 0, N_DCY, 0};        /* = edit[3] but the names */
 
 static const param_desc_t *lofi_desc(const track_t *t, uint32_t k)
 {
-    if (k == 2u && t->p[P_E1] == RW_WRAM)
-        return &LOFI_WAVNUM;
     if (k == 3u && t->p[P_E0] == BITS_STEP)
         return &LOFI_DCY;
     return 0;
@@ -118,7 +111,7 @@ static int32_t lofi_amp(track_t *t, voice_t *v, int32_t adsr)
     return vol * Q4;
 }
 
-/* DUELL MORPH (morph.c, core.h mxf): WAVE PLS / TRI / SAW of the other end (the morph never fades to or from NOIS or WRAM,
+/* DUELL MORPH (morph.c, core.h mxf): WAVE PLS / TRI / SAW of the other end (the morph never fades to or from NOISE or a wave-RAM table,
  * which carry state), cross-faded at each held sample before the quantiser. lofi_body with xf 0 is the render as it was
  * (the constant drops the fade); lofi_render_m (xf 1) runs only while a fade is under way */
 static inline int32_t lofi_basic(uint32_t wave, uint32_t ph0, uint32_t duty, uint32_t stepc)
@@ -148,13 +141,13 @@ static inline __attribute__((always_inline)) void lofi_body(track_t *t, voice_t 
     int32_t ar = p[P_E6];
     int32_t pitch, held = v->s[0], cnt = v->s[1], lp = v->s[4];   /* state in locals: out[] may alias v->s[] */
     uint32_t inc, ph0 = v->ph[0], lfsr = (uint32_t)v->s[2];
-    const uint8_t *wr = WRAM[((uint32_t)p[P_E2] >> 3) & 15u];
+    const uint8_t *wr = WRAM[(wave >= RW_SINE && wave < RW_NWAVE ? wave - RW_SINE : 0u)];
     int32_t wdc = 0;
     if (m->shape != (64 << 8)) {                        /* SHP (DUELL): the pulse's width around DUTY */
         int64_t d = (int64_t)duty + (int64_t)(m->shape - (64 << 8)) * 32768;   /* 64 << 8 -> 0x20000000 */
         duty = (uint32_t)(d < 0x10000000 ? 0x10000000 : d > 0xF0000000LL ? 0xF0000000LL : d);
     }
-    if (wave == RW_WRAM) {                              /* the table's mean: no DC from lopsided shapes */
+    if (wave >= RW_SINE) {                              /* the table's mean: no DC from lopsided shapes */
         int32_t sum = 0;
         for (i = 0; i < 16u; i++)
             sum += bits == 1 ? ((wr[i] >> 7) + ((wr[i] >> 3) & 1)) * 2 - 2 : (wr[i] >> 4) + (wr[i] & 15) - 15;
@@ -176,7 +169,7 @@ static inline __attribute__((always_inline)) void lofi_body(track_t *t, voice_t 
         if (--cnt <= 0) {
             uint32_t q = bits < 16;                     /* quantise (the 4-bit tables are already) */
             cnt = hold;
-            switch (wave) {
+            switch (wave >= RW_SINE ? (uint32_t)RW_SINE : wave) {   /* (the wave-RAM tables folded into one case: the same five-way switch as before the one list; a jump table over all 15 waves cost the others ~30 % in instructions) */
             case RW_TRI:
                 if (stepc) {                            /* 32 steps, 4 bits: 15..0, 0..15 */
                     uint32_t k = ph0 >> 27;
@@ -197,7 +190,7 @@ static inline __attribute__((always_inline)) void lofi_body(track_t *t, voice_t 
                 s = (l & 1u) ? 32767 : -32768;
                 break;
             }
-            case RW_WRAM: {                             /* step-wise, no interpolation */
+            case RW_SINE: {                /* wave RAM: step-wise, no interpolation */
                 uint32_t k = ph0 >> 27, b = wr[k >> 1];
                 b = (k & 1u) ? b & 15u : b >> 4;
                 s = (bits == 1 ? (b >= 8u ? 32767 : -32767) : ((int32_t)b * 2 - 15) * Q4) - wdc;
@@ -244,8 +237,8 @@ static const preset_t LOFI_PRESETS[] = {
     {"PULSE LD", {0, 0, 32, 0, 0, 20, 0, 127}, {0, 60, 90, 30}, 0, 1, FX(0, 0, 40, 20), PAT(4)},
     {"WAVE BASS", {1, 1, 0, 0, 0, 0, 0, 90}, {0, 50, 70, 20}, 0, 1, FX(0, 0, 10, 0), PAT(2)},
     {"ARP 8BIT", {2, 0, 96, 0, 0, 0, 2, 110}, {0, 60, 80, 40}, 0, 0, FX(0, 0, 30, 20), PAT(13)},
-    /* wave RAM VOXA (DUTY 92 / 8 = 11), a little vibrato */
-    {"WAVE LEAD", {0, 4, 92, 0, 0, 18, 0, 110}, {0, 70, 90, 30}, 0, 1, FX(0, 0, 40, 25), PAT(3)},
+    /* wave RAM AH (old VOXA), a little vibrato */
+    {"WAVE LEAD", {0, 10, 64, 0, 0, 18, 0, 110}, {0, 70, 90, 30}, 0, 1, FX(0, 0, 40, 25), PAT(3)},
     /* STEP: 25 % pulse, DCY 34 = D7 (a 15-step decay over 0.5 s), REL ~54 ms of staircase after note-off */
     {"STEP LEAD", {4, 0, 40, 34, 0, 16, 0, 127}, {0, 64, 127, 55}, 0, 1, FX(0, 0, 40, 20), PAT(4)},
 };
@@ -255,8 +248,8 @@ static const engine_t ENG_LOFI = {
     .page_title = {"LOFI", "MOTN"},
     .edit = {
         {"BITS", F_ENUM, 0, 4, 0, N_BITS, 0},
-        {"WAVE", F_ENUM, 0, 4, 0, N_RWAVE, 0},
-        {"DUTY", F_INT, 0, 127, 64, 0, 0},              /* WRAM: the table, DUTY / 8 (lofi_desc) */
+        {"WAVE", F_ENUM, 0, RW_NWAVE - 1, 0, N_RWAVE, 0},
+        {"PULSE WIDTH", F_INT, 0, 127, 64, 0, 0},       /* PLS only (ui_draw.c card_hidden_vp); in STEP 12.5 / 25 / 50 / 75 % */
         {"CRSH", F_PCT, 0, 127, 0, 0, 0},               /* STEP: the envelope (lofi_desc) */
         {"SWP", F_PCT, 0, 127, 0, 0, 0},
         {"VIB", F_PCT, 0, 127, 0, 0, 0},

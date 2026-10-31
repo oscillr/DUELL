@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-only
 # TEST ONLY: the 24 CCs of cloud/base3 on today's numbers (midi_control.c MIDI_CC_MAP, the morph's CCs 20..25 / 111 / 113..115, the MODE's
-# 112 and 116..118) plus the 21 locked standard numbers. The host tests build the table from it (tests/midimap_test.c) and the old MIDI
+# 112 and 116..118; item 157: 116, BALANCE, is REMOVED, BALANCE is no target any more) plus the 21 locked standard numbers. The host tests build the table from it (tests/midimap_test.c) and the old MIDI
 # tests run on it as their power-on map (host_tests.sh: build/gen_test/midi_map_defaults.h), so what they check stays what it was.
 # The shipped map is docs/MIDI_MAP_DEFAULTS.csv.
 cc,target,part_rule,tag
@@ -40,7 +40,7 @@ cc,target,part_rule,tag
 113,SMART,P,SHIPPED
 114,ARP,P,SHIPPED
 115,PITCH,P,SHIPPED
-116,BALANCE,G,SHIPPED
+116,REMOVED,P,SHIPPED
 117,XFADE,G,SHIPPED
 118,SPLIT,G,SHIPPED
 120,LOCKED,P,LOCKED

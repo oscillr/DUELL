@@ -3,7 +3,7 @@
  * (tools/factory_multis/Mnn.bin) with the firmware's own code: each part's factory sound loaded as the PATCHES list loads it
  * (set_engine_of + apply_preset_to: its values, End B seed and AMOUNT), then the multi's own per-part settings (the mix, the sends,
  * HOLD, chord keys, a matrix route, the arp and its SEQUENCER pattern, the insert, EQ and ducker), the globals (tempo, chorus, delay,
- * reverb), the MODE, BALANCE, XFADE and SPLIT, saved by multi.c's packer (project_save_as) and read back from the store. The table is
+ * reverb), the MODE, XFADE and SPLIT (item 157: no BALANCE; the record's spare byte is 0), saved by multi.c's packer (project_save_as) and read back from the store. The table is
  * tools/factory_multis.py's; run that tool (`build`), which writes the C table, compiles and runs this. The recipes: DUELL/SOUND_RECIPES.md, chapter 7.
  *   build/host/gen_factory_multis build tools/factory_multis    writes the built slots' Mnn.bin (tools/factory_multis.py build does it)
  *   build/host/gen_factory_multis dump [SLOT ..]                 what the factory multis of the generated header hold (default: all)
@@ -37,7 +37,6 @@ typedef struct {
     const char *name;
     uint8_t slot;                                /* 0..15: M01..M16 */
     uint8_t mode;                                /* DM_SPLIT (DUEL), DM_STEREO, DM_LAYER */
-    int8_t bal;
     uint8_t xf;                                  /* XFADE 0..100 (LAYER) */
     uint8_t split;                               /* 0 OFF, else note + 1 (LAYER) */
     int16_t g[40];                               /* (G_ id, value) pairs, END-terminated */
@@ -122,7 +121,6 @@ static void build(const multi_t *m)
     for (i = 0; m->g[i] != END; i += 2u)
         song.g[m->g[i]] = m->g[i + 1u];
     duell_mode_req = m->mode;
-    mix_bal = m->bal;
     mix_xf = m->xf;
     mix_split = m->split;
     song.sel = 0;
@@ -138,9 +136,9 @@ static void dump(uint32_t k)
         return;
     }
     project_load(k);
-    printf("M%02u %-12s MODE %s  BPM %d SWING %d  DLY %s fdbk %d mix %d  REV %s size %d damp %d  PING %d  DMOD %d  BAL %d XF %u SPLIT %u\n",
+    printf("M%02u %-12s MODE %s  BPM %d SWING %d  DLY %s fdbk %d mix %d  REV %s size %d damp %d  PING %d  DMOD %d  XF %u SPLIT %u\n",
            k + 1u, proj_name, DM_NAME[duell_mode_req], song.g[G_BPM], song.g[G_SWING], N_DIV[song.g[G_DTIME] % 17], song.g[G_DFDBK],
-           song.g[G_DMIX], N_RTYPE[song.g[G_RTYPE] % 5], song.g[G_RSIZE], song.g[G_RDAMP], song.g[G_DMODE] == DMD_PING, song.g[G_DMDEP], mix_bal, mix_xf, mix_split);
+           song.g[G_DMIX], N_RTYPE[song.g[G_RTYPE] % 5], song.g[G_RSIZE], song.g[G_RDAMP], song.g[G_DMODE] == DMD_PING, song.g[G_DMDEP], mix_xf, mix_split);
     for (pi = 0; pi < NSHOWN; pi++) {
         const track_t *t = &trk[pi];
         uint8_t b[MB_N];

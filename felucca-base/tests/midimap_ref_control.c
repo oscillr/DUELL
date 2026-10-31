@@ -486,10 +486,9 @@ static void midi_control(uint32_t ch, uint32_t cc, uint32_t value)
  * leaves 102-119 undefined. MIDI LEARN can take it (ml_free_cc): learned, or MIDI LEARN waiting for a CC, it is the
  * user's, as any learned CC (only on a channel ROUT plays). Queued for nothing: mode_apply runs here, in the ISR */
 #define MIDI_MODE_CC 112u
-/* the MODE page's other three, global too (any channel; learned = the user's, as CC 112): CC 116 BALANCE (0..127 -> -100..+100,
- * 64 = 0), CC 117 XFADE (0..127 -> 0..100 %), CC 118 SPLIT (0 = OFF, 1..127 = the note n). Free: not in MIDI_CC_MAP, not the
+/* the MODE page's other two, global too (any channel; learned = the user's, as CC 112) (item 157: CC 116 was BALANCE, no target any more;
+ * the legacy table says REMOVED on it): CC 117 XFADE (0..127 -> 0..100 %), CC 118 SPLIT (0 = OFF, 1..127 = the note n). Free: not in MIDI_CC_MAP, not the
  * morph's (20-25, 111, 113-115), not Felucca's panics (120-127) */
-#define MIDI_BAL_CC 116u
 #define MIDI_XF_CC 117u
 #define MIDI_SPLIT_CC 118u
 static void mode_apply(void);                   /* (seq.c) */
@@ -505,9 +504,7 @@ static int __attribute__((noinline)) midi_mode_cc(uint32_t cc, uint32_t value)
                 return 0;
         }
     }
-    if (cc == MIDI_BAL_CC)                          /* 0..127 -> -100..+100, 64 = 0 */
-        mix_bal = (int8_t)(value == 64u ? 0 : value < 64u ? ((int32_t)value - 64) * 100 / 64 : ((int32_t)value - 64) * 100 / 63);
-    else if (cc == MIDI_XF_CC)                      /* 0..127 -> 0..100 % */
+    if (cc == MIDI_XF_CC)                      /* 0..127 -> 0..100 % */
         mix_xf = (uint8_t)((value * 100u + 63u) / 127u);
     else if (cc == MIDI_SPLIT_CC)                   /* 0 OFF, 1..127 the note n (stored n + 1) */
         mix_split = (uint8_t)(value ? value + 1u : 0u);
@@ -576,7 +573,7 @@ static void __attribute__((noinline)) midi_route_block(void)
  * channel aftertouch, so they stay free for other instruments. */
 static void __attribute__((noinline)) midi_event(uint32_t st, uint32_t ch, uint32_t d1, uint32_t d2)
 {
-    if (st == 0xB0u && (d1 == MIDI_MODE_CC || (d1 >= MIDI_BAL_CC && d1 <= MIDI_SPLIT_CC)) && midi_mode_cc(d1, d2))
+    if (st == 0xB0u && (d1 == MIDI_MODE_CC || (d1 >= MIDI_XF_CC && d1 <= MIDI_SPLIT_CC)) && midi_mode_cc(d1, d2))
         return;                                    /* (DUELL step 5: the MODE, any channel) */
     if ((st == 0x90u || st == 0x80u) &&                   /* (DUELL DUCK, fx.c duck_note: a trigger note, before the routing drops or plays it) */
         duck_note(ch, d1, st == 0x90u && d2, song.g[G_ROUTE] == 1 ? 1u : duell_mode == DM_LAYER ? ch == midi_pch[0] : (uint32_t)midi_in_block(ch)))

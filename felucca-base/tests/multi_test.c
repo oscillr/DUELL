@@ -110,11 +110,14 @@ static void press_k(uint32_t knob)                   /* an action knob picked, O
 typedef struct { uint8_t note[PR_MAX]; uint16_t blk[PR_MAX]; uint32_t n, first, late, gated_after; } pr_t;
 static uint32_t pr_key(uint32_t note)                /* the key whose note (a power-on's octave and TRN 0) is note */
 {
-    uint32_t k;
-    for (k = 0; k < 27u; k++)
+    uint32_t k, r = 27u;
+    int16_t trn = trk[0].p[P_TRANS];                 /* (1.1, item 143: the power-on sound #1 BEHIVE carries TRANSPOSE -12; this finds the key at TRN 0) */
+    trk[0].p[P_TRANS] = 0;
+    for (k = 0; k < 27u && r == 27u; k++)
         if (kb_map(&trk[0], k) == note)
-            return k;
-    return 27u;
+            r = k;
+    trk[0].p[P_TRANS] = trn;
+    return r;
 }
 static int pr_recall;                               /* (0.2.23: the load with MODE RECALL ON: the multi's split applied) */
 static void play_run(uint32_t slot, uint32_t keys, uint32_t hold_blocks, uint32_t after_blocks, int play, pr_t *r)
@@ -310,7 +313,7 @@ static void editb_worst_multi(void)
             frames(50);
             for (pi = 0; pi < NSHOWN; pi++)
                 kept += morph_edits(pi, gg);
-            ck("  .. the line says B EDITS CUT, the automation is all gone, 51 of the 64 values are back (part 1's 32, 19 of part 2's)", kept == 51u && motion.count == 0u && morph_edits(0, gg) == XB_MAX);
+            ck("  .. the line says B EDITS CUT, the automation is all gone, 39 of the 64 values are back (part 1's 32, 7 of part 2's; item 138: NX 28 takes 24 bytes = 12 edits)", kept == 39u && motion.count == 0u && morph_edits(0, gg) == XB_MAX);
             for (pi = 0; pi < NSHOWN; pi++) {
                 mph[pi].fader = 0;
                 morph_roll_seed(pi, 1u, 900u + pi);          /* a roll drops the hand-set values */
@@ -319,11 +322,11 @@ static void editb_worst_multi(void)
                 motion.event[i2] = (motion_event_t){(uint8_t)((i2 & 1u) << 6 | (i2 >> 1) % 64u), P_REV, (int8_t)(i2 % 100u)};
             motion.count = MOTION_MAX;
             rc = project_save_as(13u, "WORST");
-            amsg = msg_is("AUTOMATION CUT");
+            amsg = msg_is("PARAMETER LOCKS CUT");   /* (item 138: the message of multi.c since the page became PARAMETER LOCKS) */
             motion.count = 0;
             project_load(13u);
             frames(50);
-            ck("  without hand-set values it says AUTOMATION CUT (34 of the 128 events fit)", rc == 0 && amsg && motion.count == 34u);
+            ck("  without hand-set values it says PARAMETER LOCKS CUT (26 of the 128 events fit)", rc == 0 && amsg && motion.count == 26u);
             ck("  (erased again)", project_erase(13u) == 0 && project_factory(13));
 }
 
@@ -869,7 +872,7 @@ int main(void)
     {
         static track_t m01[NSHOWN];
         static persist_t pb;
-        uint32_t m01_bpm, m01_mode, m01_bal, sector, i, m01_lo[2];
+        uint32_t m01_bpm, m01_mode, sector, i, m01_lo[2];
         int16_t g_copy[G_COUNT];
         /* the reference: what M01 loads to */
         memset(nor, 0xFF, sizeof nor);
@@ -880,7 +883,6 @@ int main(void)
         memcpy(m01, trk, sizeof m01);
         m01_bpm = (uint32_t)song.g[G_BPM];
         m01_mode = duell_mode_req;
-        m01_bal = (uint32_t)(uint8_t)mix_bal;
         memcpy(g_copy, song.g, sizeof g_copy);
         ck("M01 is the factory REESE SWAMP (0.2.13; read through the factory path)", str_eq(mu_names[0], "REESE SWAMP") && project_factory(0));
 
@@ -908,8 +910,7 @@ int main(void)
             ck("  M01 is loaded: both parts' engines, presets and sounds as M01 holds them",
                trk[0].eng_req == m01[0].eng_req && trk[0].preset == m01[0].preset && trk[1].eng_req == m01[1].eng_req &&
                trk[1].preset == m01[1].preset && !memcmp(trk[0].p, m01[0].p, sizeof trk[0].p) && !memcmp(trk[1].p, m01[1].p, sizeof trk[1].p));
-            ck("  TEMPO, the globals and BALANCE as M01 holds them", (uint32_t)song.g[G_BPM] == m01_bpm && !memcmp(song.g, g_copy, sizeof g_copy) &&
-               (uint8_t)mix_bal == m01_bal);
+            ck("  TEMPO and the globals as M01 holds them", (uint32_t)song.g[G_BPM] == m01_bpm && !memcmp(song.g, g_copy, sizeof g_copy));   /* (item 160: no balance value any more) */
             ck("  the first-start flag is used up", first_boot_pending == 0u);
             events_block(CTL);                        /* (the audio side takes the MODE: LAYER)  */
             if (sector == 0u) {                       /* tester bug: a black key played a semitone apart on the two parts */
@@ -1094,30 +1095,33 @@ int main(void)
         }
         ui_prefs2 &= (uint8_t)~(PREF_MODE_RECALL >> 16);
         ck("a save still writes the MODE (header byte 4); LOAD applies it from any mode, KEEP does not", ok);
-        {   /* BALANCE, XFADE, SPLIT follow the option too (saved in the multi either way) */
-            uint32_t ref_bal;
+        {   /* XFADE, SPLIT follow the option too (saved in the multi either way). Item 157: BALANCE is no multi value: the record's byte before XFADE is a
+             * spare written 0 (the record's size and layout as before), a load never reads it (item 160: the balance value itself is gone; PERFORM's SELECT moves the LEVELs) */
+            uint32_t len, spare0 = 1, xf_ok = 1;
+            const uint8_t *r;
             ok = 1;
             for (m = 0; m < 3u; m++) {
                 duell_mode_req = MODES[m];
-                mix_bal = -37; mix_xf = 41; mix_split = 61;
+                mix_xf = 41; mix_split = 61;
                 ok &= project_save_as(8u, "BAL") == 0;
-                mix_bal = 23; mix_xf = 17; mix_split = 71;
+                mu_obj_read(8u / 2u);
+                r = mu_rec(8u & 1u, &len);
+                spare0 &= len > 3u && r[len - 3u] == 0u;
+                xf_ok &= len > 3u && r[len - 2u] == 41u && r[len - 1u] == 61u;
+                mix_xf = 17; mix_split = 71;
                 project_load(8u);
-                ok &= mix_bal == 23 && mix_xf == 17 && mix_split == 71;
+                ok &= mix_xf == 17 && mix_split == 71;
                 ui_prefs2 |= PREF_MODE_RECALL >> 16;
                 project_load(8u);
-                ok &= mix_bal == -37 && mix_xf == 41 && mix_split == 61;
+                ok &= mix_xf == 41 && mix_split == 61;
                 ui_prefs2 &= (uint8_t)~(PREF_MODE_RECALL >> 16);
             }
-            ck("BALANCE / XFADE / SPLIT: OFF keeps them after a load (from each mode), ON applies the multi's", ok);
-            mix_bal = 5; mix_xf = 6; mix_split = 7;
+            ck("XFADE / SPLIT: OFF keeps them after a load (from each mode), ON applies the multi's", ok);
+            ck("  the record: the spare byte (BALANCE's until item 157) is 0, XFADE and SPLIT the last two bytes", spare0 && xf_ok);
+            mix_xf = 6; mix_split = 7;
             ui_prefs2 |= PREF_MODE_RECALL >> 16;
             project_load(0);
-            ref_bal = (uint32_t)(uint8_t)mix_bal;
             ui_prefs2 &= (uint8_t)~(PREF_MODE_RECALL >> 16);
-            mix_bal = 5;
-            project_load(0);
-            ck("  M01 (factory): ON applies its own BALANCE, OFF leaves it", mix_bal == 5 && ref_bal != 5u);
         }
         /* a MIDI program change recalls through the same project_load */
         duell_mode_req = DM_STEREO;
@@ -1220,7 +1224,7 @@ int main(void)
         project_capture(&q);
         for (t = 0; t < NSHOWN; t++) {
             for (i = 0; i < NX; i++)
-                q.t[t].x[i] = (int16_t)(t ? 127 - 8 * (int)i : -64 + 9 * (int)i);
+                q.t[t].x[i] = (int16_t)(t ? 127 - (8 * (int)i) % 191 : -64 + (9 * (int)i) % 191);   /* (item 138: NX 28: kept inside -64 .. 127, the plain forms ran past both ends from slot 22 on) */
             q.xe_n[t] = (uint8_t)(t ? 5u : XB_MAX);
             for (i = 0; i < q.xe_n[t]; i++) {
                 q.xe[t][i].wid = (uint8_t)(i < 31u ? 3u * i : 128u + 3u);
@@ -1307,7 +1311,7 @@ int main(void)
                    base == 0u ? "no edits" : base == 1u ? "32 edits on both parts, 64 steps each" : "32 + 32 edits, 8 steps each", len, (unsigned)MU_REC_MAX,
                    evs[base], (unsigned)MOTION_MAX, ok3 ? q2.xe_n[0] : 0u, ok3 ? q2.xe_n[1] : 0u, q.xe_n[0], q.xe_n[1], cut);
             if (base == 0u)
-                ck("  worst multi, no edits (2 FM6 parts, 64 steps each, full automation): fits, the automation is cut, 34 events are left (the plan's 35 with 34 B)", ok3 && (cut & 1u) && !(cut & 2u) && evs[0] == 34u);
+                ck("  worst multi, no edits (2 FM6 parts, 64 steps each, full automation): fits, the automation is cut, 26 events are left (item 138: NX 28, 24 bytes more for the two parts' slot lists: 34 - 8)", ok3 && (cut & 1u) && !(cut & 2u) && evs[0] == 26u);
             if (base == 1u)
                 ck("  worst multi with 32 + 32 edits: the sound, steps and slots stay; the automation goes first, then the last edits (B EDITS CUT)",
                    ok3 && evs[1] == 0u && (cut & 2u) && q2.xe_n[0] == XB_MAX && q2.xe_n[1] < XB_MAX && q2.xe_n[0] + q2.xe_n[1] == (MU_REC_MAX - mu_base_len(&q)) / 2u &&
@@ -1315,7 +1319,7 @@ int main(void)
             if (base == 2u)
                 ck("  with 8 steps a part and 32 + 32 edits: everything fits, the automation keeps most of its room", ok3 && !(cut & 2u) && q2.xe_n[0] == XB_MAX && q2.xe_n[1] == XB_MAX && evs[2] > 80u);
         }
-        ck("  the sound and steps of the worst multi always fit (_Static_assert in multi.c): 1814 bytes with the 36 bytes of slots", MU_G_AT + 2u * G_COUNT + NSHOWN * (MU_PART_FIX + NSTEP * PS_STEP + FM6_PACKED) + 1u + 3u == 1814u);
+        ck("  the sound and steps of the worst multi always fit (_Static_assert in multi.c): 1838 bytes with the 60 bytes of slots (item 138: NX 28)", MU_G_AT + 2u * G_COUNT + NSHOWN * (MU_PART_FIX + NSTEP * PS_STEP + FM6_PACKED) + 1u + 3u == 1838u);
     }
     keys_drive();                                    /* 6: the factory multis played from the keys (0.2.12; 0.2.23's set) */
     editb_worst_multi();                             /* 7: cloud job G, the worst multi through SAVE (it leaves the state changed: last) */

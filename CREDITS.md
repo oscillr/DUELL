@@ -22,7 +22,8 @@ Thank you. Each line names the source, the link, the licence and what DUELL uses
 - **J. W. Cooley and J. W. Tukey** (the fast Fourier transform, 1965) and the wavetable file convention of **Xfer Serum**, also used by Vital and Surge: ideas for the WAVE user tables; no code of anyone else.
 
 **Fonts, icons and the packages**
-- **Inter Tight** by The Inter Project Authors, SIL OFL 1.1. The text on the screen.
+- **Inter Tight** by The Inter Project Authors, SIL OFL 1.1. The text of the update screen.
+- Barlow Semi Condensed (Jeremy Tribby), SIL Open Font License 1.1
 - **Fukiai** icon font by Hügelton Instruments, <https://github.com/hugelton/Fukiai>, MIT.
 - **JieLi AC79 SDK** by JieLi Technology, Apache-2.0: three unmodified files inside every firmware package.
 

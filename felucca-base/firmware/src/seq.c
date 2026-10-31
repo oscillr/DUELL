@@ -6,7 +6,7 @@
  * Four tracks, one transport: every track's pattern loops on its own LEN / DIV /
  * SWING / GATE (polymeter). The keys play the selected track; MIDI IN by MENU > MIDI > MIDI IN (G_ROUTE):
  * PARTS (0) the parts' own MIDI channels (GLO > MIDI: default 1 and 2; midi_pch) play parts 1 and 2, the other channels are ignored (midi_control.c midi_event); SEL (1)
- * every channel the selected track. Their CC1 (mod wheel), CC11 (expression) and channel aftertouch go to
+ * every channel the selected track. Their CC1 (mod wheel), CC2 (breath controller), CC4 (foot controller), CC11 (expression) and channel aftertouch go to
  * the same track's modulation matrix (mod.c; the selected track: the one selected then).
  * A note into an armed track (song.rec) while
  * the transport runs is recorded into its pattern, quantised to its (swung) steps, with its
@@ -57,6 +57,7 @@ static volatile uint8_t kb_asleep;       /* MENU > SCREEN OFF (ui.c): the screen
 static uint8_t last_note = 60;
 static volatile uint8_t transport_req;   /* 1 start, 2 stop, 3 restart, 4 STOP ALL (from the UI) */
 static volatile uint8_t panic_req;       /* bit per track: release every sounding note (preset / engine change) */
+static volatile uint8_t panic_keep;      /* bit per track: that panic is a patch load (ui.c apply_preset_to, upreset.c up_load): with MODULES ARP on KEEPS RUNNING the arp's note list and phase stay */
 static volatile uint8_t midi_hint;       /* MIDI IN played track n - 1, which is not the selected one (the UI says so) */
 
 static uint32_t trk_index(const track_t *t) { return (uint32_t)(t - trk); }
@@ -71,6 +72,53 @@ static volatile uint8_t midi_pch[2] = {0, 1};
 static int32_t midi_part_of(uint32_t ch) { return ch == midi_pch[0] ? 0 : ch == midi_pch[1] ? 1 : -1; }
 /* MIDI channel 0..15 of track i (keys -> MIDI out): its part's channel (the hidden parts: part 1's / 2's alternately, never played) */
 static uint32_t trk_midi_ch(uint32_t i) { return midi_pch[i & 1u]; }
+
+/* MIDI OUT of the ARP and the SEQUENCER (DUELL 1.1): what they play goes to the MIDI output (USB; the unit has no DIN output) like a played key
+ * (key_on), on the part's MIDI channel, velocity as played. mo_bits[part] is a bit per note the arp / sequencer has sounding on MIDI out, mo_ch[part] the
+ * channel those went out on: a note-on of a note already sounding ends it first (never two note-ons), a note-off of one not sounding is not sent, and
+ * mo_flush (arp_forget: stop, panic, patch / mode change) ends what is left, on the channel it started on (no hanging notes if the channel is changed).
+ * LAYER: only part 1 sends, as its keys do (part 2's channel is not used there). A played key with the ARP on sends nothing (key_on): the arp's notes are what sounds */
+static uint32_t kb_mo;                         /* a bit per key: its note-ons went to MIDI out (key_on), so its note-offs do (key_off) */
+static uint32_t mo_bits[NSHOWN][4];
+static uint8_t mo_ch[NSHOWN];
+static void mo_flush(track_t *t)
+{
+    uint32_t i = (uint32_t)(t - trk), w, b;
+    if (i >= NSHOWN)
+        return;
+    for (w = 0; w < 4u; w++) {
+        for (b = 0; mo_bits[i][w] && b < 32u; b++)
+            if ((mo_bits[i][w] >> b) & 1u)
+                midi_out_event(0x08u | (0x80u | mo_ch[i]) << 8 | (w * 32u + b) << 16);
+        mo_bits[i][w] = 0;
+    }
+}
+static void mo_on(track_t *t, uint32_t note, uint32_t vel)
+{
+    uint32_t i = (uint32_t)(t - trk), mc;
+    if (i >= NSHOWN || note > 127u || (duell_mode == DM_LAYER && i))
+        return;
+    mc = trk_midi_ch(i);
+    if (mc != mo_ch[i]) {
+        mo_flush(t);
+        mo_ch[i] = (uint8_t)mc;
+    }
+    if ((mo_bits[i][note >> 5] >> (note & 31u)) & 1u)
+        midi_out_event(0x08u | (0x80u | mc) << 8 | note << 16);
+    mo_bits[i][note >> 5] |= 1u << (note & 31u);
+    midi_out_event(0x09u | (0x90u | mc) << 8 | note << 16 | (vel < 1u ? 1u : vel > 127u ? 127u : vel) << 24);
+}
+static void mo_off(track_t *t, uint32_t note)
+{
+    uint32_t i = (uint32_t)(t - trk);
+    if (i >= NSHOWN || note > 127u || !((mo_bits[i][note >> 5] >> (note & 31u)) & 1u))
+        return;
+    mo_bits[i][note >> 5] &= ~(1u << (note & 31u));
+    midi_out_event(0x08u | (0x80u | mo_ch[i]) << 8 | note << 16);
+}
+/* the arp's / sequencer's own notes: the voice and MIDI out together */
+static void arp_note_on(track_t *t, uint32_t note, uint32_t vel) { trk_note_on(t, note, vel); mo_on(t, note, vel); }
+static void arp_note_off(track_t *t, uint32_t note) { trk_note_off(t, note); mo_off(t, note); }
 
 /* the 27 keys from F: black or white, and the key's place among the keys of its colour (white 0..15, black
  * 0..10) */
@@ -119,7 +167,8 @@ static int32_t note_snap_to(const track_t *t, int32_t n, uint32_t force)
 }
 static int32_t note_snap(const track_t *t, int32_t n) { return note_snap_to(t, n, 0u); }
 
-/* key k's note with the octave buttons at oct: TRN, then the global OFF-SCALE rule (note_snap). The keys (kb_map) and the arp's latched
+/* key k's note with the octave buttons at oct: TRANSPOSE (TRN, P_TRANS, semitones; DUELL 1.1: the patch's own, it comes with a patch load; each part's own, so in a LAYER part 2's key_on
+ * maps with trk[1]), then the global OFF-SCALE rule (note_snap). The keys (kb_map) and the arp's latched
  * keys (arp_list, #191: as the keys play now, the octave they were pressed in) */
 static uint32_t kb_pitch(const track_t *t, uint32_t k, int32_t oct)
 {
@@ -232,6 +281,7 @@ _Static_assert(AM_SEQ == AM_SEQ_ID, "core.h arp_mode: the SEQUENCER mode's value
 
 static void arp_forget(track_t *t)               /* (its notes ended otherwise: trk_all_off) */
 {
+    mo_flush(t);
     t->arp_note = t->arp_ch[0] = t->arp_ch[1] = t->arp_ch[2] = 0;
     t->atg_note = t->atg_vel = t->atg_lat = 0;
     t->arp_ph = 0;
@@ -246,7 +296,7 @@ static __attribute__((noinline)) void arp_chord_off(track_t *t, int rec)   /* th
         if (t->arp_ch[i]) {
             if (rec)
                 rec_release(t, t->arp_ch[i]);
-            trk_note_off(t, t->arp_ch[i]);
+            arp_note_off(t, t->arp_ch[i]);
             t->arp_ch[i] = 0;
         }
 }
@@ -266,7 +316,7 @@ static __attribute__((noinline)) void arp_chord(track_t *t, const uint32_t *list
             t->arp_ch[i - 1u] = (uint8_t)nt;
         if (rec_on(t))
             rec_note(t, nt, 100);
-        trk_note_on(t, nt, 100);
+        arp_note_on(t, nt, 100);
     }
 }
 
@@ -309,7 +359,7 @@ static __attribute__((noinline)) void arp_seq(track_t *t, const uint32_t *list, 
             t->arp_ch[i - 1u] = out[i];
         if (rec_on(t))
             rec_note(t, out[i], vel);
-        trk_note_on(t, out[i], vel);
+        arp_note_on(t, out[i], vel);
     }
     t->arp_off = period * (uint32_t)t->p[P_AGATE] / 128u;
 }
@@ -318,7 +368,7 @@ static void arp_silence(track_t *t)              /* the sounding arp note(s) end
 {
     if (t->arp_ch[0] | t->arp_ch[1] | t->arp_ch[2])
         arp_chord_off(t, 0);
-    trk_note_off(t, t->arp_note);
+    arp_note_off(t, t->arp_note);
     t->arp_note = 0;
 }
 
@@ -326,7 +376,7 @@ static void arp_off(track_t *t)                  /* the sounding arp note(s) end
 {
     if (t->arp_ch[0] | t->arp_ch[1] | t->arp_ch[2])
         arp_chord_off(t, rec_on(t));
-    trk_note_off(t, t->arp_note);
+    arp_note_off(t, t->arp_note);
     if (rec_on(t))
         rec_release(t, t->arp_note);
     t->arp_note = 0;
@@ -513,10 +563,13 @@ static __attribute__((noinline)) void arp_fire(track_t *t, uint32_t period)
         t->arp_note = (uint8_t)list[j];
         if (rec_on(t))
             rec_note(t, t->arp_note, 100);           /* recording: what the arp plays */
-        trk_note_on(t, t->arp_note, 100);
+        arp_note_on(t, t->arp_note, 100);
     }
 }
 
+/* SWING is stored and shown as 50 .. 75 % (50 = straight, owner 2026-10-28). The timing keeps its old 0 .. 100 scale: old v = (percent - 50) * 4,
+ * so 50 % = 0, 75 % = 100, and every step of 1 % is 4 old units; the same sums as before (core.h track_swing / swing_step_len: / 250) */
+static inline int32_t sw_old(int32_t pct) { return pct <= 50 ? 0 : pct >= 75 ? 100 : (pct - 50) * 4; }
 static void arp_step(track_t *t, uint32_t n, uint32_t gate_n)
 {
     uint32_t period;
@@ -540,7 +593,7 @@ static void arp_step(track_t *t, uint32_t n, uint32_t gate_n)
         return;
     }
     period = div_samples((uint32_t)t->p[P_ARATE]);
-    sw = t->p[P_ASWING] * (int32_t)period / 250;
+    sw = sw_old(t->p[P_ASWING]) * (int32_t)period / 250;
     t->arp_pos += n;
     if (t->arp_pos < period + (uint32_t)((t->arp_idx & 1u) ? sw : -sw) && t->arp_pos != 0xFFFFFFF + n)
         return;
@@ -557,7 +610,9 @@ static void arp_tick(track_t *t, uint32_t n) { arp_step(t, n, n); }
  * and the odd ones shorter, so every odd step starts late */
 static uint32_t step_samples(const track_t *t, uint32_t period, uint32_t idx)
 {
-    return swing_step_len(t, period, idx);   /* core.h: own + global, at most 100 */
+    int32_t sw = sw_old(t->p[P_SSWING]) + sw_old(song.g[G_SWING]);   /* the track's + the global, at most 100 (core.h track_swing / swing_step_len, same arithmetic) */
+    sw = (sw > 100 ? 100 : sw) * (int32_t)period / 250;
+    return period + (uint32_t)((idx & 1u) ? -sw : sw);
 }
 
 /* NUDGE (1.2, #162): a note `off` samples from the start of the step it goes into, in 1/NUDGE_DIV of the step (period),
@@ -756,40 +811,68 @@ static void input_off(track_t *t, uint32_t note)
         trk_note_off(t, note);                      /* other mode (ARP switched while held) */
 }
 
+/* key k's tone i of its chord on track t (key_on, and STRUM's later tones: strum_block): played unless another key holds that note already (then it
+ * sounds once; nor sent to MIDI OUT twice); kb_chn[k] counts it as started either way (its release ends exactly the started ones) */
+static void key_tone(uint32_t k, track_t *t, uint32_t i, uint32_t vel)
+{
+    uint32_t x = kb_chord[k][i], mc = trk_midi_ch(trk_index(t));
+    if (midi_local_held(t, x))
+        return;
+    if (duell_mode == DM_LAYER && t == trk)
+        lay_input(t, x, vel);
+    else
+        input_on(t, x, vel);
+    if (!(arp_mode(t) && !atgt_bits(t))) {          /* (ARP on: the arp's notes are what sounds and goes out: arp_note_on) */
+        midi_out_event(0x09u | (0x90u | mc) << 8 | x << 16 | vel << 24);
+        kb_mo |= 1u << k;
+    }
+}
+/* .. LAYER part 2's copy of it */
+static void key_tone2(uint32_t k, uint32_t i, uint32_t vel)
+{
+    if (!midi_local_held(&trk[1], kb_chord2[k][i]))
+        lay_input(&trk[1], kb_chord2[k][i], vel);
+}
+
 /* key k plays kb_note[k] on track t: its chord (chord.c; the note alone with CHRD OFF). A note another key
- * holds already sounds: it is not started again (nor sent to MIDI OUT); the key keeps its notes */
+ * holds already sounds: it is not started again (nor sent to MIDI OUT); the key keeps its notes. STRUM (item 144, chord.c strum_blocks): only the lowest
+ * tone now, strum_block the others STRUM apart (kb_sw) */
 static void key_on(uint32_t k, track_t *t)
 {
-    uint32_t n = chord_build(t, kb_note[k], kb_chord[k]), i, mc = trk_midi_ch(trk_index(t));
+    uint32_t n = chord_build(t, kb_note[k], kb_chord[k]), i, m;
     uint32_t lay = duell_mode == DM_LAYER && t == trk, rt = lay ? lay_route(kb_raw(k)) : 3u;   /* (SPLIT: who plays it; the played key, before any TRN) */
+    uint32_t vel = KEY_VELU(k), sb;
+#if DUELL_VELO_CAPTURE
+    velocap_note(k, KEY_VELU(k));                   /* developer capture build only: the velocity this note-on plays, with the key's range */
+#endif
     kb_chn[k] = kb_chn2[k] = 0;
+    kb_sw[k] = kb_sw2[k] = 0;
+    kb_svel[k] = (uint8_t)vel;
+    kb_mo &= ~(1u << k);
     if (!(rt & 1u))
         n = 0;
+    sb = n > 1u ? strum_blocks(t) : 0u;
+    m = sb ? 1u : n;                                /* (STRUM: the lowest tone now) */
     in_key = (uint8_t)(k + 1u);                     /* (the arp keeps the key: arp_add) */
     in_root = kb_note[k];
-    for (i = 0; i < n; i++) {
-        uint32_t x = kb_chord[k][i];
-        if (midi_local_held(t, x))
-            continue;
-        if (lay)
-            lay_input(t, x, KEY_VEL(k));
-        else
-            input_on(t, x, KEY_VEL(k));
-        midi_out_event(0x09u | (0x90u | mc) << 8 | x << 16 | KEY_VELU(k) << 24);
-    }
+    for (i = 0; i < m; i++)
+        key_tone(k, t, i, vel);
+    kb_ctot[k] = (uint8_t)n;
+    kb_sw[k] = (uint8_t)(m < n ? sb : 0u);
     if (lay && (rt & 2u)) {                         /* LAYER: part 2 gets the held key too, its own chord and arp */
-        uint32_t r2 = kb_map(&trk[1], k), n2;       /* (part 2's own TRN, on the key: not part 1's note) */
+        uint32_t r2 = kb_map(&trk[1], k), n2, sb2;  /* (part 2's own TRN, on the key: not part 1's note) */
         in_root = (uint8_t)r2;
         n2 = chord_build(&trk[1], r2, kb_chord2[k]);
-        for (i = 0; i < n2; i++) {
-            uint32_t x = kb_chord2[k][i];
-            if (!midi_local_held(&trk[1], x))
-                lay_input(&trk[1], x, KEY_VEL(k));
-        }
-        kb_chn2[k] = (uint8_t)n2;
+        sb2 = n2 > 1u ? strum_blocks(&trk[1]) : 0u;
+        m = sb2 ? 1u : n2;
+        for (i = 0; i < m; i++)
+            key_tone2(k, i, vel);
+        kb_chn2[k] = (uint8_t)m;
+        kb_ctot2[k] = (uint8_t)n2;
+        kb_sw2[k] = (uint8_t)(m < n2 ? sb2 : 0u);
     }
     in_key = 0;
-    kb_chn[k] = (uint8_t)n;
+    kb_chn[k] = (uint8_t)(sb && n > 1u ? 1u : n);
     last_note = kb_note[k];                         /* (step entry: the key's note) */
 }
 
@@ -798,13 +881,16 @@ static void key_off(uint32_t k, track_t *t)
 {
     uint32_t n = kb_chn[k], i, mc = trk_midi_ch(trk_index(t));
     kb_chn[k] = 0;
+    kb_sw[k] = kb_sw2[k] = 0;                       /* (STRUM: the tones not started yet never start) */
     for (i = 0; i < n; i++) {
         uint32_t x = kb_chord[k][i];
         if (midi_local_held(t, x))
             continue;
         input_off(t, x);
-        midi_out_event(0x08u | (0x80u | mc) << 8 | x << 16);
+        if ((kb_mo >> k) & 1u)
+            midi_out_event(0x08u | (0x80u | mc) << 8 | x << 16);
     }
+    kb_mo &= ~(1u << k);
     if (kb_chn2[k]) {                               /* (LAYER: part 2's copy) */
         uint32_t n2 = kb_chn2[k];
         kb_chn2[k] = 0;
@@ -1013,7 +1099,7 @@ static void seq_release(track_t *t)
 {
     uint32_t i;
     for (i = 0; i < t->seq_n; i++)
-        trk_note_off(t, t->seq_notes[i]);
+        arp_note_off(t, t->seq_notes[i]);
     t->seq_n = 0;
     t->seq_hold = 0;
     t->slide_glide = 0;                             /* live MONO / LEG keys must not glide after it */
@@ -1097,13 +1183,13 @@ static __attribute__((noinline)) void seq_step(track_t *t, const step_t *s, uint
         seq_release(t);
     for (i = 0; i < m; i++)
         if (!((sk >> i) & 1u))
-            trk_note_on(t, nn[i], vv[i]);
+            arp_note_on(t, nn[i], vv[i]);
     if (slide_in)                                   /* release what is not held over */
         for (i = 0; i < t->seq_n; i++) {
             for (j = 0; j < m && nn[j] != t->seq_notes[i]; j++)
                 ;
             if (j == m)
-                trk_note_off(t, t->seq_notes[i]);
+                arp_note_off(t, t->seq_notes[i]);
         }
     t->seq_n = 0;
     for (i = 0; i < m; i++)
@@ -1305,8 +1391,8 @@ static track_t *midi_track(uint32_t ch)
 #include "midi_control.c"
 #include "midi_clock.c"
 
-/* DUELL step 5 (SPEC 5b.1): the MODE asked for (core.h duell_mode_req: the UI, the settings, CC 112) becomes the mode the
- * notes are routed by, at a block start (events_block) or at once (CC 112, before the next MIDI event). Every note let go
+/* DUELL step 5 (SPEC 5b.1): the MODE asked for (core.h duell_mode_req: the UI, the settings, a learned MODE CC: MODE has no shipped number) becomes the mode the
+ * notes are routed by, at a block start (events_block) or at once (a learned MODE CC, before the next MIDI event). Every note let go
  * on every part, so none can hang across the change of routing (a LAYER note-on whose note-off would reach part 1 only, a
  * part 2 note whose channel LAYER ignores): the keys held stay silent until pressed again, MIDI's held and pedalled notes,
  * chords and bends are forgotten, the arps' and the steps' notes end, a latched chord is dropped. The mix follows with
@@ -1331,6 +1417,8 @@ static __attribute__((noinline)) void mode_apply(void)
             kb_chn[k] = 0;
         }
     memset(kb_chn2, 0, sizeof kb_chn2);
+    memset(kb_sw, 0, sizeof kb_sw);               /* (item 144: no STRUM tone waits across the change) */
+    memset(kb_sw2, 0, sizeof kb_sw2);
     trk[0].lay_xg = trk[1].lay_xg = 0;             /* (XFADE is LAYER's) */
     duell_mode = (uint8_t)m;
 }
@@ -1432,7 +1520,10 @@ static __attribute__((noinline)) void stop_all(void)
         t->seq_n = t->seq_hold = t->slide_glide = t->rat_left = 0;
     }
     memset(kb_chn, 0, sizeof kb_chn);
+    kb_mo = 0;
     memset(kb_chn2, 0, sizeof kb_chn2);
+    memset(kb_sw, 0, sizeof kb_sw);               /* (item 144: the STRUM tones waiting) */
+    memset(kb_sw2, 0, sizeof kb_sw2);
     memset(mchord, 0, sizeof mchord);
     for (i = 0; i < NSHOWN; i++) {
         ch = trk_midi_ch(i);
@@ -1472,10 +1563,51 @@ static void midi_in_take(uint32_t at)                 /* one event of the ring (
         midi_event(status & 0xF0u, status & 0x0Fu, (pkt >> 16) & 0x7Fu, (pkt >> 24) & 0x7Fu);
 }
 
+/* STRUM (item 144, chord.c): once a block, before the keys and MIDI of the block (so a tone due now starts before a release of this block ends it: never a
+ * stuck note either way). Each chord with tones waiting counts down its blocks; at 0 its next tone starts (key_tone / key_tone2 / mchord_tone: through input_on,
+ * so the voices' start limit, voice.c vs_*, applies as to any note) and the count starts again from the part's STRUM as it is now (turned to OFF: the rest at once).
+ * The arp switched on meanwhile: the rest go to it as held notes, as a key's would. Not inlined: out of the audio ISR's loops */
+static __attribute__((noinline)) void strum_block(void)
+{
+    uint32_t k, f;
+    for (k = 0; k < 27u; k++) {
+        if (kb_sw[k] && !--kb_sw[k]) {
+            track_t *t = &trk[kb_trk[k] % NTRK];
+            in_key = (uint8_t)(k + 1u);
+            in_root = kb_note[k];
+            do {
+                key_tone(k, t, kb_chn[k], kb_svel[k]);
+                kb_chn[k]++;
+                kb_sw[k] = (uint8_t)(kb_chn[k] < kb_ctot[k] ? strum_blocks(t) : 0u);
+            } while (!kb_sw[k] && kb_chn[k] < kb_ctot[k]);
+            in_key = 0;
+        }
+        if (kb_sw2[k] && !--kb_sw2[k]) {
+            in_key = (uint8_t)(k + 1u);
+            in_root = (uint8_t)kb_map(&trk[1], k);
+            do {
+                key_tone2(k, kb_chn2[k], kb_svel[k]);
+                kb_chn2[k]++;
+                kb_sw2[k] = (uint8_t)(kb_chn2[k] < kb_ctot2[k] ? strum_blocks(&trk[1]) : 0u);
+            } while (!kb_sw2[k] && kb_chn2[k] < kb_ctot2[k]);
+            in_key = 0;
+        }
+    }
+    for (f = 0; f < MCHORD_N; f++) {
+        mchord_t *m = &mchord[f];
+        if (m->id && m->wait && !--m->wait) {
+            do {
+                mchord_tone(m, m->n);
+                m->wait = (uint8_t)(m->n < m->tot ? strum_blocks(&trk[(m->id - 1u) % NTRK]) : 0u);
+            } while (!m->wait && m->n < m->tot);
+        }
+    }
+}
+
 /* everything that happens between two rendered blocks */
 static void events_block(uint32_t n)
 {
-    uint32_t i, pr, seq_n = n, arp_n = n, arp_gate = n;   /* arp_n: the samples the ARP's steps advance by, arp_gate: its gates */
+    uint32_t i, pr, pk, seq_n = n, arp_n = n, arp_gate = n;   /* arp_n: the samples the ARP's steps advance by, arp_gate: its gates */
     uint32_t clock_mode;
     if (midi_clock.mode != (uint32_t)song.g[G_CLOCK])
         clock_choice((uint32_t)song.g[G_CLOCK]);     /* (the CLK choice changed: midi_clock.c, a stop only if the active source changes) */
@@ -1515,7 +1647,9 @@ static void events_block(uint32_t n)
             midi_route_block();
     }
     pr = panic_req;
+    pk = panic_keep;
     panic_req = 0;
+    panic_keep = 0;
     if (midi_in_overflow) {                            /* a lost note-off must never leave a held note */
         mi_r = mi_w;
         memset(midi_sel_on, 0, sizeof midi_sel_on);
@@ -1529,6 +1663,7 @@ static void events_block(uint32_t n)
             trk[i].seq_n = trk[i].seq_hold = trk[i].slide_glide = trk[i].rat_left = 0;
         }
         pr |= (1u << NTRK) - 1u;
+        pk = 0;
         RING_PUBLISH();
         midi_in_overflow = 0;
     }
@@ -1538,10 +1673,20 @@ static void events_block(uint32_t n)
         track_t *t = &trk[i];
         if ((pr >> i) & 1u) {
             midi_forget_track(i);
+            strum_forget(i);                          /* (item 144: a held key's tones still waiting are dropped with the rest) */
             trk_all_off(t);
-            t->nheld = 0;
-            t->arp_phys = 0;
-            arp_forget(t);
+            t->m_cycle = t->m_env = t->m_env2 = 0;                            /* (item 135: the latest note's CYCLE for the per-block destinations: a new sound's first block does not read the old one's) */
+            if (((pk >> i) & 1u) && (mods_keep & MODK_ARP) && arp_mode(t)) {
+                /* DUELL 1.1 ARP KEEPS RUNNING, a patch load: the voices end (a new sound starts clean) and the arp's own notes get their MIDI note-offs (mo_flush), but the held and latched
+                 * notes (nheld, held[], arp_phys), the step counter and the phrase (arp_ph) stay: the next arp step plays the new sound */
+                mo_flush(t);
+                t->arp_note = t->arp_ch[0] = t->arp_ch[1] = t->arp_ch[2] = 0;
+                t->atg_note = t->atg_vel = t->atg_lat = 0;
+            } else {
+                t->nheld = 0;
+                t->arp_phys = 0;
+                arp_forget(t);
+            }
         }
         engine_block(t);                              /* engine switch: fade, then switch (voice.c) */
         /* HOLD ALL left (arp off): the latched chord's voices end, normal release */
@@ -1580,6 +1725,8 @@ static void events_block(uint32_t n)
         t->armp = (int16_t)am;
         t->aholdp = (int16_t)ah;
     }
+    vs_block();                                       /* (item 144: the voices the start limit held back last block start first: voice.c) */
+    strum_block();                                    /* (.. then the STRUM tones due now: chord.c) */
     keyboard_block();
     {                                                 /* USB-MIDI (and TRS) in: DUELL 0.2.11 (SPEC 6.3) at most MIDI_DRAIN events a block, */
         uint32_t w = mi_w, end = w - mi_r > MIDI_DRAIN ? mi_r + MIDI_DRAIN : w, j;   /* the rest the next block, in order */

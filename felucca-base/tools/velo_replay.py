@@ -34,16 +34,28 @@ def line(name, v):
     return f"{name:>8} {len(v):6d}   {q1:3d} / {med:3d} / {q3:3d}   {hi:5.1f} %   {lo:5.1f} %"
 
 
-def replay(csv_path, curve=100):
-    """-> list of (ts_us, key, velocity, from_driven) for every landing"""
+def replay_full(csv_path, curve=100, cal=None):
+    """-> (landings, ranges, note). landings: (ts_us, key, velocity, from_driven); ranges: {key: (floor, ceiling)} at the end of the replay.
+    cal: a file of lines `key,hardest,softest` (converter counts) to start from instead of the typical key (see velo_replay.c)"""
     with tempfile.TemporaryDirectory() as d:
         exe = build(d)
-        r = subprocess.run([exe, "--curve", str(curve), csv_path], capture_output=True, text=True, check=True)
-    out = []
+        cmd = [exe, "--curve", str(curve), "--ranges"] + (["--cal", cal] if cal else []) + [csv_path]
+        r = subprocess.run(cmd, capture_output=True, text=True, check=True)
+    out, ranges = [], {}
     for ln in r.stdout.splitlines():
+        if ln.startswith("# range,"):
+            _, k, f, c = ln.split(",")
+            ranges[int(k)] = (int(f), int(c))
+            continue
         ts, key, vel, drv = (int(x) for x in ln.split(","))
         out.append((ts, key, vel, drv))
-    return out, r.stderr.strip()
+    return out, ranges, r.stderr.strip()
+
+
+def replay(csv_path, curve=100):
+    """-> list of (ts_us, key, velocity, from_driven) for every landing"""
+    out, _, note = replay_full(csv_path, curve)
+    return out, note
 
 
 def main(argv=None):

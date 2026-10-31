@@ -22,7 +22,7 @@ int main(void)
             ok &= it.id != 11u && strcmp(it.name, "USB SERIAL") != 0;
         }
     }
-    bad += check("product: the editor's MENU list has no USB SERIAL (id 11 not offered)", ok && rows == ED_MENU_N && rows == 32u && FELUCCA_CDC == 0);
+    bad += check("product: the editor's MENU list has no USB SERIAL (id 11 not offered)", ok && rows == ED_MENU_N && rows == 31u && FELUCCA_CDC == 0);   /* (item 138: 31 rows: the retired CPU METER row is not offered, item 128) */
     n = request(ED_MENU_SET, a, 3);
     bad += check("product: MENU_SET of id 11 is refused (no such setting)", n == 7u || (n >= 7u && host_wire[5] == 1u));
     printf("%s\n", bad ? "MENU PRODUCT TEST FAILED" : "menu product test passed");

@@ -67,6 +67,7 @@ enum { MS_OFF, MS_LFO, MS_ENV, MS_VEL, MS_KEY, MS_RAND, MS_MODW, MS_AT, MS_EXPR,
        MS_MORPH,                                  /* DUELL 4b: the part's MORPH fader (t->mf), 0..1 */
        MS_DUCK,                                   /* DUELL (SPEC 5c.4): how far the part is ducked now, 0 (full level) .. DEPTH (duck_st) */
        MS_CYCLE,                                  /* cloud job B: the voice's CYCLE envelope (job F: cycle_value), 0..1; read through the second list (mod_cycle_voice, mod_f2_voice): mod_voice does not know it */
+       MS_BREATH, MS_FOOT,                        /* DUELL 1.1 (owner): MIDI CC2 (BREATH CONTROLLER) and CC4 (FOOT CONTROLLER) of the part's channel, 0..127 as the mod wheel (0..1), appended */
        MS_N };
 enum { MD_OFF, MD_PITCH, MD_CUT, MD_SHP, MD_AMP, MD_PAN, MD_DIST, MD_CHO, MD_DLY, MD_REV, MD_RATE, MD_VIB, MD_E1,
        MD_DEPTH = MD_E1 + 8,
@@ -88,18 +89,52 @@ enum { MD_OFF, MD_PITCH, MD_CUT, MD_SHP, MD_AMP, MD_PAN, MD_DIST, MD_CHO, MD_DLY
        /* cloud job B (ext.h EXT_MD_*): the TWIN FILTER's CUTOFF 2 (per note: mod_f2_voice), RES 2, DRIVE, BLEND (per block, as RES; the filter glides them), the SUB LAYER's LEVEL (per block, an
         * extension slot: the id table is a byte, wide ids fit) */
        MD_CUT2, MD_RES2, MD_DRIVE, MD_BLEND, MD_SUBLVL,
+       /* DUELL 1.1 (owner): SPACE, PERFORM's one global value (perf_space, -100 .. +100; fx.c space_goal). A bus value in the mod_bus sense (each part's routes add an offset to the global value),
+        * but it is not in song.g: the offsets of both parts add in every mode (SPACE is one value for the instrument) and fx.c space_goal adds them to PERFORM's. The glide of the SPACE
+        * follower (fx.c space_step, at most 0.25 of a step a block) is its smoothing */
+       MD_SPACE,
        MD_N };                                    /* (append-only: the stored values keep their meaning) */
 #define MD_N_026 (MD_DEPTH2 + 1)                  /* 0.2.6's destinations: the morph's WILD roll picks among these only (morph.c) */
-#define MG_N (MD_RDAMP + 1 - MD_BUS)              /* the bus values (MD_BUS .. MD_RDAMP) */
-#define MD_IS_BUS(d) ((d) >= MD_BUS && (d) < MD_BUS + MG_N)
+#define MG_NB (MD_RDAMP + 1 - MD_BUS)             /* the bus values in song.g (MD_BUS .. MD_RDAMP) */
+#define MG_N (MG_NB + 1)                          /* .. and SPACE as the last offset of a part (index MG_NB) */
+#define MD_IS_BUS(d) (((d) >= MD_BUS && (d) < MD_BUS + MG_NB) || (d) == MD_SPACE)
+#define MG_IDX(d) ((d) == MD_SPACE ? MG_NB : (d) - MD_BUS)
 _Static_assert(NELEM(N_MSRC) == MS_N && NELEM(N_MDST) == MD_N, "N_MSRC / N_MDST == MS_* / MD_*");
-_Static_assert(MD_LEVEL == 23 && MD_BUS == 39 && MG_N == 7 && MD_FMODE == 46 && MD_AATK == 47 && MD_N == 56 && MD_N < 128, "matrix DST: 0.2.6's 0..22 unchanged, appended after");
-_Static_assert(MD_CUT2 == EXT_MD_CUT2 && MD_RES2 == EXT_MD_RES2 && MD_DRIVE == EXT_MD_DRIVE && MD_BLEND == EXT_MD_BLEND && MD_SUBLVL == EXT_MD_SUBLVL && MS_CYCLE == EXT_MS_CYCLE && MS_N == 16,
+_Static_assert(MD_LEVEL == 23 && MD_BUS == 39 && MG_NB == 7 && MD_FMODE == 46 && MD_AATK == 47 && MD_SPACE == 56 && MD_N == 57 && MD_N < 128, "matrix DST: 0.2.6's 0..22 unchanged, appended after");
+_Static_assert(MD_CUT2 == EXT_MD_CUT2 && MD_RES2 == EXT_MD_RES2 && MD_DRIVE == EXT_MD_DRIVE && MD_BLEND == EXT_MD_BLEND && MD_SUBLVL == EXT_MD_SUBLVL && MS_CYCLE == EXT_MS_CYCLE && MS_BREATH == 16 && MS_FOOT == 17 && MS_N == 18,
                "ext.h: the matrix numbers 51..55 and source 15");
 _Static_assert(P_DEC == P_ATK + 1 && P_SUS == P_ATK + 2 && P_REL == P_ATK + 3, "the AMP ENV times in a row");
 #define MSLOT_ID(k) (P_M1SRC + 3u * (k))                         /* slot k's SRC; DST + 1, AMT + 2 */
 _Static_assert(P_M2SRC == P_M1SRC + 3 && P_M4AMT == P_M1SRC + 11 && P_M5SRC == P_M4AMT + 1 && P_M8AMT == MSLOT_ID(NMSLOT) - 1,
                "matrix slots: 3 ids each, 1..8 in a row");
+/* DUELL 1.1 (owner, the DEST pages): the per-source depth cards are VIRTUAL ROUTES. Each is a stored depth (an extension slot) that mod_begin treats exactly as an active matrix slot with the fixed
+ * source and destination below and the depth as its amount (MX_AMT, the same units): the same source value, the same slew (mx_slew), the same smooth per-block write of the destination
+ * (t->p[...] and put back by mod_end), the same per-note lists (f2m / cym -> vrm). They do not use a matrix slot. Route index k = NMSLOT + 2 + i (NMSLOT and NMSLOT + 1 are the LFOs' own slews) */
+typedef struct { uint8_t src, dst, slot; } vr_t;
+static const vr_t VR[] = {
+    {MS_ENV2, MD_BLEND, X_E2BLD}, {MS_ENV2, MD_DRIVE, X_E2DRV}, {MS_ENV2, MD_RES, X_E2RES},     /* FILTER ENV DEST: FILTER BLEND, FILTER DRIVE, MULTI RES */
+    {MS_ENV, MD_DIST, X_ESAT},                                                                 /* AMP ENV DEST: SATURATION */
+    {MS_CYCLE, MD_CUT2, X_CYCUT2}, {MS_CYCLE, MD_PAN, X_CYPAN}, {MS_CYCLE, MD_PITCH, X_CYPIT}, /* CYCLE ENV 2/2: TWIN CUTOFF, PAN, PITCH (the last two per note: vrm) */
+    {MS_LFO2, MD_RES2, X_L2RES2}, {MS_LFO2, MD_FMODE, X_L2FMODE}, {MS_LFO2, MD_BLEND, X_L2BLD}, /* LFO 2 DEST: TWIN RES, MULTI MODE, FILTER BLEND */
+};
+#define VR_N (sizeof VR / sizeof VR[0])
+#define MR_N (NMSLOT + 2u + VR_N)                 /* route indices: the 8 slots, 2 reserved for the LFOs' slews, the virtual routes */
+_Static_assert(MR_N <= 24u, "mod.c: the active mask is a uint32_t and bits 8, 9 are the LFOs'");
+/* route k's source, destination and stored amount (the slot's, or the card's); 1 = active (all three set) */
+static __attribute__((noinline)) int mr_get(const int16_t *p, uint32_t k, uint32_t *s, uint32_t *d, int32_t *a)
+{
+    if (k < NMSLOT) {
+        *s = (uint32_t)p[MSLOT_ID(k)];
+        *d = (uint32_t)p[MSLOT_ID(k) + 1u];
+        *a = p[MSLOT_ID(k) + 2u];
+        return *s && *d && *a;
+    }
+    k -= NMSLOT + 2u;
+    *s = VR[k].src;
+    *d = VR[k].dst;
+    *a = p[XW_BASE + VR[k].slot];
+    return *a != 0;
+}
 #define MS_VOICE(s) (((s) >= MS_ENV && (s) <= MS_RAND) || (s) == MS_ENV2 || (s) == MS_CYCLE)   /* a value per voice */
 #define MS_BIPOLAR(s) ((s) == MS_LFO || (s) == MS_KEY || (s) == MS_RAND || (s) == MS_SH || (s) == MS_SLEW || \
                        (s) == MS_LFO2)                           /* (ENV2 is 0..1, as ENV) */
@@ -164,7 +199,7 @@ static __attribute__((noinline)) int mod_shp_inert(const track_t *t)
     return 0;
 }
 /* engine slot k (P_E0 + k) with no effect for the current wave: TRIO's INT2 with no oscillator 2 (P+N NOIS RING RING3), INT3 with no oscillator 3 that
- * sounds or rings (NOIS SYNC SYNCP), DTN with neither (NOIS), PW with no pulse; LOFI's DUTY with WAVE TRI, SAW or NOIS (PLS takes its width, WRAM its table) */
+ * sounds or rings (NOIS SYNC SYNCP), DTN with neither (NOIS), PW with no pulse; LOFI's PULSE WIDTH with any WAVE but PLS */
 static __attribute__((noinline)) int mod_e_inert(const track_t *t, uint32_t k)
 {
     const engine_t *e = ENGINES[eng_idx(t->eng_req)];
@@ -175,7 +210,7 @@ static __attribute__((noinline)) int mod_e_inert(const track_t *t, uint32_t k)
         return k == 1u ? !o2 : k == 2u ? !o3 : k == 3u ? !o2 && !o3 : k == 7u ? mod_shp_inert(t) : 0;
     }
     if (e == &ENG_LOFI)
-        return k == 2u && p[P_E1] != RW_PLS && p[P_E1] != RW_WRAM;
+        return k == 2u && p[P_E1] != RW_PLS;
     return 0;
 }
 /* REMOVED from the destination list (owner, 2026-10-18; the study: release_drafts/MATRIX_DESTINATIONS.md): the EQ's three gains (EQ HIGH clicks badly) and
@@ -189,6 +224,8 @@ static __attribute__((noinline)) int mod_dst_removed(uint32_t eng, int32_t d)
     const engine_t *e = ENGINES[eng % NENGINES];
     uint32_t k = (uint32_t)(d - MD_E1), m;
     if (d == MD_EQLO || d == MD_EQMID || d == MD_EQHI || d == MD_RSIZE)   /* (T0229, owner: REVERB SIZE out for now: SPRING bends its pitch while SIZE moves) */
+        return 1;
+    if (d == MD_E2SHP)                                                    /* (DUELL 1.1: FILTER ENV's TIMBRE depth no longer acts: the card is gone, the stored id is never read) */
         return 1;
     if (d == MD_DEPTH || d == MD_DEPTH2)                                  /* (1.0, owner: the LFO depths are invisible; the code stays in the mod_depth readers) */
         return 1;
@@ -208,15 +245,15 @@ static __attribute__((noinline)) int mod_dst_removed(uint32_t eng, int32_t d)
  * set of buses, so both parts' offsets ADD. As with t->p, all of it runs inside the audio ISR: the UI, the editor and the
  * stores never see a modulated value. Not a bus value: the delay's TIME (a note value: a step moves the read point, a
  * click; the delay modulation's DEPTH is the smooth wobble) */
-static const uint8_t MG_ID[MG_N] = {G_CRATE, G_CDEPTH, G_DFDBK, G_DMDEP, G_DMRATE, G_RSIZE, G_RDAMP};
+static const uint8_t MG_ID[MG_NB] = {G_CRATE, G_CDEPTH, G_DFDBK, G_DMDEP, G_DMRATE, G_RSIZE, G_RDAMP};
 static int16_t mod_goff[NLIVE][MG_N];    /* per part, its offsets (mod_begin) */
 /* per part, in track_t: mgon (0 / 1) an offset is not 0, mdk (0 / 1) an active slot moves DUCK DEPTH (fx.c duck_pump / duck_note let it start) */
-static int16_t mod_gkeep[MG_N];          /* the stored values mod_bus wrote over */
+static int16_t mod_gkeep[MG_NB];          /* the stored values mod_bus wrote over */
 static uint8_t mod_gw;                   /* bit per bus value: written (mod_bus_end puts it back) */
 static __attribute__((noinline)) void mod_bus(uint32_t mask)       /* the offsets of the parts in mask (bit per part) onto song.g */
 {
     uint32_t g, p;
-    for (g = 0; g < MG_N; g++) {
+    for (g = 0; g < MG_NB; g++) {
         int32_t o = 0;
         const param_desc_t *gd = &GP[MG_ID[g]];
         for (p = 0; p < NLIVE; p++)
@@ -233,10 +270,19 @@ static __attribute__((noinline)) void mod_bus(uint32_t mask)       /* the offset
 static __attribute__((noinline)) void mod_bus_end(void)
 {
     uint32_t g;
-    for (g = 0; g < MG_N; g++)
+    for (g = 0; g < MG_NB; g++)
         if ((mod_gw >> g) & 1u)
             song.g[MG_ID[g]] = mod_gkeep[g];
     mod_gw = 0;
+}
+/* SPACE's offset (DUELL 1.1): the sum of both parts' routes to SPACE, in SPACE's own units (-100 .. +100 around PERFORM's value); fx.c space_goal adds it to perf_space */
+static int32_t mod_space_off(void)
+{
+    uint32_t p;
+    int32_t o = 0;
+    for (p = 0; p < NLIVE; p++)
+        o += mod_goff[p][MG_NB];
+    return clamp(o, -200, 200);
 }
 /* any part's bus offsets are not 0 (the send stage: it reads both parts', after the parts) */
 static uint32_t mod_gon_any(void)
@@ -281,6 +327,8 @@ static int32_t mod_key(uint32_t note) { return clamp(((int32_t)note - 60) * 512,
 /* S&H: the value of the LFO's cycle (voice.c lfo_rand; 0 before its first one ends), bipolar */
 static int32_t mod_sh(const track_t *t) { return t->lfo_rnd ? (int32_t)(t->lfo_rnd >> 16) - 32768 : 0; }
 
+/* DUELL 1.1: CC2 (BREATH CONTROLLER, [0]) and CC4 (FOOT CONTROLLER, [1]) of each part, 0..127; 0 until a controller comes (mod_midi), CC121 resets them. Outside track_t (its size and offsets stay) */
+static uint8_t mod_cc[2][NTRK];
 /* source s of the track: the per-track ones, the per-voice ones of the latest note-on */
 static int32_t mod_tsrc(const track_t *t, uint32_t s, int32_t lfo)
 {
@@ -309,6 +357,10 @@ static int32_t mod_tsrc(const track_t *t, uint32_t s, int32_t lfo)
         return t->mw * 258;
     case MS_AT:
         return t->at * 258;
+    case MS_BREATH:                                     /* (DUELL 1.1: CC2 and CC4, the part's, in mod_cc below) */
+        return mod_cc[0][(uint32_t)(t - trk) % NTRK] * 258;
+    case MS_FOOT:
+        return mod_cc[1][(uint32_t)(t - trk) % NTRK] * 258;
     case MS_DUCK:                                       /* (the ducked amount at the end of the last block) */
         return duck_st[(uint32_t)(t - trk) % NTRK].dn >> 1;
     default:                                            /* EXPR; (4b) MORPH: t->mf, the fader morph_begin set for this block */
@@ -350,9 +402,9 @@ static void mod_voice_add(uint32_t s, uint32_t d, int32_t x, int32_t a, int32_t 
 #define MX_SLEW 6554                              /* 32767 / 5, Q15 of a unipolar full swing a block: LFO RATE's top (40 Hz, a full sine moves 5976 a block) passes */
 #endif
 typedef struct {
-    int32_t v[NMSLOT + 2];                        /* the slewed value of the block before; [NMSLOT], [NMSLOT + 1]: LFO 1's and LFO 2's value for their own depths (voice.c track_render) */
-    uint8_t src[NMSLOT];                          /* .. of this SRC (another SRC in the slot: its value at once) */
-    uint16_t ok;                                  /* bit per slot (and 8, 9 the two LFOs): v holds the block before's value */
+    int32_t v[MR_N];                              /* the slewed value of the block before; [NMSLOT], [NMSLOT + 1]: LFO 1's and LFO 2's value for their own depths (voice.c track_render); [NMSLOT + 2 ..]: the DEST cards' virtual routes */
+    uint8_t src[MR_N];                            /* .. of this SRC (another SRC in the slot: its value at once) */
+    uint32_t ok;                                  /* bit per slot (and 8, 9 the two LFOs): v holds the block before's value */
 } mx_sl_t;
 /* (the matrix round's state in a section of its own, .bss.mxr: the compiler's global merge keeps the layout of the variables it had, so the hot RAM
  * code (tools/hot_fns.py) compiles as before) */
@@ -367,7 +419,7 @@ static __attribute__((noinline)) int32_t mx_slew(const track_t *t, uint32_t k, i
     if (!c)
         return x;
     if (!((c->ok >> k) & 1u)) {
-        c->ok |= (uint16_t)(1u << k);
+        c->ok |= 1u << k;
         c->v[k] = x;
         return x;
     }
@@ -430,6 +482,75 @@ static int mod_compact(track_t *t)
 /* is id a slot's SRC (the knob / the editor just wrote it: a 0 compacts) */
 static int mod_is_src(uint32_t id) { return id >= P_M1SRC && id <= P_M4AMT ? (id - P_M1SRC) % 3u == 0u : id >= P_M5SRC && id <= P_M8AMT ? (id - P_M5SRC) % 3u == 0u : 0; }
 
+/* DUELL 1.1 (owner, the new DEST pages): the depth cards that are gone move into the matrix, so an existing sound plays the same. A patch that has a value on one of the retired cards
+ * (AMP ENV to MULTI CUTOFF, FILTER ENV to TIMBRE, LFO 2 to PITCH / MULTI CUTOFF / TIMBRE) gets a matrix slot with the same source, destination and amount, and the card is set to 0 (the
+ * engine no longer reads it). The units are the same (MX_AMT, the same sums in mod_voice_add and voice.c), so the sound is the same. Done as every sound loads (ui.c load_end) and as a
+ * project or multi loads (project.c project_restore_runtime). The first free slot (SRC, DST and AMT all 0, after the packing) is used, in the order of the table. A patch with no free slot keeps
+ * the value on its dead card (the sound changes) and is counted: the return is the number of routes not moved (the report lists such patches in PATCH_REVIEW.md). Not hot code */
+static __attribute__((noinline)) uint32_t mod_legacy_move(track_t *t)
+{
+    static const struct { uint8_t id, src, dst; } L[5] = {
+        {P_ED_FLT, MS_ENV, MD_CUT}, {P_E2SHP, MS_ENV2, MD_SHP},
+        {P_L2PIT, MS_LFO2, MD_PITCH}, {P_L2FLT, MS_LFO2, MD_CUT}, {P_L2SHP, MS_LFO2, MD_SHP}};
+    int16_t *p = t->p;
+    uint32_t i, k, lost = 0;
+    byp_m[PART_OF(t)] = 0;                              /* DUELL 1.1 BYPASS: a sound loads into this part: its bypass switches go off (the shared effects' stay) */
+    for (i = 0; i < 5u; i++) {
+        if (!p[L[i].id])
+            continue;
+        (void)mod_compact(t);
+        for (k = 0; k < NMSLOT && (p[MSLOT_ID(k)] | p[MSLOT_ID(k) + 1u] | p[MSLOT_ID(k) + 2u]); k++)
+            ;
+        if (k == NMSLOT) {
+            lost++;
+            continue;
+        }
+        p[MSLOT_ID(k)] = L[i].src;
+        p[MSLOT_ID(k) + 1u] = L[i].dst;
+        p[MSLOT_ID(k) + 2u] = p[L[i].id];
+        p[L[i].id] = 0;
+    }
+    return lost;
+}
+/* MATRIX PRESELECTION (DUELL 1.1, owner; at amount 0, so no sound changes): every EMPTY slot (SRC and DST OFF, AMT 0) of a sound that loads gets the next pair of this list that the sound does
+ * not already contain (the same source and destination in any slot, whatever its amount); a used slot stays as it is. Done at LOAD TIME (ui.c load_end for a sound, project.c for a
+ * project or multi), after mod_legacy_move, so the moved routes have first claim on the free slots. The visible pair on the matrix page with 0 as its amount is the owner's cue; the owner
+ * sets the amount. A slot the user later empties (SRC OFF) is filled again the next time a sound loads. One line a pair; line 3 (LFO 2 to SPACE) is the pair the owner changed last */
+static const struct { uint8_t src, dst; } MP_PRE[8] = {
+    {MS_AT, MD_DIST},     /* 1 AFTERTOUCH -> SATURATION */
+    {MS_ENV, MD_REV},     /* 2 AMP ENV -> REVERB SEND */
+    {MS_LFO2, MD_SPACE},  /* 3 LFO 2 -> SPACE */
+    {MS_CYCLE, MD_RATE},  /* 4 CYCLE -> LFO 1 RATE */
+    {MS_RAND, MD_PAN},    /* 5 RANDOM -> PAN */
+    {MS_KEY, MD_AREL},    /* 6 KEY TRACK -> AMP ENV RELEASE */
+    {MS_VEL, MD_AATK},    /* 7 VELOCITY -> AMP ENV ATTACK */
+    {MS_MODW, MD_VIB},    /* 8 MOD WHEEL -> LFO 1 DEPTH (the pitch's, category PITCH) */
+};
+static __attribute__((noinline)) void mod_preselect(track_t *t)
+{
+    int16_t *p = t->p;
+    uint32_t k, n = 0, j;
+    (void)mod_compact(t);
+    for (k = 0; k < NMSLOT; k++) {
+        int dup;
+        if (p[MSLOT_ID(k)] | p[MSLOT_ID(k) + 1u] | p[MSLOT_ID(k) + 2u])
+            continue;
+        for (dup = 1; n < 8u && dup; ) {                /* the next list pair this sound does not hold */
+            dup = 0;
+            for (j = 0; j < NMSLOT; j++)
+                dup |= p[MSLOT_ID(j)] == MP_PRE[n].src && p[MSLOT_ID(j) + 1u] == MP_PRE[n].dst;
+            if (dup)
+                n++;
+        }
+        if (n >= 8u)
+            return;
+        p[MSLOT_ID(k)] = MP_PRE[n].src;
+        p[MSLOT_ID(k) + 1u] = MP_PRE[n].dst;
+        p[MSLOT_ID(k) + 2u] = 0;
+        n++;
+    }
+}
+
 /* the descriptor whose range a per-block destination's id moves over: the engine's slot, a part's value, an extension slot or the TWIN FILTER's RES 2 by its TYPE (RES / FDBK) */
 static __attribute__((noinline)) const param_desc_t *mod_pd(const track_t *t, uint32_t id)
 {
@@ -438,41 +559,81 @@ static __attribute__((noinline)) const param_desc_t *mod_pd(const track_t *t, ui
 
 /* before a part's block (fx.c mix_part): the per-track offsets, the per-block destinations into t->p.
  * 0 = no slot active (then nothing changed) */
+/* DUELL 1.1 LOCKS on the destinations that have no stored value (PITCH, TIMBRE, VOICE AMP, the bus values, SPACE): a lock's AMOUNT (-64..+63, motion.c motion_setp) per part and destination number,
+ * and how many are not 0. mod_begin adds each as a route from a constant full-size source (MX_AMT: AMT 64 = the whole range), the way a matrix slot does; the bus values and SPACE through the part's
+ * bus offsets (both parts' add). The sequencer sets them on the step and puts them back (motion.c) */
+static int8_t lk_virt[NLIVE][64];
+static uint8_t lk_virt_n[NLIVE];
+_Static_assert(MD_N <= 64, "lk_virt: one byte per destination number");
+/* DUELL 1.1 BYPASS: source s belongs to a bypassed module (LFO 1: LFO, S&H, SLEW; LFO 2; FILTER ENV; CYCLE): a route from it sends nothing (skipped, as an unused source) */
+static inline uint32_t byp_src(const track_t *t, uint32_t s)
+{
+    static const uint8_t SRCBIT[MS_N] = {[MS_LFO] = BY_LFO1, [MS_SH] = BY_LFO1, [MS_SLEW] = BY_LFO1, [MS_LFO2] = BY_LFO2, [MS_ENV2] = BY_ENV2, [MS_CYCLE] = BY_CYC};
+    return MODW(t).byp & SRCBIT[s];
+}
+/* DUELL 1.1: the sequencer's locks on the destinations with no stored value (lk_virt): each is a route from a constant full-size source times the lock's amount (MX_AMT). PITCH, TIMBRE, VOICE AMP go into the
+ * per-voice sums mod_voice reads; a bus value or SPACE into this part's bus offset (goff; both parts' add). -> 1 when goff was used (gb). Flash code, only while a lock holds one */
+static __attribute__((noinline)) uint32_t mod_lock_virt(mod_win_t *mod, uint32_t pi, int32_t *goff, uint32_t gb)
+{
+    uint32_t k, j;
+    for (k = 1; k < MD_N; k++) {
+        int32_t a = lk_virt[pi][k];
+        if (!a)
+            continue;
+        a = MX_AMT(a);
+        if (k <= MD_AMP) {
+            mod->amp |= k == MD_AMP;
+            mod_voice_add(MS_MODW, k, 32767, a, &mod->pit, &mod->cut, &mod->shp, &mod->gain);
+        } else if (MD_IS_BUS(k)) {
+            int32_t span = k == MD_SPACE ? 200 : GP[MG_ID[k - MD_BUS]].max - GP[MG_ID[k - MD_BUS]].min;
+            if (!gb)
+                for (j = 0; j < MG_N; j++)
+                    goff[j] = 0;
+            gb = 1;
+            goff[MG_IDX(k)] += (((32767 * a) >> 6) * span) >> 15;
+        }
+    }
+    return gb;
+}
 static __attribute__((noinline)) int mod_begin(track_t *t)
 {
     const int16_t *p = t->p;
     mod_win_t *mod = &MODW(t);
-    int32_t lfo, off[NMSLOT], goff[MG_N];
-    uint32_t k, j, act = 0, dep = 0, dep2 = 0, dk = 0, gb = 0, mx = 0, pi = (uint32_t)(t - trk);
+    int32_t lfo, off[MOD_NK], goff[MG_N];
+    uint32_t k, j, act = 0, dep = 0, dep2 = 0, dk = 0, gb = 0, mx = 0, pi = (uint32_t)(t - trk), vrm = 0;
     mx_sl_t *mc = pi < NLIVE ? &mx_sl[pi] : 0;      /* (the slew's state of this part: 0 for a track that does not render) */
     uint32_t f2m = 0, cym = 0, cy = 0;                  /* the second list (cloud job B): slots to CUTOFF 2 from a per-voice source, CYCLE slots to a per-note destination, CYCLE read */
     mod->on = 0;
     mod->e2 = mod->l2 = 0;
+    mod->byp = (uint8_t)(byp_m[pi & 1u] & 0x3Fu);                      /* DUELL 1.1 BYPASS: this block's copy of the part's switches */
     t->f2add = 0;
-    for (k = 0; k < NMSLOT; k++) {                      /* the active slots (SRC, DST and AMT set), once a block */
-        const int16_t *q = &p[MSLOT_ID(k)];
-        if (q[0] && q[1] && q[2]) {
-            if (mc && mc->src[k] != (uint8_t)q[0]) {   /* (the slew: another source in the slot starts from its own value) */
-                mc->src[k] = (uint8_t)q[0];
-                mc->ok &= (uint8_t)~(1u << k);
+    for (k = 0; k < MR_N; k++) {                        /* the active routes (the slots with SRC, DST and AMT set, and the DEST cards off 0), once a block */
+        uint32_t qs, qd;
+        int32_t qa;
+        if (k == NMSLOT || k == NMSLOT + 1u)
+            continue;                                   /* (the LFOs' own slews) */
+        if (mr_get(p, k, &qs, &qd, &qa) && !byp_src(t, qs)) {   /* (DUELL 1.1 BYPASS: a bypassed module's routes send nothing) */
+            if (mc && mc->src[k] != (uint8_t)qs) {     /* (the slew: another source in the slot starts from its own value) */
+                mc->src[k] = (uint8_t)qs;
+                mc->ok &= ~(1u << k);
             }
             act |= 1u << k;
-            dep |= (uint32_t)(q[1] == MD_DEPTH) << k;
-            dep2 |= (uint32_t)(q[1] == MD_DEPTH2) << k;
-            dk |= q[1] == MD_DUCK;
-            mx |= MD_MIXED(q[1]);
-            mod->e2 |= q[0] == MS_ENV2;
-            mod->l2 |= q[0] == MS_LFO2;
-            cy |= q[0] == MS_CYCLE;
+            dep |= (uint32_t)(qd == MD_DEPTH) << k;
+            dep2 |= (uint32_t)(qd == MD_DEPTH2) << k;
+            dk |= qd == MD_DUCK;
+            mx |= MD_MIXED(qd);
+            mod->e2 |= qs == MS_ENV2;
+            mod->l2 |= qs == MS_LFO2;
+            cy |= qs == MS_CYCLE;
         }
     }
-    t->f2m = t->cym = 0;                                /* (the second list is made below, with the other slots; nothing active: it stays empty) */
+    t->f2m = t->cym = t->vrm = 0;                                /* (the second list is made below, with the other slots; nothing active: it stays empty) */
     t->cy = (uint8_t)(cy != 0);
     if (mc) {
-        mc->ok &= (uint16_t)(act | 0x300u);                  /* (the slew: a slot not active now starts from its value when it comes back; bits 8, 9: the LFOs, always fed) */
+        mc->ok &= act | 0x300u;                  /* (the slew: a slot not active now starts from its value when it comes back; bits 8, 9: the LFOs, always fed) */
         mod_mixmv[pi] = (uint8_t)(mx != 0 || t->mwon);   /* (hunt1: an open MORPH window counts too: the fader moves PAN, the sends and PATCH LEVEL by whole steps, as a route does) */
     }
-    if (!act) {
+    if (!act && !(pi < NLIVE && lk_virt_n[pi])) {
         if (t->mgon | t->mdk)
             mod_part_put(t, 0, 0);                      /* (no bus offset, no DUCK flag left from a block before) */
         return 0;
@@ -494,20 +655,24 @@ static __attribute__((noinline)) int mod_begin(track_t *t)
         uint32_t s, d;
         int32_t a, x;
         k = (uint32_t)__builtin_ctz(act);
-        s = (uint32_t)p[MSLOT_ID(k)];
-        d = (uint32_t)p[MSLOT_ID(k) + 1u];
-        a = MX_AMT(p[MSLOT_ID(k) + 2u]);
+        (void)mr_get(p, k, &s, &d, &a);
+        a = MX_AMT(a);
         if (s >= MS_N || d >= MD_N)
             continue;
         if (d == MD_CUT2) {                             /* filter 2's cutoff, per note (cloud job B): a per-voice source is read by mod_f2_voice (the slot's bit), a per-track one is summed here, as mod_voice_add sums CUT */
-            if (MS_VOICE(s))
+            if (k >= NMSLOT)
+                vrm |= 1u;                              /* (DUELL 1.1: CYCLE's TWIN CUTOFF card: mod_f2_voice adds it) */
+            else if (MS_VOICE(s))
                 f2m |= 1u << k;
             else
                 t->f2add += (mx_slew(t, k, mod_tsrc(t, s, lfo)) * a) >> 7;
             continue;
         }
         if (d <= MD_AMP && s == MS_CYCLE) {             /* CYCLE to a per-note destination: mod_cycle_voice, after mod_voice (which does not know the source) */
-            cym |= 1u << k;
+            if (k >= NMSLOT)
+                vrm |= 2u;                              /* (DUELL 1.1: CYCLE's PITCH card: mod_cycle_voice adds it) */
+            else
+                cym |= 1u << k;
             continue;
         }
         if (d <= MD_AMP) {                              /* per voice */
@@ -523,12 +688,12 @@ static __attribute__((noinline)) int mod_begin(track_t *t)
         }
         x = mx_slew(t, k, mod_tsrc(t, s, lfo));
         if (MD_IS_BUS(d)) {                              /* a bus value (0.2.7): this part's offset, mod_bus applies it */
-            const param_desc_t *gd = &GP[MG_ID[d - MD_BUS]];
+            int32_t span = d == MD_SPACE ? 200 : GP[MG_ID[d - MD_BUS]].max - GP[MG_ID[d - MD_BUS]].min;   /* (SPACE: -100 .. +100) */
             if (!gb)
                 for (j = 0; j < MG_N; j++)
                     goff[j] = 0;
             gb = 1;
-            goff[d - MD_BUS] += (((x * a) >> (MS_BIPOLAR(MS_GAIN(p, s)) ? 7 : 6)) * (gd->max - gd->min)) >> 15;
+            goff[MG_IDX(d)] += (((x * a) >> (MS_BIPOLAR(MS_GAIN(p, s)) ? 7 : 6)) * span) >> 15;
             continue;
         }
         {                                               /* per block: AMT 64 = the whole range */
@@ -552,6 +717,8 @@ static __attribute__((noinline)) int mod_begin(track_t *t)
             off[j] += (((x * a) >> (MS_BIPOLAR(MS_GAIN(p, s)) ? 7 : 6)) * (pd->max - pd->min)) >> 15;
         }
     }
+    if (pi < NLIVE && lk_virt_n[pi])
+        gb |= mod_lock_virt(mod, pi, goff, gb);         /* DUELL 1.1: the sequencer's locks on the destinations with no stored value (flash) */
     for (j = 0; j < mod->nk; j++) {
         uint32_t id = mod->kid[j];
         const param_desc_t *pd = mod_pd(t, id);
@@ -559,6 +726,7 @@ static __attribute__((noinline)) int mod_begin(track_t *t)
     }
     t->f2m = (uint8_t)f2m;
     t->cym = (uint8_t)cym;
+    t->vrm = (uint8_t)vrm;
     if (gb | dk | t->mgon | t->mdk)
         mod_part_put(t, gb ? goff : 0, dk);
     return 1;
@@ -584,11 +752,11 @@ static __attribute__((noinline)) void mod_voice(track_t *t, voice_t *v, vmod_t *
     uint32_t k;
     if (v == &t->v[t->m_vi]) {
         t->m_env = env;                                 /* ENV of the latest note, for per-block destinations */
-        t->m_env2 = v->env2 >> 9;                       /* .. and its ENV 2 */
+        t->m_env2 = ((mod->byp & BY_ENV2) ? 0 : v->env2 >> 9);                       /* .. and its ENV 2 */
     }
     for (k = 0; k < mod->nv; k++) {
         uint32_t s = mod->vsrc[k];
-        int32_t x = s == MS_ENV ? env : s == MS_ENV2 ? v->env2 >> 9 : s == MS_VEL ? v->mvel * 258 : s == MS_KEY ?
+        int32_t x = s == MS_ENV ? env : s == MS_ENV2 ? ((mod->byp & BY_ENV2) ? 0 : v->env2 >> 9) : s == MS_VEL ? v->mvel * 258 : s == MS_KEY ?
                     mod_key(v->note) : v->mrnd;
         mod_voice_add(s, mod->vdst[k], x, mod->vamt[k], &pit, &cut, &shp, &gain);
     }
@@ -621,9 +789,11 @@ static __attribute__((noinline)) int32_t mod_f2_voice(track_t *t, voice_t *v)
     uint32_t m;
     for (m = t->f2m; m; m &= m - 1u) {
         uint32_t k = (uint32_t)__builtin_ctz(m), s = (uint32_t)p[MSLOT_ID(k)];
-        int32_t x = s == MS_ENV ? t->venv : s == MS_ENV2 ? v->env2 >> 9 : s == MS_VEL ? v->mvel * 258 : s == MS_KEY ? mod_key(v->note) : s == MS_CYCLE ? cycle_value(t, v) : v->mrnd;
+        int32_t x = s == MS_ENV ? t->venv : s == MS_ENV2 ? E2Q(t, v) : s == MS_VEL ? v->mvel * 258 : s == MS_KEY ? mod_key(v->note) : s == MS_CYCLE ? cycle_value(t, v) : v->mrnd;
         sum += (x * MX_AMT(p[MSLOT_ID(k) + 2u])) >> 7;
     }
+    if (t->vrm & 1u)                                    /* DUELL 1.1: CYCLE ENV's TWIN CUTOFF card, the same sum as a CYCLE to TWIN CUTOFF slot */
+        sum += (cycle_value(t, v) * MX_AMT(XV(t, X_CYCUT2))) >> 7;
     return sum;
 }
 /* mod_cycle_voice: the CYCLE-sourced slots with a per-note destination (PITCH, CUT, SHP, AMP) applied to voice v's vmod_t m after mod_voice has made its own, with the same sums and the same
@@ -641,7 +811,9 @@ static __attribute__((noinline)) void mod_cycle_voice(track_t *t, voice_t *v, vm
         amp |= d == MD_AMP;
         mod_voice_add(MS_CYCLE, d, x, MX_AMT(p[MSLOT_ID(k) + 2u]), &pit, &cut, &shp, &gain);
     }
-    if (!t->cym)
+    if (t->vrm & 2u)                                    /* DUELL 1.1: CYCLE ENV's PITCH card, as a CYCLE to PITCH slot */
+        mod_voice_add(MS_CYCLE, MD_PITCH, x, MX_AMT(XV(t, X_CYPIT)), &pit, &cut, &shp, &gain);
+    if (!t->cym && !(t->vrm & 2u))
         return;
     if (pit) {
         m->pitch16 = clamp(m->pitch16 + pit, 0, 2047);
@@ -664,7 +836,7 @@ static void mod_note(track_t *t, uint32_t note, uint32_t vel)
     t->m_rnd = mod_rand();
 }
 
-/* a MIDI controller for track t (seq.c events_block): CC1 / CC11 / channel aftertouch; CC121 resets them */
+/* a MIDI controller for track t (seq.c events_block): CC1 / CC2 / CC4 / CC11 / channel aftertouch; CC121 resets them */
 static __attribute__((noinline)) void mod_midi(track_t *t, uint32_t st, uint32_t d1, uint32_t d2)
 {
     if (st == 0xD0u) {
@@ -674,8 +846,14 @@ static __attribute__((noinline)) void mod_midi(track_t *t, uint32_t st, uint32_t
             t->mw = (uint8_t)d2;
         else if (d1 == 11u)
             t->ex_off = (uint8_t)(127u - d2);
-        else if (d1 == 121u)
+        else if (d1 == 2u)
+            mod_cc[0][(uint32_t)(t - trk) % NTRK] = (uint8_t)d2;      /* (DUELL 1.1: BREATH CONTROLLER) */
+        else if (d1 == 4u)
+            mod_cc[1][(uint32_t)(t - trk) % NTRK] = (uint8_t)d2;      /* (FOOT CONTROLLER) */
+        else if (d1 == 121u) {
             t->mw = t->at = t->ex_off = 0;
+            mod_cc[0][(uint32_t)(t - trk) % NTRK] = mod_cc[1][(uint32_t)(t - trk) % NTRK] = 0;
+        }
     }
 }
 
@@ -686,23 +864,54 @@ static __attribute__((noinline)) const char *mod_dst_name(const track_t *t, int3
 {
     v = clamp(v, 0, MD_N - 1);
     if (MD_ENGINE(v) || (v >= MD_INSA && v <= MD_INSC)) {
-        const char *l = track_desc(t, MD_ENGINE(v) ? P_E0 + (uint32_t)(v - MD_E1) : P_IA + (uint32_t)(v - MD_INSA))->label;
-        if (l && l[0] && l[0] != '-')
-            return l;
+        const param_desc_t *dd = track_desc(t, MD_ENGINE(v) ? P_E0 + (uint32_t)(v - MD_E1) : P_IA + (uint32_t)(v - MD_INSA));
+        const char *l = dd->label;
+        if (l && l[0] && l[0] != '-') {
+            return str_eq(l, "LPF") ? "LOW-PASS" : str_eq(l, "FDBK") ? "FEEDBACK" : desc_shown(dd);   /* (owner 2026-10-25: the BIT CRUSHER INSERT's third control is LOW-PASS; 2026-10-28: the engine slots and the INSERT's SAT in the cards' full words: params.c LBL_SHOWN, one table; change list D: the swept INSERTs' FDBK is FEEDBACK in the matrix, the cards keep FDBK) */
+        }
     }
-    if (v == MD_BUS + 3 && dly_ev_ui())  /* 0.2.16 DELAY MODE: the delay's DEPTH is CHANCE in RANDOM / OCT UP */
-        return "CHNC";
+    if (v == MD_BUS + 3 && dly_ev_ui())  /* 0.2.16 DELAY MODE: the delay's DEPTH is CHANCE in RANDOM / OCT UP (owner 2026-10-25: DELAY CHANCE, item and card; was the code CHNC) */
+        return "DELAY\nCHANCE";
     if (v >= MD_CUT2 && v <= MD_SUBLVL) {  /* cloud job B (FILTER_PAGES_PROPOSAL 5.1): filter 2's, two lines as FILTER RES where the DEST card has the room; on COMB the names of the type (TUNE, FEEDBACK) */
         int comb = t->p[P_TWTYPE] == TT_COMB;
-        return v == MD_CUT2 ? (comb ? "TWIN\nTUNE" : "TWIN\nCUTOFF") : v == MD_RES2 ? (comb ? "TWIN\nFDBK" : "TWIN\nRES") : v == MD_DRIVE ? "FILTER\nDRIVE" : v == MD_BLEND ? "FILTER\nBLEND" : "SUB\nLEVEL";
+        return v == MD_CUT2 ? (comb ? "TWIN\nTUNE" : "TWIN\nCUTOFF") : v == MD_RES2 ? (comb ? "TWIN\nFEEDBACK" : "TWIN\nRES") : v == MD_DRIVE ? "FILTER\nDRIVE" : v == MD_BLEND ? "FILTER\nBLEND" : "SUB\nLEVEL";
     }
     if (v == MD_LEVEL)                    /* 0.2.25 layout round (owner): TRIM is shown PATCH LEVEL everywhere; the code in 5 characters (N_MDST keeps TRIM: the factory sound tool's key) */
-        return "PATCH";
+        return "PATCH\nLEVEL";
     if (v == MD_RES)                      /* T0229 (owner): FRES is FILTER RES, in two lines on the DEST card (ui_draw.c draw_column), one line in the rows (N_MDST keeps FRES) */
         return "MULTI\nRES";   /* (1.0, owner 2026-10-21: the filters are MULTI and TWIN, not 1 and 2; the DEST card has MULTI over RES in its two small lines, the matrix row MULTI RES) */
-    if (v >= MD_AATK) {                   /* T0229: the AMP ENV times, two lines as FILTER RES (N_MDST keeps AATK .. AREL) */
-        static const char *const AT[4] = {"AMP\nATTACK", "AMP\nDECAY", "AMP\nSUSTAIN", "AMP\nRELEASE"};
+    if (v >= MD_AATK && v < MD_CUT2) {    /* T0229: the AMP ENV times, two lines as FILTER RES (N_MDST keeps AATK .. AREL); below MD_CUT2 only (2026-10-25: SPACE, 56, read past this list and showed CHORUS SEND) */
+        static const char *const AT[4] = {"AMP ENV\nATTACK", "AMP ENV\nDECAY", "AMP ENV\nSUSTAIN", "AMP ENV\nRELEASE"};   /* (owner 2026-10-25: no short row forms; the category and the item in full) */
         return AT[v - MD_AATK];
+    }
+    switch (v) {                          /* DUELL 1.1 (owner): the destinations' names in full words (N_MDST keeps the stored keys); a two-word name breaks into the card's two lines.
+                                           * What a card cannot hold in 49 px is cut by the card (ui_draw.c cv_text_fit), never shortened here (the rows: ui_graph.c graph_mod) */
+    case MD_SHP:    return "TIMBRE";      /* (the SHAPE input of every engine: per engine names need a table of the engines' own words, not built; the DEST line says the same) */
+    case MD_DIST:   return "SATURATION";     /* (owner 2026-10-25: the destination and every card that modulates it say SATURATION; the effect is the SATURATOR and DRIVE is its control on the FX page) */
+    case MD_CHO:    return "CHORUS\nSEND";
+    case MD_DLY:    return "DELAY\nSEND";
+    case MD_REV:    return "REVERB\nSEND";
+    case MD_RATE:   return "LFO 1\nRATE";
+    case MD_VIB:    return "LFO 1\nDEPTH";      /* (change list 2026-10-28 D, owner's wording: under the category PITCH the item is LFO 1 DEPTH, was LFO 1 PITCH DEPTH) */
+    case MD_RATE2:  return "LFO 2\nRATE";
+    case MD_IMIX:   return "INSERT\nMIX";
+    case MD_E2ATK:  return "FILTER ENV\nATTACK";
+    case MD_E2DEC:  return "FILTER ENV\nDECAY";
+    case MD_E2SUS:  return "FILTER ENV\nSUSTAIN";
+    case MD_E2REL:  return "FILTER ENV\nRELEASE";
+    case MD_E2FLT:  return "FILTER ENV\nMULTI CUTOFF";
+    case MD_E2SHP:  return "FILTER ENV\nTIMBRE";
+    case MD_CRATE:  return "CHORUS\nRATE";
+    case MD_CDEP:   return "CHORUS\nDEPTH";
+    case MD_DFB:    return "DELAY\nFEEDBACK";
+    case MD_DMDEP:  return "DELAY\nMOD DEPTH";
+    case MD_DMRATE: return "DELAY\nMOD RATE";
+    case MD_RDAMP:  return "REVERB\nDAMPING";   /* (owner 2026-10-25) */
+    case MD_AMP:    return "AMP\nLEVEL";         /* (owner 2026-10-25: the gain on each voice; tremolo with an LFO; N_MDST keeps AMP) */
+    case MD_FMODE:  return "MULTI\nMODE";
+    case MD_SPACE:  return "SPACE";
+    case MD_DUCK:   return "DUCK\nDEPTH";       /* (change list 2026-10-28 D: was the code DUCK; under the category DUCK the row says DEPTH, the DEST line DUCK DEPTH; N_MDST keeps DUCK)  */
+    default: break;
     }
     if (v == MD_CUT)
         return "MULTI\nCUTOFF";              /* (1.0, owner 2026-10-21: MULTI over CUTOFF on the DEST card; the matrix row cannot hold MULTI CUTOFF in 64 px and says MULTI CUT; N_MDST keeps CUT: the factory sound tool's key) */
@@ -755,20 +964,66 @@ static __attribute__((noinline)) int mod_dst_offered(const track_t *t, int32_t v
     return !w;
 }
 
+/* DUELL 1.1 (owner, HANDOFF_V2 item 34): the PARAMETER LOCKS page's parameter list IS the matrix destination list: the same entries, in the same order
+ * (MDST_ORDER), under the same names (mod_dst_name, mod_dst_line), offered by the same rule (mod_dst_offered). This is the one shared table: destination -> the stored
+ * parameter of the part that a lock or an automation event records (0 = the destination has no stored value of the part to record). OFF is not a destination to lock.
+ * Without a stored value (so, not lockable): PITCH, TIMBRE and VOICE AMP (TREMOLO) are modulation inputs only; the bus values (CHORUS RATE / DEPTH, DELAY FEEDBACK /
+ * MOD DEPTH / MOD RATE, REVERB DAMP) and SPACE are the instrument's, not the part's; SUB LEVEL is an extension slot (a motion record's id is 7 bits: MOTION_ESC is not built);
+ * the removed destinations (mod_dst_removed) are not offered anyway. Engine slots E1..E8 are P_E0..P_E7 (the engine's own labels) */
+static __attribute__((noinline)) uint32_t mod_lock_id(uint32_t d)
+{
+    static const uint8_t LOCK_ID[MD_N] = {
+        [MD_CUT] = P_FREEA, [MD_PAN] = P_PAN, [MD_DIST] = P_DIST, [MD_CHO] = P_CHOR, [MD_DLY] = P_DLY, [MD_REV] = P_REV,
+        [MD_RATE] = P_LRATE, [MD_VIB] = P_LD_PIT, [MD_RATE2] = P_L2RATE, [MD_LEVEL] = P_TRIM,
+        [MD_INSA] = P_IA, [MD_INSB] = P_IB, [MD_INSC] = P_IC, [MD_IMIX] = P_IMIX, [MD_DUCK] = P_DKDEP,
+        [MD_E2ATK] = P_E2ATK, [MD_E2DEC] = P_E2DEC, [MD_E2SUS] = P_E2SUS, [MD_E2REL] = P_E2REL, [MD_E2FLT] = P_E2FLT,
+        [MD_RES] = P_FREEB, [MD_FMODE] = P_FREEC,
+        [MD_AATK] = P_ATK, [MD_ADEC] = P_DEC, [MD_ASUS] = P_SUS, [MD_AREL] = P_REL,
+        [MD_CUT2] = P_CUT2, [MD_RES2] = P_RES2, [MD_DRIVE] = P_DRV2, [MD_BLEND] = P_BLEND,
+        [MD_SUBLVL] = XW_BASE + X_SUBLVL,                                   /* DUELL 1.1: an extension slot, by its wide id (motion.c: the extended id space) */
+        [MD_PITCH] = MOTION_VBASE + MD_PITCH, [MD_SHP] = MOTION_VBASE + MD_SHP, [MD_AMP] = MOTION_VBASE + MD_AMP,   /* .. and the destinations with no stored value: virtual targets, 192 + the number */
+        [MD_CRATE] = MOTION_VBASE + MD_CRATE, [MD_CDEP] = MOTION_VBASE + MD_CDEP, [MD_DFB] = MOTION_VBASE + MD_DFB, [MD_DMDEP] = MOTION_VBASE + MD_DMDEP,
+        [MD_DMRATE] = MOTION_VBASE + MD_DMRATE, [MD_RSIZE] = MOTION_VBASE + MD_RSIZE, [MD_RDAMP] = MOTION_VBASE + MD_RDAMP, [MD_SPACE] = MOTION_VBASE + MD_SPACE};
+    if (d >= MD_N)
+        return 0;
+    return MD_ENGINE(d) ? P_E0 + d - MD_E1 : LOCK_ID[d];
+}
+/* the destination whose stored value is target id (0 = none: the id is not in the matrix list, so it cannot be locked) */
+static __attribute__((noinline)) uint32_t mod_lock_dst(uint32_t id)
+{
+    uint32_t d;
+    if (id == 0u || id > 255u)
+        return 0;
+    for (d = 1; d < MD_N; d++)
+        if (mod_lock_id(d) == id)
+            return d;
+    return 0;
+}
+/* a virtual target's descriptor: an AMOUNT -64..+63 (0 = nothing), shown like a matrix amount. The other targets' are the parameters' own */
+static const param_desc_t LOCK_VD = PD("AMT", F_BIPCT, -64, 63, 0);
+static const param_desc_t *lock_desc_of(uint32_t e, uint32_t tid) { return tid >= MOTION_VBASE ? &LOCK_VD : param_desc_of(e, tid); }
+static const param_desc_t *lock_desc(const track_t *t, uint32_t tid) { return tid >= MOTION_VBASE ? &LOCK_VD : track_desc(t, tid); }
+/* parameter id can be locked / recorded on t now: its destination is offered by the matrix's own rule */
+static __attribute__((noinline)) int mod_lock_ok(const track_t *t, uint32_t id)
+{
+    uint32_t d = mod_lock_dst(id);
+    return d && mod_dst_offered(t, (int32_t)d);
+}
+
 /* the MATRIX page's DEST line for destination v of track t: "DEST: WAVE POS", "DEST: INSERT DRIVE", "DEST: REVERB SIZE"
  * (b: 32 bytes), and in more (0: nothing to add) what the card's reason or a bus value means in words */
 static __attribute__((noinline)) void mod_dst_line(const track_t *t, int32_t v, char *b, const char **more)
 {
     /* every destination's name in full, one after the other (none for E1..E8 and the INSERT's A B C: named by their owner) */
     static const char FULL[] =
-        "NONE\0""PITCH\0""MULTI FILTER CUTOFF\0""SHAPE (TIMBRE)\0""VOICE AMP (TREMOLO)\0""PAN\0""SATURATION\0""CHORUS SEND\0"
-        "DELAY SEND\0""REVERB SEND\0""LFO 1 RATE\0""LFO 1 PITCH DEPTH\0""\0""\0""\0""\0""\0""\0""\0""\0""LFO 1 DEPTH\0"
+        "NONE\0""PITCH\0""MULTI CUTOFF\0""TIMBRE\0""AMP LEVEL\0""PAN\0""SATURATION\0""CHORUS SEND\0"
+        "DELAY SEND\0""REVERB SEND\0""LFO 1 RATE\0""LFO 1 DEPTH\0""\0""\0""\0""\0""\0""\0""\0""\0""LFO 1 DEPTH\0"
         "LFO 2 RATE\0""LFO 2 DEPTH\0""PATCH LEVEL\0""\0""\0""\0""INSERT MIX\0""EQ LOW GAIN\0""EQ MID GAIN\0""EQ HIGH GAIN\0"
-        "DUCK DEPTH\0""FILT ENV ATTACK\0""FILT ENV DECAY\0""FILT ENV SUSTAIN\0""FILT ENV RELEASE\0""FILT ENV CUTOFF\0"
-        "FILT ENV SHAPE\0""MULTI FILTER RES\0""CHORUS RATE\0""CHORUS DEPTH\0""DELAY FEEDBACK\0""DELAY MOD DEPTH\0"
-        "DELAY MOD RATE\0""REVERB SIZE\0""REVERB DAMP\0""MULTI FILTER MODE\0"
+        "DUCK DEPTH\0""FILTER ENV ATTACK\0""FILTER ENV DECAY\0""FILTER ENV SUSTAIN\0""FILTER ENV RELEASE\0""FILTER ENV MULTI CUTOFF\0"
+        "FILTER ENV TIMBRE\0""MULTI RES\0""CHORUS RATE\0""CHORUS DEPTH\0""DELAY FEEDBACK\0""DELAY MOD DEPTH\0"
+        "DELAY MOD RATE\0""REVERB SIZE\0""REVERB DAMPING\0""MULTI MODE\0"
         "AMP ENV ATTACK\0""AMP ENV DECAY\0""AMP ENV SUSTAIN\0""AMP ENV RELEASE\0"
-        "TWIN FILTER CUTOFF\0""TWIN FILTER RES\0""FILTER DRIVE\0""FILTER BLEND\0""SUB LEVEL\0";
+        "TWIN CUTOFF\0""TWIN RES\0""FILTER DRIVE\0""FILTER BLEND\0""SUB LEVEL\0""SPACE\0";
     const char *f = FULL;
     const char *why;
     uint32_t n;
@@ -780,7 +1035,7 @@ static __attribute__((noinline)) void mod_dst_line(const track_t *t, int32_t v, 
     str_cpy(b, "DEST: ", 32);
     n = str_len(b);
     if (MD_ENGINE(v) || (v >= MD_INSA && v <= MD_INSC)) {   /* whose: the engine's (its name), the INSERT's */
-        str_cpy(b + n, MD_ENGINE(v) ? ENGINES[eng_idx(t->eng_req)]->name : "INSERT", 32 - n);
+        str_cpy(b + n, MD_ENGINE(v) ? eng_shown(ENGINES[eng_idx(t->eng_req)]->name) : "INSERT", 32 - n);
         n = str_len(b);
         str_cpy(b + n, " ", 32 - n);
         if (MD_ENGINE(v) && why && why[0] == 'U') {     /* an unused slot: where it is ("WAVE EDIT 2 KNOB 3"), not "E7" */
@@ -792,17 +1047,22 @@ static __attribute__((noinline)) void mod_dst_line(const track_t *t, int32_t v, 
         } else {                                        /* (the INSERT OFF: "INSERT A") */
             const char *nm = mod_dst_name(t, v);
             str_cpy(b + n + 1u, nm == N_MDST[v] && !MD_ENGINE(v) ? nm + 4 : nm, 32 - n - 1u);
+            for (n = n + 1u; b[n]; n++)                 /* (a two-line card name, WAVE\nSHAPING, is one line here) */
+                if (b[n] == '\n')
+                    b[n] = ' ';
         }
     } else {
-        str_cpy(b + n, v == MD_BUS + 3 && dly_ev_ui() ? "DELAY EVENT CHANCE" : t->p[P_TWTYPE] == TT_COMB && v == MD_CUT2 ? "TWIN FILTER TUNE" : t->p[P_TWTYPE] == TT_COMB && v == MD_RES2 ? "TWIN FILTER FEEDBACK" : f, 32 - n);
+        str_cpy(b + n, v == MD_BUS + 3 && dly_ev_ui() ? "DELAY CHANCE" : t->p[P_TWTYPE] == TT_COMB && v == MD_CUT2 ? "TWIN TUNE" : t->p[P_TWTYPE] == TT_COMB && v == MD_RES2 ? "TWIN FEEDBACK" : f, 32 - n);
     }
     *more = !why ? 0 : v == MD_BUS + 4 ? "NOT USED IN THIS DELAY MODE" : why[0] == 'U' ? "NOT USED BY THIS ENGINE" : why[0] == 'R' ? "A TABLE CHANGE IS A REBUILD"
           : why[0] == 'L' ? "SLOT LOADS A WHOLE PATCH" : why[0] == 'A' ? "READ ONLY AS A NOTE STARTS"
           : why[0] == 'D' ? "DUEL: EACH PART ON ITS SIDE" : why[0] == 'I' ? "THE INSERT TYPE IS OFF"
-          : why[0] == 'W' ? "NOT USED WITH THIS WAVE" : why[0] == 'O' ? "THE OPERATORS HAVE THEIR OWN"
+          : why[0] == 'W' ? "NOT USED WITH THIS WAVE" : why[0] == 'O' ? "NOT USED BY THIS ENGINE"   /* (owner item 83: the matrix lines do nothing on FM6; the knobs act, the lines say so plainly) */
           : why[0] == 'T' ? "THE TWIN FILTER IS OFF"
           : "THIS ENGINE HAS ITS OWN FILTER";
-    if (!why && MD_IS_BUS(v))                            /* a bus value: whose bus it moves */
+    if (!why && v == MD_SPACE)                           /* DUELL 1.1: SPACE is one value for the instrument, in every mode */
+        *more = "SHARED: BOTH PARTS ADD";
+    else if (!why && MD_IS_BUS(v))                       /* a bus value: whose bus it moves */
         *more = duell_mode_req == DM_SPLIT ? (t == trk ? "MOVES BUS A ONLY (PART 1)" : "MOVES BUS B ONLY (PART 2)")
                                            : "SHARED BUS: BOTH PARTS ADD";
 }

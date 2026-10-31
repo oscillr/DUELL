@@ -8,6 +8,21 @@
 import { h } from "./ui_util.js";
 import { valueText, isEnum, enumOrder, isBipolar, bipolarZero } from "./layout.js";
 
+// the stored value a typed text means: the one whose shown number is nearest (a text with words in it, a list, is not typed); null: not a number
+export function valueFromText(d, text) {
+  const n = parseFloat(String(text).replace(",", ".").replace(/[^\d.+-]/g, ""));
+  if (!Number.isFinite(n) || d.names) return null;
+  let best = null, bd = Infinity, numeric = 0;
+  for (let v = d.min; v <= d.max; v++) {
+    const t = valueText(d, v), m = /^[+-]?\d+(\.\d+)?$/.test(String(t.val).trim()) ? parseFloat(t.val) : NaN;
+    if (!Number.isFinite(m)) continue;
+    numeric++;
+    const e = Math.abs(m - n); if (e < bd) { bd = e; best = v; }
+  }
+  if (numeric >= (d.max - d.min + 1) * 0.5) return best;
+  return Math.min(d.max, Math.max(d.min, Math.round(n)));
+}
+
 export class Cell {
   // src: { desc(): descriptor, value(): number, set(v), inert(): reason|null (null: it applies; a reason: it is not drawn), tip?(d): plain tooltip, whyText?(code): the reason in words,
   //   optLabel?(v), optHidden?(v), optDisabled?(v), groups?: [[heading, [values]]] (a select with group headings, T0229: the matrix lists) }
@@ -18,9 +33,11 @@ export class Cell {
   }
   build(d) {
     this.desc = d; this.extra = null;
-    const label = h("span", { class: "lab", text: this.opt.bare ? "" : d.label, ondblclick: () => !this.disabled && this.src.set(d.def) });
+    // DUELL 1.1 (owner item 47/48): a knob mark in front of the label: a white circle with the knob's number cut out of it (opt.knob: 1 to 4, the knob of the unit's page)
+    const km = this.opt.knob && !this.opt.bare ? h("span", { class: "km", text: String(this.opt.knob), title: `Knob ${this.opt.knob} of the unit's page` }) : null;
+    const label = h("span", { class: "lab", ondblclick: () => !this.disabled && this.src.set(d.def) }, km, this.opt.bare ? "" : d.label);
     this.labEl = label;
-    this.valEl = h("span", { class: "val" }); this.unitEl = h("span", { class: "unit" });
+    this.valEl = h("span", { class: "val", tabindex: "0", role: "button", onclick: () => this.typeValue(), onkeydown: (e) => { if (e.key === "Enter") this.typeValue(); } }); this.unitEl = h("span", { class: "unit" });
     const right = h("span", { class: "right" }, this.valEl, this.unitEl);
     const top = h("div", { class: "top" }, label, right);
     this.input = null; this.btns = null; this.groupEls = null;
@@ -54,6 +71,22 @@ export class Cell {
     this.isEnum = isEnum(d);                              // an enum shows its value in its own control
     this.el.replaceChildren(top, ctl);
   }
+  // DUELL 1.1 (owner item 13): click the value and type it (click, write 32, Enter). The number is the one that is shown (32 %, 16.0 kHz, -4.0 dB): the stored value whose text is nearest;
+  // a control without a number in its text takes the stored value. Esc leaves it as it was.
+  typeValue() {
+    const d = this.desc; if (!d || this.disabled || this.isEnum || this.editing) return;
+    const was = this.src.value(), shown = this.valEl.textContent;
+    const inp = h("input", { type: "text", class: "valin", inputmode: "decimal", "aria-label": `${d.label}: type a value`, value: shown.replace(/[^\d.,+-]/g, "") || String(was) });
+    this.editing = true; this.valEl.textContent = ""; this.valEl.append(inp); inp.focus(); inp.select();
+    let done = false;
+    const end = (commit) => {
+      if (done) return; done = true; this.editing = false;
+      if (commit) { const v = valueFromText(d, inp.value); if (v != null && v !== was) this.src.set(v); }
+      inp.remove(); this.refresh();
+    };
+    inp.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); end(true); } else if (e.key === "Escape") { e.preventDefault(); end(false); } e.stopPropagation(); });
+    inp.addEventListener("blur", () => end(true));
+  }
   refresh() {
     const d = this.src.desc();
     if (d !== this.desc) this.build(d);
@@ -66,7 +99,7 @@ export class Cell {
     if (this.src.optDisabled && sel) for (const o of sel.options) o.disabled = +o.value !== v && !!this.src.optDisabled(+o.value);   // (0.2.25: an empty USER wavetable cannot be picked)
     if (this.src.optHidden && sel) for (const o of sel.options) { const hd = +o.value !== v && !!this.src.optHidden(+o.value); o.hidden = hd; o.disabled = hd || o.disabled; }   // (0.2.25: a matrix destination the part does not offer: not in the list; the slot's own value stays)
     if (this.groupEls) for (const g of this.groupEls) g.hidden = ![...g.children].some((o) => !o.hidden);   // (T0229: a heading with nothing under it is not shown)
-    this.valEl.textContent = this.isEnum ? "" : t.val; this.unitEl.textContent = this.isEnum ? "" : t.unit;
+    if (!this.editing) { this.valEl.textContent = this.isEnum ? "" : t.val; this.unitEl.textContent = this.isEnum ? "" : t.unit; }
     if (this.input && document.activeElement !== this.input) this.input.value = v;
     if (this.fill) {                                    // the fill: from the left end (a plain number), or from the zero point either way (bipolar)
       const span = d.max - d.min || 1, z = this.bipolar ? bipolarZero(d) : d.min, a = Math.min(v, z), b = Math.max(v, z);

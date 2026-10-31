@@ -106,9 +106,9 @@ static const bench_scn_t BENCH_SCN[] BENCH_RO = {
     VX("NOISE 1", E_NOISE, 1, "voice/NOISE"), VX("NOISE 4", E_NOISE, 4, 0),
     VX("WAVE 1", E_WAVE, 1, "voice/WAVE"), VX("WAVE 4", E_WAVE, 4, 0),
     /* the part stages, on one ANALOG voice */
-    PT("INS SOFT", "insert/SOFT", .ins = 1), PT("INS HARD", "insert/HARD", .ins = 2), PT("INS FOLD", "insert/FOLD", .ins = 3),
-    PT("INS FUZZ", "insert/FUZZ", .ins = 4), PT("INS CRUSH", "insert/CRUSH", .ins = 5), PT("INS PHASR", "insert/PHASR", .ins = 6),
-    PT("INS FLANG", "insert/FLANG", .ins = 7), PT("INS CHOR", "insert/CHOR", .ins = 8), PT("INS TAPE", "insert/TAPE", .ins = 9),
+    PT("INS SOFT CLIP", "insert/SOFT_CLIP", .ins = 1), PT("INS HARD CLIP", "insert/HARD_CLIP", .ins = 2), PT("INS FOLD", "insert/FOLD", .ins = 3),
+    PT("INS FUZZ", "insert/FUZZ", .ins = 4), PT("INS BIT CRUSHER", "insert/BIT_CRUSHER", .ins = 5), PT("INS PHASER", "insert/PHASER", .ins = 6),
+    PT("INS FLANGER", "insert/FLANGER", .ins = 7), PT("INS CHORUS", "insert/CHORUS", .ins = 8), PT("INS TAPE", "insert/TAPE", .ins = 9),
     PT("INS VINYL", "insert/VINYL", .ins = 10), PT("SAT 64", "part/SAT", .sat = 64),
     PT("EQ 1 BAND", 0, .eq = 1), PT("EQ 2 BANDS", 0, .eq = 2), PT("EQ 3 BANDS", "part/EQ", .eq = 3), PT("DUCK PUMP", "part/DUCK", .duck = 1),
     /* the multimode filter, 4 WAVE voices: open, 12 dB, 24 dB */
@@ -205,7 +205,7 @@ static struct {
 static project_t bench_saved __attribute__((section(".pool.zbench")));
 static struct {                                        /* the audio side's words the rows set (the UI's own syncs do not run while the BENCH screen is up) */
     uint32_t cmp;
-    uint8_t wd, bm, mods, mode, bal, xf, split;
+    uint8_t wd, bm, mods, mode, xf, split;   /* (item 160: no BALANCE word: the parts' levels are in the project restored with the session) */
     int8_t space;
 } bench_keep BENCH_BSS;
 
@@ -417,7 +417,7 @@ static BENCH_FN void bench_line(char *b, uint32_t i)            /* one row as CS
 #include "twocore_reasons.h"
 #endif
 enum { BTC_BLOCKS, BTC_INTIME, BTC_LATE, BTC_VLATE, BTC_SILENT, BTC_WAIT, BTC_OWN, BTC_REFUSED, BTC_NOANS, BTC_PAUSES, BTC_RESUMES, BTC_TRIMS, BTC_PARKS, BTC_VLOK, BTC_PFAULT, BTC_PRUN, BTC_PWIN, BTC_PLATE, BTC_N };   /* (BENCHT3: the last five: very late blocks that paused nothing; pauses by reason) */
-typedef struct { uint32_t c[BTC_N]; uint32_t stack; uint8_t up, failed, armed, boot_last; } bench_tcv_t;
+typedef struct { uint32_t c[BTC_N]; uint32_t stack; uint8_t up, failed, armed, boot_last, nocore1; } bench_tcv_t;   /* (nocore1: the bench word `core1 off` is in force, HANDOFF_V2 item 112) */
 #if DUELL_TWOCORE
 #define BENCH_TC 1
 static BENCH_FN void bench_tc_get(bench_tcv_t *v)
@@ -429,6 +429,9 @@ static BENCH_FN void bench_tc_get(bench_tcv_t *v)
     v->c[BTC_VLOK] = tcs.vlate_ok, v->c[BTC_PFAULT] = tcs.pause_fault, v->c[BTC_PRUN] = tcs.pause_run, v->c[BTC_PWIN] = tcs.pause_win, v->c[BTC_PLATE] = tcs.pause_late;
     v->stack = tc_stack_peak(fm1_c1_stack, FM1_C1_STACK_WORDS + 64u);
     v->up = tc.up, v->failed = tc.failed, v->armed = tc.armed, v->boot_last = tc.boot_last;
+#if TC_MEAS
+    v->nocore1 = (uint8_t)(tcm_cfg.nocore1 != 0u);
+#endif
 }
 #elif defined(BENCH_TC_SIM)
 #define BENCH_TC 1
@@ -448,6 +451,7 @@ typedef struct {
     uint32_t st_max, st_mean[4], dl_mean[4];           /* where in the half (us after its start): the latest start of a job; per block of the half the mean start and the mean deadline */
     uint32_t c1x10, c1pkx10;                           /* core 1's busy share (x10 %) over the test, and of its busiest half */
     uint32_t slack, calm_ms, lrun, vrun;               /* the settings in force (slack in ticks) */
+    uint32_t nocore1;                                  /* item 112: `core1 off` in force (core 1 is treated as down: core 0 plays part 2, the one-core budget) */
     uint32_t vwin_k, vwin_ms, floor;                   /* BENCHT3: very late blocks (K) within the window (ms) that pause the jobs (K 0: off); the deadline's floor on / off */
     uint32_t ev_n, ev_k;                               /* very late jobs seen, kept in the ring */
     struct { uint32_t blk, at_ms, a1, a2; int32_t sd, rt, mg; } ev[BTM_NEV];
@@ -482,7 +486,7 @@ static BENCH_FN void bench_tm_get(bench_tmv_t *v)
         v->c1pkx10 = tcm.hpk * 1000u / TCR_HALF_TICKS;
     }
     v->slack = tcm_cfg.slack, v->calm_ms = tcm_cfg.calm_ticks / (1000u * TC_TICKS_PER_US), v->lrun = tcm_cfg.lrun, v->vrun = tcm_cfg.vrun;
-    v->vwin_k = tcm_cfg.vwin_k, v->vwin_ms = tcm_cfg.vwin_ticks / (1000u * TC_TICKS_PER_US), v->floor = tcm_cfg.floor;
+    v->vwin_k = tcm_cfg.vwin_k, v->vwin_ms = tcm_cfg.vwin_ticks / (1000u * TC_TICKS_PER_US), v->floor = tcm_cfg.floor, v->nocore1 = tcm_cfg.nocore1;
     v->ev_n = tcm.ev_n, v->ev_k = k;
     for (i = 0; i < k; i++) {                          /* oldest first */
         const tcm_ev_t *e = &tcm.ev[(tcm.ev_n - k + i) % BTM_NEV];
@@ -491,7 +495,7 @@ static BENCH_FN void bench_tm_get(bench_tmv_t *v)
     }
 }
 static BENCH_FN void bench_tm_clear(void) { tcm.clr = 1; }
-/* what: 0 slack (ticks), 1 calm (ms), 2 late run, 3 very late run, 4 window K, 5 window (ms), 6 floor (0 / 1); val 0xFFFFFFFF: the default */
+/* what: 0 slack (ticks), 1 calm (ms), 2 late run, 3 very late run, 4 window K, 5 window (ms), 6 floor (0 / 1), 7 core 1 off (0 / 1; item 112); val 0xFFFFFFFF: the default */
 static BENCH_FN void bench_tm_set(uint32_t what, uint32_t val)
 {
     uint32_t d = val == 0xFFFFFFFFu;
@@ -507,8 +511,10 @@ static BENCH_FN void bench_tm_set(uint32_t what, uint32_t val)
         tcm_cfg.vwin_k = d ? TCR_VWIN_K : val;
     else if (what == 5)
         tcm_cfg.vwin_ticks = d ? TCR_VWIN_TICKS : val * 1000u * TC_TICKS_PER_US;
-    else
+    else if (what == 6)
         tcm_cfg.floor = d ? 0u : val;                  /* (BENCHT4: the floor is off by default) */
+    else
+        tcm_cfg.nocore1 = d ? 0u : val;                /* (item 112: core 1 is on by default) */
 }
 #elif defined(BENCH_TC_SIM)
 #define BENCH_TM 1
@@ -527,6 +533,8 @@ static BENCH_FN char *bench_tc_why(char *d, const bench_tcv_t *v)
     static const char *const nm[] = TCR_NAMES;
     uint32_t r;
 #if BENCH_TC
+    if (v->nocore1)
+        return bench_put(d, "CORE1OFF");             /* (item 112: switched off by the test with `core1 off`, not a fault) */
     if (v->up && !v->failed)
         return bench_put(d, "OK");
     if (v->failed == TCR_NOANSWER)
@@ -547,7 +555,7 @@ static BENCH_FN char *bench_tc_why(char *d, const bench_tcv_t *v)
 static BENCH_FN char *bench_tc_mode(char *d, const bench_tcv_t *v)   /* "2" or "1" ("-": a build without core 1) */
 {
 #if BENCH_TC
-    return bench_put(d, v->up && !v->failed ? "2" : "1");
+    return bench_put(d, v->up && !v->failed && !v->nocore1 ? "2" : "1");
 #else
     (void)v;
     return bench_put(d, "-");
@@ -616,6 +624,8 @@ static BENCH_FN void bench_line_info(char *b)
         d = bench_num(d, (int32_t)m.vwin_ms);
         d = bench_put(d, ",floor ");
         d = bench_num(d, (int32_t)m.floor);
+        d = bench_put(d, ",core1 ");
+        d = bench_put(d, m.nocore1 ? "off" : "on");
     }
 #endif
     bench_put(d, "\r\n");
@@ -708,7 +718,7 @@ static BENCH_FN void bench_set(const bench_scn_t *s)            /* the row's who
                                                         * the M16 rows: the budget as the owner plays it) */
     mods_off = (uint8_t)(s->sendsoff ? MODS_SENDS : 0u);
     perf_space = 0;
-    mix_bal = 0, mix_xf = 0, mix_split = 0;
+    mix_xf = 0, mix_split = 0;
     if (s->m16)
         bench_load_m16();
     else
@@ -750,6 +760,31 @@ static BENCH_FN void bench_notes_off(void)
     bench.nnotes = 0;
 }
 
+/* ------------------------------------------------------------------ COST-CAL: what a console test sets beyond `set` and `scene` (DUELL 1.1 item 105, tools/gen_cost_suite.py) --- */
+/* A console session runs the UI's frame (ui_input.c: mods_apply, cmp_sync, ms_sync, the sense settings are read every frame), so the audio side's words (mods_off, cmp_cfg, wd_sel,
+ * bm_sel, sense_enable) cannot be written here: the settings they come from are. The session's own values are kept at its start and put back by `bench reset` and at its end. The
+ * BYPASS switches (byp_m, byp_sh) are plain RAM flags (editor_bypass.c): they start every test at 0. */
+static struct { uint8_t mods, ks; int16_t cp1, ms0, bm; } bench_xk BENCH_BSS;
+static BENCH_FN void bench_extras_keep(void)
+{
+    bench_xk.mods = (uint8_t)mods_get();
+    bench_xk.cp1 = song.cp[1], bench_xk.ms0 = song.ms[0], bench_xk.bm = song.bm;
+#if DUELL_VELO
+    bench_xk.ks = (uint8_t)(ui_idle & (KEYVEL_ON_BIT | AFTERT_OFF_BIT));
+#endif
+}
+static BENCH_FN void bench_extras_back(void)
+{
+    uint32_t b;
+    for (b = 0; b < 4u; b++)
+        mods_put(1u << b, (uint32_t)(bench_xk.mods >> b) & 1u);
+    song.cp[1] = bench_xk.cp1, song.ms[0] = bench_xk.ms0, song.bm = bench_xk.bm;
+    byp_m[0] = byp_m[1] = 0;
+    byp_sh = 0;
+#if DUELL_VELO
+    ui_idle = (uint8_t)((ui_idle & ~(KEYVEL_ON_BIT | AFTERT_OFF_BIT)) | bench_xk.ks);
+#endif
+}
 /* ------------------------------------------------------------------ the run --- */
 static BENCH_FN void bench_keep_session(void)
 {
@@ -758,8 +793,9 @@ static BENCH_FN void bench_keep_session(void)
     bench_keep.cmp = cmp_cfg;
     bench_keep.wd = wd_sel, bench_keep.bm = bm_sel, bench_keep.mods = mods_off;
     bench_keep.mode = duell_mode_req;
-    bench_keep.bal = (uint8_t)mix_bal, bench_keep.xf = mix_xf, bench_keep.split = mix_split;
+    bench_keep.xf = mix_xf, bench_keep.split = mix_split;
     bench_keep.space = perf_space;
+    bench_extras_keep();
 }
 static BENCH_FN void bench_restore_session(void)
 {
@@ -769,8 +805,9 @@ static BENCH_FN void bench_restore_session(void)
     cmp_cfg = bench_keep.cmp;
     wd_sel = bench_keep.wd, bm_sel = bench_keep.bm, mods_off = bench_keep.mods;
     duell_mode_req = bench_keep.mode;
-    mix_bal = (int8_t)bench_keep.bal, mix_xf = bench_keep.xf, mix_split = bench_keep.split;
+    mix_xf = bench_keep.xf, mix_split = bench_keep.split;
     perf_space = bench_keep.space;
+    bench_extras_back();
     bench_bopen = 0;                                   /* (the NOTES budget as before the run) */
     ui.force = 1;
 }
@@ -1009,7 +1046,7 @@ static BENCH_FN void bench_draw_state(int32_t y0)               /* page 1: what 
         cv_text_on(10, y, &AF_S, b, T_MID, T_BG);
         y += 15;
     } else {
-        cv_text_on(10, y, &AF_S, bench.done_once ? "K1: THE TABLE. K4 OR OCT+: AGAIN" : "K4 OR OCT+: START (ABOUT 7 MIN)", T_TEXT, T_BG);
+        cv_text_on(10, y, &AF_S, bench.done_once ? "K1: THE TABLE. K4 OR OCT +: AGAIN" : "K4 OR OCT +: START (ABOUT 7 MIN)", T_TEXT, T_BG);
         y += 15;
         cv_text_on(10, y, &AF_S, "TURN MASTER LOW FIRST. HANDS OFF", T_MID, T_BG);
         y += 15;
@@ -1048,10 +1085,10 @@ static BENCH_FN void bench_draw_table(uint32_t pg, int32_t y0)  /* a page of the
     for (i = first; i < first + BENCH_ROWS && i < BENCH_NSCN; i++)
         c1p |= bench_is_c1_page(i);
     cv_text_on(4, y, &AF_S, "ROW", T_MID, T_BG);
-    cv_text_r(122, y, &AF_S, c1p ? "C0" : "AVG", T_MID, T_BG);
-    cv_text_r(152, y, &AF_S, "PEAK", T_MID, T_BG);
-    cv_text_r(180, y, &AF_S, "MISS", T_MID, T_BG);
-    cv_text_r(208, y, &AF_S, c1p ? "C1" : "MDL", T_MID, T_BG);
+    cv_text_r(126, y, &AF_S, c1p ? "C0" : "AVG", T_MID, T_BG);
+    cv_text_r(156, y, &AF_S, "PEAK", T_MID, T_BG);
+    cv_text_r(184, y, &AF_S, "MISS", T_MID, T_BG);
+    cv_text_r(210, y, &AF_S, c1p ? "C1" : "MDL", T_MID, T_BG);
     cv_text_r(238, y, &AF_S, c1p ? "LATE" : "X", T_MID, T_BG);
     y += 14;
     for (i = first; i < first + BENCH_ROWS && i < BENCH_NSCN; i++, y += 14) {
@@ -1066,21 +1103,21 @@ static BENCH_FN void bench_draw_table(uint32_t pg, int32_t y0)  /* a page of the
             continue;
         }
         bench_pct(v, r->avg, r->avg < 100u);
-        cv_text_r(122, y, &AF_S, v, T_TEXT, T_BG);
+        cv_text_r(126, y, &AF_S, v, T_TEXT, T_BG);
         bench_pct(v, r->pk, 0);
-        cv_text_r(152, y, &AF_S, v, r->pk >= 1000u ? T_REC : T_TEXT, T_BG);
+        cv_text_r(156, y, &AF_S, v, r->pk >= 1000u ? T_REC : T_TEXT, T_BG);
         fmt_int(v, r->miss > 9999u ? 9999 : (int32_t)r->miss);
-        cv_text_r(180, y, &AF_S, v, r->miss ? T_REC : T_MID, T_BG);
+        cv_text_r(184, y, &AF_S, v, r->miss ? T_REC : T_MID, T_BG);
         if (c1r) {
             if (r->flags & RF_C1) {
                 bench_pct(v, r->c1, 0);
-                cv_text_r(208, y, &AF_S, v, T_TEXT, T_BG);
+                cv_text_r(210, y, &AF_S, v, T_TEXT, T_BG);
                 fmt_int(v, r->late > 9999u ? 9999 : (int32_t)r->late);
                 cv_text_r(238, y, &AF_S, v, r->late ? T_REC : T_MID, T_BG);
             }
         } else if (m) {
             bench_pct(v, m, m < 100u);
-            cv_text_r(208, y, &AF_S, v, T_MID, T_BG);
+            cv_text_r(210, y, &AF_S, v, T_MID, T_BG);
             bench_fixn(v, (int32_t)((r->avg * 100u + m / 2u) / m), 2u);
             cv_text_r(238, y, &AF_S, v, T_TEXT, T_BG);
         }
@@ -1125,7 +1162,7 @@ static BENCH_FN void bench_draw(void)
         else
             bench_draw_table(bench.page, y0);
         if (band == 1u)
-            cv_text_on(4, 224 - y0, &AF_S, bench.on ? "K1 PAGE   OCT- STOP" : "K1 PAGE   K4/OCT+ START   OCT- BACK", T_DIM, T_BG);
+            cv_text_on(4, 224 - y0, &AF_S, bench.on ? "K1 PAGE   OCT - STOP" : "K1 PAGE   K4/OCT + START   OCT - BACK", T_DIM, T_BG);
         cv_blit(0, (uint32_t)y0);
     }
 }
@@ -1192,7 +1229,7 @@ static BENCH_FN int bench_input(uint32_t pressed, uint32_t notes)
  *            T at CH VAL          same sample in every run: bench_half below, called from audio.c (bench builds only). Replies "OK n" (n: places free)
  *            T cc CH CC VAL       or "ERR full": the runner streams the events ahead of the clock. `flash`: a settings save with unchanged values
  *            T ramp CH CC|AT A B MS   (main loop, so within a frame of T). A ramp moves a controller (or the channel aftertouch) from A to B over MS
- *            T flash              ms, one value a half (at most 8 at once). MORPH is CC20 on the part's channel (it is worked off in the main
+ *            T flash              ms, one value a half (at most 8 at once). MORPH is CC70 on the part's channel (it is worked off in the main
  *            clear                loop: not sample exact)
  *   bench measure T0 T1           the CPU window of the next run, ms from its start (default: the whole run)
  *   bench run NAME MS             starts a test of MS ms (the timeline's time 0 is the next half); at its end one BTH (header) and one BT line (the
@@ -1734,7 +1771,7 @@ static BENCH_FN void bench_con_set(const char *p)
                     id = (int32_t)i;
                     break;
                 }
-        if (id < 0 || id >= (int32_t)P_COUNT) {
+        if (id < 0 || id >= (int32_t)EXT_P_LEN || (id >= (int32_t)P_COUNT && id < (int32_t)XW_BASE)) {   /* (item 105: 128 .. 155 are the extension slots, ext.h: TWIN ROUTE, SUB, CYCLE ..; by number only) */
             bench_err("no such value");
             return;
         }
@@ -1843,13 +1880,176 @@ static BENCH_FN void bench_con_ev(const char *p)
         bench_say("OK", n, 0);
     }
 }
+/* ---- the COST-CAL words (DUELL 1.1 item 105; tools/gen_cost_suite.py; the kept values and the syncs: bench_extras_keep above) ---- */
+static const char *const BC_MODS[4] BENCH_RO = {"ARP", "SEQ", "SENDS", "PFX"};
+static const char *const BC_BYM[11] BENCH_RO = {"MULTI", "TWIN", "LFO1", "LFO2", "ENV2", "CYC", "SAT", "INS", "EQ", "DUCK", "SEND"};   /* core.h BY_* order */
+static const char *const BC_BYS[5] BENCH_RO = {"CHO", "DLY", "REV", "MST", "CMP"};                                                  /* core.h BYS_* order */
+static BENCH_FN uint32_t bench_word(const char *x, const char *const *names, uint32_t n)   /* the place of x in the list (case ignored), n: not in it */
+{
+    uint32_t i;
+    for (i = 0; i < n; i++)
+        if (bench_ieq(x, names[i]))
+            return i;
+    return n;
+}
+static BENCH_FN void bench_morph_flat(uint32_t pi)     /* the part's MORPH off: the Original is the sound as it stands now, End B the Original, so nothing differs and the fader moves nothing (budget.c, the audio path) */
+{
+    morph_part_t *mp;
+    if (pi >= NSHOWN)
+        return;
+    morph_rebase_part(pi);                             /* (base = the live values; the factory End B it rolls is replaced below) */
+    mp = &mph[pi];
+    MORPH_LOCK();
+    memcpy(mp->h[1][mp->top[1]], mp->base, P_COUNT);
+    memcpy(mp->hx[1][mp->top[1] % XH], mp->base + XW_BASE, NX);
+    memcpy(mp->fh[1][mp->top[1]], mp->fb, NFM);
+    mp->seed[1][mp->top[1]] = 0;
+    memset(mp->pin, 0, sizeof mp->pin);
+    morph_build(mp);
+    MORPH_UNLOCK();
+}
+static BENCH_FN void bench_con_sound(const char *p)    /* sound PART ENGINE DEAR|N: the engine's factory sound N (DEAR: the dearest, the budget table's rows) on the part, from INIT, then cleaned as
+                                                        * tests/poly_calib.c clean() + setpart(): the multimode filter bypassed, no TWIN, SUB, matrix slot, MORPH, INSERT, SAT, EQ, DUCK, arp, sends; POLY */
+{
+    char w[16], x[16];
+    int32_t part = 0, k = 0;
+    uint32_t e, i, n;
+    track_t *t;
+    if (!bench_arg(&p, &part) || part < 1 || part > 2 || !bench_tok(&p, w, sizeof w) || !bench_tok(&p, x, sizeof x)) {
+        bench_err("usage: sound PART ENGINE DEAR|N");
+        return;
+    }
+    for (e = 0; e < NENGINES; e++)
+        if (bench_ieq(ENGINES[e]->name, w))
+            break;
+    bench_resolve();                                   /* (fills bench_dear, the dearest sound of each engine) */
+    if (e >= NENGINES || (!bench_ieq(x, "DEAR") && (!bench_int(x, &k) || k < 0))) {
+        bench_err("no such engine or sound number");
+        return;
+    }
+    n = ds_count(e);
+    if (bench_ieq(x, "DEAR"))
+        k = bench_dear[e];
+    k = n ? (int32_t)((uint32_t)k % n) : 0;
+    t = &trk[part - 1];
+    for (i = 0; i < P_E0; i++)
+        t->p[i] = TP[i].def;
+    init_engine_of(t, e);
+    apply_preset_to(t, (uint32_t)k);
+    t->p[P_LEVEL] = TP[P_LEVEL].def, t->p[P_PAN] = TP[P_PAN].def, t->p[P_MUTE] = 0;
+    for (i = 0; i < NMSLOT; i++)
+        t->p[MSLOT_ID(i)] = t->p[MSLOT_ID(i) + 1] = t->p[MSLOT_ID(i) + 2] = 0;
+    t->p[P_TWTYPE] = TT_OFF, t->p[P_DRV2] = 0, t->p[P_RES2] = 0;
+    XV(t, X_SUBLVL) = 0, XV(t, X_SUBHARM) = 0;
+    t->p[P_KTRK] = 0, t->p[P_FREEA] = UF_STEPS, t->p[P_FREEB] = 40, t->p[P_FREEC] = 0, t->p[P_FREED] = 1;   /* (the filter bypassed: the budget's "MULTI off") */
+    t->p[P_LD_FLT] = t->p[P_E2FLT] = t->p[P_ED_FLT] = t->p[P_L2FLT] = 0;
+    t->p[P_SUS] = 127, t->p[P_CHRD] = 0, t->p[P_VOICE] = V_POLY, t->p[P_AMODE] = 0;
+    t->p[P_CHOR] = t->p[P_DLY] = t->p[P_REV] = 0;
+    t->p[P_ITYPE] = 0, t->p[P_DIST] = 0;
+    t->p[P_EQLG] = t->p[P_EQMG] = t->p[P_EQHG] = 0;
+    t->p[P_DKDEP] = 0;
+    bench_morph_flat((uint32_t)part - 1u);
+    ui.force = 1;
+    bench_say("OK sound", ENGINES[e]->name, ds_name(e, (uint32_t)k));
+}
+static BENCH_FN void bench_con_cal(const char *w, const char *p)   /* mods, bypass, master, morph, keysense */
+{
+    char x[16], y[16], z[16];
+    int32_t n = 0, a = 0, part = 0;
+    uint32_t b, on;
+    x[0] = y[0] = z[0] = 0;
+    if (bench_ieq(w, "mods")) {                        /* mods ARP|SEQ|SENDS|PFX|ALL ON|OFF: GLO > MODULES (OFF: the module is switched off) */
+        if (!bench_tok(&p, x, sizeof x) || !bench_tok(&p, y, sizeof y) || !(bench_ieq(y, "ON") || bench_ieq(y, "OFF")) ||
+            (bench_word(x, BC_MODS, 4) >= 4u && !bench_ieq(x, "ALL"))) {
+            bench_err("usage: mods ARP|SEQ|SENDS|PFX|ALL ON|OFF");
+            return;
+        }
+        on = (uint32_t)bench_ieq(y, "OFF");
+        for (b = 0; b < 4u; b++)
+            if (bench_ieq(x, "ALL") || bench_word(x, BC_MODS, 4) == b)
+                mods_put(1u << b, on);
+        bench_say("OK mods", x, y);
+    } else if (bench_ieq(w, "bypass")) {               /* bypass 1|2|g NAME ON|OFF: the editor's BYPASS (ON: bypassed). Part: MULTI TWIN LFO1 LFO2 ENV2 CYC SAT INS EQ DUCK SEND. g: CHO DLY REV MST CMP. NAME ALL: every one */
+        uint32_t all, bit = 0, g;
+        if (!bench_tok(&p, x, sizeof x) || !bench_tok(&p, y, sizeof y) || !bench_tok(&p, z, sizeof z) || !(bench_ieq(z, "ON") || bench_ieq(z, "OFF"))) {
+            bench_err("usage: bypass 1|2|g NAME ON|OFF");
+            return;
+        }
+        g = x[0] == 'g' || x[0] == 'G';
+        all = (uint32_t)bench_ieq(y, "ALL");
+        if (!g && (!bench_int(x, &part) || part < 1 || part > 2)) {
+            bench_err("PART is 1 or 2, or g");
+            return;
+        }
+        b = g ? bench_word(y, BC_BYS, 5) : bench_word(y, BC_BYM, 11);
+        if (!all && b >= (g ? 5u : 11u)) {
+            bench_err("no such switch");
+            return;
+        }
+        bit = all ? (g ? BYS_ALL : BY_ALL) : 1u << b;
+        on = (uint32_t)bench_ieq(z, "ON");
+        if (g)
+            byp_sh = (uint8_t)(on ? byp_sh | bit : byp_sh & ~bit);
+        else
+            byp_m[part - 1] = (uint16_t)(on ? byp_m[part - 1] | bit : byp_m[part - 1] & ~bit);
+        ui.force = 1;
+        bench_say("OK bypass", y, z);
+    } else if (bench_ieq(w, "master")) {               /* master COMP 0..8 | WIDTH 0..200 | BM 0..BM_N: the master compressor's RATIO (0 off), WIDTH (100 off), BASS MONO (0 off) */
+        if (!bench_tok(&p, x, sizeof x) || !bench_arg(&p, &n)) {
+            bench_err("usage: master COMP 0..8 | WIDTH 0..200 | BM 0..11");
+            return;
+        }
+        if (bench_ieq(x, "COMP") && n >= 0 && n <= 8)
+            song.cp[1] = (int16_t)n;
+        else if (bench_ieq(x, "WIDTH") && n >= 0 && n <= 200)
+            song.ms[0] = (int16_t)n;
+        else if (bench_ieq(x, "BM") && n >= 0 && n <= (int32_t)BM_N)
+            song.bm = (int16_t)n;
+        else {
+            bench_err("usage: master COMP 0..8 | WIDTH 0..200 | BM 0..11");
+            return;
+        }
+        bench_say("OK master", x, 0);
+    } else if (bench_ieq(w, "morph")) {                /* morph PART OFF | ON | ROLL SEED AMOUNT | FADER 0..127: OFF = no morph; ON = the loaded factory sound's own End B again; ROLL = End B rolled from the sound */
+        if (!bench_arg(&p, &part) || part < 1 || part > 2 || !bench_tok(&p, x, sizeof x)) {
+            bench_err("usage: morph PART OFF | ON | ROLL SEED AMOUNT | FADER 0..127");
+            return;
+        }
+        if (bench_ieq(x, "OFF"))
+            bench_morph_flat((uint32_t)part - 1u);
+        else if (bench_ieq(x, "ON"))
+            morph_rebase_part((uint32_t)part - 1u);
+        else if (bench_ieq(x, "ROLL") && bench_arg(&p, &n) && bench_arg(&p, &a) && n > 0 && a >= 0 && a <= 100) {
+            morph_rebase_part((uint32_t)part - 1u);
+            morph_roll_cfg((uint32_t)part - 1u, 1u, (uint32_t)n, (uint32_t)a, 0u);
+        } else if (bench_ieq(x, "FADER") && bench_arg(&p, &n) && n >= 0 && n <= 127)
+            morph_ready((uint32_t)part - 1u)->fader = (uint8_t)n;
+        else {
+            bench_err("usage: morph PART OFF | ON | ROLL SEED AMOUNT | FADER 0..127");
+            return;
+        }
+        bench_say("OK morph", x, 0);
+    } else {                                           /* keysense OFF | VEL | AT | BOTH: MENU > CONTROL KEY VELOCITY and AFTERTOUCH (the saved setting's bits; sense_enable follows at the next frame) */
+        if (!bench_tok(&p, x, sizeof x) || !(bench_ieq(x, "OFF") || bench_ieq(x, "VEL") || bench_ieq(x, "AT") || bench_ieq(x, "BOTH"))) {
+            bench_err("usage: keysense OFF|VEL|AT|BOTH");
+            return;
+        }
+#if DUELL_VELO
+        ui_idle = (uint8_t)((ui_idle & ~(KEYVEL_ON_BIT | AFTERT_OFF_BIT)) | (bench_ieq(x, "VEL") || bench_ieq(x, "BOTH") ? KEYVEL_ON_BIT : 0u) |
+                            (bench_ieq(x, "AT") || bench_ieq(x, "BOTH") ? 0u : AFTERT_OFF_BIT));
+        bench_say("OK keysense", x, 0);
+#else
+        bench_err("this build has no key sense");
+#endif
+    }
+}
 static BENCH_FN void bench_con(const char *p)
 {
     char w[16], x[24];
     int32_t n = 0, m = 0;
     btl.last_cmd = fm1_ms;
     if (!bench_tok(&p, w, sizeof w)) {
-        bench_say("ERR", "bench info reset end load mode set scene budget ev measure run stop save-test slack calm pause lrun vrun vwin floor tcm", 0);
+        bench_say("ERR", "bench info reset end load mode set sound mods bypass master morph keysense scene budget ev measure run stop save-test slack calm pause lrun vrun vwin floor tcm", 0);
         return;
     }
     if (bench_ieq(w, "info") || bench_ieq(w, "state")) {
@@ -1878,7 +2078,7 @@ static BENCH_FN void bench_con(const char *p)
         return;
     }
     if (bench.on) {
-        bench_err("a BENCH run is going (OCT- stops it)");
+        bench_err("a BENCH run is going (OCT - stops it)");
         return;
     }
     if (bench_ieq(w, "reset")) {
@@ -1894,8 +2094,9 @@ static BENCH_FN void bench_con(const char *p)
         transport_req = 4;                             /* STOP ALL; then every value from INIT (IDLE ST: STEREO, both parts' power-on sounds) */
         bench_set(&BENCH_SCN[0]);
         bench_bopen = 0;                               /* (the NOTES budget as the owner plays it; `scene` and `budget` hold it open) */
+        bench_extras_back();                           /* (item 105: MODULES, COMP, WIDTH, BASS MONO, KEY SENSE as the session began, the BYPASS switches off) */
 #if BENCH_TM
-        for (n = 0; n < 7; n++)                        /* (the margin settings back to the build's: slack, calm, late run, very late run, window K and ms, floor) */
+        for (n = 0; n < 8; n++)                        /* (the margin settings back to the build's: slack, calm, late run, very late run, window K and ms, floor, core 1 on) */
             bench_tm_set((uint32_t)n, 0xFFFFFFFFu);
         bench_tm_clear();
 #endif
@@ -1905,7 +2106,7 @@ static BENCH_FN void bench_con(const char *p)
     if (bench_ieq(w, "end")) {
         bench_sess_end();
 #if BENCH_TM
-        for (n = 0; n < 7; n++)
+        for (n = 0; n < 8; n++)
             bench_tm_set((uint32_t)n, 0xFFFFFFFFu);
 #endif
         bench_say("OK end", 0, 0);
@@ -1936,6 +2137,16 @@ static BENCH_FN void bench_con(const char *p)
         }
         bench_tm_set(what, n < 0 ? 0xFFFFFFFFu : (uint32_t)n);
         bench_say("OK", w, x);
+        return;
+    }
+    if (bench_ieq(w, "core1")) {                       /* item 112: core1 off | on. OFF treats core 1 as down (twocore_run.c TCR_NOCORE1_NOW): core 0 plays part 2 and the budget has the one-core numbers, exactly as with core 1 down, no power-cycle; bench reset / end put it on */
+        x[0] = 0;
+        if (!bench_tok(&p, x, sizeof x) || !(bench_ieq(x, "on") || bench_ieq(x, "off"))) {
+            bench_err("usage: core1 off | on (off: core 0 plays part 2 itself and the budget has the one-core numbers; until bench reset / end)");
+            return;
+        }
+        bench_tm_set(7u, bench_ieq(x, "off") ? 1u : 0u);
+        bench_say("OK core1", x, 0);
         return;
     }
     if (bench_ieq(w, "vwin") || bench_ieq(w, "floor")) {   /* BENCHT3: vwin K [MS] (K very late blocks within MS pause the jobs; K 0: off), floor 0|1 (the deadline's floor) */
@@ -2039,6 +2250,14 @@ static BENCH_FN void bench_con(const char *p)
                     return;
                 }
         bench_err("mode: DUEL STEREO LAYER");
+        return;
+    }
+    if (bench_ieq(w, "sound")) {                       /* (item 105) */
+        bench_con_sound(p);
+        return;
+    }
+    if (bench_ieq(w, "mods") || bench_ieq(w, "bypass") || bench_ieq(w, "master") || bench_ieq(w, "morph") || bench_ieq(w, "keysense")) {
+        bench_con_cal(w, p);
         return;
     }
     if (bench_ieq(w, "set")) {

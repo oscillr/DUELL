@@ -97,7 +97,7 @@ static int test_seq(void)
 /* -------------------------------------------------------- 4. display --- */
 static const char *shown(const param_desc_t *d, int32_t v)
 {
-    static char val[12];
+    static char val[PV_LEN];
     const char *unit;
     param_format(d, v, val, &unit);
     return val;

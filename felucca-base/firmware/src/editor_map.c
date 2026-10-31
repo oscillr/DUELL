@@ -32,7 +32,7 @@ static uint32_t ed_map_save(void)
 static int ed_map_handle(uint32_t cmd, const uint8_t *a, uint32_t n)
 {
     uint32_t i, rc, code, cc;
-    char who[24];
+    char who[40];
     if (cmd < ED_MAP_GET || cmd > ED_MAP_RESET)
         return 0;
     who[0] = 0;
@@ -50,7 +50,7 @@ static int ed_map_handle(uint32_t cmd, const uint8_t *a, uint32_t n)
                 map_target_info(code, TSEL, &r);
                 ed_b(r.kind); ed_b(r.saved); ed_b(r.automation); ed_b(r.inert);
                 map_name(MAP_LINE(code, MAP_R_CHANNEL, MAP_W_TYPED), who);
-                ed_str(who, 20);
+                ed_str(who, 40);
             } else {
                 ed_b(0); ed_b(0); ed_b(0); ed_b(0);
                 ed_str("", 1);
@@ -75,7 +75,7 @@ static int ed_map_handle(uint32_t cmd, const uint8_t *a, uint32_t n)
         ed_b(rc ? 0u : ed_map_save());
         ed_b(cc);
         ed_map_line(map_line(cc));
-        ed_str(who, 20);
+        ed_str(who, 40);
         return 1;
     }
     if (cmd == ED_MAP_ARM) {

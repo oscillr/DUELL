@@ -6,6 +6,7 @@
 #define VOICE_FS 24000           /* per-voice level: one voice peaks near -6 dBFS before the master */
 
 static inline int32_t mulq15(int32_t a, int32_t b) { return (a * b) >> 15; }
+static inline int32_t mulq15r(int32_t a, int32_t b) { return (a * b + 16384) >> 15; }   /* DUELL 1.1: rounded to the nearest (the delay feedback: the repeats no longer lose a little at each pass) */
 /* a * k / 65536 without 64-bit: a up to 2^31, k Q16 */
 static inline int32_t mulq16(int32_t a, uint32_t k)
 {

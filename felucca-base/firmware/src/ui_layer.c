@@ -7,12 +7,9 @@
  *              short press opens the FX pages and holding it does nothing special. The LAYER_RES slot keeps the other layers' ids)
  *   GLO  QUICK (DUELL 0.2.11, LK_QUICK): GLO's MAIN PAGE, graph GR_GLO, which draw_layer draws, as a layer over any page (QUICK GLO: hold GLO; a tap
  *              still opens GLO's pages). The keys play notes there as on every page; 0.2.24 (owner: PAN could not be set from the panel): KNOB 1 LEVEL 1,
- *              KNOB 2 PAN 1, KNOB 3 LEVEL 2, KNOB 4 PAN 2 (glo_knob; K1 K2 part 1, K3 K4 part 2), and the MUTES moved to the keys: with GLO held OCT- mutes /
+ *              KNOB 2 LEVEL 2, KNOB 3 PAN 1, KNOB 4 PAN 2 (glo_knob; item 117: K1 K3 part 1, K2 K4 part 2, as the screen: part 1 left, part 2 right), and the MUTES moved to the keys: with GLO held OCT- mutes /
  *              unmutes part 1, OCT+ part 2 (layer_glo_oct: on the press, no octave on the release); between the parts' columns the level
  *              meters (glo_meters). Let go: the page under it is back. 0.2.21: GLO's page is gone from the page round (a tap of GLO opens TEMPO): this layer is its only place, so the RESTART of GLO held + PLAY, which only worked on that page, is gone too)
- *   SCL  SET   GLOBAL (core.h; the header lights both parts): any key: its note name is ROOT; KNOB 1..3 SCALE ROOT OFF-SCALE (LY_SCL: the SCALE
- *              page's three; CHRD VOIC TRN are the selected part's and live on the CHORD page only: no mixing); the LEDs show the root
- *              lit and the scale's notes breathing
  *   EDIT SET   QUICK FILTER (DUELL 0.2.9): KNOB 1..4 CUT RES MODE and the AMP ENV's REL (ly_page: 0.2.14, the multimode filter on every
  *              engine; up to 0.2.8 ENG, No., FAV: the ENGINE page has them). 0.2.11: the keys stay notes (ly_keys): no INIT key and no engine quick actions
  *              any more (INIT is EDIT > ENGINE, K4). OCT- puts back the four
@@ -21,15 +18,16 @@
  *              The keys stay notes (no kb_mask: they are not the layer's, a key is no combo), OCT- / OCT+ keep the octave, no put back,
  *              no lock (#83: two quick taps step the family's pages as before). One seen bit for the three and GLO (bit 0)
  *   SEQ  SET   (1.2, on every page) TOOLS: the white keys from F3 the sequence tools
- *              (ui_tools.c: CLEAR, REVERSE, SHIFT < >, RANDOM, COOK; 0.2.14: the DRUM tracks' BEAT and lane tools are gone); KNOB 1..4 LEN DIV SWING GATE (the PATTERN page's up to
+ *              (ui_tools.c: CLEAR, REVERSE, SHIFT < >, RANDOM, COOK, TRANS + / TRANS - on E4, F4; 0.2.14: the DRUM tracks' BEAT and lane tools are gone); KNOB 1..4 LEN DIV SWING GATE (the PATTERN page's up to
  *              1.1.5: the page is gone, they are here). Each action one undo (SAVE held), OCT- the track as the layer
  *              opened (tl_open)
- *   REC  SET   (1.1.5, on every page; REC's tap still arms / disarms) the white keys from F3: CLEAR (the selected
- *              track's steps and automation, no dialog: one undo, SAVE held), CLICK (OFF REC ON), COUNT-IN (OFF 1 BAR
- *              2 BARS), CLICK LEVEL (LOW MID HIGH), each press the next value; KNOB 1..3 the same three. The settings
- *              are MENU > AUDIO's (ui.c rp_get / rp_put: one store), saved when the layer closes; OCT- puts back the
- *              settings and the track as the layer opened (tl_open). Replaces the old REC held on SEQ (Discussion #91:
- *              the CLEAR Tn SEQUENCE? dialog and its "HOLD: CLEAR" hint)
+ *   REC  SET   (1.1.5, on every page; REC's tap still arms / disarms) DUELL 1.0 layout (QUICK_REC_NEW_LAYOUT.png; FIRMWARE_CHANGE_LIST_2026-10-28.md
+ *              B.6): four cells of template 8 (grid_on 14, 2 x 2, knob c in cell c; the layer draws no panel of its own): KNOB 1 CLICK (OFF REC ON),
+ *              KNOB 2 COUNT (COUNT-IN: OFF 1 BAR 2 BARS), KNOB 3 LEVEL (CLICK LEVEL: LOW MID HIGH), each with the choice's segment line; KNOB 4
+ *              CLEAR: NO SEQUENCE (dimmed) when the selected track holds nothing, else TURN TO CLEAR; turning it opens the "CLEAR Tn SEQUENCE?"
+ *              dialog (CF_CLEAR_SEQ: OCT+ YES, OCT- NO; the steps and automation go, one undo, SAVE held). The white keys F G A B no
+ *              longer act here (keys and LEDs). The settings are MENU > AUDIO's (ui.c rp_get / rp_put: one store), saved when the layer
+ *              closes; OCT- puts back the settings and the track as the layer opened (tl_open)
  * The gesture: let go before HOLD (the menu: 0.3 .. 0.6 s) with nothing else touched: a tap, the button's page.
  * Held past HOLD alone: the map (a peek), letting go does nothing. A key, a knob or a button meanwhile: a combo,
  * the map at once, no tap. Keys pressed with the button down are the layer's (seq.c keyboard_block): silent, no
@@ -59,17 +57,14 @@ static const layer_t LAYERS[LAYER_N] = {
     {0, 0, 0, "", "", ""},
     {0, 0, 0, "", "", ""},                                  /* (LAYER_RES: the FX hold layer, removed in 0.2.2) */
     {B_GLO, LK_QUICK, FAM_HOME, "QUICK GLO", "GLO", ""},
-    {B_SCL, LK_SET, FAM_SCL, "QUICK SCALE", "SCL", "SET"},  /* (0.2.9: every layer's header is QUICK and the page, the bolt before it in */
-    {B_EDIT, LK_SET, FAM_EDIT, "QUICK MULTI", "EDIT", "SET"},   /* the accent: ui_draw.c head_msg) */
+    {B_EDIT, LK_SET, FAM_EDIT, "QUICK MULTI", "EDIT", "SET"},   /* (0.2.9: every layer's header is QUICK and the page, the bolt before it in the accent: ui_draw.c head_msg; QUICK SCALE removed, owner 2026-10-28: SCL is a plain page button) */
     {B_SEQ, LK_SET, FAM_SEQ, "QUICK SEQ", "SEQ", "TOOLS"},
     {B_REC, LK_SET, FAM_HOME, "QUICK REC", "REC", "SET"},
     {B_LFO, LK_QUICK, FAM_LFO, "QUICK LFO", "LFO", ""},
     {B_ENV, LK_QUICK, FAM_ENV, "QUICK ENV", "ENV", ""},
     {B_ARP, LK_QUICK, FAM_ARP, "QUICK ARP", "ARP", ""},
 };
-static const uint8_t LY_KC[LAYER_N] = {0, 0, KC_GLO, KC_SCL, KC_EDIT, KC_SEQ, KC_REC, KC_LFO, KC_ENV, KC_ARP};
-/* SCL's knobs: the SCALE page's, global (cur_page() while the layer edits or draws them: page_over) */
-static const page_t LY_SCL = {"SCALE", FAM_SCL, SC_SCALE, GR_SCALE, {0xFF, 0xFF, 0xFF, 0xFF}};
+static const uint8_t LY_KC[LAYER_N] = {0, 0, KC_GLO, KC_EDIT, KC_SEQ, KC_REC, KC_LFO, KC_ENV, KC_ARP};
 /* SEQ TOOLS' knobs: LEN DIV SWING GATE (the length the tools work in; up to 1.1.5 the PATTERN page's) */
 static const page_t LY_SEQ = {"PATTERN", FAM_SEQ, SC_TRACK, GR_STEPS, {P_SLEN, P_SDIV, P_SSWING, P_SGATE}};
 /* DUELL 0.2.9, the QUICK EDIT layers' knobs, the selected part's (EDIT, LFO, ENV, ARP: LY_Q[q], q = ly_q(l)): the same parameters, cards
@@ -80,7 +75,7 @@ static const page_t LY_SEQ = {"PATTERN", FAM_SEQ, SC_TRACK, GR_STEPS, {P_SLEN, P
  * card is faded on the LFO page), so its knob is the active one, SYNC (to OFF: RATE again) */
 static const page_t LY_Q[4] = {
     {"MULTI FILTER", FAM_EDIT, SC_TRACK, GR_NONE, {P_FREEA, P_FREEB, P_FREEC, P_REL}},   /* 0.2.20 (owner): CUT RES MODE, REL */
-    {"LFO", FAM_LFO, SC_TRACK, GR_NONE, {P_LRATE, P_LD_FLT, P_L2RATE, P_L2FLT}},
+    {"LFO", FAM_LFO, SC_TRACK, GR_NONE, {P_LRATE, P_LD_FLT, P_L2RATE, XW_BASE + X_LFO2}},   /* (DUELL 1.1: K4 is LFO 2's TWIN CUTOFF depth; its MULTI CUTOFF depth no longer acts) */
     {"ENV", FAM_ENV, SC_TRACK, GR_NONE, {P_ATK, P_REL, P_E2FLT, P_E2DEC}},
     {"ARP", FAM_ARP, SC_TRACK, GR_NONE, {P_AMODE, P_ARATE, P_AGATE, P_AOCT}},
 };
@@ -90,7 +85,7 @@ static const page_t *ly_page(uint32_t l)
 {
     uint32_t q = ly_q(l);
     if (q > 3u)
-        return l == LAYER_SCL ? &LY_SCL : l == LAYER_SEQ ? &LY_SEQ : 0;
+        return l == LAYER_SEQ ? &LY_SEQ : 0;
     ly_qp = LY_Q[q];                                    /* (QUICK FILTER: the multimode filter on every engine, 0.2.14) */
     if (q == 0u && twin_on(TSEL)) {                     /* QUICK MULTI with filter 2 on (cloud job H, decided 2026-10-19): LINKED (and COMB, which follows the key by itself): CUT RES DRIVE AMP REL; UNLINKED: CUT 1 RES 1 CUT 2 RES 2 (the absolute CUTOFF 2) */
         if (XV(TSEL, X_LINK) || TSEL->p[P_TWTYPE] == TT_COMB) {
@@ -109,11 +104,18 @@ static const page_t *ly_page(uint32_t l)
     return &ly_qp;
 }
 static int ly_two(void) { return twin_on(TSEL) && !XV(TSEL, X_LINK) && TSEL->p[P_TWTYPE] != TT_COMB; }   /* QUICK MULTI shows both filters' cutoffs and resonances (ly_page) */
-/* the name a QUICK MULTI card shows when it holds both filters (ui_draw.c draw_columns): CUTOFF 2 (55 px) does not fit a card, so CUT 1 RES 1 CUT 2 RES 2; 0: the card's own */
+/* the name a QUICK card shows where the generic one does not say which filter: QUICK MULTI with both filters on (ui_draw.c draw_columns), MULTI CUTOFF / MULTI RES / TWIN CUTOFF / TWIN RES in
+ * two lines (DUELL 1.1, owner; the group cells above say MULTI FILTER and TWIN FILTER; the page keeps its name); QUICK LFO's K2 and K4 (each LFO's cutoff depth) MULTI CUTOFF; 0: the card's own */
 static const char *quick_label(const page_t *pg, uint32_t s)
 {
-    static const char *const L[4] = {"CUTOFF", "RES", "CUTOFF", "RES"};   /* (1.0, owner: the group cells above them say MULTI FILTER and TWIN FILTER, so the cards need no 1 and 2) */
-    return pg == &ly_qp && ly_qp.id[3] == P_RES2 && ly_two() ? L[s & 3u] : 0;
+    static const char *const L[4] = {"MULTI\nCUTOFF", "MULTI\nRES", "TWIN\nCUTOFF", "TWIN\nRES"};
+    if (pg != &ly_qp)
+        return 0;
+    if (ly_qp.id[3] == P_RES2 && ly_two())
+        return L[s & 3u];
+    if (ly_qp.id[1] == P_LD_FLT && ly_qp.id[3] == XW_BASE + X_LFO2 && (s == 1u || s == 3u))   /* QUICK LFO */
+        return s == 1u ? "MULTI\nCUTOFF" : "TWIN\nCUTOFF";
+    return 0;
 }
 /* the layer takes the keys (seq.c kb_mask). 0.2.11: not QUICK FILTER's either (EDIT's keys used to be INIT and the engine's quick actions: an F played
  * erased the sound); every quick layer's keys play */
@@ -133,8 +135,8 @@ static struct {
     uint8_t cook;                      /* SEQ: COOK pressed since it opened */
     uint8_t rp_dirty;                  /* REC: a setting changed (settings_save when the layer lets go) */
     uint8_t qid[4];                    /* QUICK MULTI: the ids of its four when it opened (OCT-: put back) */
-    int16_t v[9];                      /* the values when it opened: SCL: SCALE ROOT OFF-SCALE (global);
-                                        * SEQ LEN DIV SWING GATE; REC the settings (ui_rec_prefs) */
+    int16_t v[9];                      /* the values when it opened: SEQ LEN DIV SWING GATE; REC the settings
+                                        * (ui_rec_prefs); EDIT its four (4 .. 7); the tempo (8) */
     uint8_t quiet;                     /* #39: a layer closed after it opened: KNOB 1..4 do nothing until quiet_t + */
     uint32_t quiet_t;                  /* LY_QUIET_MS (fm1_ms) */
     uint8_t dt_l, dt_hint, dtap;       /* #83: the layer of the last tap that opened a page (0 none), its hint said; the
@@ -164,7 +166,7 @@ static void layer_foot_title(char *nm, char *ct)
 {
     const layer_t *l = &LAYERS[ui.layer % LAYER_N];
     str_cpy(nm, l->name, 12);
-    str_cpy(ct, l->tag, 8);
+    ct[0] = 0;                                          /* (DUELL 1.1: no SET / HOLD / TOOLS word in the footer corner) */
 }
 static uint32_t layer_open(void) { return ui.ly && (ui.ly_t0 & LY_OPEN) && ly_down(ui.ly) && layer_allowed() ? ui.ly : 0u; }
 static int layer_set_open(void)
@@ -285,11 +287,7 @@ static void layer_opened(uint32_t l)
         motion_snapshot_track(TSEL, &tl_open.mo);
     }
     for (k = 0; k < 4u; k++)
-        if (l == LAYER_SEQ) {
-            lys.v[k] = TSEL->p[P_SLEN + k];
-        } else {
-            lys.v[k] = k == 0u ? scale_g : k == 1u ? root_g : k == 2u ? offscale_g : 0;   /* (the global three, core.h) */
-        }
+        lys.v[k] = l == LAYER_SEQ ? TSEL->p[P_SLEN + k] : 0;
     if (l == LAYER_EDIT)                                /* QUICK FILTER: its four as they are (OCT-); the ids too (cloud job H: they follow filter 2's state, which a MIDI message may change while it is held) */
         for (k = 0; k < 4u; k++) {
             lys.qid[k] = ly_page(l)->id[k];
@@ -413,26 +411,7 @@ static void tools_key(uint32_t p)
     ui.force = 1;
 }
 
-/* REC: CLEAR, the selected track's steps and automation (and ARP's latched chord): one undo (SAVE held), no dialog,
- * as SEQ TOOLS' CLEAR (up to 1.1.4 REC held on SEQ asked first, CF_CLEAR_SEQ). Its own undo copy (not a sound load's) */
-static void rec_clear(void)
-{
-    track_t *t = TSEL;
-    if (seq_is_empty(t) && !motion_count(t)) {
-        ui_message("NOTHING TO CLEAR");
-        return;
-    }
-    undo.keep = 0;
-    load_begin(t, UNDO_PAT);
-    track_defaults_steps(t);
-    load_end(t);
-    t->nheld = 0;
-    t->arp_phys = 0;
-    ui_message("SEQUENCE CLEARED");
-    lys.loaded = 1;
-    ui.force = 1;
-}
-/* REC's settings, row r (G3 A3 B3, KNOB 1..3): CLICK, COUNT-IN, CLICK LEVEL as MENU > AUDIO steps them (ui.c rp_*) */
+/* REC's settings, KNOB 1..3: CLICK, COUNT-IN, CLICK LEVEL as MENU > AUDIO steps them (ui.c rp_*) */
 static const uint8_t RL_F[3] = {RP_CLICK, RP_COUNTIN, RP_LEVEL};
 static const char *const RL_LABEL[3] = {"CLICK", "COUNT", "LEVEL"};   /* (COUNT-IN: too wide for a card or a key cell) */
 static const uint8_t RL_ICON[3] = {ICON_TEMPO, ICON_TIME, ICON_LEVEL};
@@ -447,30 +426,13 @@ static void rec_set(uint32_t r, uint32_t v)
     rp_put(RL_F[r], v);
     lys.rp_dirty = 1;
 }
-static void rec_key(uint32_t p)
-{
-    uint32_t r = p - 1u, v;
-    if (p == 0u) {
-        rec_clear();
-        return;
-    }
-    v = (rp_get(RL_F[r]) + 1u) % 3u;                    /* the next value, round */
-    rec_set(r, v);
-    ui_say(r == 2u ? "CLICK LEVEL " : r ? "COUNT-IN " : "CLICK ", rl_name(r, v));
-}
-
 static const char W_NOTE[16] = {'F', 'G', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'A', 'B', 'C', 'D', 'E', 'F', 'G'};
 
 /* a key pressed in layer l (k: 0 = F3 .. 26 = G5) */
 static void layer_key(uint32_t l, uint32_t k)
 {
     uint32_t p = key_place(k);
-    if (l == LAYER_SCL) {
-        root_g = (int16_t)((k + 5u) % 12u);             /* the key's note name (F3 = F): the global ROOT */
-    } else if (l == LAYER_REC) {
-        if (!key_black(k) && p < 4u)
-            rec_key(p);
-    } else if (l == LAYER_SEQ) {
+    if (l == LAYER_SEQ) {                               /* (QUICK REC: the white keys no longer act, FIRMWARE_CHANGE_LIST_2026-10-28.md B.6) */
         if (!key_black(k))
             tools_key(p);
     }
@@ -484,7 +446,7 @@ static void layer_keys(uint32_t keys)
             layer_key(l, k);
 }
 
-/* KNOB 1..4 in the open layer: its own (REC's settings), else its four (ly_page: SCL's, SEQ's, the QUICK EDIT layers'; 0.2.9: EDIT's
+/* KNOB 1..4 in the open layer: its own (REC's settings), else its four (ly_page: SEQ's, the QUICK EDIT layers'; 0.2.9: EDIT's
  * are CUT RES MODE REL, up to 0.2.8 ENG No. FAV), edited as on their page (edit_param: motion, MIDI LEARN) */
 /* 0.2.10: OCT- held + a knob in a QUICK EDIT layer (EDIT, LFO, ENV, ARP): that card to its default, as on a page (ui_input.c knob_reset,
  * "RESET <CARD>"). The turn is not applied, the knob's further detents are ignored until it has been still (kr_on), and OCT- used so is a
@@ -516,15 +478,30 @@ static int layer_quick_reset(uint32_t l, uint32_t k)
     kr_t[k] = fm1_ms;
     return 1;
 }
+static void rec_clear_ask(void);                       /* (QUICK REC, KNOB 4: below, with the LEDs' rec_clearable) */
 static void layer_knob(uint32_t k, int32_t s)
 {
     uint32_t l = layer_open();
+    if (l && off_layer(l)) {                            /* item 125: QUICK ARP / QUICK SEQ with the module OFF: any knob closes the layer and jumps to MODULES */
+        if (kr_on[k]) {
+            if (fm1_ms - kr_t[k] < KR_QUIET_MS) {
+                kr_t[k] = fm1_ms;
+                return;
+            }
+            kr_on[k] = 0;
+        }
+        layer_let_go(1);
+        off_knob(k, s);
+        return;
+    }
     if (l && layer_quick_reset(l, k))
         return;
-    if (l == LAYER_REC) {                        /* CLICK, COUNT-IN, LEVEL (KNOB 4: none) */
+    if (l == LAYER_REC) {                        /* CLICK, COUNT-IN, LEVEL; KNOB 4 CLEAR: the dialog */
         if (k < 3u)
             rec_set(k, (uint32_t)clamp((int32_t)rp_get(RL_F[k]) + s, 0, 2));
-    } else if (l == LAYER_GLO) {                        /* QUICK GLO: MUTE 1, MUTE 2, LEVEL 1, LEVEL 2 (the GLO page's own) */
+        else if (s)
+            rec_clear_ask();
+    } else if (l == LAYER_GLO) {                        /* QUICK GLO: K1 LEVEL 1, K2 LEVEL 2, K3 PAN 1, K4 PAN 2 (the MIXER page's own; item 117) */
         glo_knob(k, s);
     } else if (l) {                                     /* the page's knobs, wherever the page is */
         uint8_t pg = ui.page;
@@ -536,12 +513,13 @@ static void layer_knob(uint32_t k, int32_t s)
     }
 }
 
-/* QUICK GLO's knobs (0.2.24): KNOB 1 LEVEL 1, KNOB 2 PAN 1, KNOB 3 LEVEL 2, KNOB 4 PAN 2 (recorded as on MIXER; MIDI LEARN picks all four). PAN in DUEL: its card is not
- * drawn (part 1 is left, part 2 right: ui_draw.c card_hidden_vp) and the knob does nothing */
+/* QUICK GLO's and the MIXER's knobs (0.2.24; item 117, TEMPLATE 4: the order follows the screen, part 1 left and part 2 right on both rows): KNOB 1 LEVEL 1, KNOB 2 LEVEL 2, KNOB 3 PAN 1, KNOB 4 PAN 2 (recorded as
+ * on MIXER; MIDI LEARN picks all four). PAN in DUEL: its card is not drawn (part 1 is left, part 2 right: ui_draw.c card_hidden_vp) and the knob does nothing. The ONE place the order lives: glo_knob,
+ * glo_cards (below) and ui_input.c reset_desc (the quick reset) read it the same way: part = k & 1, parameter = k >> 1 (0 LEVEL, 1 PAN) */
 static void glo_knob(uint32_t k, int32_t s)
 {
-    track_t *t = &trk[k >> 1];
-    uint32_t id = (k & 1u) ? P_PAN : P_LEVEL;
+    track_t *t = &trk[k & 1u];
+    uint32_t id = (k >> 1) & 1u ? P_PAN : P_LEVEL;
     int16_t *vp = &t->p[id];
     if (id == P_PAN && duell_mode_req == DM_SPLIT)
         return;
@@ -624,11 +602,6 @@ static uint32_t layer_oct(uint32_t pressed, uint32_t oct)
                 lys.cook = 0;
                 ui_message(lys.l == LAYER_REC ? "REC PUT BACK" : "SEQUENCE PUT BACK");
             }
-        } else {
-            scale_g = lys.v[0];
-            root_g = lys.v[1];
-            offscale_g = (uint8_t)lys.v[2];
-            ui_message("SCALE PUT BACK");
         }
     }
     lys.oct &= (uint8_t)(((fm1_in.buttons >> dn) & 1u) | ((fm1_in.buttons >> up) & 1u) << 1);
@@ -640,23 +613,26 @@ static uint32_t layer_oct(uint32_t pressed, uint32_t oct)
  * back, ~1.1 s, hal/fm1_input.h fm1_led_breath; was a hard 250 ms blink, #119), dark = nothing there */
 static int glo_sounding(uint32_t t) { return !trk[t].p[P_MUTE]; }
 static int rec_clearable(void) { return !seq_is_empty(TSEL) || motion_count(TSEL) != 0u; }
+/* QUICK REC, KNOB 4 CLEAR turned: the "CLEAR Tn SEQUENCE?" dialog (CF_CLEAR_SEQ, the TOOLS page's CLEAR: OCT+ YES clears the selected track's steps and automation and
+ * ARP's latched chord, one undo, SAVE held; OCT- NO). Nothing recorded: the cell says NO SEQUENCE and the turn says so. lys.loaded: OCT- in the layer afterwards puts the
+ * track back as the layer opened (tl_open), whatever the dialog's answer was */
+static void rec_clear_ask(void)
+{
+    if (!rec_clearable()) {
+        ui_message("NOTHING TO CLEAR");
+        return;
+    }
+    lys.loaded = 1;
+    confirm_open(CF_CLEAR_SEQ, song.sel);
+}
 static uint32_t layer_leds(uint32_t *br)
 {
     uint32_t k, m = 0, n = 0, l = ui.layer;
-    uint32_t mask = scale_mask(TSEL), root = (uint32_t)root_of(TSEL) % 12u;
     for (k = 0; k < 27u; k++) {
-        uint32_t p = key_place(k), b = (uint32_t)key_black(k), on = 0, can = 0, e;
-        if (l == LAYER_SCL) {                    /* the root lit, the scale's notes breathe */
-            e = (k + 5u + 12u - root) % 12u;
-            on = e == 0u;
-            can = (mask >> e) & 1u;
-        } else if (l == LAYER_SEQ) {                    /* the tools breathe (not while a song plays) */
+        uint32_t p = key_place(k), b = (uint32_t)key_black(k), on = 0, can = 0;
+        if (l == LAYER_SEQ) {                    /* the tools breathe (not while a song plays) */
             can = !b && tl_cell(p);
-        } else if (l == LAYER_REC && !b && p < 4u) {    /* a setting on (LEVEL: the click on) lit, the rest breathe; */
-            on = p == 1u ? rp_get(RP_CLICK) != 0u : p == 2u ? rp_get(RP_COUNTIN) != 0u :   /* CLEAR: something to */
-                 p == 3u && rp_get(RP_CLICK) != 0u;    /* clear, not while a song plays */
-            can = p ? 1u : rec_clearable();
-        }
+        }                                               /* (QUICK REC: the white keys no longer act, so they stay dark) */
         m |= on << k;
         n |= (can & !on) << k;
     }
@@ -677,7 +653,7 @@ enum { LS_OFF, LS_SEL, LS_HELD, LS_WAIT, LS_DIM, LS_MUTE };
 
 static uint16_t lc_fill(uint32_t st, uint16_t *ink)
 {
-    *ink = st == LS_DIM ? T_DIM : T_THEME;
+    *ink = st == LS_DIM ? T_DIM : T_TEXT;                /* (PAGES_V2_perform-quick.png: an idle key is a neutral grey cell, white name; the held one lights) */
     if (st == LS_MUTE) {
         *ink = T_INK;
         return T_KEY;
@@ -690,58 +666,17 @@ static uint16_t lc_fill(uint32_t st, uint16_t *ink)
         *ink = T_INK;
         return T_THEME;
     }
-    return T_RAISE;
+    return T_BG;
 }
 /* a cell at x, y, h px high: big (h > 30) the icon over the name; a name: compact, the icon at the right (none: no
  * icon); else a black key's: two icons at the right. tri: a HOLD cell in a SET layer */
 /* a cell's box: its fill on the panel (cells are 4 px apart from x 6, y 4). Returns the fill */
 static uint16_t lc_box(int32_t x, int32_t y, int32_t w, int32_t h, uint16_t fill)
 {
-    cv_rrect(x, y, w, h, 4, fill, T_SURF);
+    { CV_HL(x, y, w, h); cv_rrect(x, y, w, h, 4, fill, T_BG); }
     return fill;
 }
-static void lcell(int32_t x, int32_t y, int32_t h, const char *note, uint32_t icon, uint32_t icon2, const char *name,
-                  uint32_t st, int tri)
-{
-    uint16_t ink, fill = lc_fill(st, &ink), idle = fill == T_RAISE;
-    fill = lc_box(x, y, LC_W, h, fill);
-    if (note)
-        cv_text_on(x + 5, y + 3, &AF_S, note, idle ? T_MID : ink, fill);
-    if (h > 30) {                                   /* the icon's cell over the name, 6 px between, centred */
-        int32_t t = y + HALF_UP(h - (16 + 6 + AF_S_CAP_H));
-        GFX_HOOK_ALIGN(0, y, 0, y + h, AL_V | AL_N(2), "layer cell icon + name centred up/down");
-        GFX_HOOK_ALIGN(x, 0, x + LC_W, 0, AL_H | AL_PASS, "layer cell icon / name centred across");
-        cv_icon_in(x, t, LC_W, 0, 16, icon, ink, fill);
-        GFX_HOOK_ALIGN(x, 0, x + LC_W, 0, AL_H | AL_PASS, "layer cell icon / name centred across");
-        cv_text_in(x, t + 22 - AF_S_CAP_Y, LC_W, &AF_S, name, ink, fill);
-    } else if (name && h > 24) {                           /* the same, 12 px, 2 px between (the icon at a side) */
-        int32_t t = y + HALF_UP(h - (12 + 2 + AF_S_CAP_H));
-        GFX_HOOK_ALIGN(0, y, 0, y + h, AL_V | AL_N(2), "layer cell icon + name centred up/down");
-        cv_icon_on(note ? x + LC_W - 17 : x + 5, t, 12, icon, ink, fill);
-        GFX_HOOK_ALIGN(x, 0, x + LC_W, 0, AL_H | AL_PASS, "layer cell icon / name centred across");
-        cv_text_in(x, t + 14 - AF_S_CAP_Y, LC_W, &AF_S, name, ink, fill);
-    } else if (name && *name) {                           /* a key's row: the icon and the name on its middle */
-        if (!note && icon < ICON_COUNT) {                  /* (the EDIT layer: the engine's icon instead of the key) */
-            GFX_HOOK_ALIGN(0, y, 0, y + h, AL_V, "layer key cell icon / name centred up/down");
-            cv_icon_in(x + 3, y, 0, h, 12, icon, ink, fill);
-            GFX_HOOK_ALIGN(0, y, 0, y + h, AL_V, "layer key cell icon / name centred up/down");
-            cv_text_r(x + LC_W - 3, y + CAP_IN(S, h), &AF_S, name, ink, fill);
-        } else {
-            GFX_HOOK_ALIGN(0, y, 0, y + h, AL_V, "layer key cell icon / name centred up/down");
-            cv_text_r(x + LC_W - 5, y + CAP_IN(S, h), &AF_S, name, ink, fill);
-        }
-    } else if (!name) {                                    /* (an empty name: the note alone) */
-        GFX_HOOK_ALIGN(0, y, 0, y + h, AL_V, "layer key cell icon / name centred up/down");
-        cv_icon_in(x + LC_W - 31, y, 0, h, 12, icon, ink, fill);
-        GFX_HOOK_ALIGN(0, y, 0, y + h, AL_V, "layer key cell icon / name centred up/down");
-        cv_icon_in(x + LC_W - 17, y, 0, h, 12, icon2, ink, fill);
-    }
-    if (tri) {
-        int32_t j;
-        for (j = 0; j < 4; j++)
-            cv_rect(x + LC_W - 7 + j, y + 2 + j, 4 - j, 1, ink);
-    }
-}
+#include "ui_boxes.c"                                   /* DUELL 1.0 layout: the box grid of PERFORM and QUICK SEQ (box_grid; LAYOUT_IMPLEMENTATION_PLAN.md block D) */
 /* GLO (DUELL 5b.3), two parts: a column each (88 px, x 6 and 146; part 1 is the left of KNOB 1 and 2, part 2 the right): one tall
  * cell with the part's badge and the word in M; between the columns (x 98 .. 142) the parts' level meters (glo_meters; a muted part's bar greyed
  * and empty). 0.2.25 layout round (owner): the word is always MUTE: muted, the cell is lit in the part's colour (the badge dark); sounding, the cell is
@@ -755,7 +690,7 @@ static void lcell(int32_t x, int32_t y, int32_t h, const char *note, uint32_t ic
  * shows). The audio path keeps a running maximum (no work added in STEREO and LAYER); here each frame takes it and clears it. The bar
  * follows the peak up at once and falls at 36 dB/s; a thin tick holds the highest peak 1.2 s and then falls the same way; the part's
  * colour up to -6 dBFS (the master's limiter starts at -5), the accent from -6 dBFS, red from -1 dBFS; a lamp over the bar stays red 1.5 s
- * after a peak past -1 dBFS (CLIP). Solid colours only (HI-CON and every theme). Units: 16 per octave of amplitude (6 dB = 16 units / 2.67) */
+ * after a peak past -1 dBFS (CLIP). Solid colours only (POLICE and every theme). Units: 16 per octave of amplitude (6 dB = 16 units / 2.67) */
 #define GM_X 98                                         /* the strip (x), 44 px: bars 12 px at 0 and 32 */
 #define GM_W 44
 #define GM_Y 4                                          /* .. and y in the panel */
@@ -829,7 +764,7 @@ static void glo_meter_step(void)
     }
     gm.seen = 1;
 }
-static uint16_t gm_zone(int32_t u16, uint32_t k)       /* the colour for a level (a zone colour too like the part's own, as HI-CON's red part 1: the text colour) */
+static uint16_t gm_zone(int32_t u16, uint32_t k)       /* the colour for a level (a zone colour too like the part's own, as POLICE's red part 1: the text colour) */
 {
     uint16_t c = u16 / 16 >= GM_UCLIP ? T_REC : u16 / 16 >= GM_UHOT ? T_ACCENT : T_PTHEME(k);
     return c != T_PTHEME(k) && ux_cr(c, T_PTHEME(k)) < 160u ? T_TEXT : c;
@@ -848,22 +783,22 @@ static void glo_meters(void)
         sig = (sig * 33u + (uint32_t)px[k]) * 33u + (uint32_t)hp[k];
         sig = sig * 33u + (gm.clip_t[k] != 0u) + (uint32_t)gm_zone(gm.hold[k], k) * 7u + glo_sounding(k) * 3u;
     }
-    sig += ux.gen * 4099u + (uint32_t)T_SURF * 131u;
+    sig += ux.gen * 4099u + (uint32_t)T_BG * 131u;
     if (!ui.force && sig == gm.sig)
         return;
     gm.sig = sig;
-    cv_begin(GM_W, GM_H, T_SURF);
-    cv_bg = T_SURF;
+    cv_begin(GM_W, GM_H, T_BG);
+    cv_bg = T_BG;
     for (i = 0; i < 5u; i++) {                          /* the scale: the dB figures between the bars, a hair line each side */
         int32_t y = GM_BY + GM_BH - (DB[i] + 48) * GM_BH / 48;
-        cv_text_in(12, y - AF_S_CAP_Y - AF_S_CAP_H / 2, 20, &AF_S, DBN[i], T_MID, T_SURF);
+        cv_text_in(12, y - AF_S_CAP_Y - AF_S_CAP_H / 2, 20, &AF_S, DBN[i], T_MID, T_BG);
     }
     for (k = 0; k < NSHOWN; k++) {
         int32_t x = k ? GM_W - 12 : 0, yb = GM_BY + GM_BH, z1 = GM_BH * (GM_UHOT - GM_U0) / 128, z2 = GM_BH * (GM_UCLIP - GM_U0) / 128, n;
-        cv_rect(x, GM_BY, 12, GM_BH, T_RAISE);          /* the track */
+        { CV_HL(x, GM_BY, 12, GM_BH); cv_rect(x, GM_BY, 12, GM_BH, T_RAISE);          /* the track */ }
         n = px[k] < z1 ? px[k] : z1;                    /* the part's colour, then the accent, then red */
         if (n > 0)
-            cv_rect(x, yb - n, 12, n, glo_sounding(k) ? T_PTHEME(k) : T_DIM);
+            { CV_HL(x, yb - n, 12, n); cv_rect(x, yb - n, 12, n, glo_sounding(k) ? T_PTHEME(k) : T_DIM); }
         if (px[k] > z1)
             cv_rect(x, yb - (px[k] < z2 ? px[k] : z2), 12, (px[k] < z2 ? px[k] : z2) - z1, gm_zone(GM_UHOT * 16, k));
         if (px[k] > z2)
@@ -877,13 +812,58 @@ static void glo_meters(void)
     }
     cv_blit(GM_X, Y_GRAPH + GM_Y);
 }
+/* DUELL 1.1 MIXER, TEMPLATE 4 (item 117; FINAL_V1_09_mixer, ui_tokens.h UT_T4_*): two MUTE cards (round, 116 x 60: the word MUTE n, the hint "Hold GLO" / "and press OCT -" ("OCT +") with its keycaps standing on the text's
+ * baselines, the part's small level meter at the right), the four cards under them (grid_on 7, ui_draw.c card_t4_paint). A muted part's card is filled in its colour (ink text) as before */
+static void glo_mute_cards(void)
+{
+    uint32_t e;
+    for (e = 0; e < NSHOWN; e++) {
+        uint32_t mu = trk[e].p[P_MUTE] != 0, kc = e ? KC_OCTUP : KC_OCTDN;
+        int32_t x = UT_T4_X0 + UT_T4_DX * (int32_t)e, y = UT_T4_MUTE_Y - Y_GRAPH, kx;
+        uint16_t fill = mu ? T_PTHEME(e) : T_BG, ink = mu ? T_INK : T_TEXT, grey = mu ? T_INK : ux_mix(T_BASE_P1, T_TEXT, UT_GREY_PCT);
+        char lb[8] = "MUTE 1";
+        lb[5] = (char)('1' + e);
+        { CV_HL(x, y, UT_T4_W, UT_T4_MUTE_H); cv_rrect(x, y, UT_T4_W, UT_T4_MUTE_H, UT_T4_R, fill, T_BG); }
+        cv_text_on(x + UT_T4_PAD, y + UT_TY(S, UT_T4_LBL_BASE), &AF_S, lb, grey, fill);
+        kx = cv_text_on(x + UT_T4_PAD, y + UT_TY(M, UT_T4_HOLD_BASE), &AF_M, "Hold", ink, fill) + UT_T4_KEY_GAP;
+        cv_keycap(kx, y + UT_T4_HOLD_BASE - KC_H + 2, KC_GLO, T_KEY, T_KINK, fill);
+        kx = cv_text_on(x + UT_T4_PAD, y + UT_TY(M, UT_T4_PRESS_BASE), &AF_M, "and press", ink, fill) + UT_T4_KEY_GAP;
+        cv_keycap(kx, y + UT_T4_PRESS_BASE - KC_H + 2, kc, T_KEY, T_KINK, fill);
+    }
+}
+/* the two level meters (own strips, each frame when a level moved): a 6 x 44 bar at the MUTE card's right, the 48 dB range over its height, the level in the part's colour from the bottom, the peak hold a 2 px tick */
+static void glo_meters7(void)
+{
+    uint32_t k;
+    uint32_t sig = 0x7D5u;
+    int32_t px[NSHOWN], hp[NSHOWN];
+    for (k = 0; k < NSHOWN; k++) {
+        px[k] = gm_px(gm.lvl[k]) * UT_T4_METER_H / GM_BH;
+        hp[k] = gm_px(gm.hold[k]) * UT_T4_METER_H / GM_BH;
+        sig = (sig * 33u + (uint32_t)px[k]) * 33u + (uint32_t)hp[k] + glo_sounding(k) * 3u + (uint32_t)trk[k].p[P_MUTE] * 5u;
+    }
+    sig += ux.gen * 4099u;
+    if (!ui.force && sig == gm.sig)
+        return;
+    gm.sig = sig;
+    for (k = 0; k < NSHOWN; k++) {
+        uint16_t under = trk[k].p[P_MUTE] ? T_PTHEME(k) : T_BG, track = trk[k].p[P_MUTE] ? T_RAISE : ux_mix(T_BASE_P1, T_TEXT, UT_T4_TRACK_PCT);
+        cv_begin(UT_T4_METER_W, UT_T4_METER_H, under);
+        cv_rrect(0, 0, UT_T4_METER_W, UT_T4_METER_H, UT_T4_METER_R, track, under);
+        if (px[k] > 0)
+            cv_rrect(0, UT_T4_METER_H - px[k], UT_T4_METER_W, px[k], px[k] < 2 * UT_T4_METER_R ? px[k] / 2 : UT_T4_METER_R, glo_sounding(k) ? T_PTHEME(k) : T_DIM, track);
+        if (hp[k] > 0)
+            cv_rect(0, UT_T4_METER_H - 1 - hp[k], UT_T4_METER_W, 2, T_TEXT);
+        cv_blit((uint32_t)(UT_T4_X0 + UT_T4_DX * (int32_t)k + UT_T4_METER_X), (uint32_t)(UT_T4_MUTE_Y + UT_T4_METER_Y));
+    }
+}
 static void layer_glo(void)
 {
     uint32_t e;
     for (e = 0; e < NSHOWN; e++) {
         uint32_t mu = trk[e].p[P_MUTE] != 0, kc = e ? KC_OCTUP : KC_OCTDN;
         int32_t x = GC_X(e), y = 4 + 112 - KC_H - 6;
-        uint16_t fill = mu ? T_PTHEME(e) : T_RAISE;
+        uint16_t fill = mu ? T_PTHEME(e) : T_BG;
         fill = lc_box(x, 4, GC_W, 112, fill);
         cv_part(x + 8, 4 + HALF_UP(112 - 20), 20, e, !mu, fill);   /* the part's badge (20 px) and MUTE, M, on the cell's middle */
         GFX_HOOK_ALIGN(0, 4, 0, 4 + 112, AL_V, "glo cell word centred up/down");
@@ -901,30 +881,42 @@ static void layer_glo(void)
         }
     }
 }
-static void layer_scl(void)                             /* KNOB 1's scales, 4 x 4, the one now selected */
-{
-    uint32_t i, sc = (uint32_t)scale_of(TSEL);
-    for (i = 0; i < 16u && i <= (uint32_t)SCALE_D.max; i++) {
-        int32_t x = LC_X(i % 4u), y = 4 + 29 * (int32_t)(i / 4u);
-        uint16_t ink, fill = lc_fill(i == sc ? LS_SEL : LS_OFF, &ink);
-        fill = lc_box(x, y, LC_W, 25, fill);
-        GFX_HOOK_ALIGN(x, y, x + LC_W, y + 25, AL_HV, "scale cell name centred");
-        cv_text_in(x, y + CAP_IN(S, 25), LC_W, &AF_S, SCALE_D.names[i], ink, fill);
-    }
-}
-/* DUELL 0.2.9, the QUICK EDIT layers' panel: a cell over each group of their cards, its name (M) on its middle, so the cards that share
+/* Item 120: the four QUICK EDIT layers are template 1 (grid_on 1: ui_draw.c ui_draw_page `want`): the picture card (76 rows) holds one line a group, the numbers of the group's knobs in dots and its name; the four cards are
+ * template 1's. DUELL 1.0 layout: QUICK SEQ is an area page (grid_on 16: the tools' box grid, layer_seq), QUICK REC four cells (grid_on 14, layer_cards).
+ * DUELL 0.2.9, the QUICK EDIT layers' panel (before item 120): a cell over each group of their cards, its name (M) on its middle, so the cards that share
  * a label (LFO 1's FLT and LFO 2's) are told apart: QUICK FILTER: FILTER (K1..K3), AMP (K4); QUICK LFO: LFO 1, LFO 2; QUICK ENV: AMP ENV,
  * ENV 2; QUICK ARP: ARP. The cells line up with the cards (CARD_X), 3 px in */
-static const char *const LQ_NAME[4][2] = {{"MULTI FILTER", "AMP"}, {"LFO 1", "LFO 2"}, {"AMP ENV", "FILT ENV"}, {"ARP", 0}};
+static const char *const LQ_NAME[4][2] = {{"MULTI FILTER", "AMP"}, {"LFO 1", "LFO 2"}, {"AMP ENV", "FILTER ENV"}, {"ARP", 0}};
 static const uint8_t LQ_SPLIT[4] = {3, 2, 2, 4};       /* the first card of the second group */
 static void layer_quick(uint32_t q, int32_t y, int32_t h)
 {
     uint32_t g, split = LQ_SPLIT[q];
     const char *const *nm = LQ_NAME[q];
     static const char *const TWO[2] = {"MULTI FILTER", "TWIN FILTER"};
-    if (q == 0u && ly_two()) {                          /* (cloud job H: MULTI FILTER CUTOFF RES | TWIN FILTER CUTOFF RES) */
+    if (q == 0u && ly_two()) {                          /* (cloud job H: MULTI CUTOFF, MULTI RES | TWIN CUTOFF, TWIN RES) */
         nm = TWO;
         split = 2;
+    }
+    if (grid_on == 1) {                                 /* item 120, template 1 (PAGES_V2_perform-quick.png, the 76 px card of the part pages): a line a group, the numbers of its knobs in dots, then its name (L, M where L is too wide) */
+        uint32_t ng = nm[1] ? 2u : 1u;
+        for (g = 0; g < ng; g++) {
+            uint32_t k0 = g ? split : 0u, k1 = g ? 4u : split, k;
+            int32_t base = ng == 1u ? 46 : g ? 63 : 31, x = 9;
+            const aafont_t *f = &AF_L;
+            for (k = k0; k < k1; k++, x += AF_S_CAP_H + 2) {
+                char dg[2] = {(char)('1' + k), 0};
+                int32_t dy = base - 13;
+                cv_rrect(x, dy, AF_S_CAP_H, AF_S_CAP_H, AF_S_CAP_H / 2, T_MID, T_BG);
+                cv_text_in(x, dy + HALF_UP(AF_S_CAP_H - AF_D_CAP_H) - AF_D_CAP_Y, AF_S_CAP_H, &AF_DOT, dg, T_BG, T_MID);
+            }
+            x += 6;
+            if (x + text_w(f, nm[g]) > 232)
+                f = &AF_M;
+            cv_text_on(x, f == &AF_L ? UT_TY(L, base) : UT_TY(M, base), f, nm[g], T_TEXT, T_BG);
+        }
+        (void)y;
+        (void)h;
+        return;
     }
     for (g = 0; g < 2u && nm[g]; g++) {
         int32_t x0 = CARD_X(g ? split : 0u) + 3, x1 = CARD_X((g ? 4u : split) - 1u) + CARD_W - 3;
@@ -933,71 +925,42 @@ static void layer_quick(uint32_t q, int32_t y, int32_t h)
         cv_text_in(x0, y + CAP_IN(M, h), x1 - x0, &AF_M, nm[g], ink, fill);
     }
 }
-/* SEQ TOOLS: the white keys' tools, 4 a row from F3 (the sequence's: CLEAR REVERSE SHIFT SHIFT, RANDOM COOK) */
-static const uint8_t TL_ICON[TL_N] = {ICON_CLEAR, ICON_X_REVERSE, ICON_X_LEFT, ICON_X_RIGHT, ICON_PROB, ICON_W_SH};
-static const char *const TL_NAME[TL_N] = {"CLEAR", "REVERSE", "SHIFT", "SHIFT", "RANDOM", "COOK"};
+/* SEQ TOOLS: the white keys' tools, 4 a row from F3 (the sequence's: CLEAR REVERSE SHIFT < SHIFT >, RANDOM COOK TRANS + TRANS -) */
+static const char *const TL_NAME[TL_N] = {"CLEAR", "REVERSE", "SHIFT <", "SHIFT >", "RANDOM", "COOK", "TRANS +", "TRANS -"};
+#define TL_BIG ((1u << TL_CLEAR) | (1u << TL_COOK))      /* QUICK_SEQ_NEW_LAYOUT.png: CLEAR and COOK in the larger size, the rest in the smaller */
+/* DUELL 1.0 layout (QUICK_SEQ_NEW_LAYOUT.png): the eight tools as a 4 x 2 box grid in the big area (ui_boxes.c box_grid; rows UT_BOX_QS_*), the white
+ * keys F G A B over C D E F, the key letter in the corner, the names centred */
 static void layer_seq(void)
 {
-    uint32_t p, st = LS_OFF;
-    char n[3] = {0, 0, 0}, nm[8];
-    for (p = 0; p < TL_N; p++) {
-        n[0] = W_NOTE[p];
-        str_cpy(nm, TL_NAME[p], sizeof nm);
-        lcell(LC_X(p % 4u), 4 + 32 * (int32_t)(p / 4u), 28, n, TL_ICON[p], 0, nm, st, 0);
+    box_t b[8];
+    uint32_t p;
+    for (p = 0; p < 8u; p++) {
+        b[p].name = p < TL_N ? TL_NAME[p] : "";
+        b[p].key = W_NOTE[p];
+        b[p].big = (uint8_t)((TL_BIG >> p) & 1u);
+        b[p].state = LS_OFF;
     }
+    box_grid(UT_BOX_QS_Y0, 2u, 4u, UT_BOX_QS_DY, UT_BOX_QS_H, b);
 }
 
-/* REC: a row a key (26 px, 4 apart): the key's cell (its note, icon and name), then CLEAR's track and what it holds,
- * or the setting's three values, the one now with the selection's fill (as MENU > AUDIO steps them) */
-#define LR_KW 78                                         /* the key's cell; the values 46 px each: x 6 .. 234 */
-#define LR_VW 46
-#define LR_H 26
-static void layer_rec(void)
-{
-    uint32_t r, v;
-    char n[3] = {0, 0, 0}, b[16];
-    for (r = 0; r < 4u; r++) {
-        int32_t y = 4 + (LR_H + 4) * (int32_t)r, x = 6, vx = 6 + LR_KW + 4;
-        uint32_t dim = r == 0u && !rec_clearable();
-        uint16_t ink, fill = lc_box(x, y, LR_KW, LR_H, lc_fill(dim ? LS_DIM : LS_OFF, &ink));
-        n[0] = W_NOTE[r];
-        GFX_HOOK_ALIGN(0, y, 0, y + LR_H, AL_V, "rec layer key cell on its middle");
-        cv_text_on(x + 5, y + CAP_IN(S, LR_H), &AF_S, n, fill == T_RAISE || fill == T_SURF ? T_MID : ink, fill);
-        GFX_HOOK_ALIGN(0, y, 0, y + LR_H, AL_V, "rec layer key cell on its middle");
-        cv_icon_in(x + 15, y, 0, LR_H, 12, r ? RL_ICON[r - 1u] : ICON_CLEAR, ink, fill);
-        GFX_HOOK_ALIGN(0, y, 0, y + LR_H, AL_V, "rec layer key cell on its middle");
-        cv_text_r(x + LR_KW - 5, y + CAP_IN(S, LR_H), &AF_S, r ? RL_LABEL[r - 1u] : "CLEAR", ink, fill);
-        if (r == 0u) {                                   /* "T2 SEQUENCE" / "T2 EMPTY" */
-            int32_t w = 234 - vx;
-            b[0] = 'T';
-            b[1] = (char)('1' + song.sel);
-            str_cpy(b + 2, rec_clearable() ? " SEQUENCE" : " EMPTY", sizeof b - 2);
-            fill = lc_box(vx, y, w, LR_H, lc_fill(dim ? LS_DIM : LS_OFF, &ink));
-            GFX_HOOK_ALIGN(vx, y, vx + w, y + LR_H, AL_HV, "rec layer clear cell centred");
-            cv_text_in(vx, y + CAP_IN(S, LR_H), w, &AF_S, b, ink, fill);
-            continue;
-        }
-        for (v = 0; v < 3u; v++, vx += LR_VW + 4) {
-            fill = lc_box(vx, y, LR_VW, LR_H, lc_fill(v == rp_get(RL_F[r - 1u]) ? LS_SEL : LS_OFF, &ink));
-            GFX_HOOK_ALIGN(vx, y, vx + LR_VW, y + LR_H, AL_HV, "rec layer value cell centred");
-            cv_text_in(vx, y + CAP_IN(S, LR_H), LR_VW, &AF_S, rl_name(r - 1u, v), ink, fill);
-        }
-    }
-}
-
-/* QUICK GLO's four cards (0.2.24): KNOB 1 LEVEL 1, KNOB 2 PAN 1, KNOB 3 LEVEL 2, KNOB 4 PAN 2 (the part's colour; DIM when it is muted; PAN not drawn in DUEL) */
+/* QUICK GLO's and the MIXER's four cards (item 117, TEMPLATE 4): KNOB 1 LEVEL 1, KNOB 2 LEVEL 2, KNOB 3 PAN 1, KNOB 4 PAN 2 (the part's colour; DIM when it is muted; PAN not drawn in DUEL; PAN shows its own signed
+ * number, no % sign, and its bar fills from the middle) */
 static void glo_cards(void)
 {
-    char val[12];
+    char val[PV_LEN];
     const char *unit;
     uint32_t c;
     for (c = 0; c < 4u; c++) {
-        uint32_t k = c >> 1, id = (c & 1u) ? P_PAN : P_LEVEL;
+        uint32_t k = c & 1u, id = (c >> 1) & 1u ? P_PAN : P_LEVEL;
         if (id == P_PAN && duell_mode_req == DM_SPLIT) {
             draw_column_hide(c);
             continue;
         }
         param_format(&TP[id], trk[k].p[id], val, &unit);
+        if (id == P_PAN) {
+            unit = "";
+            card_ctr_next = 1;
+        }
         draw_column(c, id == P_PAN ? (k ? "PAN 2" : "PAN 1") : (k ? "LEVEL 2" : "LEVEL 1"), val, unit, glo_sounding(k) ? T_PTHEME(k) : T_DIM,
                     RATIO(&TP[id], trk[k].p[id]), id == P_PAN ? ICON_AUTO : trk_icon(k, 1));
     }
@@ -1007,13 +970,16 @@ static void layer_cards(uint32_t l)
     uint32_t c;
     if (l == LAYER_GLO) {
         glo_cards();
-    } else if (l == LAYER_REC) {                        /* CLICK COUNT-IN LEVEL, an empty card */
+    } else if (l == LAYER_REC) {                        /* DUELL 1.0 layout (QUICK_REC_NEW_LAYOUT.png): four cells CLICK, COUNT, LEVEL (choices of three: the segment line), CLEAR */
         for (c = 0; c < 3u; c++) {
             uint32_t v = rp_get(RL_F[c]);
-            draw_column(c, RL_LABEL[c], rl_name(c, v), "", c < 2u && !v ? T_DIM : VAL(c), (int32_t)v * 500, RL_ICON[c]);
+            cell_seg_n = 3;                             /* (template 8: the CHOICE this card shows, for this card only) */
+            cell_seg_i = (uint8_t)(v % 3u);
+            draw_column(c, RL_LABEL[c], rl_name(c, v), "", VAL(c), -1, RL_ICON[c]);
         }
-        draw_column(3, "", "", "", T_THEME, -1, ICON_NONE);
-    } else {                                            /* the layer's four (ly_page: SCL's, SEQ's, the QUICK EDIT layers') */
+        cell_seg_n = cell_seg_i = 0;                    /* CLEAR: a text, no line */
+        draw_column(3, "CLEAR", rec_clearable() ? "TURN TO CLEAR" : "NO SEQUENCE", "", rec_clearable() ? VAL(3u) : T_DIM, -1, ICON_NONE);
+    } else {                                            /* the layer's four (ly_page: SEQ's, the QUICK EDIT layers') */
         uint8_t pg = ui.page;
         ui.page = (uint8_t)page_first(LAYERS[l].fam);
         page_over = ly_page(l);
@@ -1026,30 +992,37 @@ static void layer_cards(uint32_t l)
 static void draw_layer(void)
 {
     uint32_t l = ui.layer ? ui.layer % LAYER_N : LAYER_GLO, sig = l * 7919u + ux.gen * 977u;   /* (no layer: GLO's page) */
+    if (off_layer(l) && grid_on == 13) {                /* item 125: QUICK ARP / QUICK SEQ with the module OFF: only the notice */
+        if (ui.force || sig != ui.layer_sig) {
+            ui.layer_sig = sig;
+            graph_off(off_layer(l));
+        }
+        return;
+    }
     layer_cards(l);
+    sig += vals_hash(TSEL) * 2246822519u;               /* (DUELL 1.1 general rule, ui_graph.c vals_hash: every value the panel could show) */
     if (l == LAYER_GLO)
         sig += (uint32_t)(trk[0].p[P_MUTE] | trk[1].p[P_MUTE] << 1) * 131u + (duell_mode_req == DM_SPLIT) * 977u;
-    else if (l == LAYER_SCL)
-        sig += (uint32_t)scale_of(TSEL) * 31u + (uint32_t)root_of(TSEL) * 7u + (uint32_t)offscale_g * 3u;
     else if (l == LAYER_REC)
         sig += (uint32_t)ui_rec_prefs * 31u + (uint32_t)rec_clearable() * 5u + song.sel * 977u;
     else if (l == LAYER_SEQ)
         sig += song.sel * 977u;
     else if (l == LAYER_EDIT)
         sig += (TSEL->eng_req % NENGINES) * 31u + song.sel * 977u + (uint32_t)ly_page(l)->id[2] * 4099u + (uint32_t)ly_page(l)->id[3] * 65537u;   /* (cloud job H: its cards follow filter 2) */
+    if (l == LAYER_REC && grid_on == 14)                /* QUICK REC (template 8): the cells are the whole body, no panel of its own */
+        return;
     if (ui.force || sig != ui.layer_sig) {
         ui.layer_sig = sig;
         cv_begin(240, H_GRAPH, T_BG);
-        cv_rrect(3, 0, 234, H_GRAPH, 5, T_SURF, T_BG);
-        cv_bg = T_SURF;
-        if (l == LAYER_GLO)
+        cv_bg = T_BG;
+        if (l == LAYER_GLO && grid_on == 7)
+            glo_mute_cards();
+        else if (l == LAYER_GLO)
             layer_glo();
-        else if (l == LAYER_SCL)
-            layer_scl();
         else if (l == LAYER_SEQ)
             layer_seq();
         else if (l == LAYER_REC)
-            layer_rec();
+            ;                                           /* (QUICK REC outside template 8, PERFORM on: an empty panel; its four are the cards) */
         else
             layer_quick(ly_q(l), 4, 112);              /* (QUICK FILTER, LFO, ENV, ARP) */
         cv_blit(0, Y_GRAPH);
@@ -1058,7 +1031,10 @@ static void draw_layer(void)
     }
     if (l == LAYER_GLO) {                               /* the level meters: their own strip, each frame */
         glo_meter_step();
-        glo_meters();
+        if (grid_on == 7)
+            glo_meters7();
+        else
+            glo_meters();
     }
 }
 

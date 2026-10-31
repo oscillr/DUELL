@@ -9,7 +9,7 @@
 
 How a record is made: MULTIS below says, per slot, the two parts' factory sounds (by name), what the multi sets on top of each sound
 (raw parameter values, core.h P_* ids; an engine EDIT value as "E:LABEL", e.g. "E:CUT" on an ANALOG part), the SEQUENCER arp patterns,
-End B, the globals (core.h G_* ids), the output MODE, BALANCE, XFADE and SPLIT. `build` writes that as a C table (build/gen_mm/factory_multis_def.h)
+End B, the globals (core.h G_* ids), the output MODE, XFADE and SPLIT (item 157: BALANCE is no multi value; its record byte is a spare, 0). `build` writes that as a C table (build/gen_mm/factory_multis_def.h)
 and runs tests/gen_factory_multis.c, which loads each sound with the firmware's own code (set_engine_of + apply_preset_to, as PATCHES loads it),
 applies the table and saves with multi.c's packer (project_save_as): the records are byte for byte what a unit saves (version MU_VER 7; a kept record of an older version is converted by tools/multi_upgrade.py). A slot
 marked `kept` is a record made earlier that is kept byte for byte (owner, 0.2.20: the factory multis do not follow reworked sounds): it is not
@@ -39,6 +39,7 @@ ROOT = Path(__file__).resolve().parent.parent
 DIR = ROOT / "tools" / "factory_multis"
 GEN = ROOT / "build" / "gen_mm"
 REC_MAX, MU_G_AT, MB_N, PS_STEP, NAME_MAX = 1916, 20, 7, 9, 12
+MU_VER, MU_STEP, NX, UPF_PK = 8, 7, 28, 112                # multi.c MU_VER 8 (ROLL CHAINED storage, 2026-10-29): End B as values after a length byte, the NX slots dense, 7-byte steps, the FM6 patch packed 8 to 7, only the globals a multi loads
 ENGINES = ["ANALOG", "DIGITAL", "PHASE", "LOFI", "SAMPLE", "VOICE", "TRIO", "WHEEL", "GRAIN", "PHYS", "DRUM", "NOISE", "FM6", "SLICE", "WAVE"]
 MODES = {"DUEL": 0, "STEREO": 1, "LAYER": 2}           # core.h DM_SPLIT (shown DUEL), DM_STEREO, DM_LAYER: the record's byte 4
 NOTE = {n: i for i, n in enumerate(["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"])}
@@ -53,7 +54,7 @@ def note(s):
 # ---- the multis ---------------------------------------------------------------------------------------------------------------
 # A part: sound (factory sound name), set {P_id: value or 'NAME' of the parameter's list; "E:LABEL": the engine's EDIT value}, steps (the
 # SEQUENCER arp's pattern: offsets in semitones from the held key, '.' a rest, suffix A an accent; LEN = its length), bseed / amt (End B rolled
-# again with this seed / at this AMOUNT %; 0 the sound's own). A multi: g {G_id: value}, mode, bal (-100..100), xf (0..100), split (a note:
+# again with this seed / at this AMOUNT %; 0 the sound's own). A multi: g {G_id: value}, mode, xf (0..100), split (a note:
 # below it part 1, at or above part 2; compared with the key as played, before any TRN: F3 is the lowest key at octave 0, so F4 is the middle
 # of the keyboard), what (one line, the character).
 # Units are the stored ones (params.c): sends / SAT / RES 0..127, LEVEL / TRIM 0..127 (112 = 0 dB), PAN -64..63, EQ dB -12..12,
@@ -117,11 +118,11 @@ MULTIS = [
     # slot 15: the owner's WOOD & SKIN (0.2.31), from tools/owner_multis.py (his file duell-multi-M15-WOOD_SKIN.duell-multis.json, record v7, 487 B, crc32 975420133); the 0.2.23 record built here differed in one byte (index 52)
     # ---- 16: the STRESS TEST (owner, 0.2.23: how many notes the unit takes; a test, free to overwrite) ----
     dict(slot=16, name="STRESS TEST", mode="LAYER", stress=True,
-         what="CPU stress test, not music: the two dearest sounds, every stage on (24 dB multimode filters, FLANG insert + SAT on the whistle, EQ + ducker on the pad, chorus, RANDOM delay, SHIM BOTH), "
+         what="CPU stress test, not music: the two dearest sounds, every stage on (24 dB multimode filters, FLANGER insert + SAT on the whistle, EQ + ducker on the pad, chorus, RANDOM delay, SHIM BOTH), "
               "a 1/16 arp pad with a short gate and release (0.2.24: calibrated so one key plays on the unit: host model 1 key ~62 %, 2 keys ~78 %, 3 keys ~95 %)",
          g=dict(G_BPM=137, G_DTIME="1/8", G_DFDBK=61, G_DMIX=90, G_DMODE="RAND", G_DMDEP=71, G_DMRATE=44, G_CDEPTH=77, G_CRATE=41,
                 G_RTYPE="SHIM", G_RSIZE=107, G_RDAMP=51, G_SHPITCH="BOTH", G_SHMOD=51),
-         parts=[dict(sound="PAN WHISTLE", set=dict(P_VOICE="POLY", P_FREEA="u_uf(61)", P_FREEB=17, P_FREEC=127, P_FREED=2, P_ITYPE="FLANG", P_IMIX=97, P_DIST=41,
+         parts=[dict(sound="PAN WHISTLE", set=dict(P_VOICE="POLY", P_FREEA="u_uf(61)", P_FREEB=17, P_FREEC=127, P_FREED=2, P_ITYPE="FLANGER", P_IMIX=97, P_DIST=41,
                                                     P_CHOR=71, P_DLY=61, P_REV=71, P_LEVEL=112)),
                 dict(sound="DIGITAL PAD", set=dict(P_VOICE="POLY", P_FREEA="u_uf(61)", P_FREEB=17, P_FREEC=127, P_FREED=2, P_AMODE="UP", P_ARATE="1/16", P_AOCT=2, P_AGATE=71, P_AHOLD="OFF",
                                                     P_REL=47, P_EQLG=4, P_EQMG=-3, P_EQHG=3,
@@ -191,7 +192,7 @@ def _lists():
     out = {}
     for m in re.finditer(r"static const char \*const (N_\w+)\[\]\s*=\s*\{(.*?)\};", src, re.S):
         body = re.sub(r"/\*.*?\*/", "", m.group(2), flags=re.S)
-        out[m.group(1)] = [s for s in re.findall(r'"((?:[^"\\]|\\.)*)"|\b0\b', body)]
+        out[m.group(1)] = [s.replace("\\n", " ") for s in re.findall(r'"((?:[^"\\]|\\.)*)"|\b0\b', body)]   # (DUELL 1.1: a shown name may break at a line (\n): the key is the words with a space, SOFT CLIP)
     return out
 
 
@@ -267,7 +268,7 @@ def emit(path):
         for k, v in m.get("g", {}).items():
             g += [k, str(value(G_LIST, k, v))]
         split = note(m["split"]) + 1 if m.get("split") else 0
-        lines.append('    {"%s", %d, %d, %d, %d, %d, {%s}, {' % (m["name"], m["slot"] - 1, MODES[m["mode"]], m.get("bal", 0), m.get("xf", 0), split,
+        lines.append('    {"%s", %d, %d, %d, %d, {%s}, {' % (m["name"], m["slot"] - 1, MODES[m["mode"]], m.get("xf", 0), split,
                                                          ", ".join(g + ["END"])))
         for p in m["parts"]:
             st = []
@@ -319,22 +320,41 @@ def build():
 
 # ---- checks -------------------------------------------------------------------------------------------------------------------------
 def parts_of(b):
-    """the (engine, factory index) of both parts of record b, the end position (after the automation)"""
+    """the (engine, factory index, part start) of both parts of record b (MU_VER 8), the end position (after the automation)"""
     np_, pos, out = b[1], MU_G_AT + 2 * b[2], []
     for _ in range(2):
         out.append((b[pos], b[pos + 1], pos))
-        flags = b[pos + 3]
-        pos += 4 + MB_N + np_
-        pos += 1 + b[pos]                               # MU_VER 7: nx, the extension slots
-        pos += 1 + 2 * b[pos]                           # .. ne, the hand-set B edits (wide id, value + 64)
-        pos += 8 + PS_STEP * sum(bin(x).count("1") for x in b[pos:pos + 8]) + (128 if flags & 1 else 0)
+        flags, nb = b[pos + 3], b[pos + 4]
+        pos += 5 + nb + np_ + NX                        # engine, preset, AMOUNT, flags, End B's length; End B (morph.c MBV); the values; the slots
+        pos += 8 + MU_STEP * sum(bin(x).count("1") for x in b[pos:pos + 8]) + (UPF_PK if flags & 1 else 0)
     return out, pos
+
+
+def g_ids():
+    core = re.sub(r"//[^\n]*", " ", re.sub(r"/\*.*?\*/", " ", (ROOT / "firmware" / "src" / "core.h").read_text(), flags=re.S))
+    m = re.search(r"enum\s*\{\s*G_BPM\b(.*?)G_COUNT", core, re.S)
+    names = ["G_BPM"] + re.findall(r"\b(G_\w+)\b", m.group(1))
+    ids = {}
+    for i, n in enumerate(names):
+        ids.setdefault(n, i)
+    for a, b in re.findall(r"#define\s+(G_\w+)\s+(G_\w+)\b", core):   # (the ids taken over under another name: G_DMDEP is G_SYNC, ..)
+        if b in ids and a not in ids:
+            ids[a] = ids[b]
+    return ids
+
+
+def stored_globals():
+    """the global ids a multi stores, in order (multi.c MU_GLOBAL)"""
+    g = g_ids()
+    one = {g[n] for n in ("G_BPM", "G_SWING", "G_RTYPE", "G_RLOCUT", "G_PINGSPREAD", "G_DMDEP", "G_DMRATE", "G_DMODE", "G_SHPITCH", "G_SHMOD")}
+    one |= set(range(g["G_DTIME"], g["G_CDEPTH"] + 1))
+    return sorted(one)
 
 
 def check_record(m, b, by_idx, P):
     slot, err = m["slot"], []
-    if len(b) > REC_MAX or len(b) < MU_G_AT or b[0] != 7:
-        return ["M%02d: not a version 7 record of at most %d bytes" % (slot, REC_MAX)]
+    if len(b) > REC_MAX or len(b) < MU_G_AT or b[0] != MU_VER or b[2] != len(stored_globals()):
+        return ["M%02d: not a version %d record of at most %d bytes" % (slot, MU_VER, REC_MAX)]
     raw = b[8:20].split(b"\0")[0]
     if raw.decode("ascii", "replace") != m["name"] or any(not 32 <= c <= 126 for c in raw) or len(m["name"]) > NAME_MAX:
         err.append("M%02d: name is %r, expected %r" % (slot, raw, m["name"]))
@@ -345,22 +365,23 @@ def check_record(m, b, by_idx, P):
         have = by_idx.get((ENGINES[eng] if eng < len(ENGINES) else "?", idx))
         if have != m["parts"][t]["sound"]:
             err.append("M%02d part %d: engine %d sound %d is %r, expected %r" % (slot, t + 1, eng, idx, have, m["parts"][t]["sound"]))
-        v = at + 4 + MB_N                               # (the P_COUNT values follow the End B block)
-        if not any(b[at + 4:v]):
+        v = at + 5 + b[at + 4]                          # (the P_COUNT values follow the End B block and its length byte)
+        if not b[at + 4]:
             err.append("M%02d part %d: no End B block" % (slot, t + 1))
         if b[v + P["P_FREED"]] - 64 not in (1, 2):
             err.append("M%02d part %d: the multimode filter's SLOPE is not 1 or 2" % (slot, t + 1))
         if b[v + P["P_DKSRC"]] - 64 not in (0, 1, 2, 3):          # (3 = OFF, 0.2.24: the default of a new sound)
             err.append("M%02d part %d: DUCK SRC is not PUMP / PART / MIDI / OFF" % (slot, t + 1))
     n = b[pos]
-    if pos + 1 + 3 * n + 3 != len(b):
+    if pos + 1 + 3 * n + 2 != len(b):
         err.append("M%02d: record length does not match its parts" % slot)
     else:
         split = b[-1]
         want = note(m["split"]) + 1 if m.get("split") else 0
         if not m.get("kept") and split != want:
             err.append("M%02d: SPLIT byte %d, expected %d" % (slot, split, want))
-    locut = b[MU_G_AT + 2 * 21] | b[MU_G_AT + 2 * 21 + 1] << 8
+    gi = stored_globals().index(g_ids()["G_RLOCUT"])     # (MU_VER 8: only the stored globals, in id order)
+    locut = b[MU_G_AT + 2 * gi] | b[MU_G_AT + 2 * gi + 1] << 8
     if locut != 75 and not m.get("owner"):          # (an owner's record keeps whatever he set)
         err.append("M%02d: reverb LOW CUT %d, not the default 75" % (slot, locut))
     return err

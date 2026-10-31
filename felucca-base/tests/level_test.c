@@ -10,7 +10,7 @@
  *   5. MIDI CC7 is the mixer level (the trim stays); MIDI LEARN of the mixer level
  *   6. the audio gain is the product: the gain function, the output of two splits of one product bit for bit, mixer 0 / trim 0 silent, the +7.5 dB ceiling, unity = the old single level
  *   6b. MORPH with TARGET BOTH never moves the trim or the mixer level
- *   7. the pages: TRIM on VOICE 2/2 (K4, shown PATCH LEVEL), GLO > MIXER's K1 / K3 are the mixer LEVELs; the mixer's page is untouched by a sound load
+ *   7. the pages: TRIM on VOICE 2/2 (K4, shown PATCH LEVEL), GLO > MIXER's K1 / K2 are the mixer LEVELs (item 117 order: K1 LEVEL 1, K2 LEVEL 2, K3 PAN 1, K4 PAN 2); the mixer's page is untouched by a sound load
  *   build/host/level_test            (DUELL/host_tests.sh "level") */
 #define UI_TEST_NO_MAIN 1
 #define FELUCCA_FLASH 1
@@ -452,7 +452,7 @@ static void lv_pages(void)
     for (i = 0; i < NPAGES && strcmp(PAGES[i].title, "MIXER"); i++)
         ;
     m = &PAGES[i];
-    ck("the MIXER page is GLO's first (0.2.25 layout round: LEVEL 1, PAN 1, LEVEL 2, PAN 2, as the hold-GLO layer)", i < NPAGES && m->graph == GR_GLO && m->fam == FAM_GLO && i == page_first(FAM_GLO));
+    ck("the MIXER page is GLO's first (0.2.25 layout round, item 117 order: LEVEL 1, LEVEL 2, PAN 1, PAN 2, as the hold-GLO layer)", i < NPAGES && m->graph == GR_GLO && m->fam == FAM_GLO && i == page_first(FAM_GLO));
     {   /* no sound page holds a mixer setting, no page but VOICE 2/2 holds the trim */
         uint32_t n = 0, mix = 0;
         for (i = 0; i < NPAGES; i++) {

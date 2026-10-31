@@ -82,7 +82,7 @@ Written 2026-10-19. Research and design only: no code was changed (when this was
 - **UNDO:** "far end" is retired. UNDO names its end like ROLL does (twist left = A, right = B), with 8 steps per end. Replacing an end you are hearing glides over 50 ms. A changed choice "dips" (its end's weight goes to 0 and back), so nothing clicks.
 - **MORPH SET** holds SMART/WILD, ARP and PITCH (device settings, not the patch's), and K4 is empty.
 - **The MORPH page is HOME's first page:** K1 fader, K2 ROLL, K3 UNDO, K4 AMOUNT.
-- The fader is also MIDI CC 20 and the matrix source MORPH.
+- The fader is also MIDI CC 70 and the matrix source MORPH.
 
 ---
 
@@ -217,7 +217,7 @@ The "rolled B + up to 32 hand edits" idea of the first helpers is the right base
 | Effort | 2 to 3 local rounds + 1 session on your unit (est.); after stage A | |
 
 **Risks:**
-1. **Editing the wrong end.** It is mostly removed by the fader rule, the letter and the B colour. What remains: a MIDI controller sends CC 20 = 127 while you edit, and edits then go to B. The letter changes to B, so it is visible. A turn that is already running could keep its end for half a second (small extra).
+1. **Editing the wrong end.** It is mostly removed by the fader rule, the letter and the B colour. What remains: a MIDI controller sends CC 70 = 127 while you edit, and edits then go to B. The letter changes to B, so it is visible. A turn that is already running could keep its end for half a second (small extra).
 2. **Switches at the middle.** A B set by hand on a switch makes a jump at 50 %. Only the switches with a planned short cross-fade may differ. Everything else stays shared (question 4), so SMART never gets a cliff at the middle from hand edits of old switches.
 3. **Clicks while editing B.** No new risk. At the B end an edit is like an edit at A today. The 50 ms ramp is only needed when a whole end is replaced (ROLL, UNDO), and that already exists.
 4. **Saving loses the hand-set values**, if the existing "re-make B from the seed before saving" runs without putting them back. A test must check: edit A, edit B, save, load, compare.

@@ -78,6 +78,23 @@ static volatile uint32_t perf_fxb;    /* main: FX's button bit while a key press
 static volatile uint8_t perf_fx_hit;  /* ISR: a white key was taken while FX was held (main: PERFORM opens) */
 static volatile uint32_t kb_perf;     /* ISR: the keys held that are PERFORM's, a bit per key */
 static volatile uint32_t perf_held;   /* ISR: the effects held (PF_*) */
+/* DUELL 1.1 POINTS BUDGET (owner decision; weights = the effect's measured cost alone, rounded, DUELL/release_drafts/PERFORM_CPU_V1.md,
+ * option B16). THE ONE PLACE for both numbers: PF_BUDGET and PF_W. The effects held together may weigh PF_BUDGET points at most;
+ * a press that would pass it releases the OLDEST costly effect held (press order) until it fits (perf_press). The buffer group (REPEAT,
+ * REVERSE, TAPE STOP, FREEZE, OCT UP / DN) shares one capture buffer, only the last pressed runs: it counts once, as the one that runs.
+ * Stages still ramping out (the 2.9 ms fade) count too: a press whose stage would push the running total over waits those few ms
+ * (perf_defer), so three costly effects never overlap past the budget. ROLL A / B, MUTE 1 / 2: 0 (free, no cap).
+ * Passes FLANGER + DRIVE + PUMP (16) and OCT UP + PHASER (16); refuses OCT UP + PHASER + PUMP (19). */
+#define PF_BUDGET 16
+#define PF_MASK_COST (PF_BUF | PF_BIT(PF_FLG) | PF_BIT(PF_PHS) | PF_BIT(PF_DRV) | PF_BIT(PF_PUMP))   /* the effects that cost (the rest: 0 points) */
+static const uint8_t PF_W[PF_N] = {
+    5, 5, 5, 5,          /* REPEAT 1/8, 1/16, 1/32, REVERSE */
+    5, 6, 8, 8,          /* TAPE STOP, FREEZE, OCT UP, OCT DN */
+    7, 8, 6, 3,          /* FLANGER, PHASER, DRIVE, PUMP */
+    0, 0, 0, 0,          /* ROLL A, ROLL B, MUTE 1, MUTE 2 */
+};
+static volatile uint32_t perf_rel;    /* ISR: effects the budget released while their key is still down (a bit each; cleared on the key's up or a new press) */
+static uint8_t perf_bw;               /* ISR: the points of the buffer effect that last started (it counts while the buffer is not BM_NONE, ramp-out too) */
 static volatile uint8_t perf_roll_n[2];   /* ISR: ROLL A / ROLL B presses, counted (main: morph_act once each) */
 static volatile uint8_t perf_kill;    /* main: every effect off until its keys are let go (the menu, a dialog over PERFORM) */
 static volatile uint32_t perf_act;    /* ISR: the effects running (PF_*) */
@@ -154,6 +171,50 @@ static uint32_t perf_avail(void)
     return m;
 }
 
+/* the last pressed buffer effect of a set (declared below) */
+static uint32_t perf_pick(uint32_t a);
+static inline int perf_newer(uint32_t a, uint32_t b) { return perf_ord[a] - perf_ord[b] < 0x80000000u; }   /* a pressed after b */
+
+/* the points of a set of effects: every non-buffer effect, plus the one buffer effect that runs (the last pressed); bufl: the points of
+ * a buffer effect still sounding (ramping out), the dearer of the two counts (the buffer plays one at a time) */
+static uint32_t perf_cost(uint32_t set, uint32_t bufl)
+{
+    uint32_t e, c = 0, b = perf_pick(set);
+    for (e = 0; e < PF_N; e++)
+        if (((set & ~PF_BUF) >> e) & 1u)
+            c += PF_W[e];
+    if (b != PF_N && PF_W[b] > bufl)
+        bufl = PF_W[b];
+    return c + bufl;
+}
+
+/* a press (e) took the total over the budget: release the oldest costly effect held (the buffer group as one, by its last pressed)
+ * until the set fits. e itself is never released */
+static void perf_cap(uint32_t e)
+{
+    for (;;) {
+        uint32_t set = perf_held & perf_avail(), v = PF_N, x, b = perf_pick(set);
+        if (perf_cost(set, 0) <= PF_BUDGET)
+            return;
+        for (x = 0; x < PF_N; x++) {
+            uint32_t y = (PF_BUF >> x) & 1u ? b : x;
+            if (x == e || y == PF_N || !PF_W[y] || !((set >> x) & 1u) || ((PF_BUF >> e) & 1u && (PF_BUF >> x) & 1u))
+                continue;
+            if (v == PF_N || perf_newer(v, y))
+                v = y;
+        }
+        if (v == PF_N)
+            return;
+        if ((PF_BUF >> v) & 1u) {                       /* the group is one slot: all its held effects go */
+            perf_rel |= perf_held & PF_BUF;
+            perf_held &= ~PF_BUF;
+        } else {
+            perf_rel |= PF_BIT(v);
+            perf_held &= ~PF_BIT(v);
+        }
+    }
+}
+
 /* seq.c keyboard_block: a PERFORM key down / up (e: PF_*) */
 static void perf_press(uint32_t e, int down)
 {
@@ -166,11 +227,14 @@ static void perf_press(uint32_t e, int down)
     }
     if (down) {
         perf_held |= PF_BIT(e);
+        perf_rel &= ~PF_BIT(e);
         perf_ord[e] = ++perf_seq;
         if (e == PF_PUMP)
             pf.pbeat = perf_beat;                       /* (PUMP: from the next beat, not one counted before) */
+        perf_cap(e);
     } else {
         perf_held &= ~PF_BIT(e);
+        perf_rel &= ~PF_BIT(e);
     }
 }
 
@@ -195,6 +259,7 @@ static uint32_t perf_pick(uint32_t a)
 static void perf_buf_start(uint32_t e)
 {
     pf.src = (uint8_t)e;
+    perf_bw = PF_W[e];
     pf.next = PF_N;
     pf.wr = pf.rp = 0;
     pf.odd = 0;
@@ -260,9 +325,46 @@ static void perf_buf_select(uint32_t e)
 
 /* each block, after the keys (seq.c) and before the parts: what runs, the 1/16, the mutes. Returns 1 when a master stage has
  * something to do (fx.c perf_master) */
+/* the stages of the last block still sounding (held or ramping out): the non-buffer ones as effect bits */
+static uint32_t perf_live(void)
+{
+    uint32_t l = pf.act & ~PF_BUF;
+    if (pf.fw)
+        l |= PF_BIT(PF_FLG);
+    if (pf.pw)
+        l |= PF_BIT(PF_PHS);
+    if (pf.dw)
+        l |= PF_BIT(PF_DRV);
+    if (pf.pph || pf.pdn)
+        l |= PF_BIT(PF_PUMP);
+    return l;
+}
+
+/* held, less what must wait for a stage to finish ramping out: while the running stages (ramps included) and the held ones together pass the
+ * budget, the newest held one that is not running yet waits (a block or two, the 2.9 ms ramp); it is tried again each block */
+static uint32_t perf_defer(uint32_t held)
+{
+    uint32_t live = perf_live(), bl = pf.mode != BM_NONE ? perf_bw : 0u;
+    while (perf_cost((live | held) & PF_MASK_COST, bl) > PF_BUDGET) {
+        uint32_t e, v = PF_N, b = perf_pick(held);
+        for (e = 0; e < PF_N; e++) {
+            uint32_t y = (PF_BUF >> e) & 1u ? b : e;
+            if (y == PF_N || !PF_W[y] || !((held >> e) & 1u) || ((live >> e) & 1u) ||
+                ((PF_BUF >> y) & 1u && pf.mode != BM_NONE && (pf.src == y || pf.next == y)))   /* (one already playing is not cut) */
+                continue;
+            if (v == PF_N || perf_newer(y, v))
+                v = y;
+        }
+        if (v == PF_N)
+            break;
+        held &= (PF_BUF >> v) & 1u ? ~PF_BUF : ~PF_BIT(v);
+    }
+    return held;
+}
+
 static __attribute__((noinline)) int perf_begin(uint32_t n)
 {
-    uint32_t held = (perf_kill ? 0u : perf_held) & perf_avail();
+    uint32_t held = perf_defer((perf_kill ? 0u : perf_held) & perf_avail());
     uint32_t q, k, ph0, bnd;
     if (!held && !pf.busy && !perf_filt) {          /* nothing at the master: the clock only (and a mute's ramp) */
         pf.ph += n;

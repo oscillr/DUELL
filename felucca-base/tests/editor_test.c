@@ -64,6 +64,10 @@ static int st_read(uint32_t off, void *p, uint32_t n) { (void)off; (void)p; (voi
 static int st_prog(uint32_t off, const void *p, uint32_t n) { (void)off; (void)p; (void)n; return -1; }
 static int st_erase(uint32_t off) { (void)off; return -1; }
 #include "../firmware/src/storage.c"
+/* item 138: midi_learn.c (DUELL 1.1) asks ui_draw.c card_hidden_vp whether the setup hides a control; this harness has no ui_draw.c (no screen), so no
+ * control counts as hidden here (the hide rule itself is checked in midimap_test and ui_test, which build the drawing code). Without it the four tests built
+ * on this file (editor, menuproduct, scope2, fuzz) did not link */
+static int card_hidden_vp(const int16_t *vp) { (void)vp; return 0; }
 #include "../firmware/src/editor.c"
 
 static int check(const char *what, int ok)
@@ -124,13 +128,13 @@ static int motion_locks(void)
     n = request(ED_MOTION, a, 6);                                       /* a lock, step 5 */
     bad += check("MOTION op 5 sets a lock: rc 0, two records, then their kinds 0 1",
         host_wire[6] == 0 && host_wire[8] == 2 && host_wire[10] == 2 && host_wire[11] == P_REV &&
-        host_wire[14] == 5 && host_wire[15] == P_REV && n == 5u + 5u + 2u * 4u + 2u + 1u &&
+        host_wire[14] == 5 && host_wire[15] == P_REV && n == 5u + 5u + 2u * 4u + 2u + 2u + 1u &&   /* (item 138: DUELL 1.1 adds one byte a record after the kinds: the id's high bit, editor.c ed_motion_reply) */
         host_wire[18] == 0 && host_wire[19] == 1 && motion_lock_count(&trk[1]) == 1u);
     n = request(ED_MOTION, a, 1);
     bad += check("MOTION query as before 1.1: no kinds, the lock's id without bit 7", n == 5u + 5u + 2u * 4u + 1u &&
         host_wire[15] == P_REV);
     a[1] = 7; n = request(ED_MOTION, a, 2);
-    bad += check("MOTION op 7: the query with the kinds", n == 5u + 5u + 2u * 4u + 2u + 1u && host_wire[19] == 1);
+    bad += check("MOTION op 7: the query with the kinds", n == 5u + 5u + 2u * 4u + 2u + 2u + 1u && host_wire[19] == 1);
     a[1] = 5; a[2] = 64; n = request(ED_MOTION, a, 6);
     bad += check("MOTION op 5 refuses step 64 (rc 1)", host_wire[6] == 1);
     a[1] = 6; a[2] = 2; request(ED_MOTION, a, 3);
@@ -147,13 +151,13 @@ static int motion_locks(void)
         a[1] = 5; a[2] = 63; a[3] = P_PAN; a[4] = (uint8_t)((-3 + 8192) & 127); a[5] = (uint8_t)((-3 + 8192) >> 7);
         n = request(ED_MOTION, a, 6);                   /* the 128th: a lock of PAN -3 */
         ok &= host_wire[6] == 0 && motion.count == MOTION_MAX && host_wire[8] == 64 && host_wire[9] == 64 &&
-              n == 5u + 5u + 64u * 4u + 64u + 1u;
+              n == 5u + 5u + 64u * 4u + 64u + 64u + 1u;
         bad += check("MOTION 1.2: 128 records on one track; op 5's reply as before: max 64, its first 64 listed", ok);
         a[1] = 3; a[2] = 0; a[3] = P_CHOR; a[4] = 0; a[5] = 64;
         n = request(ED_MOTION, a, 6);
         bad += check("  the 129th: rc 2 (full)", host_wire[6] == 2 && motion.count == MOTION_MAX);
         a[1] = 8; n = request(ED_MOTION, a, 2);
-        ok = n == 5u + 7u + 128u * 4u + 128u + 1u && host_wire[8] == 0 && host_wire[9] == 1 && host_wire[10] == 0 &&
+        ok = n == 5u + 7u + 128u * 4u + 128u + 128u + 1u && host_wire[8] == 0 && host_wire[9] == 1 && host_wire[10] == 0 &&
              host_wire[11] == 1 && host_wire[12 + 127u * 4u] == 63 && host_wire[13 + 127u * 4u] == P_PAN &&
              ed_rv(&host_wire[14 + 127u * 4u]) == -3 && host_wire[12 + 128u * 4u + 127u] == 1 &&
              host_wire[12 + 128u * 4u] == 0 && n <= sizeof ed_out;
@@ -830,7 +834,7 @@ static int menu_protocol(void)
         {"MULTI LOAD", "KEEPS MODE,SETS MODE"},                                                      /* (DUELL 0.2.11, id 27) */
         {"ARP", "OFF,ON"}, {"SEQ", "OFF,ON"}, {"SENDS", "OFF,ON"}, {"PART FX", "OFF,ON"},
         {"PERF LEAVE", "FADE,KEEP"},          /* (DUELL 0.2.14: id 32, CONTROL) */
-        {"BASS MONO", "OFF,40 Hz,50 Hz,63 Hz,80 Hz,100 Hz,125 Hz,160 Hz,200 Hz,250 Hz,315 Hz,400 Hz"},   /* (DUELL 0.2.19: id 33, the MASTER page, tab MASTER: no MENU tab) */
+        {"BASS MONO", "OFF,40Hz,50Hz,63Hz,80Hz,100Hz,125Hz,160Hz,200Hz,250Hz,315Hz,400Hz"},   /* (DUELL 0.2.19: id 33, the MASTER page, tab MASTER: no MENU tab) */
         {"THRESH", 0}, {"RATIO", "OFF,1.5:1,2:1,3:1,4:1,6:1,8:1,12:1,INF"},                              /* (DUELL 0.2.21: ids 34..37, GLO > COMP, tab MASTER; THRESH a number in dB) */
         {"ATTACK", "0.1 ms,0.15 ms,0.2 ms,0.3 ms,0.5 ms,0.7 ms,1 ms,1.5 ms,2 ms,3 ms,5 ms,7 ms,10 ms,15 ms,20 ms,30 ms,50 ms,70 ms,100 ms"},
         {"RELEASE", "20 ms,30 ms,50 ms,70 ms,100 ms,150 ms,200 ms,300 ms,500 ms,700 ms,1 s,1.5 s,2 s"},
@@ -1263,7 +1267,9 @@ static int map_protocol(void)
 }
 
 #ifndef EDITOR_TEST_NO_MAIN                              /* (robust_test.c, fuzz_*.c: this file is their base) */
-/* cloud job G (EDITABLE B): the editor's value writes edit A at the B end too (the web editor shows A; End B's values are the unit's knobs') */
+/* EDITABLE B in the editor. Cloud job G wrote A at the B end ("the web editor shows A"); item 159: the editor shows the values at the fader and writes as the
+ * unit's knob writes (editor.c ed_put): at the B end End B's value (as ui_input.c's knob: morph_b_set), the stored Original unchanged; the STORED form
+ * (TRACK_PARAM scope + 4, the librarian's copy) still writes A, End B and its list as they were */
 static int editb_editor(void)
 {
     int bad = 0;
@@ -1278,8 +1284,161 @@ static int editb_editor(void)
     before = trk[0].p[P_E6];
     a[0] = 0; a[1] = P_E6; a[2] = (uint8_t)((8192 + 90) & 127); a[3] = (uint8_t)((8192 + 90) >> 7);
     request(ED_SET, a, 4);
-    bad += check("EDITABLE B: at fader 127 an editor value write (SET) edits A: the stored value is the written one, End B and its list as they were",
-                 morph_b_mode(0, P_E6) == 1u && trk[0].p[P_E6] == 90 && before != 90 && !morph_edits(0, ed) && !memcmp(b0, morph_cur(&mph[0], 1), P_COUNT));
+    bad += check("EDITABLE B (item 159): at fader 127 an editor SET of a value the morph can move is End B's, as the knob: B holds it (hand-set), the Original as it was, the reply 90",
+                 morph_b_mode(0, P_E6) == 1u && trk[0].p[P_E6] == before && before != 90 && morph_edits(0, ed) == 1u && ed[0].wid == P_E6 &&
+                 morph_cur(&mph[0], 1)[P_E6] == 90 && morph_view(0, P_E6) == 90 && ed_rv(host_wire + 7) == 90);
+    memcpy(b0, morph_cur(&mph[0], 1), P_COUNT);
+    a[0] = 0; a[1] = P_E6; a[2] = (uint8_t)((8192 + 33) & 127); a[3] = (uint8_t)((8192 + 33) >> 7); a[4] = 4;
+    request(ED_TRACK_PARAM, a, 5);
+    bad += check("EDITABLE B: the STORED form (TRACK_PARAM scope 4) at fader 127 writes A as before: the stored value 33, End B as it was, the reply the stored 33",
+                 trk[0].p[P_E6] == 33 && !memcmp(b0, morph_cur(&mph[0], 1), P_COUNT) && ed_rv(host_wire + 7) == 33 && host_wire[9] == 4);
+    return bad;
+}
+
+/* item 159 (owner: "The editor should be updated as well. We should be seeing the actual values of the current sound at the morph setting that we are at"):
+ * every value the editor reads of a part is morph_view's, after a roll and at the fader A, middle and B, for every id 0..155 (0..126 by DUMP / TRACK_DUMP /
+ * GET / TRACK_PARAM, 128..155 by GET / TRACK_PARAM scope 2, 127 the empty gap); the pushes follow a fader move and a roll (CHANGED for the selected
+ * part, TRACK_CHANGED with WATCH bit 2 for the other); the stored forms read the Original; nothing the editor reads changes the stored sound; a save
+ * through the editor stores the Original and both ends exactly as the unit's own save */
+static uint32_t i159_frames(int16_t *sel, int16_t *oth, uint32_t o)   /* apply every CHANGED / TRACK_CHANGED on the wire to the two models (wide ids) */
+{
+    uint32_t i, n = 0;
+    for (i = 0; i + 8u < host_wire_n; i++) {
+        const uint8_t *f = host_wire + i;
+        if (f[0] != 0xF0 || f[1] != ED_HDR0)
+            continue;
+        if (f[4] == ED_CHANGED && f[5] != 1u) {
+            sel[f[5] == 2u ? XW_BASE + f[6] : f[6]] = (int16_t)ed_rv(f + 7); n++;
+        } else if (f[4] == ED_TRACK_CHANGED && f[5] == o) {
+            oth[f[9] == 2u ? XW_BASE + f[6] : f[6]] = (int16_t)ed_rv(f + 7); n++;
+        }
+    }
+    return n;
+}
+static int item159(void)
+{
+    int bad = 0;
+    uint8_t a[8];
+    uint32_t pos, id, k, pass;
+    static const uint8_t FAD[3] = {0, 64, 127};
+    reset();
+    usb.resets = 0;
+    a[0] = 0; a[1] = 3; request(ED_PRESET, a, 2);       /* part 1: ANALOG #4 */
+    track_select(1); a[0] = 2; a[1] = 1; request(ED_PRESET, a, 2); track_select(0);
+    morph_set_target(1);                                  /* BOTH: a roll and the fader act on both parts */
+    morph_set_cfg(MC_WILD, 1);                            /* (WILD: more values move, the extension slots too) */
+    morph_set_amount(60);
+    morph_roll(0);
+    morph_roll(1);
+    for (pos = 0; pos < 3u; pos++) {
+        int16_t st[2][EXT_P_LEN], v[2][EXT_P_LEN];
+        uint32_t ok = 1, moved = 0, xmoved = 0, gap = 1;
+        morph_set_fader(FAD[pos]);
+        memcpy(st[0], trk[0].p, sizeof st[0]); memcpy(st[1], trk[1].p, sizeof st[1]);
+        for (k = 0; k < 2u; k++)
+            for (id = 0; id < EXT_P_LEN; id++)
+                v[k][id] = (int16_t)(id == P_COUNT ? 0 : morph_view(k, id));
+        request(ED_DUMP, 0, 0);
+        for (id = 0; id < P_COUNT; id++)
+            ok &= ed_rv(host_wire + 7 + 2u * id) == v[0][id];
+        for (k = 0; k < 2u; k++) {
+            a[0] = (uint8_t)k; request(ED_TRACK_DUMP, a, 1);
+            for (id = 0; id < P_COUNT; id++)
+                ok &= ed_rv(host_wire + 8 + 2u * id) == v[k][id];
+            for (id = 0; id < P_COUNT; id++) {
+                a[0] = (uint8_t)k; a[1] = (uint8_t)id; request(ED_TRACK_PARAM, a, 2);
+                ok &= ed_rv(host_wire + 7) == v[k][id];
+                moved += v[k][id] != st[k][id];
+            }
+            for (id = 0; id < NX; id++) {
+                a[0] = (uint8_t)k; a[1] = (uint8_t)id; a[2] = 2; request(ED_TRACK_PARAM, a, 3);
+                ok &= ed_rv(host_wire + 7) == v[k][XW_BASE + id];
+                xmoved += v[k][XW_BASE + id] != st[k][XW_BASE + id];
+            }
+        }
+        for (id = 0; id < EXT_P_LEN; id++) {             /* GET of the selected part, scope 0 and 2 */
+            if (id == P_COUNT) { gap &= v[0][id] == 0 && trk[0].p[id] == 0; continue; }
+            a[0] = id < P_COUNT ? 0u : 2u; a[1] = (uint8_t)(id < P_COUNT ? id : id - XW_BASE); request(ED_GET, a, 2);
+            ok &= ed_rv(host_wire + 7) == v[0][id];
+        }
+        printf("editor: item 159 fader %3u: %u part values and %u extension slots differ from the stored Original\n", FAD[pos], moved, xmoved);
+        bad += check(pos == 0 ? "item 159 fader A (0): DUMP, TRACK_DUMP of both parts, GET, TRACK_PARAM (scope 0 and 2): every id 0..155 = morph_view" :
+                     pos == 1 ? "item 159 fader middle (64): every id 0..155 of both parts = morph_view, as the cards show" :
+                                "item 159 fader B (127): every id 0..155 of both parts = morph_view, as the cards show",
+                     ok && gap && moved >= 10u && !memcmp(st[0], trk[0].p, sizeof st[0]) && !memcmp(st[1], trk[1].p, sizeof st[1]));
+        a[0] = 0; a[1] = 1; request(ED_TRACK_DUMP, a, 2);
+        ok = 1;
+        for (id = 0; id < P_COUNT; id++)
+            ok &= ed_rv(host_wire + 8 + 2u * id) == motion_base_value(&trk[0], id);
+        for (id = 0; id < NX; id++) {
+            a[0] = 1; a[1] = (uint8_t)id; a[2] = 6; request(ED_TRACK_PARAM, a, 3);
+            ok &= ed_rv(host_wire + 7) == trk[1].p[XW_BASE + id] && host_wire[9] == 6;
+        }
+        bad += check("item 159: the STORED forms (TRACK_DUMP byte 1, TRACK_PARAM scope 4 / 6) read the stored Original", ok);
+    }
+    /* the pushes: WATCH 7, the fader moves 0 -> 64 -> 127, then a roll of B at 127: the editor's two models (from the DUMPs) end equal to morph_view */
+    {
+        static int16_t m0[EXT_P_LEN], m1[EXT_P_LEN];
+        uint32_t ok = 1, n = 0, step;
+        morph_set_fader(0);
+        a[0] = 7; request(ED_WATCH, a, 1);
+        bad += check("item 159: WATCH 7 is known (the reply's bit 2)", host_wire[5] == 7u && ed_w.v5);
+        for (k = 0; k < 2u; k++) {
+            int16_t *m = k ? m1 : m0;
+            a[0] = (uint8_t)k; request(ED_TRACK_DUMP, a, 1);
+            for (id = 0; id < P_COUNT; id++) m[id] = (int16_t)ed_rv(host_wire + 8 + 2u * id);
+            for (id = 0; id < NX; id++) { a[0] = (uint8_t)k; a[1] = (uint8_t)id; a[2] = 2; request(ED_TRACK_PARAM, a, 3); m[XW_BASE + id] = (int16_t)ed_rv(host_wire + 7); }
+        }
+        for (step = 0; step < 3u; step++) {
+            if (step < 2u) morph_set_fader(step ? 127u : 64u);
+            else morph_roll(1);
+            for (pass = 0; pass < 200u; pass++) { request(ED_PING, 0, 0); sync_pass(); n += i159_frames(m0, m1, 1u); }   /* (a request each pass keeps WATCH alive) */
+            for (k = 0; k < 2u; k++)
+                for (id = 0; id < EXT_P_LEN; id++)
+                    if (id != P_COUNT && (k ? m1 : m0)[id] != morph_view(k, id)) {
+                        if (ok) printf("editor: item 159 push: step %u part %u id %u model %d shown %d\n", step, k, id, (k ? m1 : m0)[id], (int)morph_view(k, id));
+                        ok = 0;
+                    }
+        }
+        printf("editor: item 159 pushes: %u values pushed over two fader moves and a roll\n", n);
+        bad += check("item 159: a fader move (0 -> 64 -> 127) and a roll at B are pushed: CHANGED (selected part) and TRACK_CHANGED with the scope byte (the other part) leave the editor's values = morph_view, ids 0..155",
+                     ok && n >= 20u && !sync_pass());
+        trk[1].p[P_PAN] = (int16_t)(trk[1].p[P_PAN] == 10 ? 11 : 10);
+        pass = 0; for (k = 0; k < 4u; k++) { sync_pass(); pass += i159_frames(m0, m1, 1u); }
+        bad += check("item 159: a change of the other part's value is pushed once (TRACK_CHANGED, not twice by the mix's v4 loop)",
+                     pass == 1u && m1[P_PAN] == morph_view(1, P_PAN));
+        a[0] = 0; request(ED_WATCH, a, 1);
+    }
+    /* writes as the knob: fader in the middle, a value the morph moves, the editor writes shown + 5: the Original moves by 5 (5 knob steps), shown = written */
+    {
+        int16_t was, shown;
+        uint32_t w = P_COUNT;
+        morph_set_fader(64);
+        for (id = 0; id < P_COUNT && w == P_COUNT; id++) {
+            const param_desc_t *d = ed_tdesc(TSEL, id);
+            if (d->fmt != F_ENUM && morph_view(0, id) != trk[0].p[id] && trk[0].p[id] + 5 < d->max && morph_view(0, id) + 5 < d->max &&
+                morph_view(0, id) - trk[0].p[id] < 20 && morph_view(0, id) - trk[0].p[id] > -20)
+                w = id;
+        }
+        was = trk[0].p[w]; shown = (int16_t)morph_view(0, w);
+        a[0] = 0; a[1] = (uint8_t)w; a[2] = (uint8_t)((8192 + shown + 5) & 127); a[3] = (uint8_t)((8192 + shown + 5) >> 7);
+        request(ED_SET, a, 4);
+        printf("editor: item 159 write at the middle: id %u stored %d shown %d -> written %d: stored %d shown %d\n", w, was, shown, shown + 5, trk[0].p[w], (int)morph_view(0, w));
+        bad += check("item 159: at the fader's middle an editor SET of shown + 5 moves the stored Original by 5 (as 5 knob steps), the reply and the card show the written value",
+                     w < P_COUNT && trk[0].p[w] == was + 5 && morph_view(0, w) == shown + 5 && ed_rv(host_wire + 7) == shown + 5);
+    }
+    /* saves: an UP_STORE from the editor stores exactly what the unit's own save stores (the Original, End B, ..), not the shown values */
+    {
+        uint32_t differ = 0;
+        morph_set_fader(64);
+        for (id = 0; id < P_COUNT; id++) differ += morph_view(0, id) != trk[0].p[id];
+        (void)up_store(6, "M159");                       /* (the unit's own store first: the editor's adopts the slot afterwards, as the device's SAVE) */
+        a[0] = 5; memcpy(a + 1, "M159", 5); request(ED_UP_STORE, a, 6);
+        bad += check("item 159: an editor save (UP_STORE) with the fader in the middle (shown values differ) = the unit's own save, byte for byte; its values are the stored Original",
+                     differ > 0u && up_used(5) && up_used(6) && !memcmp(up_rec(5), up_rec(6), sizeof(up_rec_t)));
+    }
+    morph_set_fader(0); morph_set_target(0); morph_set_cfg(MC_WILD, 0);
+    reset();
     return bad;
 }
 
@@ -1287,7 +1446,7 @@ int main(void)
 {
     int bad = preferences() + motion_locks() + framing() + uart_recovery() + steps() + samples() + malformed_saves() +
               fm6_patches() + user_preset_roundtrip() + live_sync() + usb_burst() + menu_protocol() +
-              learn_protocol() + editb_editor() + map_protocol();
+              learn_protocol() + editb_editor() + map_protocol() + item159();
     printf("%s\n", bad ? "EDITOR TEST FAILED" : "editor test passed");
     return bad != 0;
 }

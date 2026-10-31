@@ -205,7 +205,7 @@ static void con_status(void)
     con_kv("track", (int32_t)song.sel + 1);
     con_kv("batt_raw", song.batt_raw);
     con_puts("engine ");
-    con_puts(e->name);
+    con_puts(eng_shown(e->name));
     con_puts("\r\n");
     con_puts("preset ");
     con_puts(ds_name(TSEL->eng_req % NENGINES, TSEL->preset));   /* (DUELL: the factory sound, sounds.c) */
@@ -361,6 +361,10 @@ static void con_exec(const char *p)
 #if FELUCCA_FLASH
     else if (con_word(&p, "flr"))
         con_flr(p);
+#endif
+#if DUELL_VELO_CAPTURE
+    else if (con_word(&p, "velocap"))
+        velocap_con(p);                                /* (the velocity capture build: velocap.c; default OFF) */
 #endif
 #if DUELL_BENCH
     else if (con_word(&p, "bench"))

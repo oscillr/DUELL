@@ -135,10 +135,27 @@ static void midi_release(uint32_t ch, uint32_t note)
 
 /* a MIDI note-on (ch, note) of track t: its chord (chord.c) or the note alone. A note another key or MIDI
  * note holds already sounds: not started again */
+/* tone i of MIDI chord m (midi_play, and STRUM's later tones: seq.c strum_block): played unless another key or MIDI note of the part holds that note
+ * already; counted as started either way (m->n, which its release ends) */
+static void mchord_tone(mchord_t *m, uint32_t i)
+{
+    track_t *t = &trk[(m->id - 1u) % NTRK];
+    uint32_t x = m->note[i];
+    if (!midi_note_held(t, x) && !midi_local_held(t, x)) {
+        if (duell_mode == DM_LAYER)
+            lay_input(t, x, m->vel);
+        else
+            input_on(t, x, m->vel);
+    }
+    m->n = (uint8_t)(i + 1u);
+}
+
+/* (STRUM, item 144: a MIDI note's chord is strummed as a key's, chord.c strum_blocks: the lowest tone now, the rest by strum_block; a note-off before a
+ * tone's turn cancels it) */
 static void midi_play(track_t *t, uint32_t ch, uint32_t note, uint32_t vel)
 {
     uint8_t nn[CHORD_MAX];
-    uint32_t n = chord_build(t, note, nn), i, f = 0, lay, rt;
+    uint32_t n = chord_build(t, note, nn), i, f = 0, lay, rt, sb;
     if (n > 1u || nn[0] != note)
         for (f = 0; f < MCHORD_N && mchord[f].id; f++)
             ;
@@ -148,7 +165,20 @@ static void midi_play(track_t *t, uint32_t ch, uint32_t note, uint32_t vel)
     }
     lay = duell_mode == DM_LAYER && t == trk;
     rt = lay ? lay_route(note) : 3u;                /* (LAYER, SPLIT set: below it part 1 alone, at or above part 2 alone) */
-    if (rt & 1u) {
+    sb = n > 1u ? strum_blocks(t) : 0u;
+    if ((rt & 1u) && sb) {                          /* STRUM: the chord is kept first (its tones count as its own as they start) */
+        mchord_t *m = &mchord[f];
+        m->ch = (uint8_t)ch;
+        m->src = (uint8_t)note;
+        m->n = 0;
+        m->tot = (uint8_t)n;
+        m->vel = (uint8_t)vel;
+        for (i = 0; i < n; i++)
+            m->note[i] = nn[i];
+        m->id = (uint8_t)(trk_index(t) + 1u);
+        mchord_tone(m, 0);
+        m->wait = (uint8_t)sb;
+    } else if (rt & 1u) {
         for (i = 0; i < n; i++)
             if (!midi_note_held(t, nn[i]) && !midi_local_held(t, nn[i])) {
                 if (lay)
@@ -160,7 +190,9 @@ static void midi_play(track_t *t, uint32_t ch, uint32_t note, uint32_t vel)
             mchord_t *m = &mchord[f];
             m->ch = (uint8_t)ch;
             m->src = (uint8_t)note;
-            m->n = (uint8_t)n;
+            m->n = m->tot = (uint8_t)n;
+            m->wait = 0;
+            m->vel = (uint8_t)vel;
             for (i = 0; i < n; i++)
                 m->note[i] = nn[i];
             m->id = (uint8_t)(trk_index(t) + 1u);
@@ -177,6 +209,21 @@ static void midi_play(track_t *t, uint32_t ch, uint32_t note, uint32_t vel)
             n = 1;
             nn[0] = (uint8_t)note;
         }
+        sb = n > 1u ? strum_blocks(t2) : 0u;
+        if (sb) {                                   /* (STRUM on part 2: its own setting) */
+            mchord_t *m = &mchord[f];
+            m->ch = (uint8_t)ch;
+            m->src = (uint8_t)note;
+            m->n = 0;
+            m->tot = (uint8_t)n;
+            m->vel = (uint8_t)vel;
+            for (i = 0; i < n; i++)
+                m->note[i] = nn[i];
+            m->id = 2u;
+            mchord_tone(m, 0);
+            m->wait = (uint8_t)sb;
+            return;
+        }
         for (i = 0; i < n; i++)
             if (!midi_note_held(t2, nn[i]) && !midi_local_held(t2, nn[i]))
                 lay_input(t2, nn[i], vel);
@@ -184,7 +231,9 @@ static void midi_play(track_t *t, uint32_t ch, uint32_t note, uint32_t vel)
             mchord_t *m = &mchord[f];
             m->ch = (uint8_t)ch;
             m->src = (uint8_t)note;
-            m->n = (uint8_t)n;
+            m->n = m->tot = (uint8_t)n;
+            m->wait = 0;
+            m->vel = (uint8_t)vel;
             for (i = 0; i < n; i++)
                 m->note[i] = nn[i];
             m->id = 2u;
@@ -272,14 +321,14 @@ static int midi_track_held(uint32_t track)
 
 /* THE MIDI MAP (midi_map.h, docs/design/MIDI_MAP_DESIGN_2.md): one table of 128 lines, one per CC number, in place of the lists
  * this file had (the standard map #103, the morph's 9 CCs, the MODE's 4, the 16 learn slots). A CC sets the parameter its line names
- * as a knob would, 0..127 over the parameter's range (64: the middle of a bipolar one), and AUTOMATION records a part value as a knob
+ * as a knob would, 0..127 over the parameter's range (64: the middle of a bipolar one), and PARAMETER LOCKS records a part value as a knob
  * move (motion_capture: the selected track, armed and playing). The line's part rule says whose: MAP_R_CHANNEL the part the CC's channel
  * plays (ROUT as notes), PART1 / PART2 that part, GLOBAL any channel (also one ROUT does not play, before the routing: the MODE's
  * and the effects block); a LEARNED line is pinned to its track (midi_map.h). A number that is not in the table does nothing; the 23
  * locked standard numbers are handled by midi_control below as they always were. CC74 / CC71 (CUTOFF_SMART, RES_SMART) are the engine's own
  * cutoff / resonance (MIDI_CC_ENG); an engine without one ignores them. On the engines with no filter of their own (engine_t.ufilt: every engine since cloud job J) they
  * are the multimode filter's CUT and RES (MCC_UF; DUELL 0.2.9: 0..127 over the whole CUT dial, 30 Hz .. the open end). CC121 resets none
- * of them (RP-015: they are the sound's). A part value on an extension slot (128 + slot) is written to XV(t, slot), End A only; AUTOMATION
+ * of them (RP-015: they are the sound's). A part value on an extension slot (128 + slot) is written to XV(t, slot), End A only; PARAMETER LOCKS
  * does not record it until the motion escape (id 127) is built (EXTENSION_BLOCK_PLAN 3.3). The table is in the pool (midi_map, 256 B);
  * it is the shipped list (midi_map_defaults.h, generated by tools/gen_midi_map.py from docs/MIDI_MAP_DEFAULTS.csv) until the settings
  * record gives another (settings_persist.c), and the main loop edits it with the interrupts off a line at a time (midi_learn.c) */
@@ -320,7 +369,8 @@ static void midi_cc_set(track_t *t, uint32_t id, uint32_t value)
 }
 /* the extension slots' ranges (ext.h), the same scaling; End A only (XV is the part's current value, never End B) */
 static const int8_t MAP_XRANGE[NX][2] = {
-    {0, 1}, {0, 1}, {-63, 63}, {-64, 63}, {-64, 63}, {-64, 63}, {0, 127}, {0, 2}, {0, 3}, {0, 127}, {0, 1}, {0, 127}, {0, 127}, {-64, 63}, {0, 1}, {0, 0},
+    {0, 1}, {0, 1}, {-63, 63}, {-64, 63}, {-64, 63}, {-64, 63}, {0, 127}, {0, 2}, {0, 3}, {0, 127}, {0, 1}, {0, 127}, {0, 127}, {-64, 63}, {0, 1},
+    {-64, 63}, {-64, 63}, {-64, 63}, {-64, 63}, {-64, 63}, {-64, 63}, {-64, 63}, {-64, 63}, {-64, 63}, {-64, 63}, {0, 127}, {0, 127}, {0, 100},   /* (DUELL 1.1: X15 .. X26; X27 STRUM 0..100 ms, item 144) */
 };
 static void midi_xv_set(track_t *t, uint32_t slot, uint32_t value)
 {
@@ -404,7 +454,7 @@ static void __attribute__((noinline)) midi_morph(uint32_t ch, uint32_t pi, uint3
 }
 
 /* DUELL step 5 (SPEC 5b.1): the MODE is global (not a part's): 0-42 SPLIT, 43-85 STEREO, 86-127 LAYER, on any channel (also one ROUT does
- * not play: the MODE is no part's), a value that keeps the mode does nothing. BALANCE 0..127 -> -100..+100, 64 = 0; XFADE 0..127 -> 0..100 %;
+ * not play: the MODE is no part's), a value that keeps the mode does nothing. XFADE 0..127 -> 0..100 % (item 157: BALANCE is no target any more);
  * SPLIT 0 = OFF, 1..127 = the note n. Queued for nothing: mode_apply runs here, in the ISR */
 static void mode_apply(void);                   /* (seq.c) */
 /* 1: code is a global target and is set now */
@@ -412,8 +462,6 @@ static int __attribute__((noinline)) midi_glob_act(uint32_t code, uint32_t value
 {
     if (code >= MAP_T_G0 && code < MAP_T_G0 + G_COUNT)
         midi_glob_set(code - MAP_T_G0, value);
-    else if (code == MAP_T_BALANCE)                 /* 0..127 -> -100..+100, 64 = 0 */
-        mix_bal = (int8_t)(value == 64u ? 0 : value < 64u ? ((int32_t)value - 64) * 100 / 64 : ((int32_t)value - 64) * 100 / 63);
     else if (code == MAP_T_XFADE)                   /* 0..127 -> 0..100 % */
         mix_xf = (uint8_t)((value * 100u + 63u) / 127u);
     else if (code == MAP_T_SPLIT)                   /* 0 OFF, 1..127 the note n (stored n + 1) */
@@ -546,9 +594,9 @@ static void midi_control(uint32_t ch, uint32_t cc, uint32_t value)
  * MORPH's actions. The channel's part as for its notes (ROUT CH1-4: channel 1 part 1, 2 part 2, the hidden parts' channels
  * ignored; SEL: the selected part; LAYER: part 1's channel, SEL any).
  *   LAYER: bank 0, program 0..15 = MULTI M01..M16 (the MULTI page's LOAD; an empty slot nothing); any other bank / program
- *   ignored. SPLIT, STEREO: a SOUND for the channel's part only: bank 0 program n = entry n of the PATCHES list (ALL:
- *   factory sounds with their stored copies in place, then the user patches; the empty places are no entry); bank 1 program n = stored patch n (slot 0..127);
- *   other banks, programs past the list and empty slots ignored. Dropped if PCQ_N recalls are already waiting */
+ *   ignored. SPLIT, STEREO: a SOUND for the channel's part only: program n = patch slot n, #n + 1 of the ONE list of 128 slots (0.2.17; ui.c pc_recall),
+ *   bank 0 and bank 1 alike (they were two lists before); every slot holds a sound (its record, else its factory sound). Other banks and programs
+ *   above 127 ignored. Dropped if PCQ_N recalls are already waiting */
 #define PCQ_N 8u
 #define PCQ_MULTI 0xFFu                                    /* (the entry's part: LAYER's multi) */
 static volatile uint32_t pcq_buf[PCQ_N];                   /* part | program << 8 | bank << 16 */
@@ -595,7 +643,7 @@ static void __attribute__((noinline)) midi_route_block(void)
 
 /* Keep the occasional controller/panic dispatch outside the hot rendering loop. Channel voice messages only
  * (realtime and clock are handled in events_block, SysEx never reaches here). With ROUT CH1-4 channels
- * 5..16 are ignored entirely (with CH5-8 .. CH13-16 every channel outside the block): notes, bend, CCs (CC1/11/64, RPN, and the CC120/121/123 panic and reset),
+ * 5..16 are ignored entirely (with CH5-8 .. CH13-16 every channel outside the block): notes, bend, CCs (CC1/2/4/11/64, RPN, and the CC120/121/123 panic and reset),
  * channel aftertouch, so they stay free for other instruments. */
 static void __attribute__((noinline)) midi_event(uint32_t st, uint32_t ch, uint32_t d1, uint32_t d2)
 {

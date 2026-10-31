@@ -113,7 +113,7 @@ static void ml_knob(const track_t *t, uint32_t id)
     ml_heard = 0;
     ml_arm = 1;
 }
-/* the picked parameter's name: "T2 CUTOFF", "T1 FILT ENV ATTACK" (b: 24 bytes; T0227: the full name, as AUTOMATION's list: ui_events.c ev_name) */
+/* the picked parameter's name: "T2 CUTOFF", "T1 FILTER ENV ATTACK" (b: 24 bytes; T0227: the full name, as AUTOMATION's list: ui_events.c ev_name) */
 static void ml_name(char *b)
 {
     b[0] = 'T';

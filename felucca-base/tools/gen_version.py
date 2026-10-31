@@ -13,7 +13,7 @@ from pathlib import Path
 
 vfile = Path(__file__).resolve().parents[2] / "VERSION"
 ver = vfile.read_text().strip() if vfile.exists() else ""
-if not re.fullmatch(r"0\.\d+\.\d+|[1-9]\d*\.\d+", ver):
+if not re.fullmatch(r"0\.\d+\.\d+|[1-9]\d*\.\d+|[1-9]\d*\.\d+\.\d+-(?:test|velocapture)\d+", ver):   # DUELL 1.1: 1.1.0-testN
     sys.exit(f"gen_version: {vfile} must hold 0.MINOR.BUILD (e.g. 0.2.1) or MAJOR.MINOR (1.0), found {ver!r}")
 beta = " beta" if ver.startswith("0.") else ""
 Path(sys.argv[1]).write_text(

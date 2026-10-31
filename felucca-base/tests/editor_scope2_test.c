@@ -3,7 +3,7 @@
 /* The editor protocol's scope 2 (cloud job I, web/EDITOR_PROTOCOL.md "Scope 2"): an extension slot (id 0 .. NX-1, ext.h XV) through GET, SET, DESC, the CHANGED push and
  * TRACK_PARAM's scope byte, with the C paths of the editor build (editor_test.c is the base: hostsim, stubs, RAM flash).
  *   DESC               every slot's descriptor (label, format, range, default, the enum's names) equals the table's; CYCLE RISE / FALL are the note-value ones while SYNC is on
- *   GET / SET          a round trip, the value clamped to the descriptor, a spare slot (X15) and ids past NX unchanged / refused; SET LINK runs twin_link_set (CUTOFF 2 converted)
+ *   GET / SET          a round trip, the value clamped to the descriptor, the last slot (X27 STRUM) clamped to 0..100, ids past NX refused; SET LINK runs twin_link_set (CUTOFF 2 converted)
  *   CHANGED            a device-side change goes out as scope 2 (coalesced like scope 0: 20 ms, the latest value), the editor's own SET and a PRESET do not echo
  *   TRACK_PARAM        the scope byte: scope 2 reaches that track's slot, scope 0 and the old forms are as before, a bad scope byte or id gets no reply
  *   TWIN TYPE          SET scope 0 id P_TWTYPE is twin_type_set (COMB refused on WAVE and PHYS)
@@ -112,8 +112,9 @@ static int scope2(void)
     ok &= wr(2, X_KTRK2, -100, &v) && v == -63 && XV(TSEL, X_KTRK2) == -63;
     ok &= wr(2, X_CYCURVE, 63, &v) && v == 63 && wr(2, X_CYCURVE, -64, &v) && v == -64;
     ok &= wr(2, X_SUBOCT, -3, &v) && v == 0 && XV(TSEL, X_SUBOCT) == 0;
-    ok &= wr(2, NX - 1u, 77, &v) && v == XV(TSEL, NX - 1u) && v == 0;
-    bad += check("SET scope 2: stored and echoed, clamped to the descriptor (127, 1, -63, -64 .. 63, 0), the spare slot X15 stays", ok);
+    ok &= wr(2, NX - 1u, 77, &v) && v == XV(TSEL, NX - 1u) && v == 77 && wr(2, NX - 1u, 300, &v) && v == 100;   /* (item 144: the last slot is STRUM, 0..100 ms) */
+    XV(TSEL, NX - 1u) = 0;
+    bad += check("SET scope 2: stored and echoed, clamped to the descriptor (127, 1, -63, -64 .. 63, 0), the last slot X27 (STRUM) 77, 300 -> 100", ok);
     ok = 1;
     for (k = 0; k < P_COUNT; k++) {
         a[0] = 0; a[1] = (uint8_t)k;

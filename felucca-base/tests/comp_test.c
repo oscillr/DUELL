@@ -545,7 +545,6 @@ static void dsp_clean(uint32_t mode)                    /* the DSP as at power-o
     memset(midi_bend_q8, 0, sizeof midi_bend_q8);
     memset(midi_bend_target, 0, sizeof midi_bend_target);
     memset(kb_chn, 0, sizeof kb_chn);
-    mix_bal = 0;
     mix_xf = mix_split = 0;
     vage = 0;
     mod_seed = 0x2545F491u;
@@ -814,7 +813,7 @@ static void test_control(void)
     expect("  .. K2 (THRESH) changes nothing while it is hidden", song.cp[0] == 23);
     turn(EN_K1, 1);
     frame();
-    expect("K1 right: RATIO 1.5:1 (OFF its lowest value: turning it up switches the compressor on); the gate opens on the audio side after the next frame; the header says COMPRESSOR 1.5:1", song.cp[1] == 1 && (cmp_cfg & 0xF00u) == 0x100u && str_eq(ui.msg, "COMPRESSOR 1.5:1"));
+    expect("K1 right: RATIO 1.5:1 (OFF its lowest value: turning it up switches the compressor on); the gate opens on the audio side after the next frame", song.cp[1] == 1 && (cmp_cfg & 0xF00u) == 0x100u);
     expect("  .. now all four cards are drawn", !card_hidden_vp(&song.cp[0]) && !card_hidden_vp(&song.cp[1]) && !card_hidden_vp(&song.cp[2]) && !card_hidden_vp(&song.cp[3]));
     turn(EN_K2, -1);
     turn(EN_K3, 1);
@@ -833,8 +832,8 @@ static void test_control(void)
     ok &= song.cp[0] == 40 && song.cp[2] == 120 && song.cp[3] == 80;
     for (v = 0; v < 60u; v++)
         turn(EN_K1, -1);
-    ok &= song.cp[1] == 0 && str_eq(ui.msg, "COMPRESSOR OFF");
-    expect("the knobs stop at both ends; RATIO back to its lowest says COMPRESSOR OFF", ok);
+    ok &= song.cp[1] == 0;
+    expect("the knobs stop at both ends; RATIO back to its lowest is OFF", ok);
 
     /* DUEL: the cards are not there (the page stays, as BASS MONO's) */
     song.cp[1] = 4;

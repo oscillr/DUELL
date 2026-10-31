@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
-"""Click hunt probe (release_drafts/CLICK_HUNT1.md): builds build/hunt/bench_probe, the bench twin (tests/bench_sim.c) with a log of what changes from block to block.
+"""Click hunt probe (working docs/CLICK_HUNT1.md): builds build/hunt/bench_probe, the bench twin (tests/bench_sim.c) with a log of what changes from block to block.
 
   python3 tools/hunt_probe.py            # build/hunt/bench_probe
   HUNT_LOG=log.txt python3 tools/bench_run.py --sim build/hunt/bench_probe --record --suite OWNER-1 --only FM6-83 --runs RUNS

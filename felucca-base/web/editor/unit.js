@@ -2,7 +2,8 @@
 // DUELL editor: the unit as the editor sees it. Reads both parts and the globals, writes parameters (coalesced, one request at a time through
 // the link), follows the unit by WATCH pushes, loads and stores patches, loads and saves multis, reads and sets MENU settings.
 // No DOM: editor/test_editor.mjs runs it against the simulated unit.
-import { CMD, v14, rv14, cstr, parseInfo, parseTrackQuery, parseTrackDump, parseDump, parseNames, parseUpList, parseMenu, parseLearn, parseStep, stepBytes, xReadArgs, xWriteArgs, parseXReply } from "./proto.js";
+import { CMD, v14, rv14, cstr, parseInfo, parseTrackQuery, parseTrackDump, parseDump, parseNames, parseUpList, parseMenu, parseLearn, parseStep, stepBytes, xReadArgs, xWriteArgs, parseXReply, parseMotion, motionSetArgs, motionDeleteArgs, MOTION_ERR } from "./proto.js";
+import { lo7, hi7, join7 } from "./modbypass.js";
 import { L, ID, P_E0, NX, X, descOf, xdescOf, xDefaults, clampTo } from "./layout.js";
 import { BACKUP_CMD, bkU32, bkR32, bkPack, bkUnpack, bkCrc } from "../fm1backup.js";
 
@@ -36,7 +37,7 @@ export class Unit {
       this.compat = "This unit's engine list differs from the one this editor was built for. Nothing is written.";
     } else this.compat = null;
     this.ntrk = Math.min(i.ntrk || 2, 4);
-    await this.req(CMD.WATCH, [3]);
+    await this.req(CMD.WATCH, [7]);                  // (bit 2, item 159: the other part's values are pushed too; a unit without it answers 3)
     this.link.keepAlive?.(1000);
     await this.readAll();
     this.startPoll();
@@ -51,11 +52,13 @@ export class Unit {
       this.parts.push({ eng: d.eng, preset: d.preset, p: d.p, x: await this.readX(k), name: null });
     }
     this.g = parseDump(await this.req(CMD.DUMP), L.P_COUNT, L.G_COUNT).g;
+    await this.readBypass();
     this.emit("reload", { part: -1 });
   }
   async readPart(k) {
     const d = parseTrackDump(await this.req(CMD.TRACK_DUMP, [k]), L.P_COUNT);
     this.parts[k] = { eng: d.eng, preset: d.preset, p: d.p, x: await this.readX(k), name: this.parts[k]?.name ?? null, slot: this.parts[k]?.slot ?? null };   // (slot: the patch slot the editor loaded or stored, 0.2.25 layout round; null: not known)
+    await this.readBypass();
     this.emit("reload", { part: k });
   }
   // the part's extension slots (protocol scope 2, INFO tag 59): NX values through TRACK_PARAM's scope byte; a unit without the tag has none, the slots are their defaults (the FILTER tab's cards say so)
@@ -66,6 +69,32 @@ export class Unit {
     return x;
   }
   get hasX() { return this.info?.nx != null; }
+  // item 159 (INFO 4F): the part's STORED Original (what a save stores), not the values at the MORPH fader the editor shows: the librarian's copy of a sound compares and writes these
+  async readStored(part) { return parseTrackDump(await this.req(CMD.TRACK_DUMP, [part, 1]), L.P_COUNT).p; }
+  async writeStored(part, id, v) { this.guard(); await this.req(CMD.TRACK_PARAM, [part, id, ...v14(v), 4]); }
+  // BYPASS (a proposal, modbypass.js): two volatile masks of 11 bits (one per part: the modules and the part's effects) and one of 5 bits (the shared buses and master stages). The unit clears a part's mask when a
+  // sound loads into it, and the shared one when any sound loads, so every read of a part reads them again.
+  get hasBypass() { return !!this.info?.bypass; }
+  async readBypass() {
+    if (!this.hasBypass) { this.byp = [0, 0]; this.bypG = 0; return; }
+    const a = await this.req(CMD.BYPASS, [0]);
+    this.byp = [join7(a[1], a[2]), join7(a[3], a[4])]; this.bypG = a[5] & 127;
+  }
+  async writeBypass(part, mask) {
+    this.guard();
+    if (!this.hasBypass) throw new UnitError("This unit's firmware has no bypass yet.");
+    const a = await this.req(CMD.BYPASS, [1, part, lo7(mask), hi7(mask)]);
+    (this.byp ||= [0, 0])[part] = join7(a[2], a[3]);
+    this.emit("bypass", { part });
+  }
+  async writeBypassGlobal(mask) {
+    this.guard();
+    if (!this.hasBypass) throw new UnitError("This unit's firmware has no bypass yet.");
+    const a = await this.req(CMD.BYPASS, [2, mask & 127]);
+    this.bypG = a[1] & 127;
+    this.emit("bypass", { part: -1 });
+  }
+  bypassMask(part) { return this.byp?.[part] ?? 0; }
   async readGlobals() { this.g = parseDump(await this.req(CMD.DUMP), L.P_COUNT, L.G_COUNT).g; this.emit("globals", {}); }
   disconnect() { clearInterval(this.pollTimer); this.link.close(); }
 
@@ -76,8 +105,8 @@ export class Unit {
       if (a[0] === 1) { this.g[a[1]] = v; this.emit("global", { id: a[1], v }); }
       else if (a[0] === 2) { if (this.parts[this.selected]) this.setX(this.selected, a[1], v, false); }
       else if (this.parts[this.selected]) this.set(this.selected, a[1], v, false);
-    } else if (cmd === CMD.TRACK_CHANGED) {          // track, id, v14
-      if (a[0] < 2) this.set(a[0], a[1], rv14(a, 2), false);
+    } else if (cmd === CMD.TRACK_CHANGED) {          // track, id, v14 [, scope 2: an extension slot] (item 159, WATCH bit 2)
+      if (a[0] < 2) { if (a[4] === 2) this.setX(a[0], a[1], rv14(a, 2), false); else this.set(a[0], a[1], rv14(a, 2), false); }
     } else if (cmd === CMD.STEP_CHANGED) {            // index, track
       this.emit("step", { index: a[0], part: a[1] ?? this.selected });
     } else if (cmd === CMD.RELOAD) {                 // engine, preset, track
@@ -103,6 +132,7 @@ export class Unit {
           if (changed) this.emit("reload", { part: k });
         }
         this.g = parseDump(await this.req(CMD.DUMP), L.P_COUNT, L.G_COUNT).g; this.emit("globals", {});
+        await this.readBypass(); this.emit("bypass", { part: -1 });
       } while (this.readAgain);
     })();
     try { await this.reading; } finally { this.reading = null; }
@@ -413,6 +443,24 @@ export class Unit {
     return out;
   }
   async readStep(part, index) { return parseStep(await this.req(CMD.TRACK_STEP, [part, index]), 1); }
+  // ---- the sequencer's parameter locks (MOTION, ops 3..11; INFO tag 4C). A row: { step 0..63, tid (the target id, see proto.js), v, lock (true: a LOCK, false: an AUTO event) }.
+  // The records are shared by the tracks (max 128): the unit answers rc 2, "PARAMETER LOCKS FULL", when they are used.
+  get hasLocks() { return !!this.info && this.info.locks != null; }
+  async readLocks(part) {
+    const op8 = this.info.motionMax > 64, r = parseMotion(await this.req(CMD.MOTION, [part, op8 ? 8 : 7]), op8, this.info.lockWide);
+    return { rows: r.rows, max: r.max, on: r.on };
+  }
+  async putLock(part, step, tid, v, lock) {
+    this.guard();
+    if (tid >= 128 && !this.info.lockWide) throw new UnitError("This unit's firmware cannot lock that destination yet.");
+    const a = await this.req(CMD.MOTION, motionSetArgs(part, step, tid, v, lock));
+    if (a[1]) throw new UnitError(MOTION_ERR[a[1]] ?? "The unit refused this lock.", a[1]);
+  }
+  async deleteLock(part, step, tid) {
+    this.guard();
+    const a = await this.req(CMD.MOTION, motionDeleteArgs(part, step, tid));
+    if (a[1]) throw new UnitError(MOTION_ERR[a[1]] ?? "The unit refused this lock.", a[1]);
+  }
   async writeStep(part, index, s) {
     this.guard();
     const a = await this.req(CMD.TRACK_STEP, [part, index, ...stepBytes(s)]);

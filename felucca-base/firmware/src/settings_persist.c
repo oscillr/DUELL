@@ -13,7 +13,7 @@
  * [15][24]: MENU's 1.2 flags SCOPE MIX (retired in 0.2.14), STEP PREVIEW ON, CHORD ENTRY ADD (0.2.14: STEP KEYS ADD) (bits 0-2, ui.c ui_prefs2; 0 = the
  * defaults); bit 7 (0.2.14): the 0.2.14 defaults applied (settings_defaults);
  * [15][10]: MENU > ANIM IDLE (1.2, Discussion #135, ui.c ui_idle: bit 0; 0 = off, ANIM as its bit in MENU's flags says); bits 1..4 (DUELL 0.2.14):
- *   GLO > MODULES' ARP SEQ SENDS PART FX, a set bit = OFF (ui.c mods_*; every value valid, nothing to check); bit 5 (DUELL 0.2.14) MENU > CONTROL > PERF LEAVE, set = KEEP (clear = FADE, the default; ui.c perf_keep); bit 6 (job D, builds with KEY SENSE) MENU > CONTROL > KEY VELOCITY, set = OFF (clear = ON, the default; ui.c keyvel_on); bit 7 free;
+ *   GLO > MODULES' ARP SEQ SENDS PART FX, a set bit = OFF (ui.c mods_*; every value valid, nothing to check); bit 5 (DUELL 0.2.14) MENU > CONTROL > PERF LEAVE, set = KEEP (clear = FADE, the default; ui.c perf_keep); bit 6 (job D, builds with KEY SENSE) MENU > CONTROL > KEY VELOCITY, set = OFF (clear = ON, the default; ui.c keyvel_on); bit 7 AFTERTOUCH OFF (DUELL 1.0, set = OFF); DUELL 1.1: [15][22] bits 0..2 / 3..5 the KEY VELOCITY / AFTERTOUCH curve type + 1 (0 = NORMAL; ui.c ui_sense_type);
  * [15][12..13] (DUELL 4b): the MORPH's TARGET (bit 7 of [12]; 0.2.9: reserved, kept as stored, never read) and each part's AMOUNT (bits 0-6: 1 + %, 0 = the default, 15 %: 25 % before 2026-10-11, the
  * default; ui.c ui_morph_set, ui_input.c morph_settings: read on any change, so an import needs nothing here);
  * [15][11]: PATCHES > TYPE (1.2, Discussion #90; DUELL: 1..CAT_N-1 a category, CAT_N + e only the engine e's patches; ui.c ui_lcat:
@@ -51,6 +51,7 @@ static void settings_defaults(uint8_t *s)              /* s: favorites.factory[1
     if ((s[28] & 3u) == 0u)                            /* (CLICK: 0 OFF, 1 REC, 2 ON; 3 was put back to 0 above) */
         s[28] = (uint8_t)(s[28] | 1u);
     s[10] &= 1u;                                       /* (bit 0: ANIM IDLE) */
+    s[10] = (uint8_t)(s[10] | 0x40u);                  /* DUELL 1.1 (owner): KEY VELOCITY is ON by default, on its NORMAL curve (ui.c KEYVEL_ON_BIT; the curve byte [22] 0 = NORMAL); only a new unit, an erase or a record that never had these defaults gets it, a saved setting stays as saved */
     s[24] = (uint8_t)(s[24] | PREF_DEFAULTS >> 16);
 }
 /* The settings record (PER4). rsv (was the OUTPUT EQ (0 FLAT, 1 LOWCUT, 2 BASS+), removed in 0.2.19: written 0, whatever an older record held was ignored; DUELL 0.2.21: the master compressor's
@@ -89,6 +90,8 @@ static int settings_import(persist_t *p, int n)
         p->favorites.factory[15][28] = (uint8_t)b;
     }
     settings_defaults(p->favorites.factory[15]);   /* DUELL 0.2.14: the new defaults, once (above) */
+    if ((p->favorites.factory[15][22] & 7u) > 5u || ((p->favorites.factory[15][22] >> 3) & 7u) > 5u || (p->favorites.factory[15][22] >> 6))
+        p->favorites.factory[15][22] = 0;              /* KEY VELOCITY / AFTERTOUCH types (DUELL 1.1, ui.c ui_sense_type): unknown = both NORMAL */
     if (p->favorites.factory[15][27] > 7u)         /* SCREEN OFF (1.1.5, ui.c SCR_CODE): unknown = 0 (NEVER since 1.1.5.1) */
         p->favorites.factory[15][27] = 0;
     if (p->favorites.factory[15][11] > CAT_N + 14u) /* PATCHES TYPE (ui.c ui_lcat): a category CAT_*, or CAT_N + an engine; unknown = none */

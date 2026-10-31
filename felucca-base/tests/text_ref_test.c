@@ -149,7 +149,7 @@ int main(void)
         for (uint32_t k = 0; k < 2u; k++)
             for (uint32_t f = 0; f < 3u; f++)
                 for (uint32_t s = 0; s < NSTR; s++) {
-                    uint16_t fg = k ? T_TEXT : T_THEME, bg = k ? T_BG : T_SURF;
+                    uint16_t fg = k ? T_TEXT : T_THEME, bg = k ? T_BG : T_BG;
                     int32_t e0, e1;
                     for (uint32_t i = 0; i < W * H; i++) ref[i] = bg;
                     e0 = ref_text(3, 2, F[f], STR[s], fg, bg);

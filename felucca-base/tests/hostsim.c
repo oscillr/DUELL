@@ -87,6 +87,7 @@ static void host_tracks_init(void)                /* as felucca_init: defaults, 
         ext_defaults(&trk[k]);                    /* (cloud job B: the extension slots at their defaults too) */
         for (i = 0; i < NSTEP; i++)
             trk[k].step[i].time = ST_REST;
+        vs_qn[k] = vs_n[k] = 0;                   /* (item 144: nothing held back by the voices' start limit, as at power-on: .bss) */
     }
     song.master_q12 = 4096;
 }

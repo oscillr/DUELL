@@ -251,7 +251,6 @@ static void dsp_clean(uint32_t mode)
     memset(midi_bend_q8, 0, sizeof midi_bend_q8);
     memset(midi_bend_target, 0, sizeof midi_bend_target);
     memset(kb_chn, 0, sizeof kb_chn);
-    mix_bal = 0;
     mix_xf = mix_split = 0;
     vage = 0;
     mod_seed = 0x2545F491u;
@@ -525,15 +524,11 @@ static void test_control(void)
     frame();
     duell_mode_force(DM_SPLIT);
     expect("DUEL: the card is hidden (not drawn, the knob does nothing)", card_hidden_vp(&song.ms[0]));
-    go_title(MASTER_PAGE_TITLE);
+    /* item 158 S3: every card of the page is hidden in DUEL, so the page is not in the round at all (no empty page); the stages do not run in DUEL */
+    expect("DUEL: the STEREO MASTER page is out of the round (no card to show, item 158 S3)", !page_visible(sp));
     turn(EN_K1, 1);
     turn(EN_K2, 1);
     expect("  .. the knobs change nothing in DUEL (BASS MONO, WIDTH); the WIDTH value is kept for STEREO", song.ms[0] == 150 && song.bm == BM_DEF);
-    {   /* the panel says why: graph_mstg draws the note (the signature differs from the picture's) */
-        ui.force = 1;
-        draw_graph();
-        expect("  .. the page draws its panel in DUEL without trouble (the note: NOT IN DUEL MODE, PART 1 LEFT, PART 2 RIGHT)", ui.page == sp);
-    }
     duell_mode_force(DM_LAYER);
     expect("LAYER: the card is there again", !card_hidden_vp(&song.ms[0]));
     duell_mode_force(DM_STEREO);

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
-"""DUELL 1.0: the DESIGN picture of the screen shown while the firmware installs (nothing in the firmware or the loader uses this; release_drafts/LOADER_SCREEN_DESIGN.md).
+"""DUELL 1.0: the DESIGN picture of the screen shown while the firmware installs (nothing in the firmware or the loader uses this; working docs/LOADER_SCREEN_DESIGN.md).
 
     tools/loader_screen_design.py OUT.png [--states 0,45,100]      (needs Pillow: DUELL/.venv/bin/python)
 

@@ -72,7 +72,6 @@ static void clean(void)
     memset(mx_ok, 0, sizeof mx_ok);
     memset(mx_was, 0, sizeof mx_was);
     memset(mod_mixmv, 0, sizeof mod_mixmv);
-    mix_bal = 0;
     vage = 0;
     mod_seed = 0x2545F491u;
     chain_force = 0;
@@ -116,7 +115,9 @@ static void t_tables(void)
     { uint32_t okd = 1; for (k = 0; k < 15u; k++) okd &= (uint32_t)(XTP[k].def + 64) == xb_def(k);
       ck("  .. the store's defaults (up_xb.h XB_DEFS, the value + 64 an absent slot means) equal the descriptors' defaults", okd); }
     ck("  .. every slot has a morph tag (continuous or a switch), every range fits the morph's int8 ends; param_desc_of / track_desc give XTP", okt && oki && okx);
-    ck("  .. X15 is spare: a free descriptor, no tag", XTP[15].label[0] == '-' && morph_tag(&ENG_ANALOG, o, XW_BASE + 15u, 1).kind == MK_EX && !strcmp(XTP[X_ROUTE].names[1], "PARAL") &&
+    ck("  .. X27 (X_STRUM, the last slot; item 144: the CHORD page's STRUM, once the removed KEY OFFSET's): 0..100 ms, stored default 0 (OFF), no morph tag, learnable", X_STRUM == NX - 1 &&
+       !strcmp(XTP[X_STRUM].label, "STRUM") && XTP[X_STRUM].min == 0 && XTP[X_STRUM].max == 100 && xb_def(X_STRUM) == 64u && morph_tag(&ENG_ANALOG, o, XW_BASE + X_STRUM, 1).kind == MK_EX &&
+       map_code_ok(XW_BASE + X_STRUM) && map_code_ok(XW_BASE + X_LFO2LVL) && !strcmp(XTP[X_ROUTE].names[1], "PARAL") &&
        !strcmp(XTP[X_SUBOCT].names[1], "-1") && !strcmp(XTP[X_SUBWAVE].names[3], "PULSE") && !strcmp(XTP[X_CYMODE].names[0], "LOOP"));
     ck("  .. the CYCLE times are note values with SYNC on (xdesc)", (clean(), XV(&trk[0], X_CYSYNC) = 1, xdesc(&trk[0], X_CYRISE)->names == ESYNC_NAMES && xdesc(&trk[0], X_CYFALL)->names == ESYNC_NAMES && xdesc(&trk[0], X_CYCURVE) == &XTP[X_CYCURVE]));
     /* the five ids */
@@ -263,7 +264,7 @@ static void roll_end(uint32_t pi, uint32_t x, uint32_t seed, uint32_t amount, ui
 
 static void t_morph_old(void)
 {
-    ck("the End B of every id but the five from a stored seed: cloud/base3's hash (24 seeds x 3 AMOUNTs x SMART / WILD x PITCH / ARP x both streams x 13 engines)", hash_c(roll_child) == 0x03e34858cc8b1a21ull);   /* (re-based on purpose 2026-10-21: ANALOG and TRIO rolls keep filter 1's cutoff steering; was cloud/base3's 0x8ac190ea492b678f) */
+    ck("the End B of every id but the five from a stored seed: cloud/base3's hash (24 seeds x 3 AMOUNTs x SMART / WILD x PITCH / ARP x both streams x 13 engines)", hash_c(roll_child) == 0x93396a7983cefeb4ull);   /* (re-based 2026-10-28, item 154: ANALOG and TRIO give back less of a rolled ENV / ENV 2 / LFO 1 / LFO 2 -> FLT depth when the band-pass window is exceeded (morph.c morph_uf_open: together, the largest first, or the other way); only those four ids (5, 14, 114, 117) moved, the hash without them is the same as before (0x1b84c7b5a0ae32a5); was 0xa929659621e83d4f) (re-based 2026-10-28, item 152: WILD also rolls the AMOUNT of an assigned matrix route that is at 0 (morph.c morph_slot, its own stream): only matrix amounts moved, the hash without the matrix ids is the same as before (33ac50046660cb9a); was 0xf1c026d493b49c3d) (re-based again 2026-10-28: SMART also sets no LFO shape, ARP RATE, whole-number pitch value (PITCH on), the draws stay; was 0xb429a4835a7674ae) (2026-10-27: SMART no longer sets a switch (SLOPE, an engine's choice, ARP MODE / OCTAVES), the draws stay; was 0xb1e053d0900cfbc1) (re-based on purpose 2026-10-21: ANALOG and TRIO rolls keep filter 1's cutoff steering; was cloud/base3's 0x8ac190ea492b678f; re-based again for DUELL 1.1: LOFI's WAVE is one list, 0..14, and K4 is PULSE WIDTH, so the LOFI rolls change; was 0x03e34858cc8b1a21) */
     {   /* the draws of the five ids' old tags are kept: ROOT / SCALE a pitch item, ALLOC a hard switch, the TYPE a fade on ANALOG */
         uint32_t seed, ok = 1, moved = 0;
         for (seed = 1; seed <= 300u; seed++) {
@@ -283,7 +284,7 @@ static void t_morph_old(void)
             for (id = 0; id < P_COUNT; id++)
                 if (!xv_five(id) && a[id] != b[id])
                     ok = 0;
-            moved += a[P_E0] != o[P_E0];
+            moved += a[P_E1] != o[P_E1];     /* (E1, ANALOG's detune: a continuous move; E0 is a switch SMART no longer rolls, 2026-10-27) */
         }
         ck("  .. the five ids' values do not move any other id's End B (the old draws are kept, the new ones come from a stream of their own)", ok && moved > 0);
     }
@@ -473,7 +474,7 @@ static void t_morph_rules(void)
                     ok_wild_off &= e2[P_CUT2] == o2[P_CUT2] && e2[P_RES2] == o2[P_RES2] && e2[P_DRV2] == o2[P_DRV2] && e2[P_BLEND] == o2[P_BLEND] && e2[XW_BASE + X_ENV2] == o2[XW_BASE + X_ENV2] &&
                                    e2[XW_BASE + X_KTRK2] == o2[XW_BASE + X_KTRK2] && e2[XW_BASE + X_LFO1] == o2[XW_BASE + X_LFO1];
             }
-            {   /* a sub is never switched on: LEVEL 0 keeps the sub's values */
+            {   /* SUB LEVEL 0 rolls (2026-10-28); the sub's WAVE / OCTAVE / HARMONICS keep the Original's */
                 int8_t o2[EXT_P_LEN], e2[EXT_P_LEN];
                 uint8_t sv = mrc;
                 memcpy(o2, o, sizeof o2);
@@ -481,7 +482,7 @@ static void t_morph_rules(void)
                 mrc = (uint8_t)(cfg ? MC_WILD : 0u);
                 morph_roll_full(o2, e2, en, amount, seed, 0, 1);
                 mrc = sv;
-                ok_sub &= e2[XW_BASE + X_SUBLVL] == 0 && e2[XW_BASE + X_SUBHARM] == o2[XW_BASE + X_SUBHARM] && e2[XW_BASE + X_SUBOCT] == o2[XW_BASE + X_SUBOCT] && e2[XW_BASE + X_SUBWAVE] == o2[XW_BASE + X_SUBWAVE];
+                ok_sub &= e2[XW_BASE + X_SUBHARM] == o2[XW_BASE + X_SUBHARM] && e2[XW_BASE + X_SUBOCT] == o2[XW_BASE + X_SUBOCT] && e2[XW_BASE + X_SUBWAVE] == o2[XW_BASE + X_SUBWAVE];
             }
             {   /* the stream does not depend on the Original (the draws of the five ids and the slots are made whether or not a value rolls) */
                 int8_t e3[EXT_P_LEN];
@@ -498,7 +499,7 @@ static void t_morph_rules(void)
     ck("  .. SMART leaves TWIN's values (CUTOFF 2, RES 2, DRIVE, BLEND, the amounts) alone while TYPE is OFF; with it on the amounts roll like filter 1's depths", ok_wild_off && moved_amt > 100u);
     ck("  .. RES 2 above 100 never with more DRIVE; DRIVE never 32 above the Original's, SUB LEVEL never 48 above, RES 2 never above max(Original, 108)", ok_res && ok_rise);
     ck("  .. no dead cutoff 2: LP / LADDER at or above min(Original's, ~1.3 kHz), HP at or below max(Original's, ~210 Hz), BP in its window (CUTOFF 2 at its limit when it cannot)", ok_dead);
-    ck("  .. a sub is never switched on: SUB LEVEL 0 stays 0 and its WAVE / OCTAVE / HARMONICS stay, in WILD too", ok_sub);
+    ck("  .. SUB LEVEL rolls also from 0 (owner 2026-10-28); SUB WAVE / OCTAVE / HARMONICS stay (HARMONICS never rolls)", ok_sub);
     ck("  .. every end inside the ranges of its meaning (switches 0..n, CUTOFF 2 -63..82, LINK off 0..82); the draws are a pure function of the seed and the Original", ok_range && ok_draw);
 }
 
@@ -537,7 +538,7 @@ static void t_matrix(void)
     uint64_t base = scene_hash(0);
     track_t *t;
     uint32_t ok;
-    ck("a busy two-part matrix render (every per-note destination from ENV, ENV 2, VEL, KEY, RAND, the LFOs; PAN, sends, E5, RES, FMODE) is cloud/base3's hash: mod_voice runs as it did", hash_c(matrix_child) == 0x8c526ee5e3c74750ull);   /* (re-based on purpose 2026-10-21: the click fixes of hunt1..hunt4 (LFO / matrix slew, SAT, PHASE seam); was cloud/base3's 0xec458fefd57d01b4; and for 1.0: the matrix amount +63 acts as a true 100 %, mod.c MX_AMT; was 0x4396c17e8041202e) */
+    ck("a busy two-part matrix render (every per-note destination from ENV, ENV 2, VEL, KEY, RAND, the LFOs; PAN, sends, E5, RES, FMODE) is cloud/base3's hash: mod_voice runs as it did", hash_c(matrix_child) == 0xc3a35d49b4be06fdull);   /* (re-based on purpose 2026-10-21: the click fixes of hunt1..hunt4 (LFO / matrix slew, SAT, PHASE seam); was cloud/base3's 0xec458fefd57d01b4; and for 1.0: the matrix amount +63 acts as a true 100 %, mod.c MX_AMT; was 0x4396c17e8041202e; DUELL 1.1: the smooth accent ramp (core.h accent_dir_*, voice.c, voice_chain.c) moved it from 0x8c526ee5e3c74750; with those edits put back to the 1.0 files the old hash comes out) */
     ck("CUTOFF 2 routes (ENV VEL KEY RAND ENV 2 CYCLE LFO) change no sample of the product: the second list is read by the chain only", second_hash(prep_f2routes) == base);
     ck("CYCLE to CUT, SHP, PITCH (per note) and PAN (per block): a working source since job F (cycle.c): it moves the sound (job B's stub at rest changed no sample)", second_hash(prep_cycleroutes) != base);
     /* the lists */
@@ -646,10 +647,10 @@ static void t_matrix(void)
         t->p[P_TWTYPE] = TT_COMB;
         ok2 &= !strcmp(mod_dst_name(t, MD_CUT2), "TWIN\nTUNE") && !strcmp(mod_dst_name(t, MD_RES2), "TWIN\nFDBK");
         mod_dst_line(t, MD_CUT2, b, &more);
-        ok2 &= !strcmp(b, "DEST: TWIN FILTER TUNE");
+        ok2 &= !strcmp(b, "DEST: TWIN TUNE");
         t->p[P_TWTYPE] = TT_OFF;
         mod_dst_line(t, MD_RES2, b, &more);
-        ok2 &= !strcmp(b, "DEST: TWIN FILTER RES") && more && !strcmp(more, "THE TWIN FILTER IS OFF");
+        ok2 &= !strcmp(b, "DEST: TWIN RES") && more && !strcmp(more, "THE TWIN FILTER IS OFF");
         ck("  .. their names (TWIN / CUTOFF, TWIN / RES, FILTER / DRIVE, FILTER / BLEND, SUB / LEVEL; TUNE and FDBK on COMB), the DEST lines (32 characters), N_MDST's factory names", ok2);
     }
     {   /* the lists */

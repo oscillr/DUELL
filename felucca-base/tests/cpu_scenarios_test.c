@@ -396,7 +396,7 @@ static void cap_tests(void)
     {   /* it bites on NEW notes only: 8 held voices stay when the cap drops; new notes never raise the part above what sounds, and
          * after letting go the part takes at most its cap */
         scn_t s = base();
-        uint32_t n0, n1, n2, j;
+        uint32_t n0, n1, n2, j, c0;
         s.e1 = (int)eng_named("WAVE"); s.k1 = (int)sound_named((uint32_t)s.e1, "DIGITAL PAD");
         s.e2 = (int)eng_named("ANALOG"); s.k2 = 0;
         power();
@@ -406,6 +406,7 @@ static void cap_tests(void)
         for (i = 0; i < 40; i++) { half(0); while (wave_service()) ; }
         morph_rebase_all();
         vcap_poll();
+        c0 = vcap_shown(0);                              /* (DUELL 1.1: the cap of this pair starts at 7, not 8, with today's cost model: the held notes are what it allows, c0, however many are pressed) */
         for (i = 0; i < 8u; i++) trk_note_on(&trk[0], N8[i], 110);
         for (i = 0; i < 20; i++) half(0);
         trk[0].p[P_FREEA] = 50; trk[0].p[P_FREEB] = 80; trk[0].p[P_FREEC] = UF_HP; trk[0].p[P_FREED] = 2;   /* 24 dB HP now: heavier */
@@ -421,7 +422,7 @@ static void cap_tests(void)
         for (n2 = 0, j = 0; j < NVOICE; j++) n2 += trk[0].v[j].active && trk[0].v[j].gate;
         printf("C new notes only: cap %u; held when it dropped %u, after 6 more notes %u sounding, 8 pressed later %u held\n", vcap_shown(0), n0, n1, n2);
         guard("0.2.11 VOICE CAP bites on new notes only (no held note cut; then at most the cap)",
-              (n0 == 8u && n1 <= 8u && n2 == vcap_shown(0) && vcap_shown(0) < 8u) ? 0.0 : 1.0, 0.0);
+              (n0 == (c0 < 8u ? c0 : 8u) && n1 <= n0 && n2 == vcap_shown(0) && vcap_shown(0) <= c0 && vcap_shown(0) < 8u) ? 0.0 : 1.0, 0.0);
     }
 }
 

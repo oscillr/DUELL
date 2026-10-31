@@ -7,7 +7,7 @@
  *   STAGED   the stage functions called in sequence from this file (what a second core would call: the order is the contract)
  * All three must be bit for bit equal (a 64-bit hash of every output sample and of each part's peak after every block, and the sample-by-sample
  * compare through a pipe of the hashes). The scenes are chosen to run every branch of the stages: STEREO with SPREAD, a matrix PAN, an INSERT and
- * every send; DUEL (SPLIT) with EQ, SAT, the PUMP duck and BALANCE; STEREO with DUCK SRC PART, EQ, SAT, a PAN step (the gain ramp), BASS MONO,
+ * every send; DUEL (SPLIT) with EQ, SAT, the PUMP duck and a part LEVEL under 0 dB (item 160: the old BALANCE's cut, to the nearest 0.5 dB step); STEREO with DUCK SRC PART, EQ, SAT, a PAN step (the gain ramp), BASS MONO,
  * WIDTH, COMP, a part going silent (the tail runs out: part_rest); LAYER with PERFORM's MUTE and DRIVE held, PART FX and SENDS turned OFF in the
  * middle (the crossfades), SPACE to the right and a MODE change (the dip). Also checked: no scene is silent (it would compare nothing).
  * Built and run by DUELL/host_tests.sh (name: mixsplit) */
@@ -78,9 +78,9 @@ typedef void (*blk_t)(int32_t *, uint32_t);
 #define CFG(t, r, a, l) ((uint32_t)(t) | (uint32_t)(r) << 8 | (uint32_t)(a) << 16 | (uint32_t)(l) << 24)
 #define MS(x) ((uint32_t)(x) * FS / 1000u / CTL)         /* a time in ms as blocks */
 #define NSCENE 5
-static const char *const SCN[NSCENE] = {"STEREO busy (SPREAD, matrix PAN, INSERT, HALL)", "DUEL: EQ, SAT, PUMP, BALANCE",
+static const char *const SCN[NSCENE] = {"STEREO busy (SPREAD, matrix PAN, INSERT, HALL)", "DUEL: EQ, SAT, PUMP, LEVEL 1 -2.0 dB",
                                         "STEREO: DUCK SRC PART, PAN step, master stages, a silent tail", "LAYER: MUTE, DRIVE, PART FX OFF, SENDS OFF, SPACE, MODE change",
-                                        "DUEL: SPREAD, DUCK SRC PART, BALANCE, SPACE, a silent part"};
+                                        "DUEL: SPREAD, DUCK SRC PART, LEVEL 2 step, SPACE, a silent part"};
 static uint64_t hsh;
 static int32_t peakmax;
 static void hfeed(uint32_t v)
@@ -132,7 +132,7 @@ static uint64_t scene(uint32_t id, blk_t blk)
             return 0;
     }
     if (id == 1u) {
-        mix_bal = 20;
+        trk[0].p[P_LEVEL] = 108;                        /* (item 160: was BALANCE +20, part 1 x 0.8 = -1.9 dB) */
         for (k = 0; k < 2u; k++) {
             trk[k].p[P_EQLG] = 20; trk[k].p[P_EQMG] = -20; trk[k].p[P_EQHG] = 20;
             trk[k].p[P_DKSRC] = 0; trk[k].p[P_DKDEP] = 80; trk[k].p[P_DKATK] = 10; trk[k].p[P_DKRLS] = 40; trk[k].p[P_DKRATE] = 64;
@@ -144,7 +144,7 @@ static uint64_t scene(uint32_t id, blk_t blk)
         trk[0].p[P_EQLG] = 15; trk[0].p[P_EQMG] = -15; trk[0].p[P_EQHG] = 10;
         trk[1].p[P_DIST] = 60;
         trk[0].p[P_REL] = 10;
-        mix_bal = -30;
+        trk[1].p[P_LEVEL] = 106;                        /* (item 160: was BALANCE -30, part 2 x 0.7 = -3.1 dB) */
     }
     if (id == 3u) {
         duell_mode_force(DM_LAYER);
@@ -192,7 +192,7 @@ static uint64_t scene(uint32_t id, blk_t blk)
             if (b == MS(900)) { duell_mode = DM_SPLIT; duell_mode_req = DM_SPLIT; }             /* the MODE's dip, STEREO / LAYER -> DUEL */
             if (b == nb / 2u + MS(300)) perf_held = PF_BIT(PF_M1);                              /* a MUTE held on a silent part (perf_mute_rest) */
         }
-        if (id == 4u && b == MS(300)) { trk[1].p[P_DKSRC] = 1; trk[1].p[P_DKDEP] = 70; mix_bal = -40; }
+        if (id == 4u && b == MS(300)) { trk[1].p[P_DKSRC] = 1; trk[1].p[P_DKDEP] = 70; trk[1].p[P_LEVEL] = 103; }   /* (item 160: LEVEL 2 -4.5 dB, was BALANCE -40, x 0.6) */
         if (id == 4u && b == MS(500)) perf_space = 60;                                          /* SPACE right of the middle in DUEL (bus A's floors) */
         if (id == 1u || id == 4u)
             meter_on = 3;                                                                       /* GLO's meters watching */

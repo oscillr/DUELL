@@ -82,7 +82,6 @@ static void scene(uint32_t mode, int pitch, int smod, int dm)
     memset(&morph, 0, sizeof morph);
     memset(ins, 0, sizeof ins);
     memset(&song, 0, sizeof song);
-    mix_bal = 0;
     vage = 0;
     mod_seed = 0x2545F491u;
     host_tracks_init();

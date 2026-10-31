@@ -1,5 +1,7 @@
 # MIDI MAP, version 2: a complete proposed CC table that keeps the industry-standard names and follows the Access Virus' layout (design proposal, 2026-10-20)
 
+> **Note:** the numbers in this study are a proposal that was replaced. The CC numbers that ship are in [MIDI_MAP_DEFAULTS.csv](../MIDI_MAP_DEFAULTS.csv) and in the README; where they differ, those are right. CC 1, 2, 4, 11 and 64 are inputs (mod wheel, breath, foot, expression, sustain pedal) that you can use as sources in the mod matrix; they cannot be assigned to parameters.
+
 Private. Research and writing only: no code changed, no branch made, no picture drawn (plain text tables). INDEX.md and the other documents were not touched. Every number, name and default below is a proposal for you to approve; nothing is decided except what is under "Decided by the owner".
 
 Version 1 is MIDI_MAP_DESIGN.md (today's CC list, how MIDI LEARN works, the table design, the unit page). This version 2 replaces its **number choices** and adds the standard-name rule; the table design, the unit page and the editor tab of version 1 stay, and section 5 here lists only what changes.

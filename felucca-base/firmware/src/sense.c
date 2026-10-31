@@ -16,9 +16,10 @@
  * After the landing the next reading is driven. The lowest driven reading of the first SC_WAIT of them is the landing's
  * strength: velocity = VMIN + (VMAX - VMIN) x u^e, u = 1 at the key's floor (hardest), 0 at its ceiling, on a log scale of
  * the resistance (reading / (1024 - reading)). While the key is held every second reading is driven: the aftertouch is
- * how far below the landing reading it goes (SC_AT_SPAN counts = 127).
- * Floor and ceiling are learned per key from the landings (sense_cal.h): a running low and high quantile that move both
- * ways, margins outside them so the extremes stay rare, clamps, and a reset.
+ * how far below the SETTLED reading it goes (SC_AT_SPAN counts = 127; item 126: the landing ramp, the finger pressing in, is not a squeeze).
+ * Floor and ceiling start for every key at the unit's typical key (sense_cal.h SC_FLOOR_PRIOR / SC_CEIL_PRIOR: the owner's own recording, item 123) and
+ * are learned per key from the landings: a running low and high quantile that move both ways in small steps from the very first press (no min / max
+ * stage since item 123: one odd reading can no longer define a key's range), clamped to the windows of sense_cal.h, and a reset.
  * The gap guard: a sample later than SC_GAP_US after the key's last one (an interrupts-off window: a flash erase is ~40 ms,
  * and the converter reading in flight is lost) means the time between is UNKNOWN. A key that was held stays held (a gap is
  * never a release, and the open samples of before and after are not "in a row"); a landing that was waiting for its
@@ -31,7 +32,7 @@
 #include "sense.h"
 
 enum { KS_OPEN, KS_TOUCH, KS_DOWN, KS_LIFT };
-enum { K_PEND = 1, K_FWAIT = 2, K_UNK = 4, K_ALT = 8, K_BYDRV = 16, K_SEEN = 32 };   /* (the tick's flags: the event step never writes them) */
+enum { K_PEND = 1, K_FWAIT = 2, K_UNK = 4, K_ALT = 8, K_BYDRV = 16, K_SEEN = 32, K_SETTLED = 64 };   /* (the tick's flags: the event step never writes them) */
 
 typedef struct {
     volatile uint8_t fl;             /* K_*: written by the tick only */
@@ -40,14 +41,16 @@ typedef struct {
     volatile uint8_t lcount, plc;    /* counts the releases; its value when the last landing was published (a landing the key has been let go since is stale) */
     volatile uint8_t at;             /* aftertouch 0 .. 127 */
     uint8_t st, nopen, nd, cnt, follow, hold;
-    uint16_t u_land, d_best, d_ref, d_s;   /* d_s: the smoothed driven reading, counts x 4 (aftertouch) */
+    union { uint16_t u_land; uint16_t s_t; };      /* u_land: the landing depth (until the strength is in); s_t: then the time the settle window began, in 1024 us units (item 126; the same bytes: the state stays under 1 KB) */
+    union { uint16_t d_best; uint16_t s_ref; };    /* d_best: the hardest strength reading of the landing; s_ref: then the reading the settle window began at */
+    uint16_t d_ref, d_s;   /* d_s: the smoothed driven reading, counts x 4 (aftertouch) */
     uint16_t lo6, hi6;               /* the learned low and high quantile of the driven landings, counts x 64 (a new key: its min and max) */
     uint32_t t_last, t_land;
 } sk_t;
 
 #define SC_RING_N 16u
 static struct {
-    uint8_t on, at, curve1, walking, walk_done, ch_valid, ch_ready, ch_key, ch_vel;   /* curve1: the MENU curve + 1, 0 = SC_CURVE_DEFAULT (so the state is all zero: .bss, no flash image); on: the setting KEY VELOCITY is ON (0 = OFF, the default since 0.2.31: owner 2026-10-21, pressing a key hard made it very quiet; to be measured); at: the setting AFTERTOUCH is ON (DUELL 1.0, its own line: 0 = OFF, the default; the key sensing runs when either is ON, but the velocity gate and the velocity itself only with KEY VELOCITY, the channel pressure only with AFTERTOUCH) */
+    uint8_t vtype1, atype1, on, at, curve1, walking, walk_done, ch_valid, ch_ready, ch_key, ch_vel;   /* curve1: the MENU curve + 1, 0 = SC_CURVE_DEFAULT (so the state is all zero: .bss, no flash image); on: the setting KEY VELOCITY is ON (0 = OFF, the default since 0.2.31: owner 2026-10-21, pressing a key hard made it very quiet; to be measured); at: the setting AFTERTOUCH is ON (DUELL 1.0, its own line: 0 = OFF, the default; the key sensing runs when either is ON, but the velocity gate and the velocity itself only with KEY VELOCITY, the channel pressure only with AFTERTOUCH) */
     /* The event step's own (written by sense_gate only; the tick never writes them, the event step never writes the tick's: no lock between the two
      * interrupts): the note bits it holds back for their velocity, the bits it has asked about, when it first asked, the landings it has taken */
     uint32_t defer, asked, g_ask[SC_NKEY];
@@ -85,6 +88,7 @@ static uint32_t sc_res_log(uint32_t d)           /* log2 of the pill's resistanc
     d = d < 1u ? 1u : d > 1022u ? 1022u : d;
     return sc_log2q8(d * 4096u / (1024u - d));
 }
+static const uint16_t SC_TYPE_EXP[SC_TYPE_N] = SC_TYPE_EXP_Q8;   /* sense_cal.h: SOFTER SOFT NORMAL HARD HARDER */
 static uint32_t sc_pow12(uint32_t u12, uint32_t e_q8)   /* (u12 / 4096)^(e_q8 / 256) x 4096 */
 {
     uint32_t q, ip, fp, i, a, b, v;
@@ -137,13 +141,6 @@ static void sk_range(const sk_t *k, int32_t *f6, int32_t *c6)
     if (!k->cnt) {                               /* never played: the typical key */
         lo = (int32_t)SC_FLOOR_PRIOR * 64;
         hi = (int32_t)SC_CEIL_PRIOR * 64;
-    } else if (k->cnt < SC_FAST_N) {             /* new: the min and max so far, widened to the typical span around them */
-        int32_t want = ((int32_t)SC_CEIL_PRIOR - (int32_t)SC_FLOOR_PRIOR) * 64;
-        if (hi - lo < want) {
-            int32_t ext = want - (hi - lo);
-            lo -= ext / 2;
-            hi += ext - ext / 2;
-        }
     }
     span = hi - lo;
     m = span * (int32_t)SC_MARGIN_PCT / 100;
@@ -196,7 +193,7 @@ static uint32_t sk_map(const sk_t *k, uint32_t d)    /* a driven landing reading
         return SC_VEL_UNKNOWN;
     u = (lc - ld) * 4096 / (lc - lf);            /* 4096 at the floor (hardest), 0 at the ceiling */
     u = u < 0 ? 0 : u > 4096 ? 4096 : u;
-    r = sc_pow12((uint32_t)u, SC_EXP_Q8);
+    r = sc_pow12((uint32_t)u, SC_TYPE_EXP[sense_vel_type_get()]);   /* (the KEY VELOCITY type; NORMAL = 256 = u itself) */
     return SC_VEL_MIN + (((SC_VEL_MAX - SC_VEL_MIN) * r + 2048u) >> 12);
 }
 static uint32_t sk_depth_vel(uint32_t u)         /* the first estimate: the undriven landing depth */
@@ -204,6 +201,16 @@ static uint32_t sk_depth_vel(uint32_t u)         /* the first estimate: the undr
     int32_t v;
     v = (int32_t)SC_VEL_MIN + ((int32_t)SC_LAND_SOFT - (int32_t)u) * (int32_t)(SC_VEL_MAX - SC_VEL_MIN) / (int32_t)(SC_LAND_SOFT - SC_LAND_HARD);
     return (uint32_t)(v < (int32_t)SC_VEL_MIN ? (int32_t)SC_VEL_MIN : v > (int32_t)SC_VEL_MAX ? (int32_t)SC_VEL_MAX : v);
+}
+static uint32_t sc_at_curve(uint32_t n)       /* counts below the reference, noise taken off (0 .. SC_AT_SPAN - SC_AT_FLOOR and more) -> aftertouch 0 .. 127, by the AFTERTOUCH type */
+{
+    uint32_t span = SC_AT_SPAN - SC_AT_FLOOR, e = SC_TYPE_EXP[sense_at_type_get()], u;
+    if (n >= span)
+        return 127u;
+    if (e == 256u)
+        return n * 127u / span;                  /* NORMAL: today's straight line, exactly */
+    u = n * 4096u / span;
+    return (127u * sc_pow12(u, e) + 2048u) >> 12;
 }
 static uint32_t sc_curve(uint32_t v)          /* MENU curve: flat 100 .. the measured range */
 {
@@ -218,41 +225,35 @@ static void sk_moved(uint32_t a, uint32_t b)
 }
 static void sk_cal(sk_t *k, uint32_t d)
 {
-    uint32_t x = d * 64u, eta;
-    uint32_t lo = k->lo6, hi = k->hi6, nlo, nhi;
-    if (!k->cnt) {                               /* the first landing */
-        k->lo6 = k->hi6 = (uint16_t)x;
-        k->cnt = 1;
-        sn.moved6 += 64u * 8u;
-        return;
-    }
-    if (k->cnt < SC_FAST_N) {                    /* a new key: min and max so far */
-        nlo = x < lo ? x : lo;
-        nhi = x > hi ? x : hi;
-        k->cnt++;
-        if (k->cnt == SC_FAST_N) {               /* seasoned: from here a running quantile, started on the widened range */
-            int32_t want = ((int32_t)SC_CEIL_PRIOR - (int32_t)SC_FLOOR_PRIOR) * 64;
-            if ((int32_t)(nhi - nlo) < want) {
-                int32_t ext = want - (int32_t)(nhi - nlo);
-                nlo -= (uint32_t)(ext / 2);
-                nhi += (uint32_t)(ext - ext / 2);
-            }
-        }
+    uint32_t x = d * 64u, eta, lo, hi, nlo, nhi;
+    if (!k->cnt) {                               /* the first landing: the quantiles start on the typical key (item 123: they used to start AT this reading, min = max, and the next */
+        lo = SC_FLOOR_PRIOR * 64u;               /* ten presses were read on a scale centred on it; one bounced or one extra hard reading then defined the key's range for hundreds of presses) */
+        hi = SC_CEIL_PRIOR * 64u;
     } else {
-        eta = SC_ETA_Q6;
-        nlo = x < lo ? lo - eta * (1000u - SC_Q_LO) / 1000u : lo + eta * SC_Q_LO / 1000u;
-        nhi = x > hi ? hi + eta * (1000u - SC_Q_HI) / 1000u : hi - eta * SC_Q_HI / 1000u;
-        if (k->cnt < 255u)
-            k->cnt++;
+        lo = k->lo6;
+        hi = k->hi6;
     }
-    if ((int32_t)nlo < (int32_t)(SC_D_MIN * 64u))
-        nlo = SC_D_MIN * 64u;
-    if (nhi > SC_D_MAX * 64u)
-        nhi = SC_D_MAX * 64u;
+    eta = k->cnt < SC_FAST_N ? SC_ETA_FAST_Q6 : SC_ETA_Q6;
+    nlo = x < lo ? lo - eta * (1000u - SC_Q_LO) / 1000u : lo + eta * SC_Q_LO / 1000u;
+    nhi = x > hi ? hi + eta * (1000u - SC_Q_HI) / 1000u : hi - eta * SC_Q_HI / 1000u;
+    if (k->cnt < 255u)
+        k->cnt++;
+    if (nlo < SC_FLOOR_MIN * 64u)                /* (the windows are the key's, not the reading's: an outlier moves a quantile by one step and no further than its window) */
+        nlo = SC_FLOOR_MIN * 64u;
+    if (nlo > SC_FLOOR_MAX * 64u)
+        nlo = SC_FLOOR_MAX * 64u;
+    if (nhi > SC_CEIL_MAX * 64u)
+        nhi = SC_CEIL_MAX * 64u;
+    if (nhi < SC_CEIL_MIN * 64u)
+        nhi = SC_CEIL_MIN * 64u;
     if (nhi < nlo + 8u * 64u)
         nhi = nlo + 8u * 64u;
-    sk_moved(lo, nlo);
-    sk_moved(hi, nhi);
+    if (k->cnt > 1u) {
+        sk_moved(lo, nlo);
+        sk_moved(hi, nhi);
+    } else {
+        sn.moved6 += 64u * 8u;                   /* (the first press of a key: the store is due once the sum reaches SC_CAL_SAVE_MOVED) */
+    }
     k->lo6 = (uint16_t)nlo;
     k->hi6 = (uint16_t)nhi;
 }
@@ -328,7 +329,7 @@ static void sk_release_followers(uint32_t leader, uint32_t t)
         sk_t *f = &sn.k[j];
         if ((f->fl & K_FWAIT) && f->follow == leader + 1u) {
             f->follow = 0;
-            sk_publish(f, j, sn.ch_vel, (f->fl & K_UNK) ? K_UNK : 0u, t);
+            sk_publish(f, j, (f->fl & K_BYDRV) && f->vel > sn.ch_vel ? f->vel : sn.ch_vel, (f->fl & K_UNK) ? K_UNK : 0u, t);   /* (DUELL 1.1: never quieter than its own measured press) */
         }
     }
 }
@@ -338,7 +339,7 @@ static void sk_finish(sk_t *k, uint32_t key, uint32_t vel, uint32_t flags, uint3
     if (k->follow && sn.ch_valid && sn.ch_key + 1u == k->follow) {
         if (sn.ch_ready) {
             k->follow = 0;
-            sk_publish(k, key, sn.ch_vel, flags & K_UNK, t);
+            sk_publish(k, key, (flags & K_BYDRV) && vel > sn.ch_vel ? vel : sn.ch_vel, flags & K_UNK, t);   /* DUELL 1.1 (owner: a hard hit sometimes very quiet): a chord follower takes the first note's velocity, but never a lower one than its own measured press (a hard note 3 ms after a soft one stays hard) */
         } else {                                 /* the leader is not in yet: wait for it (its own wait is bounded) */
             k->vel = (uint8_t)vel;
             k->fl = (uint8_t)((k->fl & ~(K_PEND | K_UNK | K_BYDRV)) | K_FWAIT | (flags & (K_UNK | K_BYDRV)));
@@ -359,13 +360,15 @@ static void sk_finish(sk_t *k, uint32_t key, uint32_t vel, uint32_t flags, uint3
 static void sk_final_driven(sk_t *k, uint32_t key, uint32_t t)
 {
     uint32_t d = k->d_best, vel;
+    vel = sk_map(k, d);                          /* DUELL 1.1 (owner: a hard hit played quiet): on the key's scale as it stood BEFORE this landing. Calibrating first let a press move its own
+                                                  * scale: the first press of a key never calibrated (a new unit, ERASE) set floor = ceiling = its own reading and always came out in the middle,
+                                                  * whatever its strength. Now that press is read on the typical key (SC_FLOOR_PRIOR .. SC_CEIL_PRIOR); a reading past the scale clamps to 127 / 1 */
     if (sn.walking) {
         if (key == sn.w.key)
             sk_walk_press(k, d);
     } else {
         sk_cal(k, d);
     }
-    vel = sk_map(k, d);
     sk_finish(k, key, vel, K_BYDRV, t);
 }
 static void sk_final_unknown(sk_t *k, uint32_t key, uint32_t t)
@@ -447,10 +450,13 @@ static void sk_driven(sk_t *k, uint32_t key, uint32_t d, uint32_t t)
             sk_final_depth(k, key, t);
             return;
         }
-        if (d < SC_D_MIN || d > SC_D_MAX) {
+        if (d > SC_D_MAX) {
             sn.st.rejected++;
             return;
         }
+        if (d < SC_D_MIN)
+            d = SC_D_MIN;                        /* DUELL 1.1 (owner: a REALLY hard hit played very quiet): harder than the pill range is the hardest press, not "no pill". It was thrown away and
+                                                  * the next driven reading, the pill already relaxing, was taken as the landing: the hardest hits came out soft (tests/velo_mono_test.c) */
         k->nd++;
         if (d < k->d_best)
             k->d_best = (uint16_t)d;
@@ -462,24 +468,44 @@ static void sk_driven(sk_t *k, uint32_t key, uint32_t d, uint32_t t)
             sk_final_driven(k, key, t);
         return;
     }
-    if (d < SC_D_MIN || d > SC_D_MAX)
+    if (d > SC_D_MAX) {                          /* held and the pill barely touches: the squeeze is gone (a light release that the undriven reading still calls seated): 0, the reference stays */
+        if (k->at)
+            sc_ev_push(SE_AT, key, 0, 0, t);
+        k->at = 0;
+        if (k->d_ref)
+            k->d_s = (uint16_t)(k->d_ref * 4u);
         return;
+    }
+    if (d < SC_D_MIN)
+        d = SC_D_MIN;                            /* held and harder than the pill range: the strongest squeeze, not ignored (the value does not stick at an old one) */
     {                                            /* held: the aftertouch, from the driven reading smoothed (noise would flutter it) */
         uint32_t v, ds;
-        if (!k->d_ref)
+        if (!k->d_ref) {
             k->d_s = (uint16_t)(d * 4u);
-        else
+            k->hold = 0;
+        } else
             k->d_s = (uint16_t)((int32_t)k->d_s + (((int32_t)(d * 4u) - (int32_t)k->d_s) >> SC_AT_SMOOTH));
         ds = ((uint32_t)k->d_s + 2u) >> 2;
+        if (!(k->fl & K_SETTLED)) {              /* DUELL 1.1 item 126: the finger pressing IN after the landing (the reading keeps falling 25 .. 320 counts over 20 .. 260 ms) is not a squeeze.
+                                                  * Until the reading has stood still (within SC_AT_STILL_BAND for SC_AT_STILL_US, at the earliest SC_AT_MIN_US after the landing; at the latest
+                                                  * SC_AT_MAX_US) the reference follows it and the aftertouch is 0; the reading it settles at is zero pressure */
+            uint32_t el = (uint32_t)(t - k->t_land), mv = ds > k->s_ref ? ds - k->s_ref : k->s_ref - ds, tm = t >> 10;
+            if (!k->hold || mv > SC_AT_STILL_BAND) {     /* (hold 0 = the window not begun: a landing, a gap) */
+                k->s_ref = (uint16_t)ds;
+                k->s_t = (uint16_t)tm;
+                k->hold = 1;
+            }
+            k->d_ref = (uint16_t)ds;
+            if (!((el >= SC_AT_MIN_US && (uint32_t)(uint16_t)(tm - k->s_t) * 1024u >= SC_AT_STILL_US) || el >= SC_AT_MAX_US))
+                return;
+            k->fl |= K_SETTLED;
+        }
         if (!k->d_ref || ds > k->d_ref) {
             k->d_ref = (uint16_t)ds;             /* the landing reading, or the key relaxing: zero */
-        } else if (++k->hold >= SC_AT_LEAK_N) {
-            k->hold = 0;
-            k->d_ref--;                          /* a pressure held creeps into the reference */
-        }
+        }                                        /* (no leak since DUELL 1.1: a pressure held stays held) */
         v = k->d_ref - ds;
-        v = v > SC_AT_FLOOR ? (v - SC_AT_FLOOR) * 127u / (SC_AT_SPAN - SC_AT_FLOOR) : 0u;
-        v = v > 127u ? 127u : v;
+        v = v > SC_AT_FLOOR ? (v - SC_AT_FLOOR) : 0u;
+        v = sc_at_curve(v);
         if ((v > k->at ? v - k->at : k->at - v) >= 8u)
             sc_ev_push(SE_AT, key, v, 0, t);
         k->at = (uint8_t)v;
@@ -534,6 +560,8 @@ void sense_update(uint32_t note, uint32_t adc, uint32_t driven, uint32_t t)
         break;
     default:                                     /* DOWN, LIFT */
         if (open) {
+            if (driven && (k->fl & K_PEND))
+                sk_driven(k, note, adc, t);      /* item 123: a soft landing's strength reads 900 .. 1022 on this unit: "open" by its value, but it is the pill. It was never looked at, and the press fell back to the landing depth */
             if (++k->nopen >= SC_REL_N)
                 sk_lift(k, note, t);
             else
@@ -664,6 +692,11 @@ uint32_t sense_at_enabled(void) { return sn.at; }
 uint32_t sense_running(void) { return (uint32_t)(sn.on | sn.at); }   /* the key sensing is running (the budget's 2 %) */
 void sense_curve_set(uint32_t pct) { sn.curve1 = (uint8_t)((pct > 100u ? 100u : pct) + 1u); }
 uint32_t sense_curve_get(void) { return sn.curve1 ? sn.curve1 - 1u : SC_CURVE_DEFAULT; }
+/* the curve types, 0 .. SC_TYPE_N - 1 in the menu's order (SC_TYPE_EXP_Q8); stored + 1 so that the all-zero state is NORMAL. They do not turn the setting ON or OFF (sense_enable) */
+void sense_vel_type_set(uint32_t t) { sn.vtype1 = (uint8_t)((t < SC_TYPE_N ? t : SC_TYPE_NORMAL) + 1u); }
+uint32_t sense_vel_type_get(void) { return sn.vtype1 ? sn.vtype1 - 1u : SC_TYPE_NORMAL; }
+void sense_at_type_set(uint32_t t) { sn.atype1 = (uint8_t)((t < SC_TYPE_N ? t : SC_TYPE_NORMAL) + 1u); }
+uint32_t sense_at_type_get(void) { return sn.atype1 ? sn.atype1 - 1u : SC_TYPE_NORMAL; }
 void sense_reset(void)
 {
     uint32_t n;
@@ -699,13 +732,6 @@ uint32_t sense_cal_export(uint8_t *buf)
     for (n = 0; n < SC_NKEY; n++) {
         const sk_t *k = &sn.k[n];
         uint32_t lo = k->cnt ? k->lo6 : 0u, hi = k->cnt ? k->hi6 : 0u;
-        if (k->cnt && k->cnt < SC_FAST_N) {      /* a new key: the widened range it is mapped by */
-            int32_t want = ((int32_t)SC_CEIL_PRIOR - (int32_t)SC_FLOOR_PRIOR) * 64, w = (int32_t)(hi - lo);
-            if (w < want) {
-                lo -= (uint32_t)((want - w) / 2);
-                hi += (uint32_t)((want - w) - (want - w) / 2);
-            }
-        }
         buf[o++] = (uint8_t)lo;
         buf[o++] = (uint8_t)(lo >> 8);
         buf[o++] = (uint8_t)hi;
@@ -732,8 +758,8 @@ uint32_t sense_cal_import(const uint8_t *buf)
             k->lo6 = k->hi6 = 0;
             continue;
         }
-        lo = lo < SC_D_MIN * 64u ? SC_D_MIN * 64u : lo > SC_D_MAX * 64u ? SC_D_MAX * 64u : lo;
-        hi = hi > SC_D_MAX * 64u ? SC_D_MAX * 64u : hi;
+        lo = lo < SC_FLOOR_MIN * 64u ? SC_FLOOR_MIN * 64u : lo > SC_FLOOR_MAX * 64u ? SC_FLOOR_MAX * 64u : lo;
+        hi = hi < SC_CEIL_MIN * 64u ? SC_CEIL_MIN * 64u : hi > SC_CEIL_MAX * 64u ? SC_CEIL_MAX * 64u : hi;
         if (hi < lo + 8u * 64u)
             hi = lo + 8u * 64u;
         k->lo6 = (uint16_t)lo;

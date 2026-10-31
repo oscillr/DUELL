@@ -3,7 +3,7 @@
 /* FM-1 LCD wiring: SPI1 on PC9 CLK, PC10 DO, PC7 CS,
  * PC8 D/C; backlight PA2, active low. The panel protocol is src/lcd.c.
  *
- *   fm1_lcd_hw_init()          pins, backlight on, SPI1 master at BAUD 4
+ *   fm1_lcd_hw_init()          pins, backlight on, SPI1 master at BAUD 4 (FM1_LCD_BL_LATE 1: backlight off, see below)
  *   fm1_lcd_baud(b)            SPI1 clock = lsb / (b + 1)
  *   fm1_lcd_send_cmd(c)        D/C low, CS low, one byte (then fm1_lcd_wait)
  *   fm1_lcd_send_data(p, n)    D/C high, CS low, DMA n bytes from RAM p
@@ -15,6 +15,17 @@
 #include <stdint.h>
 #include "fm1_cc.h"
 
+/* FM1_LCD_BL_LATE (DUELL 1.1 item 163, owner: no screen before the splash): 1 = fm1_lcd_hw_init drives PA2 HIGH
+ * (backlight off) and src/lcd.c lcd_init turns it on after DISPON, when the panel shows its first black frame. Only the
+ * main firmware sets it (src/felucca.c, before this header). Default 0 = PA2 low (on) at once, exactly as before: the
+ * update loader (loader/loader.c, ldr_screen.c) and every other user keep today's order. PA2 is also the key matrix
+ * 595's /OE: with 1 the matrix outputs are enabled only at the end of lcd_init (nothing reads keys before that:
+ * fm1_input_init and the TIMER5 scan come later in main.c). tests/lcd_boot_test.c */
+#ifndef FM1_LCD_BL_LATE
+#define FM1_LCD_BL_LATE 0
+#endif
+
+#ifndef FM1_LCD_HOST_REGS                 /* (tests/lcd_boot_test.c: the registers as host variables) */
 #define FM1_LCD_PC_OUT (*(volatile uint32_t *)0x50080u)
 #define FM1_LCD_PC_DIR (*(volatile uint32_t *)0x50088u)
 #define FM1_LCD_IOMAP_CON1 (*(volatile uint32_t *)0x51020u)
@@ -25,6 +36,7 @@
 #define FM1_LCD_SPI_CNT (*(volatile uint32_t *)0x11D10u)
 #define FM1_LCD_PA_OUT (*(volatile uint32_t *)0x50000u)
 #define FM1_LCD_PA_DIR (*(volatile uint32_t *)0x50008u)
+#endif
 #define FM1_LCD_BL (1u << 2)
 #define FM1_LCD_CS (1u << 7)
 #define FM1_LCD_DC (1u << 8)
@@ -35,7 +47,11 @@ static uint32_t fm1_lcd_timeouts;
 
 FM1_INLINE void fm1_lcd_hw_init(void)
 {
+#if FM1_LCD_BL_LATE
+    FM1_LCD_PA_OUT |= FM1_LCD_BL;         /* off (high) before PA2 becomes an output: never a low pulse */
+#else
     FM1_LCD_PA_OUT &= ~FM1_LCD_BL;
+#endif
     FM1_LCD_PA_DIR &= ~FM1_LCD_BL;
     FM1_LCD_IOMAP_CON1 |= 0x10u;
     FM1_LCD_PC_OUT |= FM1_LCD_CS;

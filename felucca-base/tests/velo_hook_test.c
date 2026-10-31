@@ -105,14 +105,14 @@ static void feed(uint32_t k, uint32_t adc, uint32_t drv, uint32_t dt)
     T += dt;
     sense_update(k, adc, drv, T);
 }
-static void prime(uint32_t k)                           /* a settled range 400 (hard) .. 580 (soft) */
+static void prime(uint32_t k)                           /* a settled range 695 (hard) .. 1000 (soft), the owner's unit (item 123) */
 {
     uint32_t i;
     sense_ev_t e;
     for (i = 0; i < 14u; i++) {
         feed(k, 1023, 0, 2200);
         feed(k, 200, 0, 2200);
-        feed(k, 400u + (i * 53u) % 181u, 1, 2200);
+        feed(k, 695u + (i * 53u) % 306u, 1, 2200);
         feed(k, 1023, 0, 2200);
         feed(k, 1023, 0, 2200);
     }
@@ -170,7 +170,7 @@ static void hooks(void)
     feed(k, 200, 0, 2200);
     keys_now(1u << k);
     vh_check("a closed key whose strength is not in yet starts nothing", vh_gated(&trk[0]) == 0u);
-    feed(k, 372, 1, 2200);
+    feed(k, 690, 1, 2200);
     keys_now(1u << k);
     v_hard = trk[0].m_vel;
     vh_check("  .. the next block after the reading, the note starts with the measured velocity (hard: > 110)", vh_gated(&trk[0]) == 1u && v_hard > 110u && all_mvel(&trk[0], v_hard, 1));
@@ -180,7 +180,7 @@ static void hooks(void)
     vh_blk(40);
     feed(k, 1023, 0, 2200);
     feed(k, 200, 0, 2200);
-    feed(k, 610, 1, 2200);
+    feed(k, 1015, 1, 2200);
     keys_now(1u << k);
     v_soft = trk[0].m_vel;
     vh_check("a soft landing plays softer (< 30) in the same block the reading is there", vh_gated(&trk[0]) >= 1u && v_soft < 30u);
@@ -198,7 +198,7 @@ static void hooks(void)
     mo_r = mo_w = 0;
     feed(7, 1023, 0, 2200);
     feed(7, 200, 0, 2200);
-    feed(7, 390, 1, 2200);
+    feed(7, 700, 1, 2200);
     keys_now(1u << 7);
     {
         uint32_t n = vh_gated(&trk[0]), vel = trk[0].m_vel, ok = n >= 2u && all_mvel(&trk[0], vel, n), pk = 1;
@@ -225,7 +225,7 @@ static void hooks(void)
     mix_xf = 50;
     feed(9, 1023, 0, 2200);
     feed(9, 200, 0, 2200);
-    feed(9, 385, 1, 2200);
+    feed(9, 700, 1, 2200);
     keys_now(1u << 9);
     vh_check("LAYER: both parts start the note with the key's velocity", vh_gated(&trk[0]) == 1u && vh_gated(&trk[1]) == 1u && trk[0].m_vel > 100u &&
              all_mvel(&trk[0], trk[0].m_vel, 1) && all_mvel(&trk[1], trk[0].m_vel, 1));
@@ -239,7 +239,7 @@ static void hooks(void)
     trk[0].p[P_AMODE] = 1;
     feed(11, 1023, 0, 2200);
     feed(11, 200, 0, 2200);
-    feed(11, 600, 1, 2200);
+    feed(11, 1010, 1, 2200);
     keys_now(1u << 11);
     vh_blk(40);
     vh_check("the arp plays its notes at 100 (the key said soft)", vh_gated(&trk[0]) >= 1u && trk[0].m_vel == 100u);

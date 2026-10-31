@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
-"""DUELL 1.0: re-roll MORPH End B of every factory multi M01..M15 with the firmware's own ROLL B (release_drafts/MORPH_B_ROLL_V1.md).
+"""DUELL 1.0: re-roll MORPH End B of every factory multi M01..M15 with the firmware's own ROLL B (working docs/MORPH_B_ROLL_V1.md).
 
     tools/morph_b_roll.py [--apply] [--note FILE]
 

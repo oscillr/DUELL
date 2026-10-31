@@ -539,7 +539,7 @@ static void t_cutoff(void)
     T0->v[0].env2 = 1 << 24;
     XV(T0, X_ENV2) = 32;
     c = cut_of(5000, 0);
-    ck("ENV 2 +32: ENV 2 at full adds 8192 (32 steps), as filter 1's depth of 32 does", c == 5000 + 8192);
+    ck("ENV 2 +32: ENV 2 at full adds DEP_AMT(32) = 33 steps of 256 (8448: the depth cards' x 1.0156 rule of ext.h, as filter 1's depth of 32 does)", c == 5000 + DEP_AMT(32) * 256);
     XV(T0, X_ENV2) = -64;
     c = cut_of(20000, 0);
     T0->v[0].env2 = 0;
@@ -671,7 +671,6 @@ static void fw_clean(void)
     memset(mod_goff, 0, sizeof mod_goff);
     memset(mx_was, 0, sizeof mx_was);
     memset(mod_mixmv, 0, sizeof mod_mixmv);
-    mix_bal = 0;
     mix_xf = mix_split = 0;
     vage = 0;
     mod_seed = 0x2545F491u;

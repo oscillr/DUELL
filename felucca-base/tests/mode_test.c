@@ -34,7 +34,7 @@
 #endif
 #include <sys/wait.h>
 
-#define MODE_STEREO_HASH 0x9C13C6ADFCF3BC87ull   /* 0.2.32: re-based on purpose (the direct depth cards reach 100 % at +63, the merged line); was 0xC04494F53D46F0F0 */ /* older: */   /* 0.2.30: merged line (cloud wave 6 + click fixes), re-based on purpose, was 0x1CC6C8241C84C0DA; before:  0.2.29: re-based on purpose, the scenario runs the HALL and its quiet lines now round to the nearest (fx.c hall_end; 0.2.21..0.2.28: 0xC970174114DFD9BA) */   /* mode_stereo_scenario(); re-based 2026-10-16 (0.2.21) on purpose: the STEREO CHORUS (two taps, a side) changes the scenario, which sends every part to the chorus; with the second tap set to the first (-DCHO_OFF=0u) the render is the old hash 0xA77A7B40656EB88D again, bit for bit; before that: re-based 2026-10-16 when OUTPUT EQ (BASS+, which the scenario had on) was removed: the 0.2.19 sources with BASS+ off give this same hash (checked), so FLAT is bit for bit as it was; before it was 0xBB6416D3547A055C; re-based in 0.2.2: the FX layer's THROW / FLANGER / PHASER left the scenario with the layer (the output idle is regress's goldens, unchanged); was 0x174A9561B9854C15, before that 0xA233C4BC0DC6D894 (the sources before step 5, commit bb60ab7) up to 8f45fc5; re-based at 0d28bf8: a bipolar LFO now swings the whole range of a per-block destination and the scenario routes LFO to PAN */
+#define MODE_STEREO_HASH 0x366B468DC2425A83ull   /* DUELL 1.1 item 148: re-based on purpose: VS_MAX 3 -> 2 (the four-note chord now starts 2 + 2: its third and fourth tone one block later); item 144's hash with VS_MAX 3 was 0x51A55778D3DBFE39 */ /* DUELL 1.1 item 144: re-based on purpose: the scenario plays a four-note chord on part 1 in one block, and the voices' start limit (voice.c VS_MAX, 3 then) starts its fourth tone one block later; built with -DVS_MAX=8u it gives the hash before, 0x72791E3F551D6D9D */ /* DUELL 1.1 (item 127): re-based on purpose to the 1.1 sources (the scenario runs the HALL, the delay and the chorus, and the 1.1 reverb / feedback rounding fixes and the cost-table work changed its samples; the same hash at -O1 and -O2); was 0x9C13C6ADFCF3BC87 */ /* 0.2.32: re-based on purpose (the direct depth cards reach 100 % at +63, the merged line); was 0xC04494F53D46F0F0 */ /* older: */   /* 0.2.30: merged line (cloud wave 6 + click fixes), re-based on purpose, was 0x1CC6C8241C84C0DA; before:  0.2.29: re-based on purpose, the scenario runs the HALL and its quiet lines now round to the nearest (fx.c hall_end; 0.2.21..0.2.28: 0xC970174114DFD9BA) */   /* mode_stereo_scenario(); re-based 2026-10-16 (0.2.21) on purpose: the STEREO CHORUS (two taps, a side) changes the scenario, which sends every part to the chorus; with the second tap set to the first (-DCHO_OFF=0u) the render is the old hash 0xA77A7B40656EB88D again, bit for bit; before that: re-based 2026-10-16 when OUTPUT EQ (BASS+, which the scenario had on) was removed: the 0.2.19 sources with BASS+ off give this same hash (checked), so FLAT is bit for bit as it was; before it was 0xBB6416D3547A055C; re-based in 0.2.2: the FX layer's THROW / FLANGER / PHASER left the scenario with the layer (the output idle is regress's goldens, unchanged); was 0x174A9561B9854C15, before that 0xA233C4BC0DC6D894 (the sources before step 5, commit bb60ab7) up to 8f45fc5; re-based at 0d28bf8: a bipolar LFO now swings the whole range of a per-block destination and the scenario routes LFO to PAN */
 
 static int bad, ncheck;
 static int expect(const char *what, int ok)
@@ -76,8 +76,7 @@ static void dsp_clean(uint32_t mode)                    /* the DSP as at power-o
     memset(midi_bend_q8, 0, sizeof midi_bend_q8);
     memset(midi_bend_target, 0, sizeof midi_bend_target);
     memset(kb_chn, 0, sizeof kb_chn);
-    mix_bal = 0;                                         /* (BALANCE 0, XFADE 0, SPLIT OFF: the mode page's other three) */
-    mix_xf = mix_split = 0;
+    mix_xf = mix_split = 0;                              /* (XFADE 0, SPLIT OFF: the mode page's other two; item 160: no BALANCE value any more) */
     vage = 0;                                            /* (the voice clock and the note RAND: from power-on, so two */
     mod_seed = 0x2545F491u;                              /* renders of the same notes are the same) */
     fm1_in.notes = 0;
@@ -631,24 +630,31 @@ static void t_layer(void)
     expect("  .. keys let go: both stop", !gated_any(&trk[0]) && !gated_any(&trk[1]));
     trk[0].p[P_AMODE] = trk[1].p[P_AMODE] = 0;
 
-    /* the voice budget: 6 notes held on both POLY parts: 8 voices at most, the sounding notes in pairs */
+    /* the voice budget (DUELL 1.1 item 90: no shared pool of 8, each part has its own NVOICE voices, held by its own number trk_nvoice): 6 notes held on both POLY parts: each part sounds
+     * min(6, its number) of them, never more than NVOICE, the sounding notes in pairs */
     {
         static const uint8_t N6[6] = {48, 52, 55, 59, 62, 65};
-        uint32_t pairs = 1, busy;
+        uint32_t pairs = 1, busy, n0 = 0, n1 = 0, want0, want1;
         for (i = 0; i < 6u; i++) {
             midi(0x90, 0, N6[i], 100);
             mblk(2);
         }
         mblk(4);
         busy = voices_busy();
-        for (i = 0; i < 6u; i++)
+        for (i = 0; i < 6u; i++) {
             pairs &= vgated(&trk[0], N6[i]) == vgated(&trk[1], N6[i]);
+            n0 += vgated(&trk[0], N6[i]) != 0u;
+            n1 += vgated(&trk[1], N6[i]) != 0u;
+        }
+        want0 = trk_nvoice(&trk[0]) < 6u ? trk_nvoice(&trk[0]) : 6u;
+        want1 = trk_nvoice(&trk[1]) < 6u ? trk_nvoice(&trk[1]) : 6u;
         printf("mode: LAYER budget: 6 notes held -> %u voices busy; notes sounding on both: ", busy);
         for (i = 0; i < 6u; i++)
             if (vgated(&trk[0], N6[i]))
                 printf("%u ", N6[i]);
         printf("\n");
-        expect("LAYER: 6 notes held: at most 8 voices (the shared budget: 4 notes x 2 parts)", busy <= 8u);
+        expect("LAYER: 6 notes held: each part its own voices (item 90): it sounds min(6, its number) of them, at most NVOICE a part, so at most 2 x NVOICE busy",
+               busy <= 2u * NVOICE && n0 == want0 && n1 == want1 && n0 <= NVOICE && n1 <= NVOICE);
         expect("  .. each note sounding sounds on both parts (the steal takes a note's two voices together)", pairs);
         expect("  .. the lowest (the bass) kept on both", vgated(&trk[0], 48) == 1u && vgated(&trk[1], 48) == 1u);
         for (i = 0; i < 6u; i++)
@@ -691,11 +697,11 @@ static void t_layer(void)
     }
 }
 
-/* ---------------------------------------------- BALANCE, XFADE, SPLIT --- */
+/* ----------------------------------------------------- XFADE, SPLIT --- */
 static void t_mix(void)
 {
     uint32_t ok, kl = 27, kh = 27, k;
-    int32_t a1, a2, b1, b2, p0, p1;
+    int32_t a1, a2, b1, b2;
     /* (a) XFADE 100 %, LAYER: velocity 20 favours part 1, 120 part 2; XFADE 0: the voices untouched (xg 0, equal) */
     dsp_clean(DM_LAYER);
     host_preset(&trk[0], eng_of("ANALOG"), 0);
@@ -753,32 +759,7 @@ static void t_mix(void)
     mblk(2);
     expect("SPLIT C4, LAYER: 48 and a low key only part 1, 72 and a high key only part 2; moved while held: no hanging note",
            ok && !gated_any(&trk[0]) && !gated_any(&trk[1]));
-    /* (c) BALANCE +100: part 1 silent (part 2 not); -100 the reverse; 0: both heard */
-    dsp_clean(DM_STEREO);
-    host_preset(&trk[0], eng_of("ANALOG"), 0);
-    host_preset(&trk[1], eng_of("ANALOG"), 0);
-    mix_bal = 100;
-    trk_note_on(&trk[0], 60, 100);
-    mblk(8);
-    p0 = peak_of(rec_l, 0);
-    rec_n = 0;
-    mblk(8);
-    p0 = peak_of(rec_l, rec_n) | peak_of(rec_r, rec_n);
-    trk_note_off(&trk[0], 60);
-    mblk(FS / CTL);
-    mix_bal = 100;
-    trk_note_on(&trk[1], 60, 100);
-    rec_n = 0;
-    mblk(8);
-    p1 = peak_of(rec_l, rec_n) | peak_of(rec_r, rec_n);
-    trk_note_off(&trk[1], 60);
-    mblk(FS / CTL);
-    mix_bal = 0;
-    trk_note_on(&trk[0], 60, 100);
-    rec_n = 0;
-    mblk(8);
-    ok = (peak_of(rec_l, rec_n) | peak_of(rec_r, rec_n)) > 0;
-    expect("BALANCE +100: part 1 silent, part 2 heard; BALANCE 0: part 1 heard", p0 == 0 && p1 > 0 && ok);
+    /* (c), (d) item 160: the balance stage (fx.c bal_lvl, core.h mix_bal) is gone; PERFORM's SELECT moves the MIXER LEVELs (tests/perf_level_test.c: every mode bit for bit as before at the old balance 0) */
 }
 
 /* ------------------------------------------------------------- HANGING --- */
@@ -909,7 +890,7 @@ static void t_hanging(void)
                !gated_any(&trk[1]));
         mblk(2u * FS / CTL);
         printf("mode: fuzz: %u mode changes, at most %u voices busy\n", changes, sounding_max);
-        expect("  .. and nothing sounds 2 s later (no stuck note); the budget kept (8)", !active_any() && sounding_max <= 8u);
+        expect("  .. and nothing sounds 2 s later (no stuck note); the voices kept (each part its own NVOICE: at most 2 x NVOICE busy)", !active_any() && sounding_max <= 2u * NVOICE);
     }
 }
 
@@ -1017,35 +998,41 @@ static void t_ui(void)
     page_title(ti);
     expect("HOME tapped twice from the start (on MORPH): the MODE page (HOME's third sub-page), its footer MODE 3/3 (0.2.25: the MIXER is GLO's)",
            ui.page == page_of("MODE") && str_eq(ti, "MODE 3/3"));
+    turn(EN_K1, 1);                                     /* (item 118: the list reads LAYER, STEREO, DUEL from the top; KNOB 1 to the right goes DOWN it) */
+    expect("MODE: KNOB 1 right at DUEL (SPLIT, the list's last row) stays DUEL", duell_mode_req == DM_SPLIT);
     turn(EN_K1, -1);
-    expect("MODE: KNOB 1 left at SPLIT stays SPLIT", duell_mode_req == DM_SPLIT);
-    turn(EN_K1, 1);
-    expect("  .. right: STEREO", duell_mode_req == DM_STEREO);
-    turn(EN_K1, 1);
-    turn(EN_K1, 1);
-    expect("  .. right, right: LAYER (and no further)", duell_mode_req == DM_LAYER);
-    turn(EN_K2, 3);
-    turn(EN_K3, -3);
-    turn(EN_K4, 2);
-    expect("  .. KNOB 2-4: BALANCE, XFADE (0 at the left end), SPLIT move; the mode stays",
-           duell_mode_req == DM_LAYER && mix_bal == 3 && mix_xf == 0 && mix_split == 2);
-    mix_bal = 0;                                         /* (back to the defaults: later tests, the settings) */
+    expect("  .. left: STEREO", duell_mode_req == DM_STEREO);
+    turn(EN_K1, -1);
+    turn(EN_K1, -1);
+    expect("  .. left, left: LAYER (and no further)", duell_mode_req == DM_LAYER);
+    ui.msg_t = 0;
+    turn(EN_K2, -3);
+    turn(EN_K3, 2);
+    expect("  .. KNOB 2-3 (item 158: the cards line up to the left): XFADE (0 at the left end), SPLIT (OFF + 2: the middle key F#4 + 1, item 155) move; the mode stays",
+           duell_mode_req == DM_LAYER && mix_xf == 0 && mix_split == 68);
+    {
+        int16_t lv0 = trk[0].p[P_LEVEL], lv1 = trk[1].p[P_LEVEL];
+        uint8_t x0 = mix_xf, s0 = mix_split;
+        ui.msg_t = 0;
+        turn(EN_K4, 3);
+        expect("  .. KNOB 4 (no card): the knob does nothing and says nothing", trk[0].p[P_LEVEL] == lv0 && trk[1].p[P_LEVEL] == lv1 && mix_xf == x0 && mix_split == s0 && !ui.msg_t);
+    }
     mix_split = 0;
-    turn(EN_K1, -2);
+    turn(EN_K1, 2);
     frame();
     expect("  .. back to SPLIT", duell_mode_req == DM_SPLIT);
     press(B_GLO);
     frames(64);
     expect("GLO: the MIXER (0.2.25 layout round: GLO's first page)", ui.page == page_of("MIXER"));
     pan = TSEL->p[P_PAN];
-    turn(EN_K2, 5);
+    turn(EN_K3, 5);
     ui.force = 1; frame();
-    expect("MIXER in SPLIT: the PAN card is not drawn; KNOB 2 (PAN) changes nothing (fixed: part 1 left, part 2 right), says nothing", TSEL->p[P_PAN] == pan &&
-           ui.col[1][0] == 0x7f && !str_eq(ui.msg, "DUEL: PAN IS FIXED"));
+    expect("MIXER in SPLIT: the PAN card is not drawn; KNOB 3 (PAN 1, item 117 order) changes nothing (fixed: part 1 left, part 2 right), says nothing", TSEL->p[P_PAN] == pan &&
+           ui.col[2][0] == 0x7f && !str_eq(ui.msg, "DUEL: PAN IS FIXED"));
     duell_mode_req = DM_STEREO;
     frame();
-    turn(EN_K2, 5);
-    expect("MIXER in STEREO: KNOB 2 moves PAN", TSEL->p[P_PAN] != pan);
+    turn(EN_K3, 5);
+    expect("MIXER in STEREO: KNOB 3 moves PAN", TSEL->p[P_PAN] != pan);
 }
 static void t_settings(void)
 {
@@ -1055,7 +1042,7 @@ static void t_settings(void)
     expect("the default (SPLIT) writes nothing: the byte stays 0, no save queued", !ui_mode_set && !ui.mset_dirty);
     go_title("MODE");
     frames(32);
-    turn(EN_K1, 2);
+    turn(EN_K1, -2);
     frame();
     expect("MODE LAYER into the settings byte (2), a save queued", ui_mode_set == DM_LAYER && ui.mset_dirty);
     frames(2200);
@@ -1161,8 +1148,8 @@ static void t_jiant_rev(void)
                 char w[120];
                 jiant_render(m ? DM_SPLIT : DM_STEREO, p, rt, rt == 3u ? 100 : rt == 5u ? 100 : 110);   /* (RESO rings on longer per SIZE) */
                 pk = peak_of(rec_l, rec_n) > peak_of(rec_r, rec_n) ? peak_of(rec_l, rec_n) : peak_of(rec_r, rec_n);
-                tail = peak_of(rec_l + 13u * FS / 5u, FS / 2u);            /* 0.3 s after the release (SPLIT part 2: the right) */
-                tail = (m && p) ? peak_of(rec_r + 13u * FS / 5u, FS / 2u) : tail;
+                tail = peak_of(rec_l + 13u * FS / 10u, FS / 2u);           /* 0.3 s after the release (SPLIT part 2: the right); item 127: the code read 13 * FS / 5 = 1.6 s after it, but RESO's feedback now rounds to zero (REVERB_FIX) and its ring is out by 1.5 s, as the comment said 0.3 s */
+                tail = (m && p) ? peak_of(rec_r + 13u * FS / 10u, FS / 2u) : tail;
                 last = peak_of(rec_l + rec_n - FS / 2u, FS / 2u);
                 last = peak_of(rec_r + rec_n - FS / 2u, FS / 2u) > last ? peak_of(rec_r + rec_n - FS / 2u, FS / 2u) : last;
                 snprintf(w, sizeof w, "%s %s %s: peak %d, tail %d, last 0.5 s peak %d: bounded, audible tail, silent end",
@@ -1239,9 +1226,9 @@ static void lk_allev(uint32_t v) { lk_all(v); song.g[G_DMODE] = DMD_RAND; song.g
 static const leak_t LEAKS[] = {
     {"nothing (the dry part)", lk_none, 1}, {"CHORUS send", lk_cho, 1}, {"DELAY send", lk_dly, 1}, {"DELAY send PING-PONG", lk_dly, 1},
     {"REVERB ROOM", lk_rev, 1}, {"REVERB SPRING", lk_rev, 1}, {"REVERB HALL", lk_rev, 1}, {"REVERB SHIM", lk_rev, 1},
-    {"REVERB RESO", lk_rev, 1}, {"INSERT SOFT", lk_ins, 1}, {"INSERT HARD", lk_ins, 1}, {"INSERT FOLD", lk_ins, 1},
-    {"INSERT FUZZ", lk_ins, 1}, {"INSERT CRUSH", lk_ins, 1}, {"INSERT PHASR", lk_ins, 1}, {"INSERT FLANG", lk_ins, 1},
-    {"INSERT CHOR", lk_ins, 1}, {"SPREAD 127 (+ chorus send)", lk_spread, 1}, {"PAN hard (part 1 right, part 2 left)", lk_pan, 1},
+    {"REVERB RESO", lk_rev, 1}, {"INSERT SOFT CLIP", lk_ins, 1}, {"INSERT HARD CLIP", lk_ins, 1}, {"INSERT FOLD", lk_ins, 1},
+    {"INSERT FUZZ", lk_ins, 1}, {"INSERT BIT CRUSHER", lk_ins, 1}, {"INSERT PHASER", lk_ins, 1}, {"INSERT FLANGER", lk_ins, 1},
+    {"INSERT CHORUS", lk_ins, 1}, {"SPREAD 127 (+ chorus send)", lk_spread, 1}, {"PAN hard (part 1 right, part 2 left)", lk_pan, 1},
     {"PAN hard the other way", lk_pan, 1}, {"LFO -> PAN", lk_lfopan, 1}, {"EQ +-20", lk_eq, 1}, {"DUCKER (PUMP)", lk_duck, 1},
     {"DIST 90", lk_dist, 1}, {"ALL together", lk_all, 1}, {"DELAY MODULATION 100 %", lk_dmod, 1},
     {"DELAY RAND, CHANCE 100 (0.2.22)", lk_dev, 1}, {"DELAY OCT+, CHANCE 100 (0.2.22)", lk_dev, 1}, {"ALL together with the RAND delay", lk_allev, 1}};
@@ -1369,6 +1356,18 @@ static void t_midi_ch(void)
            vgated(&trk[0], 74) == 1u && vgated(&trk[1], 74) == 1u && !vgated(&trk[0], 76) && !vgated(&trk[1], 76));
     midi(0x80, 9, 74, 0);
     mblk(1);
+    frames(32);                                          /* 1.1: LAYER keeps both channel cards, both editable (part 1's counts; GLO > MIDI says so) */
+    {   /* (the page is drawn by ui_graph.c graph_midi, not by cards: ui.col holds a hash; the three always-there cards of ui_draw.c midi_cards are the table) */
+        uint8_t vis[4];
+        expect("LAYER, GLO > MIDI: the PART 2 CH card is shown (K2): the page is GLO > MIDI and its cards are PART 1 CH, PART 2 CH, MIDI IN, never hidden",
+               cur_page()->graph == GR_MIDI && midi_cards(vis) == 3u && vis[0] == 0u && vis[1] == 1u && vis[2] == 2u);
+    }
+    turn(EN_K2, 1);
+    frame();
+    expect("  .. KNOB 2 right: PART 2 CH 6, part 1's channel unchanged", midi_pch[1] == 5u && midi_pch[0] == 9u);
+    turn(EN_K2, -1);
+    frame();
+    expect("  .. KNOB 2 left: PART 2 CH 5 again", midi_pch[1] == 4u);
     duell_mode_force(DM_STEREO);
     song.g[G_ROUTE] = 1;
     song.sel = 1;

@@ -25,8 +25,10 @@
  *         the user presets, up_fm6.c). A stored value is never a bank slot: projects, user presets and motion
  *         load 9..40 as 8, OWN (params.c param_fit), and the patch comes with the project / the record. So a
  *         project or a preset made with a bank voice sounds the same after the bank is replaced
- * The operator envelopes are the voice's amplitude and end it (engine_t.ownenv / done): the track's ADSR,
- * ENV DEST and the matrix's ENV do nothing here. The track's FLT moves MLVL (ENV / LFO -> FLT, the
+ * The operator envelopes are the voice's amplitude and end it (engine_t.ownenv / done): the track's ADSR curve,
+ * ENV DEST and the matrix's ENV do nothing here. DUELL 1.1 (owner 2026-10-25): the four AMP ENV knobs ATTACK DECAY
+ * SUSTAIN RELEASE move the envelopes of the carrier operators by their distance from the numbers the patch gives
+ * (fm6_env_derive, fm6_sync); a knob on that number leaves the DX7 voice exactly as it is. The track's FLT moves MLVL (ENV / LFO -> FLT, the
  * matrix's CUT), SHP the feedback, PIT the pitch (bend, glide, tune: the voice's pitch and fine factor).
  * Six voices per part at most (engine_t.poly).
  *
@@ -55,6 +57,7 @@ static struct {                                  /* the patch through the macros
     uint8_t p[FP_SIZE + 1u];
     uint8_t gen, alg, fb, ok;
     int16_t e[7];                                /* P_E0..P_E6 it was made with */
+    int16_t env[4];                              /* the AMP ENV knobs (P_ATK, P_DEC, P_SUS, P_REL) it was made with (fm6_env_derive) */
     uint32_t mk;                                 /* the morph's key it was made with (fm6_morph: 0 = none) */
     int32_t dt[6];                               /* DTUN: per operator, Q24 log2 */
 } fm6_eff[NLIVE];                              /* (DUELL: the shown parts; a hidden part never sounds) */
@@ -176,6 +179,82 @@ static void fm6_pack(const uint8_t *v, uint8_t *b)
         b[118 + i] = v[FP_NAME + i] & 0x7Fu;
 }
 
+/* ------------------------------------------- the AMP ENV knobs (DUELL 1.1) --- */
+/* Owner 2026-10-25 (FM6_ENV_MAP_V2.md): the part's AMP ENV knobs ATTACK, DECAY, SUSTAIN, RELEASE carry and move the envelopes of the CARRIER operators. The knob's stored value T (0..127, as on
+ * every engine: a higher value is longer or higher) is compared with D, the value the loaded patch itself gives (fm6_env_derive: the numbers of the loudest carrier); the sound changes only by
+ * T - D, so a knob on D is bit for bit the DX7 voice. The knob shows the DX7 number 0..99 (params.c F_N99): ATTACK, DECAY and RELEASE as 99 minus the DX7 rate (the knob inverts the rate), SUSTAIN
+ * as the DX7 level L3. Nothing per sample: D is made in the main loop (fm6_env_look) and in fm6_sync only when something changed */
+static int32_t fm6_rate_d(int32_t r) { return ((99 - r) * 127 + 49) / 99; }    /* a DX7 rate -> the knob's stored value (a higher value is slower) */
+static int32_t fm6_level_d(int32_t l) { return (l * 127 + 49) / 99; }          /* a DX7 level -> the knob's stored value */
+/* the four stored values patch p (155 bytes) gives with algorithm alg: those of its loudest carrier (the highest output level FP_OL; a tie: the one fm6_sync visits first, OP1's side).
+ * ATTACK from R1; DECAY from the falling stage with the bigger drop (L1 to L2: R2, L2 to L3: R3), R2 on a tie or no drop; SUSTAIN from L3; RELEASE from R4 */
+static void fm6_env_derive(const uint8_t *p, uint32_t alg, int32_t *d)
+{
+    uint32_t car = fm6_carriers(alg), k, best = 0;
+    int32_t top = -1, drop2, drop3;
+    const uint8_t *op;
+    for (k = 0; k < 6u; k++) {
+        uint32_t ki = 5u - k;
+        if (((car >> ki) & 1u) && (int32_t)p[ki * FP_OP + FP_OL] > top) {
+            top = p[ki * FP_OP + FP_OL];
+            best = ki;
+        }
+    }
+    op = p + best * FP_OP;
+    drop2 = (int32_t)op[FP_L1] - (int32_t)op[FP_L1 + 1];
+    drop3 = (int32_t)op[FP_L1 + 1] - (int32_t)op[FP_L1 + 2];
+    d[0] = fm6_rate_d(op[FP_R1]);
+    d[1] = fm6_rate_d(drop3 > drop2 ? op[FP_R1 + 2] : op[FP_R1 + 1]);
+    d[2] = fm6_level_d(op[FP_L1 + 2]);
+    d[3] = fm6_rate_d(op[FP_R1 + 3]);
+}
+/* the knob's distance from D in DX7 steps (rate steps or levels), rounded away from zero: the first knob step off D already changes the sound */
+static int32_t fm6_env_steps(int32_t x) { return x >= 0 ? (x * 99 + 126) / 127 : -((-x * 99 + 126) / 127); }
+static uint8_t fm6_dlast[NTRK][4];               /* the numbers the patch gave when the main loop last looked (not saved) */
+static uint8_t fm6_dok;                          /* bit tr: fm6_dlast[tr] is valid */
+enum { FM6_LOOK_FOLLOW, FM6_LOOK_NEW, FM6_LOOK_KEEP };
+/* main loop: the knobs of part tr against its patch. NEW (a sound was loaded): the knobs go on the numbers of the new patch. KEEP (a project or a user preset brought its own knobs with its patch):
+ * the knobs stay, the numbers are noted. FOLLOW (every main loop pass): when an edit of the patch or the ALG macro moved the numbers, every knob moves by the same amount (clamped to 0..127), so a knob
+ * that was on the number still is, and a knob that had been moved keeps its distance. A part that was not looked at before is KEEP */
+static void fm6_env_look(uint32_t tr, int mode)
+{
+    static const uint8_t ID[4] = {P_ATK, P_DEC, P_SUS, P_REL};
+    track_t *t;
+    int32_t d[4];
+    uint32_t k, e0;
+    tr %= NTRK;
+    t = &trk[tr];
+    if (t->eng_req != ENGI_FM6)
+        return;
+    e0 = (uint32_t)t->p[P_E0];
+    fm6_env_derive(fm6_patch[tr], e0 >= 1u && e0 <= 32u ? e0 - 1u : fm6_patch[tr][FP_ALG] & 31u, d);
+    if (mode == FM6_LOOK_FOLLOW && !((fm6_dok >> tr) & 1u))
+        mode = FM6_LOOK_KEEP;
+    for (k = 0; k < 4u; k++) {
+        if (mode == FM6_LOOK_NEW)
+            t->p[ID[k]] = (int16_t)d[k];
+        else if (mode == FM6_LOOK_FOLLOW && d[k] != (int32_t)fm6_dlast[tr][k])
+            t->p[ID[k]] = (int16_t)clamp(t->p[ID[k]] + d[k] - (int32_t)fm6_dlast[tr][k], 0, 127);
+        fm6_dlast[tr][k] = (uint8_t)d[k];
+    }
+    fm6_dok |= (uint8_t)(1u << tr);
+}
+/* a card is one of part t's four AMP ENV knobs on FM6: 0..3 (ATTACK .. RELEASE), else -1 (the reset puts such a knob on the number the patch gives, ui_input.c reset_desc) */
+static int32_t fm6_env_knob(const track_t *t, const int16_t *vp)
+{
+    if (t->eng_req != ENGI_FM6 || vp < &t->p[P_ATK] || vp > &t->p[P_REL])
+        return -1;
+    return (int32_t)(vp - &t->p[P_ATK]);
+}
+/* the number the patch gives for part t's knob k */
+static int32_t fm6_env_value(const track_t *t, uint32_t k)
+{
+    int32_t d[4];
+    uint32_t tr = (uint32_t)(t - trk) % NTRK, e0 = (uint32_t)t->p[P_E0];
+    fm6_env_derive(fm6_patch[tr], e0 >= 1u && e0 <= 32u ? e0 - 1u : fm6_patch[tr][FP_ALG] & 31u, d);
+    return d[k & 3u];
+}
+
 /* ---------------------------------------------------- the track's patch --- */
 /* track tr's patch = v (155 bytes, sanitized). Main loop: the ISR takes it at its next block */
 static void fm6_set_patch(uint32_t tr, const uint8_t *v)
@@ -206,6 +285,7 @@ static int fm6_load_slot(uint32_t tr, uint32_t s)
     fm6_unpack(pk, v);
     fm6_set_patch(tr, v);
     fm6_slot[tr % NTRK] = (uint8_t)s;
+    fm6_env_look(tr, FM6_LOOK_NEW);                  /* a sound was loaded: the AMP ENV knobs show what its carriers do */
     return 0;
 }
 
@@ -243,6 +323,7 @@ static void fm6_adopt(uint32_t tr)
         t->p[P_E7] = (int16_t)s;
     }
     fm6_slot[tr] = (uint8_t)s;
+    fm6_env_look(tr, FM6_LOOK_KEEP);                 /* (a project, a user preset: its own AMP ENV knobs stay) */
 }
 
 /* a factory sound load put a SLOT value in (a preset, an engine change): its patch (OWN: the patch stays) */
@@ -255,6 +336,7 @@ static void fm6_track_loaded(const track_t *t)
             fm6_load_slot(tr, (uint32_t)t->p[P_E7]);
         else
             fm6_adopt(tr);
+        fm6_env_look(tr, FM6_LOOK_NEW);              /* (a factory sound: the AMP ENV knobs on the numbers of its patch) */
     }
 }
 
@@ -278,9 +360,14 @@ static void fm6_poll(void)
     uint32_t tr, bit;
     for (tr = 0; tr < NTRK; tr++) {
         int32_t s = trk[tr].p[P_E7];
-        if (trk[tr].eng_req != ENGI_FM6 || s == fm6_slot[tr])
-            continue;
         bit = 1u << tr;
+        if (trk[tr].eng_req != ENGI_FM6) {
+            fm6_dok &= (uint8_t)~bit;
+            continue;
+        }
+        fm6_env_look(tr, FM6_LOOK_FOLLOW);           /* (the AMP ENV knobs follow an edit of the patch or the ALG macro) */
+        if (s == fm6_slot[tr])
+            continue;
         if (s < 0 || (s >= (int32_t)FM6_NFACTORY && fm6_bank_slot(s) < 0 && fm6_xslot(s) < 0)) {   /* OWN */
             if (fm6_own_ok & bit) {
                 uint8_t v[FP_SIZE + 1u];
@@ -303,25 +390,54 @@ static void fm6_poll(void)
 }
 
 /* -------------------------------------------------------------- macros --- */
+/* the AMP ENV knobs ek against the numbers patch p itself gives: their steps off the patch -> eoff, the knobs noted in env; 1 when any is off (flash, as fm6_env_apply: see there) */
+__attribute__((noinline)) static uint32_t fm6_env_offsets(int16_t *env, const uint8_t *p, uint32_t alg, const int16_t *ek, int32_t *eoff)
+{
+    int32_t ed[4], k;
+    uint32_t on = 0;
+    fm6_env_derive(p, alg, ed);
+    for (k = 0; k < 4; k++) {
+        env[k] = (uint8_t)ek[k];
+        eoff[k] = fm6_env_steps(clamp(ek[k], 0, 127) - ed[k]);
+        on |= (uint32_t)(eoff[k] != 0);
+    }
+    return on;
+}
+/* one carrier's envelope moved by the knobs' steps eoff (ATTACK R1, DECAY R2 and R3, SUSTAIN L2 and L3 together never above the larger of the two (a decay never becomes a swell), RELEASE R4). Kept out of fm6_sync
+ * (range Z, tools/ram_fns_z.py) and out of the RAM: it runs only when the patch or a knob changed, and the pool's tail rule (8,192 B) has no room for its bytes there */
+__attribute__((noinline)) static void fm6_env_apply(uint8_t *op, const int32_t *eoff)
+{
+    static const uint8_t RI[4] = {0, 1, 1, 3};
+    int32_t l2 = op[FP_L1 + 1], l3 = op[FP_L1 + 2], cap = l2 > l3 ? l2 : l3, j;
+    for (j = 0; j < 4; j++)
+        op[FP_R1 + j] = (uint8_t)clamp(op[FP_R1 + j] - eoff[RI[j]], 0, 99);
+    if (eoff[2]) {
+        int32_t n2 = clamp(l2 + eoff[2], 0, 99), n3 = clamp(l3 + eoff[2], 0, 99);
+        op[FP_L1 + 1] = (uint8_t)(n2 > cap ? cap : n2);
+        op[FP_L1 + 2] = (uint8_t)(n3 > cap ? cap : n3);
+    }
+}
 /* the patch through E0..E6 (audio ISR; cheap when nothing changed) */
 static void fm6_sync(const track_t *t)
 {
     uint32_t tr = (uint32_t)(t - trk), k, j, car, n = 0;
     const int16_t *e = &t->p[P_E0];
-    int32_t meg, step;
-    uint32_t mk;
+    int32_t meg, step, eoff[4];
+    uint32_t mk, eon = 0;
+    const int16_t *ek = &t->p[P_ATK];                           /* the AMP ENV knobs: P_ATK, P_DEC, P_SUS, P_REL follow each other */
     if (tr >= NLIVE)
         return;
     mk = fm6_morph ? fm6_morph(tr, 0) : 0u;
     if (fm6_eff[tr].ok && fm6_eff[tr].gen == fm6_pgen[tr] && fm6_eff[tr].mk == mk) {
         for (k = 0; k < 7u && fm6_eff[tr].e[k] == e[k]; k++)
             ;
-        if (k == 7u)
+        if (k == 7u && fm6_eff[tr].env[0] == ek[0] && fm6_eff[tr].env[1] == ek[1] && fm6_eff[tr].env[2] == ek[2] && fm6_eff[tr].env[3] == ek[3])
             return;
     }
     fm6_eff[tr].gen = fm6_pgen[tr];
     memcpy(fm6_eff[tr].p, fm6_patch[tr], FP_SIZE);
     fm6_eff[tr].mk = mk;
+    eon = fm6_env_offsets(fm6_eff[tr].env, fm6_eff[tr].p, e[0] >= 1 && e[0] <= 32 ? (uint32_t)e[0] - 1u : fm6_eff[tr].p[FP_ALG] & 31u, ek, eoff);   /* (before the morph: the knobs never move with it) */
     if (mk)
         fm6_morph(tr, fm6_eff[tr].p);
     for (k = 0; k < 7u; k++)
@@ -341,6 +457,8 @@ static void fm6_sync(const track_t *t)
             if ((car >> ki) & 1u) {                          /* carriers 0, +1, -1, +2, -2, +3 steps apart */
                 static const int8_t SPREAD[6] = {0, 1, -1, 2, -2, 3};
                 fm6_eff[tr].dt[ki] = SPREAD[n++] * step;
+                if (eon)                                     /* the AMP ENV knobs: every carrier's envelope by the same steps (a higher knob is slower or higher) */
+                    fm6_env_apply(op, eoff);
                 continue;
             }
             if (!op[FP_MODE])

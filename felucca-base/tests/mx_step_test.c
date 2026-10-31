@@ -75,7 +75,6 @@ static void clean(void)
         mx_sl[i].ok = 0, mx_ok[i] = 0;
     memset(mx_was, 0, sizeof mx_was); memset(mod_mixmv, 0, sizeof mod_mixmv);
     trk[0].mgon = trk[1].mgon = trk[0].mdk = trk[1].mdk = 0, mod_gw = 0;
-    mix_bal = 0;
     mix_xf = mix_split = 0;
     vage = 0;
     mod_seed = 0x2545F491u;

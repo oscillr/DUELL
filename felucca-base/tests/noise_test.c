@@ -4,10 +4,10 @@
  *   build/host/noise_test [DEMODIR]          (run_tests.sh: build/noise_demo)
  * 1. colour: the slope of the spectrum (power per Hz, 150 Hz .. 6 kHz, the filter open) at COLR 0 / 64 / 127:
  *    white 0 +-1 dB/oct, pink -3 +-1, brown -6 +-1.5.
- * 2. the filter follows the key: ANLG at RES 127 (band-pass), TRK 127: the spectral peak an octave apart for
+ * 2. the filter follows the key: ANALOG at RES 127 (band-pass), TRK 127: the spectral peak an octave apart for
  *    notes an octave apart (+-6 %), and at FREQ's frequency at C4 (+-1 semitone).
- * 3. the register clock follows the key: LFSR (L7, its period audible) counts twice the transitions an octave up;
- *    META is periodic at the key's pitch (autocorrelation at one period >= 0.95) and LFSR L23 is not (< 0.3).
+ * 3. the register clock follows the key: DIGITAL (7 BIT, its period audible) counts twice the transitions an octave up;
+ *    META is periodic at the key's pitch (autocorrelation at one period >= 0.95) and DIGITAL 23 BIT is not (< 0.3).
  * 4. no DC: every preset, 16 notes held for 1 s each (|mean| < 1 % of a voice's full scale); no clipping: every mode at the corners of
  *    COLR / FREQ / RES / DENS / CRSH, 8 notes at velocity 127, LEVEL 127: no voice sum beyond 2 x VOICE_FS a
  *    voice and no mix sample at full scale.
@@ -198,14 +198,14 @@ static void colour(void)
         {0, 0, 1, "white"}, {64, -3, 1, "pink"}, {127, -6, 1.5, "brown"}};
     uint32_t i, m;
     char what[128];
-    for (m = 0; m < 2u; m++)                          /* ANLG, and the LFSR clocked at the sample rate */
+    for (m = 0; m < 2u; m++)                          /* ANALOG, and the DIGITAL clocked at the sample rate */
         for (i = 0; i < 3u; i++) {
             int16_t e[8] = {m ? 2 : 0, C[i].c, 127, 0, 0, 0, 0, m ? 127 : 0};
             double s;
             voice_render(e, 60, Y, NS);
             spectrum(Y, NS / NFFT, PS);
             s = slope(PS, 150, 6000);
-            snprintf(what, sizeof what, "%s COLR %3d (%s): %+.2f dB/oct (want %+.0f +-%.1f)", m ? "LFSR" : "ANLG",
+            snprintf(what, sizeof what, "%s COLR %3d (%s): %+.2f dB/oct (want %+.0f +-%.1f)", m ? "DIGITAL" : "ANALOG",
                      C[i].c, C[i].name, s, C[i].want, C[i].tol);
             check(what, fabs(s - C[i].want) <= C[i].tol);
         }
@@ -246,14 +246,14 @@ static void clock_test(void)
     t1 = transitions(Y, n);
     voice_render(lf, 60, Y, n);
     t2 = transitions(Y, n);
-    snprintf(what, sizeof what, "LFSR clock follows the key: %u transitions at C3, %u at C4 (x%.2f, want 2)", t1, t2,
+    snprintf(what, sizeof what, "DIGITAL clock follows the key: %u transitions at C3, %u at C4 (x%.2f, want 2)", t1, t2,
              (double)t2 / t1);
     check(what, fabs((double)t2 / t1 - 2) < 0.15);
     voice_render(me, 60, Y, n);
     a = autocorr(Y, n, per * 9);                     /* 9 periods: 1517.05 samples, close to whole */
     voice_render(lg, 60, Y, n);
     b = autocorr(Y, n, per * 9);
-    snprintf(what, sizeof what, "META (93) periodic at the key: r = %.3f at 9 periods of C4; LFSR L23 r = %.3f", a, b);
+    snprintf(what, sizeof what, "META (93) periodic at the key: r = %.3f at 9 periods of C4; DIGITAL 23 BIT r = %.3f", a, b);
     check(what, a >= 0.95 && fabs(b) < 0.3);
 }
 
@@ -364,7 +364,7 @@ static double mix_cost(const int16_t *e, uint32_t notes)
 
 static void cost(void)
 {
-    static const int16_t HEAVY[8] = {0, 127, 64, 127, 127, 127, 127, 127};   /* ANLG: dust, brown, drift, crush */
+    static const int16_t HEAVY[8] = {0, 127, 64, 127, 127, 127, 127, 127};   /* ANALOG: dust, brown, drift, crush */
     double idle, c, worst = 0;
     uint32_t pi;
     char what[160];

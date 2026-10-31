@@ -55,6 +55,7 @@ static int ed_fm6_handle(uint32_t cmd, const uint8_t *a, uint32_t n)
             fm6_set_patch(a[1], v);
             fm6_adopt(a[1]);                               /* the track's own patch now: SLOT OWN (F n if it is that
                                                             * factory patch unchanged); fm6_poll keeps it */
+            fm6_env_look(a[1], FM6_LOOK_NEW);              /* (DUELL 1.1: a new voice: the AMP ENV knobs on the numbers of its carriers) */
             ui.force = 1;
         } else if (!rc && a[0] == ED_FM6_BANK) {
             rc = ED_FM6_NOBANK;

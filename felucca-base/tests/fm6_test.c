@@ -72,6 +72,8 @@ static void setup(const uint8_t *v, const int16_t *e)
         trk[0].p[P_E0 + i] = e ? e[i] : 0;
     trk[0].p[P_E7] = (int16_t)(e ? e[7] : 0);
     fm6_set_patch(0, v);
+    fm6_env_look(0, FM6_LOOK_NEW);   /* item 138: DUELL 1.1 FM6_ENV_MAP: the AMP ENV knobs are the carriers' DX7 numbers; a new patch puts them on its own numbers (as a sound load does), else the
+                                      * knobs left from the factory sound host_preset loaded offset this patch's rates and levels */
     fm6_slot[0] = (uint8_t)trk[0].p[P_E7];
     trk[0].p[P_VOICE] = V_POLY;
     trk[0].p[P_CHOR] = trk[0].p[P_DLY] = trk[0].p[P_REV] = 0;
@@ -682,8 +684,10 @@ static void voices(void)
     static int32_t b[CTL];
     fm6_unpack(FM6_FACTORY[4], base);
     setup(base, 0);
-    for (i = 0; i < 8u; i++)
+    for (i = 0; i < 8u; i++) {
+        vs_block();                                     /* (one key a block: item 144's start limit is 3 a block) */
         trk_note_on(&trk[0], 48 + 2 * i, 100);
+    }
     track_render(&trk[0], b, CTL);
     for (i = 0; i < NVOICE; i++)
         n += trk[0].v[i].active;

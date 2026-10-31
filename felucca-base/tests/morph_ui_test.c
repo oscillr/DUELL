@@ -698,6 +698,80 @@ static void t_load(void)
            mph[0].amount == ds_amount(trk[0].eng_req, trk[0].preset));
 }
 
+/* ------------------------------------------------------------ item 154: BREADBIN --- */
+/* The owner's steps: #15 BREADBIN on part 1, the LFO 1 DEST page, ROLL (AMOUNT 8), back to the page; again at AMOUNT 50 / 60. What the cards show (ui_draw.c card_vv = morph_view) is what the FADER sounds:
+ * at A that is End A = the Original, so a roll of B changes nothing on a card until the fader moves; ROLL A (the end the fader is at) shows at once. The extension slots (TWIN ENV 2 / LFO 1 / LFO 2, SUB,
+ * CYCLE: the LFO 2 DEST page's TWIN CUTOFF, the TWIN MOD page) were not taken by card_vv (ids >= 128): at B they showed the Original although the sound was End B's. */
+static void pump_audio(void)
+{
+    int32_t o[2u * CTL];
+    uint32_t b;
+    for (b = 0; b < 300u; b++) {                        /* (the engine switch and the ~50 ms ramp of a roll run in the audio blocks) */
+        memset(o, 0, sizeof o);
+        mix_block(o, CTL);
+    }
+}
+static void t_item154(void)
+{
+    static const uint32_t AM[3] = {8, 50, 60};
+    uint32_t n, tot, a, k, ok_a = 1, ok_b = 1, ok_x = 1, ok_msg = 1, ok_mark = 1, moved_b = 0;
+    int ok_load = 0;
+    static const uint32_t XI[3] = {X_ENV2, X_LFO1, X_LFO2};    /* TWIN ENV 2 / LFO 1 / LFO 2 (BREADBIN has TWIN on) */
+    static const uint32_t PI[3] = {P_LD_FLT, P_LD_SHP, P_LD_AMP};
+    fresh();
+    preset_pos(&tot);
+    for (n = 0; n < tot; n++) {
+        preset_go(n);
+        frames(16);
+        pump_audio();
+        if (slot_of(&trk[0]) == 14u)
+            break;
+    }
+    ok_load = n < tot && trk[0].eng_req == 6u && trk[0].p[P_TWTYPE] != 0;
+    expect("item 154: #15 BREADBIN (TRIO, TWIN on) is on part 1", ok_load);
+    go_title("LFO 1 DEST");
+    frames(64);
+    turn(EN_K2, 17); frames(64); turn(EN_K3, 11); frames(64); turn(EN_K4, 11); frames(64);       /* the owner's page: MULTI CUTOFF 17 %, AMP 11 % */
+    expect("  .. the LFO 1 DEST page: MULTI CUTOFF 17 %, AMP 11 % (his numbers)", trk[0].p[P_LD_FLT] == 17 && trk[0].p[P_LD_AMP] == 11);
+    for (a = 0; a < 3u; a++) {
+        int8_t o[P_COUNT];
+        morph_page();
+        turn(EN_K1, -127); settle(); pump_audio();      /* the fader at A */
+        turn(EN_K4, (int32_t)AM[a] - (int32_t)mph[0].amount); settle(); pump_audio();
+        memcpy(o, mph[0].base, P_COUNT);
+        turn(EN_K2, MORPH_DET); settle(); pump_audio();    /* ROLL B */
+        ok_msg &= !strncmp(ui.msg, "ROLLED B", 8);
+        go_title("LFO 1 DEST"); frames(64);
+        for (k = 0; k < 3u; k++)                        /* the page after the roll, the fader at A: End A = the Original */
+            ok_a &= card_vv(&trk[0].p[PI[k]]) == trk[0].p[PI[k]] && endp(0, 0)[PI[k]] == trk[0].p[PI[k]];
+        morph_page();
+        turn(EN_K1, 127); settle(); pump_audio();       /* the fader to B */
+        go_title("LFO 1 DEST"); frames(64);
+        for (k = 0; k < 3u; k++) {
+            ok_b &= card_vv(&trk[0].p[PI[k]]) == endp(0, 1)[PI[k]];
+            moved_b += card_vv(&trk[0].p[PI[k]]) != trk[0].p[PI[k]];
+        }
+        for (k = 0; k < 3u; k++)                        /* the extension slots (LFO 2 DEST's TWIN CUTOFF, TWIN MOD's depths): End B's value at B */
+            ok_x &= card_vv(&XV(&trk[0], XI[k])) == morph_curx(&mph[0], 1)[XI[k]] && morph_view(0, XW_BASE + XI[k]) == morph_curx(&mph[0], 1)[XI[k]];
+        ok_mark &= card_vv(&XV(&trk[0], X_ENV2)) == XV(&trk[0], X_ENV2) || card_mk_next;   /* a moved card carries the morph mark */
+    }
+    expect("item 154: ROLL B (AMOUNT 8, 50, 60) with the fader at A: the LFO 1 DEST cards still show the Original (End A): nothing to see until the fader moves", ok_a);
+    expect("item 154: the fader at B: the cards show the rolled End B, and a rolled value differs from the Original (cards moved: at least 6 of 9)", ok_b && moved_b >= 6u);
+    expect("item 154: .. the extension cards too (TWIN ENV 2 / LFO 1 / LFO 2) show End B at B (card_vv takes the wide ids)", ok_x);
+    expect("item 154: .. and a card the morph moves carries the morph mark", ok_mark);
+    expect("item 154: the roll says ROLLED B on the header (the only sign of it with the fader at A)", ok_msg);
+    morph_page();
+    turn(EN_K1, -127); settle(); pump_audio();
+    turn(EN_K2, -MORPH_DET); settle(); pump_audio();    /* ROLL A with the fader at A */
+    go_title("LFO 1 DEST"); frames(64);
+    {
+        uint32_t seen = 0;
+        for (k = 0; k < 3u; k++)
+            seen += card_vv(&trk[0].p[PI[k]]) != trk[0].p[PI[k]];
+        expect("item 154: ROLL A with the fader at A: the cards change at once (the end the fader is at)", seen >= 2u);
+    }
+}
+
 /* ---------------------------------------------------------------- SAVE HELD --- */
 /* 0.2.17: ONE list of 128 slots (a slot is its saved record, else its factory sound). Hold SAVE: OVERWRITE #NN, the slot the part's sound came from,
  * K1 picks another; OCT+ writes it, End B and AMOUNT with it. There is no 'new' sound, no shadow copy and no NAME screen. */
@@ -834,6 +908,7 @@ int main(void)
     t_matrix();
     t_view();
     t_load();
+    t_item154();
     t_save();
     t_settings();
     t_editb();

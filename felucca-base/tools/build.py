@@ -19,7 +19,8 @@ macOS (or with JIELI_DOCKER=1) each tool runs in a linux/amd64 container.
 Compiler flags (DUELL bench builds; the defaults are unchanged): FELUCCA_OPT replaces the app's "-Os" (e.g. "-O2 -mcpu=r3 -mfprev1 -flto";
 the update loader always keeps -Os), FELUCCA_LLVM adds -mllvm options (e.g. "-pi32v2-enable-simd=true"; with -flto they go to the
 link's LLVM plugin instead). -flto: felucca.o is LLVM bitcode, linked through the toolchain's LLVMgold.so with the same -O level and
--mcpu. BENCH_TAG (with DUELL_BENCH=1, DUELL_TEST_MODE=1): the device shows "DUELL <VERSION> bench <TAG>" and the package is
+-mcpu. DUELL_VELO_CAPTURE=1 (only with FELUCCA_CDC=1, never --release; the velocity capture build, src/velocap.h and velocap.c, docs/VELO_CSV.md) sends the
+raw key readings over the USB serial console; it is never in a release or a normal test build. BENCH_TAG (with DUELL_BENCH=1, DUELL_TEST_MODE=1): the device shows "DUELL <VERSION> bench <TAG>" and the package is
 duell-<VERSION>-bench-<TAG>.fwsc (no duell-latest.fwsc / duell-version.json then: a bench package is never the latest).
 DUELL_BENCH=1 builds MENU > SYSTEM > BENCH (src/bench.c, docs/BENCH_GUIDE.md; bench suite stage 0: e.g. BENCH_TAG=BENCHC0 with
 DUELL_RAMPLACE=1). DUELL_CORE1_PROBE=1 (BENCH-B's core 1 probe) is not in this line (core.h stops such a build).
@@ -90,7 +91,7 @@ VERSION = None                      # unused: the version string comes from buil
 def read_version():
     """the single source of truth: DUELL/VERSION (0.MINOR.BUILD)"""
     v = (SRC.parent / "VERSION").read_text().strip()
-    if not re.fullmatch(r"0\.\d+\.\d+|[1-9]\d*\.\d+", v):
+    if not re.fullmatch(r"0\.\d+\.\d+|[1-9]\d*\.\d+|[1-9]\d*\.\d+\.\d+-(?:test|velocapture)\d+", v):   # DUELL 1.1: 1.1.0-testN, N counts up with each distinct build
         raise SystemExit(f"build: {SRC.parent / 'VERSION'} must hold 0.MINOR.BUILD or MAJOR.MINOR (1.0), found {v!r}")
     return v
 
@@ -139,7 +140,7 @@ def generate():
         (GEN / old).unlink(missing_ok=True)
     tools = SRC / "tools"
     cmds = [[tools / "gen_version.py", GEN / "duell_version.h"],   # the VERSION file -> DUELL_VERSION, DUELL_VERSION_STR
-            [tools / "gen_aa_font.py", GEN / "ui_fonts.h", "--preset", "inter-tight"],
+            [tools / "gen_aa_font.py", GEN / "ui_fonts.h", "--preset", "barlow"],
             [tools / "gen_aa_icons.py", GEN / "ui_icons.h"],
             [tools / "gen_aa_keycaps.py", GEN / "ui_keycaps.h"],
             [tools / "gen_ui_palettes.py", GEN / "ui_palettes.h"],
@@ -307,6 +308,10 @@ def build_app():
     v = os.environ.get("DUELL_VELO", "1")   # KEY SENSE (key velocity and aftertouch, sense.c): ON in every build since 0.2.30 (owner, 2026-10-21; before: developer builds only, build.py passed nothing and felucca.c's default 0 held).
     if v in ("0", "1"):                     # DUELL_VELO=0 in the environment builds the old velocity-free shape (host tests compile without the switch: felucca.c's default stays 0)
         flags.append(f"-DDUELL_VELO={v}")
+    if os.environ.get("DUELL_VELO_CAPTURE") == "1":   # the raw key readings over the USB serial console (src/velocap.h, velocap.c): a developer build ONLY
+        if os.environ.get("FELUCCA_CDC") != "1" or os.environ.get("DUELL_VELO", "1") != "1" or "--release" in sys.argv:
+            raise SystemExit("build: DUELL_VELO_CAPTURE=1 is a developer build: FELUCCA_CDC=1 (the USB serial console) and DUELL_VELO on, never --release")
+        flags.append("-DDUELL_VELO_CAPTURE=1")
     v = os.environ.get("FELUCCA_USB_LAYOUT")   # firmware/src/usb.c: how the USB composite presents itself (#67), 0..3
     if v in ("0", "1", "2", "3"):
         flags.append(f"-DFELUCCA_USB_LAYOUT={v}")
@@ -441,8 +446,12 @@ def check(img, syms, dis, rt):
     notes.append(f"image {len(img)} B; RAM .data+.bss {bss} B of {ram_len}; pool {pool} B of {pool_len}")
     if region["RAM"][0] + ram_len != region["POOL"][0]:
         errors.append("app.ld: POOL does not start where RAM ends")
-    if ram_len - bss < 4096:                      # keep >= 4 KiB of .bss spare (state the audio side touches)
-        errors.append(f"RAM headroom {ram_len - bss} B < 4096 B")
+    bss_min = 4096
+    if os.environ.get("DUELL_BENCH") == "1" and os.environ.get("BENCH_BSS_MIN"):   # HANDOFF_V2 item 107: OPT-IN, a DUELL_BENCH developer build only; unset = the 4,096 B rule as ever
+        bss_min = int(os.environ["BENCH_BSS_MIN"])
+        notes.append(f".bss headroom rule lowered to {bss_min} B by BENCH_BSS_MIN for this DUELL_BENCH developer build (normal builds keep 4096 B)")
+    if ram_len - bss < bss_min:                   # keep >= 4 KiB of .bss spare (state the audio side touches)
+        errors.append(f"RAM headroom {ram_len - bss} B < {bss_min} B")
     if sym("_rz_end"):                            # DUELL_RAMPLACE: range Z takes the pool's spare end
         notes.append(f"pool + range Z {sym('_rz_end') - sym('_pool_start')} B of {pool_len} (range Z {sym('_rz_end') - sym('_rz_start')} B)")
         pool = sym("_rz_end") - sym("_pool_start")

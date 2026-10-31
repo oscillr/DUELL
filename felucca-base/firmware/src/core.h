@@ -20,6 +20,7 @@
 _Static_assert(NSHOWN <= NPART, "core.h: NSHOWN parts are shown, NPART parts exist");
 #define NTRK NPART               /* tracks (the formats and the protocol count these): every track is a part */
 #define NSTEP 64
+#define PV_LEN 32                /* DUELL 1.1 (owner: no name is cut for length): the room of a value text that param_format (params.c) or a list name fills, with its 0; the longest name (a two-line RESONANT\nTRAPEZOID, TRI+PULSE\nRING SYNC: 19) is well inside; every buffer given to param_format is PV_LEN */
 #ifndef DUELL_TEST_MODE
 #define DUELL_TEST_MODE 0        /* DUELL developer switch (-DDUELL_TEST_MODE=1; env DUELL_TEST_MODE=1 for build.py / web/emu/build.sh / host_tests.sh): 1 builds in MENU > SYSTEM > TEST (the CPU test screen)
                                   * (tools/gen_duell_multis.py must be run with the same switch; since 0.2.23 both builds hold the same sixteen factory multis); 0 (the release default) leaves it out */
@@ -47,6 +48,33 @@ _Static_assert(NSHOWN <= NPART, "core.h: NSHOWN parts are shown, NPART parts exi
 #define NENG_SHOWN (NENGINES - NENG_RETIRED)   /* the engines one can pick: PRESETS, the EDIT layer, the editor, in the display order of engines.c ENGINE_ORDER */
 #define UP_SLOTS 128u            /* stored patches (upreset.c): shadows of factory sounds and user patches, 128 in all */
 #define NELEM(a) (sizeof(a) / sizeof((a)[0]))
+/* The velocity ACCENT LIFT (DUELL 1.1, release_drafts/VELOCITY_AFTERTOUCH_V1.md): above velocity ACCENT_V0 the envelope opens the filter / the engine's tone
+ * (cutoff += envq15 x ACCENT_MAX >> 7). It was one step at 111 (full lift), and it made 24 of 127 sounds QUIETER at a harder key (up to 5 dB). Now it grows
+ * linearly from 0 at ACCENT_V0 to ACCENT_MAX (24, as before) at ACCENT_V1 (Q8 weight, 256 at 127): no step. All sites (voice.c twice,
+ * voice_chain.c, chain_f2.c) call accent_lift(); the VOICE and PHYS engines read the engine's lift through m->cutoff.
+ * The falls had these causes (all found by switching one site off in the 127-sound scan, tests/velaccent_test.c):
+ *   - the lift always moved a filter's cutoff UP, but only a low-pass opens that way: a high-pass opens DOWN, a band-pass / notch has no opening (the band only
+ *     moves). Filter 1 follows its MODE (accent_dir_mode), filter 2 its TYPE (accent_dir_type): LP up, HP down, BP / NOTCH / COMB none.
+ *   - NOISE's make-up gain (eng_noise.c) followed the lifted cutoff (it took gain away as the filter opened): it now follows the cutoff without the lift (vmod_t.ucn).
+ *   - VOICE moved the VOWEL with the lift (eng_formant.c: another vowel, another level): now the presence of the voice opens; PHYS raised the exciter's
+ *     brightness with it (a lower strike level, the modes ripple): now the accent of the model (ACC) takes it. */
+#ifndef ACCENT_MAX
+#define ACCENT_MAX 24
+#endif
+#define ACCENT_V0 110
+#define ACCENT_V1 127
+static inline int32_t accent_lift(uint32_t vel, int32_t envq15)
+{
+    if (vel <= ACCENT_V0)
+        return 0;
+    if (vel > ACCENT_V1)
+        vel = ACCENT_V1;
+    return (envq15 * ACCENT_MAX * (int32_t)(((vel - ACCENT_V0) * 256u + 8u) / (ACCENT_V1 - ACCENT_V0))) >> 15;   /* weight Q8: 256 at 127, so the top is the old lift exactly (envq15 <= 32768: below 2^31) */
+}
+/* which way a filter opens, Q7 of the lift: MODE 0 (LP) +127 .. 64 (BP) 0 .. 127 (HP) -127; filter 2's TYPE (params.c TT_*: OFF 0, LP 1, BP 2, HP 3, NOTCH 4, LADDER 5, COMB 6): LP, LADDER +127, HP -127, rest 0 */
+static inline int32_t accent_dir_mode(int32_t mode) { return 127 - 2 * (mode < 0 ? 0 : mode > 127 ? 127 : mode); }
+static inline int32_t accent_dir_type(uint32_t ty) { return (ty == 1u || ty == 5u) ? 127 : ty == 3u ? -127 : 0; }
+static inline int32_t accent_dir(int32_t lift, int32_t dir) { return (lift * dir) / 127; }
 
 /* ------------------------------------------------------- parameters --- */
 enum {
@@ -67,7 +95,8 @@ enum {
     F_CATK,                                /* .. ATTACK, 0..18: CMP_ATK_US, shown in ms */
     F_CREL,                                /* .. RELEASE, 0..12: CMP_REL_MS, shown in ms, from 1000 in s */
     F_TUNEHZ,                              /* DUELL 0.2.22: MASTER TUNE, the value is the frequency of A4 in 0.1 Hz (TUNE_MIN .. TUNE_MAX), shown "440.0" Hz */
-    F_DSEMI                                /* TWIN FILTER (ext.h, cloud job B): filter 2's OFFSET, whole dial steps shown as semitones with one decimal (a dial step is 0.1103 octave: 1.3236 st), "+1.3" "-83.4" st */
+    F_DSEMI,                               /* TWIN FILTER (ext.h, cloud job B): filter 2's OFFSET, whole dial steps shown as semitones with one decimal (a dial step is 0.1103 octave: 1.3236 st), "+1.3" "-83.4" st */
+    F_N99                                  /* DUELL 1.1 (owner 2026-10-25): FM6's AMP ENV knobs, 0..127 shown as the DX7 number 0..99 of the loudest carrier ((v * 99 + 63) / 127), no unit (appended: the fmt numbers are in the protocol) */
 };
 
 typedef struct {
@@ -120,7 +149,7 @@ enum {                          /* per-track parameters */
     P_EQHG, P_EQHF,                            /* DUELL EQ: HIGH gain and freq (P_COUNT 113, P_E0 105: stores map by count) */
     P_DKCRV, P_CUT2, P_DKDEP, P_DKATK,         /* P_CUT2: the TWIN FILTER's CUTOFF 2 (ext.h) on id 106, the retired DUCK NOTE (0.2.24 / 0.2.25's EQ switch, then free) */
     P_TRIM,                                    /* DUELL 0.2.19 (owner, 2026-10-15): the PATCH TRIM, the sound's own loudness, stored WITH a patch (a factory sound's tuned level, a patch record, a multi's
-                                                * part): loading a sound sets it, SAVE stores it, RESTORE brings the factory one. On the id of the legacy DUCK HOLD (0.2.5: on no page, never read, always 0 in
+                                                * part): loading a sound sets it, SAVE stores it, (PATCHES K4 RESTORE reloads the saved one; RESTORE ALL brings the factory one). On the id of the legacy DUCK HOLD (0.2.5: on no page, never read, always 0 in
                                                 * a record): P_COUNT and every format keep their size; the multi version and the project revision moved so no HOLD is read as a trim (a patch record: PTF_TR).
                                                 * 0..127 as P_LEVEL (F_DB, 112 = 0 dB), default 104 (the old default level). Not morphed (morph.c pins End B to A) */
     P_DKRLS,                                   /* DUELL DUCK (SPEC 5c.4; fx.c duck_*): the sidechain (P_COUNT 119, P_E0 111). P_DKCRV: the RELEASE's CURVE (LIN, EXP); was the MIDI CH (merged into P_DKSRC) */
@@ -356,14 +385,16 @@ typedef struct {                 /* per-voice control-rate modulation, computed 
                                   * engine's order), 0 = none (every unit on pitch16 / inc, as always: the rest unset) */
     int32_t adelta;              /* .. their pitch: pitch16 + adelta (1/16 semitone), with the same fine */
     int32_t again;               /* .. their level, Q15 (voice.c atg_voice) */
+    int32_t acc1;                /* the accent lift as filter 1 took it (signed by its MODE: ANALOG, TRIO, NOISE), inside cutoff and ucut; 0 when it took none */
+    int32_t ucn;                 /* filter 1's effective cutoff without the accent (filter 2 LINK and NOISE's make-up follow this) */
     int32_t ucut;                /* filter 1's effective cutoff for this voice and block, Q8 dial steps (voice.c; UF_TOP when it is bypassed or the engine has none): NOISE's loudness make-up reads it (cloud job J) */
 } vmod_t;
 
 /* DUELL step 5, SPEC 5b.1: the output MODE. SPLIT: part 1 hard left, part 2 hard right, exactly (fx.c folds every stereo source
  * of a part to its side); STEREO: Felucca's mix (free PAN, SPREAD, the shared stereo buses); LAYER: STEREO's mix, and every note
  * played (keys, MIDI channel 1) reaches both parts as input, each handling it by its own arp / chord (seq.c key_on, midi_control.c midi_play). The values are stored (the settings byte, ui.c
- * ui_mode_set; MIDI CC 112): append-only.
- * duell_mode_req: what the UI (MODE page, the settings) or CC 112 asks for; duell_mode: the mode the notes are routed by (the
+ * ui_mode_set; a learned MIDI CC, MODE has no shipped number): append-only.
+ * duell_mode_req: what the UI (MODE page, the settings) or a learned MODE CC asks for; duell_mode: the mode the notes are routed by (the
  * audio ISR takes the request at a block start: seq.c mode_apply, every note let go); the mix follows it through a ~50 ms
  * dip (fx.c dm_step). The product's default is SPLIT: the settings byte 0 (ui_input.c mode_settings) and every power-on
  * (ui_power_on / the boot path). The bare DSP (hostsim, regress, the goldens) starts in STEREO, Felucca's mix bit for bit */
@@ -372,11 +403,10 @@ static volatile uint8_t duell_mode_req = DM_STEREO;
 static uint8_t duell_mode = DM_STEREO;
 /* the morph's flag (rule 3b): PAN and SPREAD morph only while they are heard, in STEREO and LAYER (not in SPLIT) */
 #define duell_stereo (duell_mode != DM_SPLIT)
-/* the MODE page's other three (KNOB 2..4), kept with the settings ([15][5..7], ui.c) and in each MULTI; CC 116 117 118.
- * mix_bal: BALANCE -100..+100 (0: both parts as they are; > 0 fades part 1 out, < 0 part 2, linear, fx.c bal_lvl; every mode);
+/* the MODE page's other two (KNOB 3..4), kept with the settings ([15][6..7], ui.c) and in each MULTI; XFADE and SPLIT have no shipped CC number (MIDI_MAP_DEFAULTS.csv: typed lines only).
+ * (item 160: mix_bal, the old BALANCE, and its audio stage fx.c bal_lvl are gone; PERFORM's SELECT = BALANCE moves the two MIXER LEVELs, ui_input.c perf_balance);
  * mix_xf: XFADE 0..100 % (0 = off; LAYER only: a note's velocity shares its level between the parts, seq.c xf_gain);
  * mix_split: SPLIT 0 = OFF, else the note + 1 (LAYER only: below it part 1 plays alone, at or above it part 2) */
-static volatile int8_t mix_bal;
 static volatile uint8_t mix_xf, mix_split;
 
 typedef struct {
@@ -460,8 +490,8 @@ static void step_set_ratchet(step_t *s, uint32_t hits)
     s->flags = (uint8_t)((s->flags & ~SF_RATCH) | ((hits < 1u ? 0u : hits > 4u ? 3u : hits - 1u) << SF_RATCH_SH));
 }
 /* NUDGE (1.2, #162, D98): a step's timing, in 1/NUDGE_DIV of the track's DIV, -8..+7 (half a step early .. 7/16 late);
- * live recording keeps it, SEQ > AUTOMATION's NUDGE rows and STEP (steps held + PRESETS) set it, the track's QUANTIZE
- * OFF (P_SQNT, AUTOMATION's QUANTIZE row) plays it (seq.c seq_tick).
+ * live recording keeps it, SEQ > PARAMETER LOCKS' NUDGE rows and STEP (steps held + PRESETS) set it, the track's QUANTIZE
+ * OFF (P_SQNT, PARAMETER LOCKS' QUANTIZE row) plays it (seq.c seq_tick).
  * Four bits of the flags no other field uses: 4 (bit 3 of the nudge, its sign) and 32 64 128 (bits 0..2). 0 = on the
  * step: every older pattern. A user preset's pattern keeps none (upreset.c up_pat_norm) */
 #define NUDGE_DIV 16
@@ -485,6 +515,17 @@ static void step_set_nudge(step_t *s, int32_t v)
 #define MOTION_ESC 127u          /* the "extension escape" (EXTENSION_BLOCK_PLAN 3.3, format only: nothing writes or reads it yet): a record whose id is 127 names an
                                   * extension slot in its value byte and the next record carries the value. No real parameter id is 127 (the assert below) */
 #define MOTION_ID(e) ((uint32_t)(e)->param & 0x7Fu)
+/* DUELL 1.1 (owner: every matrix destination can be locked): the record's target is a 0..255 "TARGET ID" (MOTION_TID). 0..126 are the P_ ids as ever; the place byte uses bit 6 for the track
+ * (two parts) and bit 7 is the EXTENDED flag: the id's 7 bits then name target 128 + id. 128..155 are the extension slots by their wide ids (ext.h XW_BASE + slot; SUB LEVEL is the one the
+ * matrix offers), 192 + d the VIRTUAL targets of the matrix destinations that have no stored value of their own (d = the destination number: PITCH, TIMBRE, VOICE AMP, the bus values, SPACE):
+ * their value is an AMOUNT, -64..+63, added like a matrix amount at a full-size source (mod.c mod_begin, lk_virt). Same 3 bytes a record, same disk layouts */
+#define MOTION_XFLAG 0x80u
+#define MOTION_TRK(e) ((uint32_t)((e)->place >> 6) & 1u)
+#define MOTION_STEP(e) ((uint32_t)(e)->place & 63u)
+#define MOTION_TID(e) (((uint32_t)(e)->param & 0x7Fu) | ((uint32_t)(e)->place & MOTION_XFLAG))
+#define MOTION_PLACE(k, step, tid) ((uint8_t)(((k) << 6) | (step) | ((tid) >= 128u ? MOTION_XFLAG : 0u)))
+#define MOTION_PARAM(tid, kind) ((uint8_t)(((tid) & 0x7Fu) | (kind)))
+#define MOTION_VBASE 192u        /* the virtual targets: 192 + the destination number */
 typedef struct { uint8_t place, param; int8_t value; } motion_event_t;
 typedef struct { uint8_t count, on, rsv[2]; motion_event_t event[MOTION_MAX]; } motion_store_t;
 _Static_assert(sizeof(motion_store_t) == 388u, "motion disk layout (FUN10)");
@@ -495,10 +536,12 @@ _Static_assert(sizeof(motion_store_t) == 388u, "motion disk layout (FUN10)");
 #define MU_SLOTS 16u             /* DUELL: the multis M01..M16 (project.c multi.c, SAVE > MULTI) */
 
 #define NMSLOT 8u
+#define MOD_NK 16u               /* DUELL 1.1: per-block parameters a part's block can hold modulated at once: the 8 slots' destinations plus the DEST cards' virtual routes (mod.c VR, at most 7 distinct destinations) */
 typedef struct {                 /* the part in mix_part, its window: one per part (MIXSPLIT job 2; the parts' stages share none): a field of track_t, so a reader has it at a fixed offset from t */
     uint8_t on;                  /* a slot is active: track_render calls mod_voice */
     uint8_t e2;                  /* DUELL: an active slot reads ENV 2: track_render ticks it (voice.c env2_tick) */
     uint8_t l2;                  /* DUELL: an active slot reads LFO 2: track_render ticks it (voice.c lfo_tick) */
+    uint8_t byp;                 /* DUELL 1.1 BYPASS: the part's six module switches (BY_MULTI .. BY_CYC) as this block sees them: mod_begin copies byp_m here, so a reader in the voice loop finds them at a fixed offset from t (no division by the size of a track) */
     int32_t lfo2;                /* DUELL: LFO 2 as the slots read it this block (FADE, DEPTH2 applied; Q15) */
     int32_t ldep2;               /* DUELL: DEPTH2, LFO 2's gain (Q15, 32767 = none) */
     uint8_t amp;                 /* an AMP slot: the voice gain applies */
@@ -507,8 +550,8 @@ typedef struct {                 /* the part in mix_part, its window: one per pa
     int32_t ldep;                /* DEPTH: the track LFO's gain (Q15; 32767 = none, track_render leaves it alone) */
     uint8_t vsrc[NMSLOT], vdst[NMSLOT];
     int8_t vamt[NMSLOT];
-    uint8_t kid[NMSLOT];         /* per-block: the parameter, its stored value */
-    int16_t keep[NMSLOT];
+    uint8_t kid[MOD_NK];         /* per-block: the parameter, its stored value */
+    int16_t keep[MOD_NK];
 } mod_win_t;
 
 typedef struct track {
@@ -607,6 +650,7 @@ typedef struct track {
      * per-block destinations read it as ENV 2's m_env2) and this voice's ENV for filter 2 (venv, Q15). All 0 with the second list empty */
     int32_t m_cycle, f2add, venv;
     uint8_t f2m, cym, cy;
+    uint8_t vrm;                 /* DUELL 1.1: the DEST cards' virtual per-note routes (mod.c VR): bit 0 CYCLE to TWIN CUTOFF, bit 1 CYCLE to PITCH */
     uint8_t rsv_sz[2];           /* (sizeof(track_t) a multiple of 16: below; 0.2.14: 12 more, the step_t hit / acc bytes and the drum notes gone; DUELL: 15 before ENV 2, LFO 2; 4b: 7 before mf; EQ: 4 less for P_COUNT 113; DUCK: 4 more for 119; DUCK 3: 6 more for 122, the old pad of 6 gone and 4 added; ENV 2 / LFO 2 DEST: 2 more for 127, the p[] growth padded to 4; wave 0: p[] 17 entries longer = 34 B, the pad 4 -> 2) */
 } track_t;
 /* the audio ISR indexes trk[] with a multiply by a small immediate and a shift while the size is a multiple of 16; 1.5's
@@ -619,7 +663,7 @@ _Static_assert(P_EQLG == PL_ED_FX && P_M5SRC == PL_FM1_ATK && P_E2ATK == P_M8AMT
 _Static_assert(P_LWAVE == P_LRATE + 1 && P_LFADE == P_LRATE + 3 && P_LPOL == P_LSYNC + 2 && P_L2WAVE == P_L2RATE + 1 &&
                P_L2FADE == P_L2RATE + 3 && P_L2POL == P_L2SYNC + 2, "LFO ids in a row");
 _Static_assert(sizeof(track_t) % 16u == 0, "track_t: a multiple of 16 bytes (a cheap trk[] index on the target)");
-_Static_assert(P_COUNT < XW_BASE && EXT_P_LEN == 144, "ext.h: the grown p[] (P_COUNT 127, a gap at 127, NX slots)");
+_Static_assert(P_COUNT < XW_BASE && EXT_P_LEN == 156, "ext.h: the grown p[] (P_COUNT 127, a gap at 127, NX slots)");
 _Static_assert(P_COUNT <= MOTION_ESC && XW_BASE == MOTION_ESC + 1u, "no real parameter id is 127 (MOTION_ESC, the reserved extension escape); the slots' wide ids start at 128");
 #define DUELL_EXT_TYPES_DONE
 #include "ext.h"                /* second time: the hook declarations */
@@ -704,6 +748,35 @@ static part_scr_t pscr[NLIVE];
 #define MODS_PFX 8u              /* PART FX OFF: each part's DIST, INSERT, EQ and DUCK skipped after a ~22 ms crossfade (fx.c pfx_*) */
 #define MODS_ALL 15u
 static volatile uint8_t mods_off;
+/* DUELL 1.1 BYPASS (web/EDITOR_PROTOCOL.md "BYPASS", command 89): TEMPORARY switches for sound design, never stored (not in a patch, a multi, a project, a backup or the morph), RAM only, all 0 at power on.
+ * byp_m[part]: 6 module bits and 5 part-effect bits (BY_*); byp_sh: the shared effects (BYS_*). A part's bits clear when a sound loads into it (mod.c mod_legacy_move); byp_sh does not. A flag check per module, nothing more */
+#define BY_MULTI (1u << 0)       /* MULTI FILTER: the multimode filter stage passes the sound (voice.c, voice_chain.c) */
+#define BY_TWIN  (1u << 1)       /* TWIN FILTER: filter 2 passes the sound; DRIVE and BLEND still act (chain_f2.c) */
+#define BY_LFO1  (1u << 2)       /* LFO 1 sends nothing (value 0, its matrix routes skipped) */
+#define BY_LFO2  (1u << 3)
+#define BY_ENV2  (1u << 4)       /* FILTER ENV */
+#define BY_CYC   (1u << 5)       /* CYCLE ENV */
+#define BY_SAT   (1u << 6)       /* SATURATOR (the part's DIST) */
+#define BY_INS   (1u << 7)       /* INSERT */
+#define BY_EQ    (1u << 8)       /* EQUALIZER */
+#define BY_DUCK  (1u << 9)       /* DUCKING */
+#define BY_SEND  (1u << 10)      /* the part's SENDS */
+#define BY_ALL   0x7FFu
+#define BYS_CHO  1u              /* the shared effects: CHORUS, DELAY, REVERB, STEREO MASTER (BASS MONO and WIDTH), COMPRESSOR */
+#define BYS_DLY  2u
+#define BYS_REV  4u
+#define BYS_MST  8u
+#define BYS_CMP  16u
+#define BYS_ALL  31u
+static volatile uint16_t byp_m[2];
+static volatile uint8_t byp_sh;
+#define BYP(t, bit) ((MODW(t).byp & (bit)) != 0u)   /* (the block's copy, set by mod.c mod_begin before the part's voices render) */
+#define E2Q(t, v) (BYP(t, BY_ENV2) ? 0 : (v)->env2 >> 9)   /* FILTER ENV's output, Q15 (0 while bypassed: it keeps running) */
+/* DUELL 1.1 (owner, ARP_SEQ_RUN_SWITCH_V1.md): the ARP and SEQ cards of GLO > MODULES have a third value, KEEPS RUNNING (OFF, FOLLOWS PATCH, KEEPS RUNNING). mods_keep: bit 0 ARP, bit 1 SEQ = KEEPS RUNNING
+ * (a module that is OFF has its bit clear). FOLLOWS PATCH, the default, is today's behaviour. ui.c mods_apply sets it from the settings byte; ui.c ds_arp / ds_keys / the pattern lend and seq.c's panic read it */
+#define MODK_ARP 1u
+#define MODK_SEQ 2u
+static volatile uint8_t mods_keep;
 /* the arp's MODE as it plays now: the stored P_AMODE, or 0 (OFF) while MODULES switches it off: ARP OFF every mode, SEQ OFF the SEQUENCER
  * mode (15, seq.c AM_SEQ: it plays the steps). Every read that decides whether the arp plays goes through it (seq.c, params.c atgt_bits) */
 #define AM_SEQ_ID 15

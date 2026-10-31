@@ -27,7 +27,7 @@ static uint32_t ed_map_save(void);                      /* (editor_map.c) */
 static int ed_learn_handle(uint32_t cmd, const uint8_t *a, uint32_t n)
 {
     uint32_t rc = 1, ch = 0;
-    char who[24];
+    char who[40];
     who[0] = 0;
     if (cmd == ED_LEARN_GET) {
         ed_learn_list();
@@ -53,6 +53,6 @@ static int ed_learn_handle(uint32_t cmd, const uint8_t *a, uint32_t n)
     ed_b(rc ? rc : ed_map_save());                     /* rc as UI_SET: 0 saved, 3 RAM only, 4 queued until STOP */
     ed_learn_list();
     if (rc == 6u)
-        ed_str(who, 20);                                /* (the owner of the number) */
+        ed_str(who, 40);                                /* (the owner of the number) */
     return 1;
 }

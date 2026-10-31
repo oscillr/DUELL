@@ -14,6 +14,12 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw
 
+if len(sys.argv) > 2 and sys.argv[1] == "--target":   # ui_target: build/ui_target/ppm/NN_name.ppm -> build/ui_target/NN_name.png (tools/ui_diff.py compares)
+    tdir = Path(sys.argv[2])
+    for f in sorted((tdir / "ppm").glob("*.ppm")):
+        Image.open(f).convert("RGB").save(tdir / (f.stem + ".png"))
+    print(f"ui_render: target PNGs in {tdir}/")
+    sys.exit(0)
 out = Path(sys.argv[1] if len(sys.argv) > 1 else "build/ui_new")
 shots = {}
 for f in sorted((out / "ppm").glob("*.ppm")):

@@ -49,8 +49,8 @@ export const DUELL_IDS = [0, 1, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 
 export const RESTORE_ORDER = [13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 1, 0];   // after the patches (by slot); live music last
 const KNOWN_IDS = [0, 1, 2, 3, 4, 5, 8, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 32, 33, 34, ...OLD_PATCH_IDS];   // what a unit lists (the plain LIST): the chunk ids only an older firmware lists, and they are ignored
 const MAX_OBJ = 3840;
-const MUSIC_PARTS = 2, MUSIC_REV = 7;               // the music object: NPART 2 (byte 63) and the revision 7 (byte 67: memory trim 1 two parts, job A extension slots, job G End B block); anything else is refused
-const MUL_HDR = 8, MUL_REC_MAX = (MAX_OBJ - MUL_HDR) / 2, MUL_VER = 7, MUL_NAME = 8, MUL_G_AT = 20, P_COUNT = 127;
+const MUSIC_PARTS = 2, MUSIC_REV = 8;               // the music object: NPART 2 (byte 63) and the revision 8 (byte 67: memory trim 1 two parts, job A extension slots, ROLL CHAINED storage: End B as values, project.c PROJ_REV 8); anything else is refused
+const MUL_HDR = 8, MUL_REC_MAX = (MAX_OBJ - MUL_HDR) / 2, MUL_VER = 8, MUL_NAME = 8, MUL_G_AT = 20, P_COUNT = 127;
 const CATEGORIES = ["-", "BASS", "LEAD", "PAD", "PLUCK", "KEYS", "PERC", "FX", "OTHER"];
 
 const u16 = (b, o) => b[o] | b[o + 1] << 8;
@@ -67,7 +67,7 @@ export function checkObject(id, b) {
   if (n > MAX_OBJ) return "too large";
   if (id === 0) {                                      // the music: FUNB, 3840 B; byte 63 the parts (2), 66 P_COUNT, 67 the revision (firmware project.c PROJ_REV)
     if (n !== MAX_OBJ || u32(b, 0) !== 0x46554E42) return "not the current music of a DUELL unit";
-    if (b[63] !== MUSIC_PARTS || b[66] !== P_COUNT || b[67] !== MUSIC_REV) return "the music of an older DUELL version, which kept four parts and a song chain; make a new backup with this version";
+    if (b[63] !== MUSIC_PARTS || b[66] !== P_COUNT || b[67] !== MUSIC_REV) return "the music of an older DUELL version; make a new backup with this version";
     return null;
   }
   if (id === 1) return n >= 64 && u32(b, 0) === 0x50455234 ? null : "not a settings record";
@@ -75,6 +75,7 @@ export function checkObject(id, b) {
     if (n < REC_FIX || n > PATCH_MAX) return "not a patch record (its size)";
     if (b[2] || b[3]) return "not a patch record as it is backed up (the slot and revision bytes are not 0)";
     const why = recordProblem(b);
+    if (why && (b[4] & (16 | 64))) return "a patch record of an older DUELL version, which this firmware does not load; make a new backup with this version";   // (PT_VER 3: the extension block and bitmap flags, 16 and 64)
     return why ? `damaged patch record (${why})` : null;
   }
   if (groupOf(id)?.key === "multis") {

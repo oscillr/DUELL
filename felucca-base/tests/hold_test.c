@@ -43,6 +43,7 @@ static void keys(uint32_t mask)
 {
     fm1_in.notes = mask;
     keyboard_block();
+    vs_block();                                    /* (item 148: the start limit, 2 voices a block: the rest of a chord a block later) */
 }
 
 int main(void)

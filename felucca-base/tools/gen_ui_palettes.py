@@ -5,10 +5,10 @@
 
   gen_ui_palettes.py OUT.h [--report]
 
-DUELL: six themes (the colour brief: Voltage Purple, Orange Circuit, Arctic Mint, Arctic Blue, Deep Ocean, High Contrast)
+DUELL: six themes (the colour brief: Voltage Purple, Orange Circuit, Arctic Mint, Arctic Blue, Deep Ocean, POLICE)
 and, kept because they are cheap, GREY and MONO. A theme has per part (1, 2) a morph colour pair A, B and a background,
 and shared surfaces:
-  BG      part 1's / part 2's background (BG1, BG2); LAYER mode: BGL (the mix of both, solid for High Contrast)
+  BG      part 1's / part 2's background (BG1, BG2); LAYER mode: BGL (the mix of both, solid for POLICE)
   SURF    the panel; RAISE the elevated surface (chips, slots, wells; a light theme whose elevated surface is not
           visibly off the panel uses the borders colour); TEXT; MID secondary text; LINE borders (dividers, tracks)
   c[4]    the brief's colours part1A part1B part2A part2B (fills: the MORPH page's bar)
@@ -17,7 +17,7 @@ and shared surfaces:
   g, ga   0.2.24 (owner): the GLOBAL colour and its accent, a third colour apart from both parts' hues, for the pages that edit the
           instrument and not a part (GLO's pages, SCALE: params.c page_global; src/gfx.c part_theme / theme_follow): values, gauges,
           selections there; the part badges stay lit both. GREY: a gray; MONO: white
-The firmware (src/gfx.c part_theme) blends A -> B with the part's MORPH fader (High Contrast: jumps at the middle) and derives
+The firmware (src/gfx.c part_theme) blends A -> B with the part's MORPH fader (POLICE: jumps at the middle) and derives
 with fixed blends (the same integer maths as mix() here), from the background in use:
   DIM  = mix(BG, TEXT, 42 %)    inactive, empty steps, disabled
   SEL  = mix(BG, THEME, 80 %)   selection fill and gauge fill
@@ -43,21 +43,21 @@ def H(s): return tuple(int(s[i:i + 2], 16) for i in (1, 3, 5))
 THEMES = [
     ("VIOLET", "#080108", "#0C020E", None, "#0A0414", "#201040", "#FFFFFF", "#F0E0FF", "#9A3FE0",
      ("#DC38FF", "#BC30F0", "#FF1F8E", "#E00B78"), 0, ("#12051A", "#300E3E", "#CC3490")),
-    ("ORANGE", "#130904", "#180A04", None, "#241610", "#38241A", "#FFF8F0", "#CDBBA9", "#7A5640",
+    ("ORANGE", "#090401", "#0D0502", None, "#150B06", "#2A1A10", "#FFF8F0", "#CDBBA9", "#7A5640",
      ("#FF6A1A", "#E04A12", "#FF9A1F", "#D9690C"), 0),
-    ("MINT", "#BDF2D8", "#C2F1EA", None, "#FFFFFF", "#E2F6EC", "#0E2A24", "#3F5F57", "#8FCDB6",
-     ("#3DF2B0", "#0A8F5E", "#36E0CF", "#0A8078"), 0),
+    ("MINT", "#BDF2D8", "#C2F1EA", None, "#F3FAF6", "#E2F6EC", "#0E2A24", "#3F5F57", "#8FCDB6",
+     ("#0DA874", "#0A8F5E", "#2B7BC9", "#1A4A79"), 0),   # (owner 2026-10-25, MINT option 1: part 1 #0DA874, part 2 #2B7BC9, the card off-white #F3FAF6; part 2 end B: end A at 60 %)
     ("COBALT", "#06080F", "#080B14", None, "#141B2C", "#1F2A42", "#F2F7FF", "#A9BAD3", "#34445F",
      ("#2F7BFF", "#1647B8", "#4CC3FF", "#1B78B8"), 0),
-    ("PALE", "#F7F4EE", "#F4F6F2", None, "#FFFFFF", "#FBF9F5", "#2A2A2E", "#77727A", "#DDD6CA",
-     ("#8E9BFF", "#5E6BD8", "#FF9E8A", "#E0705C"), 0),
+    ("PALE", "#F7F4EE", "#F4F6F2", None, "#FFFFFF", "#FBF9F5", "#17171B", "#55515A", "#DDD6CA",
+     ("#5F7AAD", "#5E6BD8", "#CC7BA0", "#E0705C"), 0),   # (owner 2026-10-25: text #17171B, secondary #55515A, part 1 #5F7AAD, part 2 #CC7BA0, the background unchanged)
     ("OCEAN", "#101B3A", "#0B2935", None, "#17263D", "#20344E", "#F0F7FF", "#A4BAD0", "#304762",
      ("#4263EB", "#252F91", "#36D9E8", "#087E9B"), 0),
-    ("HI-CON", "#141619", "#151923", "#171A21", "#1D2026", "#272B33", "#F5F7FA", "#A7AFBC", "#3B414D",
-     ("#FF2638", "#B80024", "#176BFF", "#1238B8"), 1),
+    ("POLICE", "#141619", "#151923", "#171A21", "#1D2026", "#272B33", "#F5F7FA", "#A7AFBC", "#3B414D",
+     ("#FF2638", "#B80024", "#176BFF", "#1238B8"), 0),   # POLICE (was HI-CON; owner 2026-10-25): red to blue as a smooth gradient, no hard split (hc 0)
 ]
 # 0.2.24: the GLOBAL colour of each theme (g; its accent ga is g moved toward the text colour, dark themes, or toward black, light ones): apart from both parts' hues
-GLOBAL = {"VIOLET": "#FFB84D", "ORANGE": "#3DD6C6", "MINT": "#5B2FB8", "COBALT": "#FFB84D", "PALE": "#0F7A66", "OCEAN": "#FFA040", "HI-CON": "#FFD600",
+GLOBAL = {"VIOLET": "#FFB84D", "ORANGE": "#3DD6C6", "MINT": "#5B2FB8", "COBALT": "#FFB84D", "PALE": "#0F7A66", "OCEAN": "#FFA040", "POLICE": "#FFD600",
           "GREY": (200, 200, 200), "MONO": (255, 255, 255)}
 # Appended AFTER the legacy rows (GREY, MONO): saved theme ids are indices, so existing ids keep their theme. (None now.)
 THEMES_EXTRA = []
@@ -70,7 +70,7 @@ LEGACY = [
     ("VIOLET", (16, 12, 28),    (36, 28, 60),    (240, 232, 252), (178, 136, 246), (110, 228, 168), (244, 128, 200)),
     ("ROSE",   (24, 10, 18),    (52, 22, 40),    (252, 232, 242), (244, 114, 182), (255, 214, 110), (176, 132, 248)),
     ("PAPER",  (244, 239, 228), (226, 218, 202), (34, 30, 24),    (10, 84, 70),    (172, 56, 8), (132, 50, 28)),
-    ("HI-CON", (0, 0, 0),       (40, 40, 40),    (255, 255, 255), (255, 232, 0),   (0, 230, 255), (0, 208, 255)),
+    ("POLICE", (0, 0, 0),       (40, 40, 40),    (255, 255, 255), (255, 232, 0),   (0, 230, 255), (0, 208, 255)),
     # appended (saved ids are indices: append only). #50, the 0.9 look: true black, green-tinted text and lines
     # (the derived MID / DIM / LINE are tints of TEXT), phosphor-green values, white for the one active thing
     ("NIGHT",  (0, 0, 0),       (0, 24, 10),     (150, 230, 170), (56, 220, 100),  (255, 255, 255), (64, 216, 236)),
@@ -80,7 +80,7 @@ LEGACY = [
 BW = "MONO"
 BW_GREY = (82, 82, 82)             # MONO's one mid grey (RGB565 10/20/10): DIM LINE RAISE LANE
 # the 20 palettes of the earlier firmware (index order) -> the new palette
-OLD = ["GREEN", "AMBER", "CYAN", "RED", "MONO", "VIOLET", "PINK", "ICE", "WARM", "OCEAN", "DUSK", "HI-CON",
+OLD = ["GREEN", "AMBER", "CYAN", "RED", "MONO", "VIOLET", "PINK", "ICE", "WARM", "OCEAN", "DUSK", "POLICE",
        "LIGHT", "PAPER", "SKY", "MINT", "LILAC", "ROSE", "SAND", "L-HICON"]
 OLD_TO_NEW = {}
 PAL_TAG = 64                       # stored id = PAL_TAG + index; below 20: an old id

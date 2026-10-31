@@ -14,10 +14,10 @@ The design is `docs/design/MIDI_MAP_DESIGN_2.md`; the shipped list is `docs/MIDI
 | 0..9 | target code: 0..126 part value by id (P_E0..P_E7 included), 127 never, 128..142 extension slot (128 + slot), 256 MORPH, 257 ROLL A, 258 ROLL B, 259 UNDO, 260 ROLL (one CC, centred: 0..42 End A, 43..84 nothing, 85..127 End B; fires on entering a zone), 261 AMOUNT, 262 TARGET, 263 SMART, 264 ARP, 265 PITCH, 266 MODE, 267 BALANCE, 268 XFADE, 269 SPLIT, 270 CUTOFF_SMART (CC74), 271 RES_SMART (CC71), 320 + G id a global value, 512..767 PERFORM macros (reserved), 1000 locked, 1023 empty |
 | 10..11 | part rule: 0 the channel's part, 1 part 1, 2 part 2, 3 global (any channel, before the MIDI IN routing). **A learned line (who 2) is pinned to a track: the two bits are the track 0..3** (a learned CC has always been one track's, the hidden two included) |
 | 12..13 | who: 0 shipped, 1 typed, 2 learned, 3 locked |
-| 14 | spare ("also send out"; CC out is not built; always 0) |
+| 14 | spare (always 0) |
 | 15 | cleared by the user: an empty line with this bit is never filled by a later firmware's shipped list |
 
-The 23 locked numbers (the 18 standard ones 0 6 32 38 96..101 120..127 and the 5 inputs 1 2 4 11 64: MIDI_MAP_FINAL) are locked lines: never assigned, handled by `midi_control` as before (CC 1, 11, 64 stay the inputs they are; 2 and 4 are kept for the matrix's BREATH and FOOT, not read yet).
+The 23 locked numbers (the 18 standard ones 0 6 32 38 96..101 120..127 and the 5 numbers 1 2 4 11 64: MIDI_MAP_FINAL) are locked lines: never assigned, handled by `midi_control` as before (CC 1, 2, 4, 11 and 64 are inputs (mod wheel, breath, foot, expression, sustain pedal) that you can use as sources in the mod matrix; they cannot be assigned to parameters.).
 
 The shipped map is `docs/MIDI_MAP_DEFAULTS.csv` = docs/design/MIDI_MAP_FINAL.md: 70 direct lines, 23 locked, 35 unused. The morph fader is CC70, ROLL CC102, AMOUNT CC103; UNDO, the four morph switches, BALANCE, XFADE, SPLIT and MODE have no number (learn-only; typed lines work). ROLL A / ROLL B stay as targets of typed lines.
 

@@ -12,8 +12,8 @@
  * block buffer by a loop with no call, no switch and no data-dependent branch (a sample's segment is counted from three
  * compares), and one more loop mixes the lines and adds the amplitude. The numbers are the same as the
  * one-sample-at-a-time original's (tests/regress.c's goldens). */
-static const char *const N_PD_WAVE[] = {"SAW", "SQR", "PLS", "DSIN", "SPLS", "RSAW", "RTRI", "RTRP"};
-static const char *const N_PD_WAVE2[] = {"-", "SAW", "SQR", "PLS", "DSIN", "SPLS", "RSAW", "RTRI", "RTRP"};
+static const char *const N_PD_WAVE[] = {"SAW", "SQUARE", "PULSE", "DOUBLE\nSINE", "SAW\nPULSE", "RESONANT\nSAW", "RESONANT\nTRIANGLE", "RESONANT\nTRAPEZOID"};
+static const char *const N_PD_WAVE2[] = {"OFF", "SAW", "SQUARE", "PULSE", "DOUBLE\nSINE", "SAW\nPULSE", "RESONANT\nSAW", "RESONANT\nTRIANGLE", "RESONANT\nTRAPEZOID"};
 static const char *const N_PD_LINE[] = {"MIX", "RING"};
 
 /* -cos(2 pi a16 / 65536), Q15, from a 16-bit phase: the table (1024 points, a 1/4 turn in: sine_i of (a16 << 16) +

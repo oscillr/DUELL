@@ -923,7 +923,7 @@ static const preset_t WAVE_PRESETS[] = {
     {"ALL ON", {11, 80, 50, 60, 0, 12, 0, 0}, {10, 90, 100, 60}, 0, 0, FX(0, 30, 20, 40), PAT(5)},
 };
 
-static const uint8_t WAVE_UIORD[8] = {0, 1, 2, 3, 5, 6, 4, 7};   /* card position -> E index: ENGINE TABLE POS BEND; EDIT 1 SYNC DTN STEPS and the unused SUB slot (hidden); the stored ids never move */
+static const uint8_t WAVE_UIORD[8] = {0, 1, 6, 3, 5, 2, 4, 7};   /* card position -> E index (DUELL 1.1, owner): ENGINE TABLE POS STEPS (K4: it sits with POSITION under the picture); EDIT 1 SYNC DTN BEND and the unused SUB slot (hidden); the stored ids never move */
 
 static const engine_t ENG_WAVE = {
     .name = "WAVE",

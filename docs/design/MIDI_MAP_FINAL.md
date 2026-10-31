@@ -1,5 +1,7 @@
 # MIDI MAP, FINAL version: the complete CC table with the owner's answers applied, the standard names kept, and what the Akai Force and MPC really show (2026-10-20, updated by the second round of the same day)
 
+> **Note:** the shipped numbers are in [MIDI_MAP_DEFAULTS.csv](../MIDI_MAP_DEFAULTS.csv) and in the README. CC 1, 2, 4, 11 and 64 are inputs (mod wheel, breath, foot, expression, sustain pedal) that you can use as sources in the mod matrix; they cannot be assigned to parameters.
+
 Private. Research and writing only: no code changed, no branch made, no picture drawn (plain text tables). INDEX.md and the other documents were not touched. This replaces the number choices of MIDI_MAP_DESIGN_2.md ("version 2") and applies the owner's answers; the table design, the unit page and the editor tab of MIDI_MAP_DESIGN.md ("version 1") stay, and section 6 lists only what changes. The owner's second round of decisions on 2026-10-20 is applied throughout and summarised in section 2b.
 
 Marks, as in the other studies: **CONFIRMED** (read today in a manual, a release note, a licence file or the firmware), **est.** (worked out, not measured), **HYPOTHESIS** (my reading, not proven).
@@ -9,7 +11,7 @@ Marks, as in the other studies: **CONFIRMED** (read today in a manual, a release
 - **MIDI CC (control change)**: a message "controller number N has value V", N and V both 0 to 127. A knob on a controller sends one.
 - **Standard name**: the name the MIDI specification (the MIDI Association's list at midi.org) gives a CC number: 7 is "Channel Volume", 74 is "Sound Controller 5, default Brightness". Synths, DAWs and controllers use these names in their lists.
 - **Direct CC**: a CC number that is built in and always works, without teaching it. **Learn-only**: a parameter with no CC of its own; it answers a CC only after you teach one with MIDI LEARN (or type one into the MIDI MAP).
-- **Input number**: a CC that DUELL reads as a performance controller for the modulation matrix (CC1 mod wheel, CC11 expression, CC64 sustain pedal, and now CC2 breath and CC4 foot), not as a parameter. **Locked number**: a CC the MIDI standard owns for system jobs (bank select, data entry, notes off ...) that DUELL never gives away.
+- **Input number**: a CC that DUELL reads as a performance controller for the modulation matrix (CC 1, 2, 4, 11 and 64 are inputs (mod wheel, breath, foot, expression, sustain pedal) that you can use as sources in the mod matrix; they cannot be assigned to parameters), not as a parameter. **Locked number**: a CC the MIDI standard owns for system jobs (bank select, data entry, notes off ...) that DUELL never gives away.
 - **Matrix source**: the "from" side of a modulation matrix slot (LFO 1, an envelope, velocity, the mod wheel ...). It moves a destination such as the cutoff.
 - **Fine half (LSB)**: numbers 32 to 63 are, in the specification, the second half of a "14-bit" pair for controllers 0 to 31. Almost every knob sends only the coarse CC, so the fine halves are in practice free; a controller set to 14-bit mode would clash.
 - **Exception (X2 to X7)**: a place where DUELL bends a standard meaning or uses a standard-defined number for something else. Each is the owner's call. The numbers X1 and X8 are retired (X1 was BALANCE on CC8, now removed; X8 was "CC70 is not the morph", now decided the other way), and the other numbers keep their old names so that older notes still match.
@@ -33,9 +35,9 @@ Marks, as in the other studies: **CONFIRMED** (read today in a manual, a release
 2. **The morph fader sits on CC70**, the standard "Sound Controller 1 (Sound Variation)"; exception X8 is gone because it is now decided yes.
 3. **ROLL is one CC (102), centred like the knob on the unit**: 0 to 42 rolls End A, 43 to 84 does nothing (the middle, 64 is the rest position), 85 to 127 rolls End B. **MORPH AMOUNT is CC103.** UNDO and the four morph setting switches (TARGET, SMART/WILD, ARP, PITCH) are learn-only.
 4. **X6 stays** (the mod wheel CC1 moves the morph fader): checked in the firmware, it is a separate, direct path and takes no matrix slot. **X7 stays** (the expression pedal CC11 only feeds the matrix).
-5. **BREATH (CC2) and FOOT (CC4)** stay matrix sources. **MORPH becomes a matrix destination** (FEATURE_LIST item 9, the next edition); no change to the CC map.
+5. **CC2 (breath) and CC4 (foot) are matrix sources** (BREATH and FOOT, next to the mod wheel CC1, expression CC11 and sustain pedal CC64); they cannot be assigned to parameters. **MORPH becomes a matrix destination** (FEATURE_LIST item 9, the next edition); no change to the CC map.
 
-**Earlier changes against version 2 (still valid).** BREATH and FOOT as inputs on their standard numbers; LFO rows beyond the vibrato learn-only (X4 shrinks to 16 numbers); no Force sheet; EQ and ARP learn-only; INSERT direct (X5).
+**Earlier changes against version 2 (still valid).** BREATH and FOOT as inputs on their standard numbers CC2 and CC4; LFO rows beyond the vibrato learn-only (X4 shrinks to 16 numbers); no Force sheet; EQ and ARP learn-only; INSERT direct (X5).
 
 **The counts (section 3.4, checked by a script: every number 0 to 127 appears once, no parameter twice).**
 - **70 direct CCs** if you approve everything: 13 on a standard number that matches exactly, 34 on free numbers (Virus-like order), 23 on exception numbers (X2 1, X3 3, X4 16, X5 3).
@@ -102,7 +104,7 @@ Result: these four are learn-only and global (a controller can still be taught t
 
 **4. X7 stays (decided yes): the expression pedal CC11 only feeds the matrix as a source and does not change the loudness by itself.**
 
-**5. BREATH (CC2) and FOOT (CC4) stay matrix sources, as decided. New request: MORPH becomes a matrix destination** (FEATURE_LIST item 9; his words: "the matrix should have a destination for the morph fader... that will be the next edition"). That is the way breath, foot, an LFO or CYCLE can later move the morph fader. It needs no change to the CC map. Today the morph fader is not a destination (the firmware says so in `mod.c`), so section 5 still says BREATH and FOOT do not reach the morph until that edition is made.
+**5. CC2 and CC4 are inputs: the matrix has the sources BREATH and FOOT. New request: MORPH becomes a matrix destination** (FEATURE_LIST item 9; his words: "the matrix should have a destination for the morph fader... that will be the next edition"). That is the way an LFO or CYCLE can later move the morph fader. It needs no change to the CC map. Today the morph fader is not a destination (the firmware says so in `mod.c`).
 
 **6. Unchanged:** the standard-name rules, the approved exceptions X2 (DELAY send 92, DETUNE 94), X3 (LFO 1 as vibrato, 76 to 78), X4 (the fine-half block) and X5 (INSERT on 12, 13, 95), and the rest of the map.
 
@@ -124,9 +126,9 @@ Result: these four are learn-only and global (a controller can still be taught t
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | 0 | Bank Select (MSB) | - | bank select (for program change) | G | STANDARD | LOCKED |  |
 | 1 | Modulation Wheel or Lever | Modulation | MOD WHEEL (matrix source MODW); also moves the MORPH fader directly, not through the matrix | P | STANDARD (X6) | INPUT |  |
-| 2 | Breath Controller | Breath | BREATH (NEW matrix source) | P | STANDARD | INPUT |  |
+| 2 | Breath Controller | Breath | BREATH (matrix source) | P | STANDARD | INPUT |  |
 | 3 | Undefined | Undefined | kept for the later MIDI options | - | - | RESERVED |  |
-| 4 | Foot Controller | Foot | FOOT (NEW matrix source) | P | STANDARD | INPUT |  |
+| 4 | Foot Controller | Foot | FOOT (matrix source) | P | STANDARD | INPUT |  |
 | 5 | Portamento Time | Portamento | GLIDE | P | STANDARD | DIRECT | CONT |
 | 6 | Data Entry (MSB) | - | data entry (bend range) | G | STANDARD | LOCKED |  |
 | 7 | Channel Volume | Volume | LEVEL (mixer level of the part) | P | STANDARD | DIRECT | CONT |
@@ -355,7 +357,9 @@ The owner's own observation ("I scrolled through a list of 128 and some have nam
 
 ---
 
-## 5. BREATH (CC2) and FOOT (CC4) as matrix sources
+## 5. CC2 and CC4: inputs (the matrix sources BREATH and FOOT)
+
+The firmware reads CC1, CC2, CC4 and CC11 for the matrix (mod.c mod_midi); CC 1, 2, 4, 11 and 64 are inputs (mod wheel, breath, foot, expression, sustain pedal) that you can use as sources in the mod matrix; they cannot be assigned to parameters. The text below is the design study of the two sources and is kept as written.
 
 The owner said yes (FEATURE_LIST item 8) and confirmed it in the second round. Made exactly like CC11 (EXPRESSION). Facts read in the firmware (mod.c, midi_control.c, params.c, core.h of the newest line):
 

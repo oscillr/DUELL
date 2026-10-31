@@ -4,10 +4,10 @@
  * What must hold, so that an unproven second core cannot leave the owner with a dead unit:
  *   1 a power-on with nothing armed and no record: core 1 starts (armed by the build, tc.armed == TCW_AUTO), the record says RAN
  *   2 the next power-on after a power-off (RAN + power-on reset: OK): starts again
- *   3 the last session ended in a strike (WDT, CRASH): this power-on is ONE core (boot_last names it), the record forgets it, the next starts again
+ *   3 the last session ended in a strike (WDT, CRASH): this power-on STILL tries two cores (item 92 addendum 3; boot_last names the strike)
  *   4 the boot guard (the last start died within 30 s): one core, SKIPBOOT, no strike; the next power-on starts
- *   5 core 1 does not answer: tc_boot RETURNS (bounded), tc.up == 0, failed == NOANSWER, a strike; the unit goes on; the next power-on is one core
- *     (the strike forgotten), the one after tries again
+ *   5 core 1 does not answer: tc_boot RETURNS (bounded), tc.up == 0, failed == NOANSWER, a strike; the unit goes on; the next power-on tries two cores again
+ *     (boot_last NOANSWER), every one after too
  *   6 the one-shot record (tc_arm) still works and is not reported as AUTO
  *   7 the reasons list: names and strikes agree (the bench's log words)
  * Built and run by DUELL/host_tests.sh (name: tcbench) */
@@ -55,12 +55,12 @@ int main(void)
     expect("2 after a power-off (RAN + power-on reset): started again, no strike", tc_boot(1u, 0, 0) == 1 && tc.up && tc.boot_last == TCR_OK && tc.armed == TCW_AUTO);
 
     next_boot();
-    expect("3 after a watchdog reset while it ran: ONE core, boot_last WDT", tc_boot(4u, 0, 0) == 0 && !tc.up && tc.boot_last == TCR_WDT && !tc.failed);
-    expect("3 ..the strike is forgotten in the record", tc_nv.last == TCR_NONE && tc_nv.state == 0);
+    expect("3 after a watchdog reset while it ran: TWO cores tried, boot_last WDT", tc_boot(4u, 0, 0) == 1 && tc.up && tc.boot_last == TCR_WDT && !tc.failed);
+    expect("3 ..the record says RAN again", tc_nv.last == TCR_NONE && tc_nv.state == TCNV_RAN);
     next_boot();
     expect("3 ..and the next power-on starts again", tc_boot(1u, 0, 0) == 1 && tc.up);
     next_boot();
-    expect("3 after a crash record while it ran: ONE core, boot_last CRASH", tc_boot(0u, 1, 0) == 0 && !tc.up && tc.boot_last == TCR_CRASH);
+    expect("3 after a crash record while it ran: TWO cores tried, boot_last CRASH", tc_boot(0u, 1, 0) == 1 && tc.up && tc.boot_last == TCR_CRASH);
     next_boot();
     expect("3 ..the next starts", tc_boot(1u, 0, 0) == 1);
 
@@ -76,7 +76,10 @@ int main(void)
     expect("5 ..failed NOANSWER, a strike, the record says so and is not RAN", tc.failed == TCR_NOANSWER && tc.strike && tc_nv.last == TCR_NOANSWER && tc_nv.state == 0);
     expect("5 ..core 1 is held and the watch has nothing to do (the unit goes on: tc_watch returns at once)", (tc_watch(1000u), tc_watch(5000u), !tc.up && tc.failed == TCR_NOANSWER));
     next_boot();
-    expect("5 the next power-on: ONE core (the strike), boot_last NOANSWER, forgotten", tc_boot(1u, 0, 0) == 0 && tc.boot_last == TCR_NOANSWER && tc_nv.last == TCR_NONE);
+    expect("5 the next power-on: tries TWO cores (core 1 answers now), boot_last NOANSWER", tc_boot(1u, 0, 0) == 1 && tc.up && tc.boot_last == TCR_NOANSWER);
+    next_boot();
+    next_boot(); tc_host_start_ok = 0;
+    expect("5 core 1 still does not answer: tried again at every power-on, one core meanwhile", tc_boot(1u, 0, 0) == 0 && !tc.up && tc.failed == TCR_NOANSWER);
     next_boot();
     expect("5 the one after tries again", tc_boot(1u, 0, 0) == 1 && tc.up);
 

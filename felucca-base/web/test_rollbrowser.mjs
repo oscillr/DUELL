@@ -200,18 +200,18 @@ for (const [W, H] of [[1920, 1080], [1280, 720]]) {
   // T0229 (the list 2.3-6, option A): the ARP tab has no STEPS card any more (the SEQ tab is the step editor); its PATTERN card holds QUANTIZE
   await E("window.__app.setPartTab(0, 'arpseq'); true"); await c.sleep(400);
   ok((await E("!document.querySelector('.col.part .steps') && [...document.querySelectorAll('.col.part')[0].querySelectorAll('.colbody .ttl')].map((x) => x.textContent).join()")) === "ARPEGGIATOR,CHORD,PATTERN", "ARP tab: ARPEGGIATOR, CHORD, PATTERN; no STEPS card");
-  // T0229 (owner): the filter section (cloud job I: on the FILTER tab, after ENGINE): CUTOFF MOD (FILTER ENV, KEY TRACK, LFO 1, LFO 2), VOICE, MULTI FILTER (CUTOFF RESONANCE MODE SLOPE); on ANALOG, TRIO, NOISE the cutoff depths move the
-  // engine's own filter: CUTOFF MOD follows the engine's card (FILTER ENV, LFO 1, LFO 2), MULTI FILTER keeps KEY TRACK. The MOD tab has no FILTER DEPTH any more (one place for each value)
+  // T0229 (owner): the filter section (cloud job I: on the FILTER tab, after ENGINE): MULTI CUTOFF MOD (FILTER ENV, KEY TRACK, LFO 1, LFO 2), VOICE, MULTI FILTER (CUTOFF RESONANCE MODE SLOPE); on ANALOG, TRIO, NOISE the cutoff depths move the
+  // engine's own filter: MULTI CUTOFF MOD follows the engine's card (FILTER ENV, LFO 1, LFO 2), MULTI FILTER keeps KEY TRACK. The MOD tab has no FILTER DEPTH any more (one place for each value)
   for (const p of [0, 1]) {
     const tabs = async (tab) => JSON.parse(await E(`(async () => { window.__app.setPartTab(${p}, '${tab}'); await new Promise((r) => setTimeout(r, 250)); const col = document.querySelectorAll('.col.part')[${p}];
       return JSON.stringify([...col.querySelectorAll('.colbody section.card')].map((x) => ({ t: x.querySelector('h3 .ttl')?.textContent ?? '', labs: [...x.querySelectorAll('.cell:not(.gone) .lab')].map((l) => l.textContent) }))); })()`));
     const eng = await tabs("filter"), eng0 = await tabs("engine"), env = await tabs("envelope"), lfo = await tabs("lfo"), mod = [...env, ...lfo], own2 = false;   /* (cloud job J: no engine keeps a filter of its own) */
-    const mf = eng.find((x) => x.t === "MULTI FILTER"), cm = eng.find((x) => x.t === "CUTOFF MOD");
+    const mf = eng.find((x) => x.t === "MULTI FILTER"), cm = eng.find((x) => x.t === "MULTI CUTOFF MOD");
     ok(!!mf && mf.labs.slice(0, 4).join() === "CUTOFF,RESONANCE,MODE,SLOPE" && mf.labs.includes("KEY TRACK") === !!own2 && !!cm && cm.labs.join() === (own2 ? "FILTER ENV,LFO 1,LFO 2" : "FILTER ENV,KEY TRACK,LFO 1,LFO 2"),
-       `FILTER tab (cloud job I: the ENGINE tab's filter section moved here), part ${p + 1}: ${eng.map((x) => x.t).join(" > ")}; CUTOFF MOD ${cm?.labs.join(" ")}`);
-    ok(eng0.length === 3 && eng0[1].t === "SUB OSC" && eng0[2].t === "VOICE" && env.map((x) => x.t).filter((t) => t !== "CUTOFF MOD" && t !== "TWIN MOD").join() === "AMP ENVELOPE,FILTER ENVELOPE,CYCLE ENV" && !eng0.some((x) => x.t === "MULTI FILTER" || x.t === "CUTOFF MOD"),
-       `ENGINE tab, part ${p + 1}: the engine's one card, SUB OSC, VOICE (CYCLE ENV is on the ENVELOPE tab); no filter cards any more (${eng0.map((x) => x.t).join(" > ")})`);
-    ok(!mod.some((x) => x.labs.includes("FILTER DEPTH")) && mod.map((x) => x.t).filter((t) => t !== "CUTOFF MOD" && t !== "TWIN MOD").join() === "AMP ENVELOPE,FILTER ENVELOPE,CYCLE ENV,LFO 1,LFO 2", `ENVELOPE and LFO tabs, part ${p + 1}: AMP ENVELOPE, FILTER ENVELOPE, CYCLE ENV, LFO 1, LFO 2, no FILTER DEPTH (the cutoff depths are CUTOFF MOD's)`);
+       `FILTER tab (cloud job I: the ENGINE tab's filter section moved here), part ${p + 1}: ${eng.map((x) => x.t).join(" > ")}; MULTI CUTOFF MOD ${cm?.labs.join(" ")}`);
+    ok(eng0.length === 3 && eng0[1].t === "SUB OSC" && eng0[2].t === "VOICE" && env.map((x) => x.t).filter((t) => t !== "MULTI CUTOFF MOD" && t !== "TWIN CUTOFF MOD").join() === "AMP ENV,FILTER ENV,CYCLE ENV" && !eng0.some((x) => x.t === "MULTI FILTER" || x.t === "MULTI CUTOFF MOD"),
+       `ENGINE tab, part ${p + 1}: the engine's one card, SUB OSC, VOICE (CYCLE ENV is on the ENV tab); no filter cards any more (${eng0.map((x) => x.t).join(" > ")})`);
+    ok(!mod.some((x) => x.labs.includes("FILTER DEPTH")) && mod.map((x) => x.t).filter((t) => t !== "MULTI CUTOFF MOD" && t !== "TWIN CUTOFF MOD").join() === "AMP ENV,FILTER ENV,CYCLE ENV,LFO 1,LFO 2", `ENV and LFO tabs, part ${p + 1}: AMP ENV, FILTER ENV, CYCLE ENV, LFO 1, LFO 2, no FILTER DEPTH (the cutoff depths are MULTI CUTOFF MOD's)`);
   }
   {   // 0.2.22: the SIDECHAIN card (the ducker's MIDI setup, MENU settings 38..41) is on the MIDI tab of the GLOBAL column: P1 CH, P1 NOTE, P2 CH, P2 NOTE with the unit's values
     await E("window.__app.setGlobalTab('midi'); true"); await c.sleep(600);

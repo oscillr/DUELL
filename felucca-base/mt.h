@@ -184,7 +184,7 @@ static void test_tags(void)
         q[P_E0] = PM_SYMP;
         ok &= morph_tag(&ENG_PHYS, q, P_E1, 1).kind == MK_HARD;
         ok &= morph_tag(&ENG_ANALOG, q, P_PAN, 0).kind == MK_EX && morph_tag(&ENG_ANALOG, q, P_PAN, 1).kind == MK_CONT;
-        check("mode-dependent tags (B.4): ANALOG SYNC, LOFI STEP / NOIS, NOISE LFSR, PHYS SYMP; FTYPE ANALOG only; PAN", ok);
+        check("mode-dependent tags (B.4): ANALOG SYNC, LOFI STEP / NOISE, NOISE DIGITAL, PHYS SYMP; FTYPE ANALOG only; PAN", ok);
     }
 }
 
@@ -622,9 +622,9 @@ static void test_sweeps(void)
     static const sweep_t SW[] = {
         {"ANALOG", "SOFT PAD", {P_E0, P_FTYPE}, {3, 0}, {2, 1}, 2, 40, "ANALOG WAVE SIN->TRI + filter LP->BP"},
         {"ANALOG", "SOFT PAD", {P_E0}, {2}, {4}, 1, 0, "ANALOG WAVE TRI->PWM (AMOUNT 0 otherwise)"},
-        {"PHASE", "STRING", {P_E0, P_E1}, {3, 0}, {6, 4}, 2, 40, "PHASE WAVE DSIN->RTRI, WAVE2 - -> DSIN"},
+        {"PHASE", "STRING", {P_E0, P_E1}, {3, 0}, {6, 4}, 2, 40, "PHASE WAVE DOUBLE SINE->RESONANT TRIANGLE, WAVE2 OFF -> DOUBLE SINE"},
         {"TRIO", "CHIP CHOIR", {P_E4}, {0}, {2}, 1, 40, "TRIO MODE LP->HP"},
-        {"WHEEL", "SOFT FLUTE", {P_E0}, {1}, {15}, 1, 40, "WHEEL REG MELLO->FULL"},
+        {"WHEEL", "SOFT FLUTE", {P_E0}, {1}, {15}, 1, 40, "WHEEL BARS MELLOW->FULL"},
         {"LOFI", "WAVE BASS", {P_E1}, {1}, {2}, 1, 40, "LOFI WAVE TRI->SAW"},
         {"ANALOG", "SINE KEY", {P_LWAVE}, {0}, {3}, 1, 0, "LFO WAVE"},
         {"ANALOG", "SINE KEY", {P_LD_FLT}, {40}, {40}, 0, 0, "matrix route"},

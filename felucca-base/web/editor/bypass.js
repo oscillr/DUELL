@@ -8,7 +8,7 @@
 // CHORUS / DELAY / REVERB cards zero both parts' sends to that bus), the multimode filter (its bypass is CUT fully open with MODE LOW-PASS: a sound setting,
 // not an effect), the arpeggiator / chord (not effects). The unit's own MODULES switches (SENDS, PART FX) bypass more at once but are device settings.
 export const PART_SECTIONS = {
-  sat: { label: "SATURATION", items: [[33, 0]] },
+  sat: { label: "SATURATOR", items: [[33, 0]] },
   insert: { label: "INSERT", items: [[96, 0]] },
   eq: { label: "EQUALIZER", items: [[8, 0], [88, 0], [103, 0]] },   // (0.2.25 layout round: no EQ switch; the three gains LOW MID HIGH to 0 dB: a flat EQ is not run)
   duck: { label: "DUCKING", items: [[111, 3]] },          // (DUCK SOURCE 3 = OFF)

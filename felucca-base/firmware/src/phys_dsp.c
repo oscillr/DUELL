@@ -253,8 +253,9 @@ static __attribute__((noinline)) void px_modal_exciter(px_modal_blk_t *B, px_mod
     uint32_t cut;
     uint64_t fr;
     int32_t ex;
-    /* exciter low-pass: cutoff = min(f 2^((b (2 - b) - 0.5) range / 12), 0.499) */
-    ex = (int32_t)(((int64_t)px_m(b, 131072 - b, 16) - 32768) * (bow ? 36 : 60) / 12);   /* octaves, Q16 */
+    /* exciter low-pass: cutoff = min(f 2^((b (2 - b) - 0.5) range / 12), 0.499). DUELL 1.1: from the key's BRIT, not from b (the velocity's accent): a resonant low-pass swept across the modes
+     * (and the strike's 1 / cut) made the level fall as the velocity rose, by up to 4 dB and more (VELOCITY_AFTERTOUCH_V1.md 10) */
+    ex = (int32_t)(((int64_t)px_m(brightness, 131072 - brightness, 16) - 32768) * (bow ? 36 : 60) / 12);   /* octaves, Q16 */
     fr = ((uint64_t)f0c * (bow ? 4u : 2u) * px_exp2(ex)) >> 16;
     cut = fr > 2143260078u ? 2143260078u : fr < 65536u ? 65536u : (uint32_t)fr;
     px_svf_coef(&B->ex, cut, bow ? 179u : 384u);         /* q 0.7 / 1.5 */
@@ -508,7 +509,7 @@ static __attribute__((noinline)) void px_string_block(px_string_blk_t *B, px_str
     nl = px_clamp(nl, -65536, 65536);
     /* the exciter: at a trigger (and all the time when sustained) */
     if (S->trig || bow) {
-        int32_t oct = (int32_t)(((int64_t)px_m(b, 131072 - b, 16) - 32768) * 6);   /* * 72 / 12 */
+        int32_t oct = (int32_t)(((int64_t)px_m(brightness, 131072 - brightness, 16) - 32768) * 6);   /* * 72 / 12 */
         uint64_t c = ((uint64_t)f * 4u * px_exp2(oct)) >> 16;
         px_csvf_coef(&S->exc, c > 2143260078u ? 2143260078u : (uint32_t)c, bow ? 65536 : 32768, 32768);
         if (S->trig) {                                   /* a burst one period long */
@@ -544,15 +545,15 @@ static __attribute__((noinline)) void px_string_block(px_string_blk_t *B, px_str
     if (B->src_ratio == 1 << 30)
         S->src = 1u << 30;
     B->delay = delay;
-    dcut = 786432 + px_m(px_m(d, d, 16), 3932160, 16) + b * 24;   /* 12 + 60 d^2 + 24 b semitones, Q16 */
+    dcut = 786432 + px_m(px_m(d, d, 16), 3932160, 16) + brightness * 24;   /* 12 + 60 d^2 + 24 b semitones, Q16 */
     if (dcut > 84 << 16)
         dcut = 84 << 16;
     {
         uint64_t x64 = ((uint64_t)f * px_exp2(dcut / 12)) >> 16;
         df = x64 > 2143260078u ? 2143260078u : (uint32_t)x64;
     }
-    if (d >= 62259) {                                    /* crossfade to infinite decay */
-        int32_t ti = (d - 62259) * 20;
+    if (damping >= 62259) {                              /* crossfade to infinite decay (the key's DAMP only: the velocity must not switch it on) */
+        int32_t ti = (damping - 62259) * 20;
         b += px_m(ti, 65536 - b, 16);
         df += (uint32_t)(((uint64_t)(2147054347u - df) * (uint32_t)ti) >> 16);
         dcut += px_m(ti, (128 << 16) - dcut, 16);

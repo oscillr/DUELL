@@ -1,0 +1,154 @@
+/* SPDX-License-Identifier: GPL-3.0-only. DUELL 1.1 editor look (owner items 47, 48): the approved device design. Barlow Semi Condensed (SIL Open Font Licence 1.1, fonts/OFL.txt), the unit's colours
+   (only the ACTIVE part's colour plus greys; the colours come from theme.js look11Vars as CSS variables), the header with the part markers and the battery, knob marks as white circles with the
+   number cut out. Loaded after editor.css; nothing here changes what a control does. */
+@font-face { font-family: "Barlow Semi Condensed"; font-weight: 400; src: url("./fonts/BarlowSemiCondensed-Regular.ttf") format("truetype"); }
+@font-face { font-family: "Barlow Semi Condensed"; font-weight: 500; src: url("./fonts/BarlowSemiCondensed-Medium.ttf") format("truetype"); }
+@font-face { font-family: "Barlow Semi Condensed"; font-weight: 600; src: url("./fonts/BarlowSemiCondensed-SemiBold.ttf") format("truetype"); }
+@font-face { font-family: "Barlow Semi Condensed"; font-weight: 700; src: url("./fonts/BarlowSemiCondensed-Bold.ttf") format("truetype"); }
+
+/* dark from the start, as the unit (before a unit's colour is read) */
+:root { --bg: #18181b; --fg: #fffbff; --dim: #a09da0; --line: #35343a; --panel: #0d0d0f; --acc: #de38ff; --accfg: #fff; --page: #08080a; --p1: #de38ff; --p2: #ff1c8b; --grey: #737073; --greytext: #cfcccf;
+  --fs: 15px; --tabfs: 15px; --ttlfs: 12px; --labfs: 12px; --valfs: 16px; --unitfs: 12px; --ctlfs: 13px; --namefs: 15px; --top: 44px; color-scheme: dark; }
+html, body { background: var(--page); }
+body, button, input, select, textarea { font-family: "Barlow Semi Condensed", "Arial Narrow", Arial, sans-serif; }
+body { font-size: var(--fs); font-weight: 500; letter-spacing: .01em; }
+button { font-weight: 600; }
+html:not([data-scheme=dark]) #top .hdr { filter: none; }
+#top { background: #0b0b0d; border-bottom: 1px solid #26252a; }
+
+/* the header: the title block at the left, the DEMO switch, the status; at the right the octave button, the part markers and the battery (the device header) */
+.demosw { background: transparent; color: var(--greytext); border: 1px solid var(--grey); border-radius: 11px; padding: 0 12px; height: 22px; line-height: 20px; letter-spacing: .1em; font-weight: 700; font-size: 12px; }
+.demosw[aria-pressed=true] { background: var(--grey); color: #fff; }
+.demobar { display: flex; align-items: center; gap: 12px; padding: 3px 16px; background: #26252a; color: var(--greytext); font-size: 13px; flex: none; border-bottom: 1px solid #35343a; }
+.demobar b { background: var(--grey); color: #fff; border-radius: 3px; padding: 0 8px; letter-spacing: .12em; }
+.demobar span { flex: 1; } .demobar button { color: var(--greytext); border-color: var(--grey); }
+.octbtn { background: transparent; color: var(--fg); border: 1px solid var(--grey); border-radius: 4px; padding: 0 10px; height: 22px; font-size: 12px; letter-spacing: .08em; }
+.octbtn b { color: #fff; margin-left: 4px; } .octbtn.on { background: var(--grey); color: #fff; }
+.markers { display: inline-flex; gap: 6px; }
+.pm { --pc: var(--grey); --pcd: #2b2a2d; display: inline-flex; align-items: stretch; height: 22px; padding: 0; border: 1px solid var(--pc); border-radius: 7px; overflow: hidden; background: var(--pcd); color: var(--greytext); cursor: pointer; }
+.pm[data-part="0"] { --pc: var(--p1); --pcd: color-mix(in srgb, var(--p1) 14%, #0b0b0d); }
+.pm[data-part="1"] { --pc: var(--p2); --pcd: color-mix(in srgb, var(--p2) 14%, #0b0b0d); }
+.pm[data-part="0"].act { --pcd: color-mix(in srgb, var(--p1) 28%, #0b0b0d); }
+.pm[data-part="1"].act { --pcd: color-mix(in srgb, var(--p2) 28%, #0b0b0d); }
+.pm .pn { display: inline-flex; align-items: center; justify-content: center; width: 24px; background: var(--pc); color: #fff; font-style: normal; font-weight: 700; font-size: 13px; }
+.pm .pv { display: inline-flex; align-items: center; justify-content: center; min-width: 24px; padding: 0 6px; font-style: normal; font-weight: 600; font-size: 13px; color: var(--greytext); }
+.pm .pv:empty { display: none; }
+.batt { position: relative; display: inline-block; width: 30px; height: 14px; border: 1px solid var(--grey); border-radius: 5px; background: #2b2a2d; margin-right: 2px; flex: none; }
+.batt::after { content: ""; position: absolute; right: -4px; top: 3px; width: 2px; height: 6px; border-radius: 0 2px 2px 0; background: var(--grey); }
+.batt i { position: absolute; left: 2px; top: 2px; bottom: 2px; width: 68%; border-radius: 3px; background: var(--greytext); }
+.unit { color: var(--greytext); } .unit.good { color: var(--greytext); }
+.mockbar { background: #26252a; color: var(--greytext); } .mockbar button { background: #35343a; color: #fff; border-color: #4a494e; }
+#foot { background: #0b0b0d; border-top: 1px solid #26252a; } .msg.good { color: var(--greytext); }
+
+/* the columns */
+#main { position: relative; background: var(--page); }
+.col { border-color: var(--line); background: var(--panel); }
+.tabs { background: transparent; }
+.tab { font-weight: 700; letter-spacing: .06em; border-radius: 4px 4px 0 0; color: var(--greytext); }
+.tab[aria-selected=true] { background: var(--acc); color: var(--accfg); }
+button { border-radius: 4px; }
+button.ghost { color: var(--fg); border-color: #4a494e; }
+.card, .block { border-radius: 6px; }
+.card > h3, .block > h3 { font-weight: 700; letter-spacing: .1em; }
+.ttl { border-radius: 5px 0 5px 0; background: color-mix(in srgb, var(--acc) 22%, var(--bg)); }
+.cell .lab { font-weight: 600; letter-spacing: .05em; text-transform: uppercase; }
+.cell .val { font-weight: 600; font-size: var(--valfs); cursor: text; border-radius: 3px; padding: 0 2px; }
+.cell .val:hover { background: color-mix(in srgb, var(--acc) 22%, transparent); }
+.cell .unit { font-weight: 500; }
+.cell.bare .top .val { font-size: 20px; font-weight: 700; }
+.valin { width: 58px; text-align: right; font-weight: 600; font-size: var(--valfs); padding: 0 3px; height: 20px; background: #fff; color: #000; border: 1px solid var(--acc); border-radius: 3px; }
+.cell select, select { background: color-mix(in srgb, var(--bg) 70%, #000); border-color: var(--line); border-radius: 4px; }
+.cell .slider .track { background: color-mix(in srgb, var(--acc) 22%, var(--bg)); }
+.cell .slider input[type=range]::-webkit-slider-thumb { border-color: var(--bg); }
+.seg.on, button.mute.on, .opsbtn.on { background: var(--acc); color: var(--accfg); border-color: var(--acc); }
+
+/* the knob mark: a white circle with its number cut out, the label's size and baseline (owner item 47) */
+.km { display: inline-flex; align-items: center; justify-content: center; width: 13px; height: 13px; border-radius: 50%; background: var(--fg); color: var(--bg); font-size: 10px; font-weight: 700; line-height: 1; margin-right: 5px; vertical-align: -2px; letter-spacing: 0; flex: none; }
+.engline .lab .km { margin-right: 6px; }
+
+/* a source box: its own settings, then its amounts (one row of four per page of the unit) */
+.card.rows .grid.k4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.card.rows .grid + .grid { margin-top: var(--rg); padding-top: var(--rg); border-top: 1px solid var(--line); }
+
+/* the current patch: a box of its own, highlighted (owner item 11) */
+.patchblock .hgrid.pgrid2 { grid-template-columns: minmax(0, 1.5fr) auto minmax(0, 1.1fr); align-items: center; }
+.curpatch { display: flex; align-items: center; gap: 6px; min-width: 0; height: 34px; padding: 0 4px; border: 2px solid var(--acc); border-radius: 7px; background: color-mix(in srgb, var(--acc) 16%, var(--bg)); }
+.curpatch .pnum { background: var(--acc); color: var(--accfg); border: 0; border-radius: 4px; height: 24px; min-width: 40px; padding: 0 8px; font-size: 18px; font-weight: 700; letter-spacing: .02em; line-height: 24px; }
+.curpatch .pnum.none { background: var(--grey); color: #fff; }
+.curpatch .pnum .pnin { width: 44px; height: 22px; font-size: 16px; text-align: center; }
+.curpatch .pname { flex: 1; min-width: 0; font-size: 19px; font-weight: 600; letter-spacing: .03em; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.curpatch .step { position: relative; width: 22px; height: 26px; padding: 0; background: transparent; border: 0; border-radius: 4px; flex: none; }
+.curpatch .step::before { content: ""; position: absolute; top: 50%; left: 50%; margin: -7px 0 0 -4px; border: 7px solid transparent; }
+.curpatch .step.prev::before { border-right: 9px solid var(--fg); border-left: 0; margin-left: -5px; }
+.curpatch .step.next::before { border-left: 9px solid var(--fg); border-right: 0; margin-left: -4px; }
+.curpatch .step:hover { background: color-mix(in srgb, var(--acc) 35%, transparent); }
+.block .pcat { color: var(--dim); }
+
+/* the part head */
+.rowhead b { font-size: 16px; letter-spacing: .1em; }
+.seldot { border-color: var(--acc); } .seldot.on { background: var(--acc); }
+
+/* the matrix: slot number large, the category small above the full item name (the approved MATRIX page) */
+.mrow { grid-template-columns: 26px minmax(0, 1fr) minmax(0, 1.5fr) minmax(0, 1.1fr); align-items: end; }
+.mrow .mn { font-size: 22px; font-weight: 700; color: var(--acc); line-height: 1; padding-bottom: 3px; }
+.mrow.mhead { align-items: center; } .mrow.mhead .mn { font-size: 12px; padding: 0; color: var(--fg); }
+.mrow.mhead span { display: inline-flex; align-items: center; }
+.mcol { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.mcat { font-size: 11px; font-weight: 600; letter-spacing: .08em; color: var(--dim); text-transform: uppercase; min-height: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mrow .cell.bare select { font-size: 15px; font-weight: 600; height: 26px; }
+
+/* MIDI MAP */
+.mmwrap { display: flex; flex-direction: column; gap: 6px; }
+.mmrow { display: grid; grid-template-columns: 70px 90px minmax(0, 1fr) auto; gap: 10px; align-items: center; }
+.mmrow input[type=number] { width: 100%; font-size: 15px; font-weight: 700; height: 26px; }
+.mmrow select { height: 26px; font-size: 14px; font-weight: 600; }
+.mmhead { font-size: 11px; font-weight: 700; letter-spacing: .1em; color: var(--dim); }
+.mmadd { margin-top: 6px; padding-top: 8px; border-top: 1px solid var(--line); }
+
+/* the OCTAVE view: header and footer stay; the number large, seven dots (approved page PAGES_V1_octave) */
+.octview { position: absolute; inset: 0; z-index: 30; background: var(--page); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px; }
+.octtitle { position: absolute; left: 22px; top: 14px; font-size: 18px; font-weight: 700; letter-spacing: .06em; }
+.octmid { display: flex; align-items: center; gap: 56px; }
+.octnum { font-size: 230px; font-weight: 700; line-height: 1; color: #fff; min-width: 360px; text-align: center; }
+.octstep { background: transparent; color: var(--fg); border: 1px solid var(--grey); font-size: 18px; letter-spacing: .08em; padding: 12px 22px; border-radius: 6px; }
+.octstep:hover { border-color: #fff; }
+.octdots { display: flex; gap: 22px; } .octdots i { width: 14px; height: 14px; border-radius: 50%; background: #4a494e; } .octdots i.on { background: #fff; }
+.octclose { position: absolute; right: 20px; bottom: 16px; }
+
+/* small fixes */
+button.small:not(.ghost):not(.mute) { color: var(--accfg); }
+.mmwrap .warn:empty { display: none; }
+#main[data-view=global] .tabbody > .card.mmcard, .tabbody > .card.mmcard { grid-column: 1 / -1; }
+.mrow { grid-template-columns: 56px minmax(0, 1fr) minmax(0, 1.5fr) minmax(0, 1.1fr); }
+.mrow.mhead .mn { width: 56px; }
+
+/* MODULE BYPASS (modbypass.js): the button in the corner of a filter, LFO or envelope box; lit while on. The box is greyed; the state is shown by the lit button and the greyed box only (no second label). */
+.card .modbyp { background: transparent; color: var(--greytext); border: 1px solid var(--grey); letter-spacing: .1em; font-weight: 700; }
+.card .modbyp.on { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+.card.bypassed { border-color: var(--grey); }
+.card.bypassed > .grid, .card.bypassed > .grid.k4 { opacity: .32; filter: grayscale(1); }
+.card.bypassed > h3 .ttl { background: #2b2a2d; color: var(--greytext); }
+
+/* PARAMETER LOCKS tab (lockview.js): one box, a head line, one row per record, the add row at the foot. Left-aligned, the part's colour (--acc), Barlow like every tab. */
+.tabbody.lockstab { display: block; height: 100%; }
+.card.lockscard { display: flex; flex-direction: column; height: 100%; min-height: 0; padding-bottom: 8px; }
+.lockscard > h3 .lcount { align-self: center; font-size: 11px; font-weight: 600; letter-spacing: .08em; color: var(--dim); white-space: nowrap; }
+.lrow { display: grid; grid-template-columns: 50px 124px minmax(0, 1.5fr) minmax(0, 1.3fr) 100px; gap: 12px; align-items: center; margin: 0; padding: 5px 0; border-bottom: 1px solid var(--line); }
+.lrow.lhead { padding: 6px 0 4px; font-size: 11px; font-weight: 700; letter-spacing: .08em; color: var(--dim); border-bottom: 1px solid var(--line); }
+.lrow.lhead span { display: inline-flex; align-items: center; }
+.llist { flex: 0 1 auto; min-height: 0; overflow-y: auto; scrollbar-width: thin; }
+.llist .lrow:last-child { border-bottom: 0; }
+.lkind { font-size: 13px; font-weight: 700; letter-spacing: .08em; color: var(--dim); }
+.lkind.lock { color: var(--acc); }
+.lname { font-size: 15px; font-weight: 600; letter-spacing: .02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.lrow .cell.bare .top .val { font-size: 18px; }
+.lrow .cell.bare select { font-size: 15px; font-weight: 600; height: 26px; }
+.ldel { justify-self: end; font-weight: 700; letter-spacing: .06em; }
+.lnone { margin: 14px 0 6px; font-size: 14px; color: var(--dim); }
+.lrow.ladding { margin-top: 6px; padding: 10px 0 0; border-bottom: 0; border-top: 1px solid var(--acc); align-items: center; }
+.ldst { grid-column: 3 / 5; min-width: 0; }
+.llist .ldst { grid-column: auto; }
+button.lkind { background: none; border: 0; padding: 0; text-align: left; cursor: pointer; font-family: inherit; }
+.ladd { justify-self: end; grid-column: 5; font-weight: 700; letter-spacing: .06em; white-space: nowrap; padding: 4px 10px; background: var(--acc); color: var(--accfg); border-color: var(--acc); }
+.ladd:disabled { opacity: .4; }
+.lrow .valin { width: 66px; color: var(--fg); background: var(--page); border-color: var(--acc); font-size: 18px; font-weight: 700; height: 24px; }

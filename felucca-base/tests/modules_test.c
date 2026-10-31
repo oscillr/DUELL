@@ -14,7 +14,8 @@
  *   PART FX    after the fade each part is its dry block bit for bit (DIST, FLANGER insert, EQ, a PUMP DUCK, SPREAD's side too); ON again:
  *              the effects back from rest
  *   PERFORM    its stages (FLANGER, DRIVE, MUTE 2) still act with all four OFF
- *   UI         the cards each module hides (not drawn, the knob does nothing), the header on PLAY
+ *   UI         (item 125) which pages are notice pages while a module is OFF (the notice and the jump to MODULES: ui_render.c off_check), the cards that still hide, the header on PLAY;
+ *              the MODULES page keeps its title on every knob turn (the state is the line's value; ARP and SEQ: OFF, FOLLOWS PATCH, KEEPS RUNNING)
  * Built and run by DUELL/host_tests.sh (name: modules). */
 #define UI_TEST_NO_MAIN 1
 #define FELUCCA_FLASH 1
@@ -92,6 +93,14 @@ static int card_hid(uint32_t c)                         /* the card is not drawn
 {
     return ui.col[c][0] == 0x7f;
 }
+static int title_modules(void)                          /* item 125 A: the header keeps the page's title MODULES (no message over it) */
+{
+    char tb[40];
+    uint32_t pi;
+    head_page_title(tb, &pi);
+    return !ui.msg_t && !strcmp(tb, "MODULES");
+}
+static void kturn(uint32_t k, int n) { ui.msg_t = 0; turn(k, n); }   /* (a knob turn with the header clear: any message after it is the knob's) */
 static void show(const char *title) { go_title(title); ui.force = 1; frame(); }
 static void set(uint32_t bit, uint32_t off) { mods_put(bit, off); }
 
@@ -165,19 +174,28 @@ static void test_settings(void)
     boot();
     expect("a fresh unit: all four ON (the settings byte's bits 1..4 clear; the audio side too)", mods_get() == 0u && mods_off == 0u && !(ui_idle & 0x1Eu));
     show("MODULES");
-    expect("GLO > MODULES: K1 ARP, K2 SEQ, K3 SENDS, K4 PART FX, each ON", card_is(0, "ARP", "ON") && card_is(1, "SEQ", "ON") &&
-           card_is(2, "SENDS", "ON") && card_is(3, "PART FX", "ON"));
+    ui.msg_t = 0;                                       /* (the boot's "LOADED M01" toast gone: from here any message over the title is the knob's) */
+    expect("GLO > MODULES: K1 ARP, K2 SEQ (ON = FOLLOWS PATCH), K3 SENDS, K4 PART FX, each ON; the title MODULES (item 125 A: the state is the value of the line, graph_mods)",
+           cur_page()->scope == SC_MODS && mods_run_get(0) == 1u && mods_run_get(1) == 1u && !(mods_get() & (MODS_SENDS | MODS_PFX)) && title_modules());
     expect("  .. a global page (both badges), the footer's first row empty", page_global(cur_page()));
     turn(EN_K1, -1);
-    expect("K1 left: ARP OFF, the header says what it does, the card OFF (dim)", mods_get() == MODS_ARP && mods_off == MODS_ARP &&
-           msg_is("ARP OFF: KEYS PLAY") && card_is(0, "ARP", "OFF"));
+    expect("K1 left: ARP OFF (the line says OFF), the header keeps MODULES, no message", mods_get() == MODS_ARP && mods_off == MODS_ARP &&
+           mods_run_get(0) == 0u && title_modules());
     turn(EN_K1, -1);
-    expect("  .. left again: stays OFF", mods_get() == MODS_ARP);
+    expect("  .. left again: stays OFF", mods_get() == MODS_ARP && mods_run_get(0) == 0u);
+    turn(EN_K1, 1);
+    expect("  .. right: FOLLOWS PATCH (the module on, keeps nothing), title MODULES", mods_get() == 0u && mods_off == 0u && mods_run_get(0) == 1u && mods_keep == 0u && title_modules());
+    turn(EN_K1, 1);
+    expect("  .. right again: KEEPS RUNNING (mods_keep bit 0), the module still on, title MODULES", mods_get() == 0u && mods_run_get(0) == 2u && mods_keep == 1u && title_modules());
+    turn(EN_K1, 1);
+    expect("  .. right once more: stays KEEPS RUNNING", mods_run_get(0) == 2u);
+    turn(EN_K1, -1); turn(EN_K1, -1);
+    expect("  .. back left twice: OFF again (OFF wins: mods_keep clear)", mods_get() == MODS_ARP && mods_off == MODS_ARP && mods_keep == 0u && title_modules());
     turn(EN_K2, -1); turn(EN_K3, -1);
-    expect("K3 left: SENDS OFF, SAVES CPU said", mods_get() == (MODS_ARP | MODS_SEQ | MODS_SENDS) && msg_is("SENDS OFF: SAVES CPU"));
+    expect("K3 left: SENDS OFF, no message over the title", mods_get() == (MODS_ARP | MODS_SEQ | MODS_SENDS) && title_modules());
     turn(EN_K4, -2);
-    expect("K4 left: PART FX OFF, SAVES CPU said; the byte's bits 1..4 set, bit 0 (ANIM IDLE) untouched", mods_get() == MODS_ALL &&
-           msg_is("PART FX OFF: SAVES CPU") && (ui_idle & 0x1Fu) == 0x1Eu);
+    expect("K4 left: PART FX OFF, no message over the title; the byte's bits 1..4 set, bit 0 (ANIM IDLE) untouched", mods_get() == MODS_ALL &&
+           title_modules() && (ui_idle & 0x1Fu) == 0x1Eu);
     frames(2200);
     expect("  .. saved about 2 s later (the settings record holds them)", stored_mods() == (int)MODS_ALL);
     boot();
@@ -186,15 +204,19 @@ static void test_settings(void)
     frame();
     expect("a multi load (M01) never changes them", mods_get() == MODS_ALL);
     show("MODULES");
-    turn(EN_K3, 1);
-    expect("K3 right: SENDS ON, said", !(mods_get() & MODS_SENDS) && msg_is("SENDS ON"));
+    kturn(EN_K3, 1);
+    expect("K3 right: SENDS ON, no message over the title", !(mods_get() & MODS_SENDS) && title_modules());
     frames(2200);
     boot();
     expect("power-on: ARP, SEQ, PART FX OFF, SENDS ON, as saved", mods_get() == (MODS_ARP | MODS_SEQ | MODS_PFX));
     show("MODULES");
     btn_down(B_OCTDN); frame();
     turn(EN_K4, -3);
-    expect("OCT- + K4: PART FX to its default, ON, \"RESET PART FX\"", !(mods_get() & MODS_PFX) && msg_is("RESET PART FX"));
+    expect("OCT- + K4: PART FX to its default, ON (item 125: no \"RESET ..\" message over the title)", !(mods_get() & MODS_PFX) && title_modules());
+    mods_run_put(0, 2u);
+    frame();
+    turn(EN_K1, -3);
+    expect("  .. OCT- + K1: ARP to its default, FOLLOWS PATCH (from KEEPS RUNNING), title MODULES", mods_run_get(0) == 1u && mods_keep == 0u && title_modules());
     btn_up(B_OCTDN); frame(); frame();
     expect("  .. no octave moved", song.octave == 0);
     ml_toggle();
@@ -222,8 +244,8 @@ static void test_settings(void)
     p.favorites.factory[15][24] &= 0x7Fu;
     st_save(OBJ_SETTINGS, &p, sizeof p);
     boot();
-    expect("an older record (no 0.2.14 flag), its bits 1..7 set: read all four ON once, ANIM IDLE kept", mods_get() == 0u && (ui_idle & 1u) &&
-           !(ui_idle & 0xFEu));
+    expect("an older record (no 0.2.14 flag), its bits 1..7 set: read all four ON once, ANIM IDLE kept, bits 1..5 and 7 cleared, bit 6 (KEY VELOCITY ON) the 1.1 default",
+           mods_get() == 0u && (ui_idle & 1u) && !(ui_idle & 0xBEu) && (ui_idle & 0x40u));
 }
 
 /* ---- ARP OFF ---- */
@@ -674,7 +696,11 @@ static void test_perform(void)
            r1 < r0 / 1000.0);
 }
 
-/* ---- UI: the cards each module hides ---- */
+/* ---- UI: what each module hides ----
+ * DUELL 1.1 item 125: a page whose module is OFF is a notice page (ui.c off_module: ARP = the ARP pages; SEQ = STEP, PARAMETER LOCKS, PATTERNS; SENDS = CHORUS, DELAY 1/2, 2/2, REVERB, SHIMMER, SEND FX;
+ * PART FX = FX, INSERT, EQ, DUCK) and has no cards at all; the notice's drawing and the jump of a knob to MODULES are tests/ui_render.c off_check's (152 walks), not repeated here: this part asks only
+ * which pages are notice pages (off_module), that a notice page's knob changes no value, and that the cards of the pages that are not notice pages still hide (card_hid: the FX page's CHO DLY REV
+ * with SENDS OFF, the SIDECHAIN page's SRC and NOTE with PART FX OFF, an arp in SEQUENCER with SEQ OFF, PERFORM's SPACE) */
 static void test_ui(void)
 {
     int16_t v;
@@ -683,91 +709,81 @@ static void test_ui(void)
     set(MODS_SENDS, 1u);
     trk[0].p[P_REV] = 50;
     show("FX");
-    expect("SENDS OFF, the FX page: DST live, CHO DLY REV not drawn (no card, no footer line)",
-           !card_hid(0) && card_hid(1) && card_hid(2) && card_hid(3));
+    expect("SENDS OFF, the FX page (PART FX's page, not a notice): DST live, CHO DLY REV not drawn (no card, no footer line)",
+           !off_module(cur_page()) && !card_hid(0) && card_hid(1) && card_hid(2) && card_hid(3));
     show("CHORUS");
-    expect("  .. CHORUS: both cards not drawn", card_hid(0) && card_hid(1));
+    expect("  .. CHORUS: a SENDS notice page", off_module(cur_page()) == MODS_SENDS);
     show("DELAY 1/2");
-    expect("  .. DELAY 1/2: all four not drawn", card_hid(0) && card_hid(1) && card_hid(2) && card_hid(3));
+    expect("  .. DELAY 1/2: a SENDS notice page", off_module(cur_page()) == MODS_SENDS);
     show("DELAY 2/2");
-    expect("  .. DELAY 2/2: all four not drawn", card_hid(0) && card_hid(1) && card_hid(2) && card_hid(3));
+    expect("  .. DELAY 2/2: a SENDS notice page", off_module(cur_page()) == MODS_SENDS);
     show("REVERB");
-    expect("  .. REVERB: TYPE SIZE DAMP not drawn", card_hid(0) && card_hid(1) && card_hid(2));
+    expect("  .. REVERB: a SENDS notice page", off_module(cur_page()) == MODS_SENDS);
     show("FX");
     ui.msg_t = 0;
     turn(EN_K4, 3);
     expect("  .. REV turned: the knob does nothing (the value kept at 50, no message)", trk[0].p[P_REV] == 50 && !ui.msg_t);
     /* (0.2.25 layout round: HOME's MIXER page, whose K3 was a copy of SPACE, is gone; GLO's MIXER has no SPACE card) */
     show("AMP ENV");
-    expect("  .. other pages: every card drawn", !card_hid(0) && !card_hid(3));
+    expect("  .. other pages: every card drawn, no notice", !off_module(cur_page()) && !card_hid(0) && !card_hid(3));
     set(MODS_PFX, 1u);
     show("FX");
-    expect("PART FX OFF too: DST not drawn", card_hid(0));
+    expect("PART FX OFF too: the FX page is a PART FX notice page", off_module(cur_page()) == MODS_PFX);
     set(MODS_SENDS, 0u);
     show("INSERT 1/2");
-    expect("PART FX OFF: INSERT 1/2 not drawn", card_hid(0) && card_hid(3));
+    expect("PART FX OFF: INSERT 1/2 a notice page", off_module(cur_page()) == MODS_PFX);
     show("INSERT 2/2");
-    expect("  .. INSERT 2/2 (MIX)", card_hid(0));
+    expect("  .. INSERT 2/2 (MIX)", off_module(cur_page()) == MODS_PFX);
     show("EQ 1/2");
-    expect("  .. EQ 1/2", card_hid(0) && card_hid(3));
+    expect("  .. EQ 1/2", off_module(cur_page()) == MODS_PFX);
     show("EQ 2/2");
-    expect("  .. EQ 2/2", card_hid(0) && card_hid(2));
+    expect("  .. EQ 2/2", off_module(cur_page()) == MODS_PFX);
     show("DUCK 1/2");
-    expect("  .. DUCK 1/2", card_hid(0) && card_hid(1) && card_hid(2));
+    expect("  .. DUCK 1/2", off_module(cur_page()) == MODS_PFX);
     show("DUCK 2/2");
-    expect("  .. DUCK 2/2", card_hid(0) && card_hid(2));
+    expect("  .. DUCK 2/2", off_module(cur_page()) == MODS_PFX);
     show("SIDECHAIN");
-    expect("  .. GLO > SIDECHAIN (the DUCK's SRC and NOTE), not drawn", card_hid(0) && card_hid(1));
-    show("FX");
-    expect("  .. the FX page: CHO DLY REV live again (SENDS ON), moved left to K1..K3 while DRIVE has no card (T0227)", !card_hid(0) && !card_hid(2) && card_hid(3) &&
-           !strncmp(ui.col[0], "CHORUS|", 7));
+    expect("  .. GLO > SIDECHAIN (the DUCK's SRC and NOTE), not a notice page, its cards not drawn", !off_module(cur_page()) && card_hid(0) && card_hid(1));
     set(MODS_PFX, 0u);
     show("FX");
-    expect("all ON: every card drawn", !card_hid(0) && !card_hid(1));
+    expect("all ON: no notice page, every card drawn", !off_module(cur_page()) && !card_hid(0) && !card_hid(1));
 
     trk[0].p[P_AMODE] = 1;
     trk[0].p[P_AHOLD] = 0;
     set(MODS_ARP, 1u);
     show("ARP 1/3");
-    expect("ARP OFF: ARP 1/3's MODE ORDER OCT not drawn, HOLD OFF drawn, moved left to K1 (T0227)",
-           !card_hid(0) && card_is(0, "HOLD", "OFF") && card_hid(1) && card_hid(2) && card_hid(3));
-    trk[0].p[P_AHOLD] = 1;
-    show("ARP 1/3");
-    expect("  .. HOLD ARP not drawn (no chord to keep)", card_hid(0) && card_hid(1));
-    trk[0].p[P_AHOLD] = 2;
-    show("ARP 1/3");
-    expect("  .. HOLD ALL drawn (it latches the keys), on K1", card_is(0, "HOLD", "ALL"));
+    expect("ARP OFF: ARP 1/3 an ARP notice page", off_module(cur_page()) == MODS_ARP);
     show("ARP 2/3");
-    expect("  .. ARP 2/3 all not drawn", card_hid(0) && card_hid(1) && card_hid(2) && card_hid(3));
+    expect("  .. ARP 2/3", off_module(cur_page()) == MODS_ARP);
     show("ARP 3/3");
-    expect("  .. ARP 3/3 (TARGET) not drawn", card_hid(0));
+    expect("  .. ARP 3/3 (TARGET)", off_module(cur_page()) == MODS_ARP);
     ui.msg_t = 0;
     show("ARP 1/3");
     v = trk[0].p[P_AMODE];
     turn(EN_K1, 1);
-    expect("  .. MODE turned: the knob does nothing, nothing said", trk[0].p[P_AMODE] == v && !ui.msg_t);
+    expect("  .. MODE turned: the knob changes nothing, nothing said (it jumps to MODULES: ui_render off_check)", trk[0].p[P_AMODE] == v && !ui.msg_t);
     trk[0].p[P_AMODE] = 1;
     go_main_to(HP_MORPH); frame();
     btn_down(B_ARP);
     frames(800);
-    expect("  .. QUICK ARP's four not drawn too", ui.layer == LAYER_ARP && card_hid(0) && card_hid(3));
+    expect("  .. QUICK ARP: an ARP notice layer", ui.layer == LAYER_ARP && off_layer(LAYER_ARP) == MODS_ARP);
     btn_up(B_ARP); frame(); frames(300);
     set(MODS_ARP, 0u);
     show("ARP 1/3");
-    expect("ARP ON: the ARP pages live", !card_hid(0) && !card_hid(2));
+    expect("ARP ON: the ARP pages live", !off_module(cur_page()) && !card_hid(0) && !card_hid(2));
 
     set(MODS_SEQ, 1u);
     show("ARP 1/3");
-    expect("SEQ OFF, an arp in UP: the ARP pages live", !card_hid(0));
+    expect("SEQ OFF, an arp in UP: the ARP pages live", !off_module(cur_page()) && !card_hid(0));
     trk[0].p[P_AMODE] = AM_SEQ;
     show("ARP 1/3");
     expect("  .. an arp in SEQUENCER: its cards not drawn (HOLD, which applies, moved left to K1), no step strip",
-           !strncmp(ui.col[0], "HOLD|", 5) && card_hid(1) && card_hid(2) && !foot_steps());
+           !off_module(cur_page()) && !strncmp(ui.col[0], "HOLD|", 5) && card_hid(1) && card_hid(2) && !foot_steps());
     trk[0].p[P_AMODE] = 0;
     go_page(GR_EVENTS); ui.force = 1; frame();
-    expect("  .. AUTOMATION: PLAY not drawn (the step strip stays)", card_hid(3) && foot_steps());
+    expect("  .. AUTOMATION: a SEQ notice page, no step strip", off_module(cur_page()) == MODS_SEQ && !foot_steps());
     go_page(GR_ROLL); ui.force = 1; frame();
-    expect("  .. STEP: its editing cards live", !card_hid(0) && !card_hid(1));
+    expect("  .. STEP: a SEQ notice page, no step strip", off_module(cur_page()) == MODS_SEQ && !foot_steps());
     go_main_to(HP_MORPH); frame();
     ui.msg_t = 0;
     press(B_PLAY);

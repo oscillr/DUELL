@@ -255,8 +255,12 @@ int main(void)
         q.ins = (int)t;
         v = run(&q) - ref1;
         snprintf(nm, sizeof nm, "INSERT %s", N_ITYPE[t]);
+        for (char *q = nm; *q; q++)
+            *q = *q == '\n' ? ' ' : *q;
         row(nm, v, "");
         snprintf(nm, sizeof nm, "insert/%s", N_ITYPE[t]);
+        for (char *q = nm; *q; q++)                                  /* (the two-line names: SOFT\nCLIP -> insert/SOFT_CLIP) */
+            *q = *q == '\n' || *q == ' ' ? '_' : *q;
         fig(nm, v);
         if (v > wins)
             wins = v, heavy_ins = t;

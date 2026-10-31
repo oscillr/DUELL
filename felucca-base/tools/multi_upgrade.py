@@ -49,7 +49,7 @@ def upgrade(b, defs):
         out += b[pos:pos + steps]
         pos += steps
     nev = b[pos]
-    tail = 1 + 3 * nev + 3                                  # the automation (count, events) and BALANCE, XFADE, SPLIT
+    tail = 1 + 3 * nev + 3                                  # the automation (count, events) and the spare byte (BALANCE's until item 157), XFADE, SPLIT
     if pos + tail != len(b):
         sys.exit("multi_upgrade: the record does not parse to its own length (%d != %d)" % (pos + tail, len(b)))
     out += b[pos:]

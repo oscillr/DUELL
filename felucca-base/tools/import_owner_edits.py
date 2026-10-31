@@ -19,6 +19,7 @@ What it does, with nothing of his changed (values are copied as they are; the au
   --audit then regenerates the sound table and runs the factory sound audit (tests/sound_audit.c) and tools/factory_multis.py check, and prints the FAIL
           lines: his values are never changed to pass them.
   --replace  start from nothing (the default merges: a slot not in the files keeps its earlier owner entry).
+End B: the record's End B block is imported as exact values (bend / bpin / bfm / bamt of the sound, tools/endb.py), so an End B the owner edited is kept.
 Refused with a reason (never silently): a record that does not read, an engine different from the factory sound's (a sound's engine is its identity), a name that
 another sound already has, the FM6 operator patch and SEQUENCER steps (not representable in duell_sounds.py: only the values are imported).
 Run from anywhere; exit 1 on a refusal.
@@ -35,12 +36,14 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 TOOLS = ROOT / "tools"
+sys.path.insert(0, str(TOOLS))
+import endb                                                          # the End B block (the firmware's format), shared with gen_duell_sounds.py / convert_endb.py
 CATS = ["", "BASS", "LEAD", "PAD", "PLUCK", "KEYS", "PERC", "FX", "OTHER"]        # category.c (record byte; 0: none)
-PTF = dict(PAT=1, TR=2, FM6=4, MB=8, XB=16, AK=32, BM=64, CB=128)   # XB (PT_VER 3): the extension block sits where the retired shadow marker was
+PTF = dict(PAT=1, TR=2, FM6=4, MB=8, XB=16, AK=32, BM=64, CB=128)   # MB (PT_VER 4): End B as values; XB and BM (16, 64) are PT_VER 3's and are refused
 AK_NAMES = ["P_AMODE", "P_ARATE", "P_AOCT", "P_AGATE", "P_ASWING", "P_APROB", "P_AHOLD", "P_AORDER", "P_SCALE", "P_CHRD", "P_VOIC", "P_SLEN", "P_SDIV", "P_SSWING", "P_SGATE", "P_SQNT"]
 STORE_ZERO = ["P_KTRK", "P_FREEA", "P_FREED", "P_L2TRIG", "P_LTRIG", "P_DKCRV", "P_DKSRC"]       # upreset.c up_def: the stored default is 0 (0.2.24: DUCK SRC too, its stored default stays PUMP)
 RETIRED_ID = 127            # the SCALE (ordinal 8 of a record's keys group) is retired, its id 25 is the TWIN FILTER's RES 2 now (cloud job B): the value is read and dropped (no name for 127)
-SKIP_NAMES = {"LEVEL", "PAN", "MUTE", "ROOT", "QUANT", "TRANS", "SLEN", "SDIV", "SSWING", "SGATE", "SQNT", "SCALE"}   # the track's own (gen_duell_sounds TRACK_ONLY)
+SKIP_NAMES = {"LEVEL", "PAN", "MUTE", "ROOT", "QUANT", "SLEN", "SDIV", "SSWING", "SGATE", "SQNT", "SCALE"}   # the track's own (gen_duell_sounds TRACK_ONLY)
 
 
 def load(path, name):
@@ -61,11 +64,13 @@ class Ctx:
         self.tp, _ = self.gs.parse_tp(self.ids)
         self.engines, _ = self.gs.parse_engines()
         self.e0 = self.ids["P_E0"]
-        self.browse = json.loads((ROOT / "web" / "editor" / "layout.json").read_text())["BROWSE"]
+        self.layout = json.loads((ROOT / "web" / "editor" / "layout.json").read_text())
+        self.browse = self.layout["BROWSE"]
         base = load(TOOLS / "duell_sounds.py", "duell_sounds").SOUNDS
         self.base = {(s["engine"], s["idx"]): s for s in base}
         self.eng_names = self.fm.ENGINES
         _, names = self.gs.parse_tp(self.ids)
+        self.wlabel = self.gs.bend_labels(self.ids, self.gs.parse_xtp(names))   # {wide id: label} of the End B values ('bend' keys)
         self.xnames = set(self.gs.xtp_names(self.gs.parse_xtp(names)))      # every spelling of an extension slot (SUB LEVEL, TWIN LINK, X_SUBLVL ..)
 
     def default(self, eng, pid):
@@ -77,6 +82,20 @@ class Ctx:
         t = self.tp.get(self.name_of[pid])
         return t[3] if t else None
 
+    def rng(self, eng, w):
+        """the stored range (min, max) of wide id w for engine eng: the unit's param_desc_of (layout.json is written from the firmware's own tables; web/test_ranges.mjs compares it with tests/rangedump.c)"""
+        if w == 127:
+            return 0, 0
+        d = self.layout["XTP"][w - 128] if w >= 128 else self.layout["ENG"][eng]["edit"][w - self.e0] if w >= self.e0 else self.layout["TP"][w]
+        return d["min"], d["max"]
+
+    def bits(self, eng, w):
+        lo, hi = self.rng(eng, w)
+        n, b = hi - lo + 1, 0
+        while b < 16 and (1 << b) < n:
+            b += 1
+        return b
+
     def store_default(self, eng, pid):
         if pid == 0:
             return 104
@@ -85,45 +104,80 @@ class Ctx:
         return self.default(eng, pid)
 
 
+MBV_NEVER, wid_ok, get_bits = endb.MBV_NEVER, endb.wid_ok, endb.get_bits     # the wide values End B never differs in (morph.c mbv_never), the id check, the bit reader
+PT_FIX, PT_VB, PT_WORST = 20, 20, 577       # upreset.c PT_VER 4: the fixed part, the values' bitmap, the biggest record
+
+
+def mbv_size(ctx, b, o, avail, eng):
+    """the length of the End B block (morph.c MBV, morph_bv_size) at b[o:], 0 when it is no block"""
+    if avail < 22 or (b[o] & ~3) or b[o + 1] > 101 or (b[o] & 2 and eng != ctx.eng_names.index("FM6")):
+        return 0
+    nb = 0
+    for w in range(160):
+        if b[o + 2 + (w >> 3)] >> (w & 7) & 1:
+            if not wid_ok(w) or w in MBV_NEVER:
+                return 0
+            nb += ctx.bits(eng, w)
+    n = 22 + (nb + 7) // 8
+    if b[o] & 1:
+        if n + 20 > avail:
+            return 0
+        for w in range(160):
+            if b[o + n + (w >> 3)] >> (w & 7) & 1 and not wid_ok(w):
+                return 0
+        n += 20
+    if b[o] & 2:
+        if n + 57 > avail:
+            return 0
+        at = (o + n) * 8
+        for _ in range(65):
+            v, at = get_bits(b, at, 7)
+            if v > 99:
+                return 0
+        n += 57
+    return n
+
+
 def parse_record(ctx, b):
-    """a stored record (firmware upreset.c / web/editor/patchrecord.js) -> dict(engine, cat, name, values{id: v}, mb, steps, fm6) or raises ValueError"""
-    if len(b) < 20 or len(b) > 440 or b[0] | b[1] << 8 != len(b):
+    """a stored record (firmware upreset.c PT_VER 4 / web/editor/patchrecord.js) -> dict(engine, cat, name, values{id: v}, mb (End B block bytes), steps, fm6, ext) or raises ValueError"""
+    if len(b) < PT_FIX + PT_VB or len(b) > PT_WORST or b[0] | b[1] << 8 != len(b):
         raise ValueError("wrong size or length field")
     f = b[4]
     if not f & PTF["CB"]:
         raise ValueError("a record of a firmware before 0.2.14")
+    if f & (PTF["XB"] | PTF["BM"]):
+        raise ValueError("a record of an older DUELL version (PT_VER 3), which this firmware does not load")
+    if f & ~(PTF["PAT"] | PTF["TR"] | PTF["FM6"] | PTF["MB"] | PTF["AK"] | PTF["CB"]):
+        raise ValueError("unknown flags")
     eng = b[5]
     if eng >= len(ctx.eng_names):
         raise ValueError("unknown engine")
     name = b[7:19].split(b"\0")[0].decode("ascii", "replace")
     if not name or any(not 32 <= c <= 126 for c in b[7:19].split(b"\0")[0]):
         raise ValueError("no usable name")
-    o = 20 + (1 + b[20] if f & PTF["XB"] else 0)          # (the extension block: [L][XV][sections]; DUELL 1.0: its slots (tag 1) ARE read: they are the sound's twin filter, SUB and CYCLE values)
-    ext = {}
-    if f & PTF["XB"]:
-        p = 22
-        while p < o:
-            tag, n = b[p], b[p + 1]
-            p += 2
-            if tag == 1:
-                for i in range(0, n, 2):
-                    ext[b[p + i] - 128] = b[p + i + 1] - 64
-            p += n
-    mb = bytes(b[o:o + 7]) if f & PTF["MB"] else None
-    o += 7 if f & PTF["MB"] else 0
-    n = b[19]
-    vals = {}
-    if f & PTF["BM"]:
-        j = 0
-        for i in range(128):
-            if b[o + (i >> 3)] >> (i & 7) & 1:
-                vals[i] = b[o + 16 + j] - 64
-                j += 1
-        o += 16 + n
-    else:
-        for i in range(n):
-            vals[b[o + 2 * i]] = b[o + 2 * i + 1] - 64
-        o += 2 * n
+    vals, ext, at, nv = {}, {}, (PT_FIX + PT_VB) * 8, 0
+    for w in range(PT_VB * 8):                       # the values: a bit per wide id, each at the bits of its range, in wide id order
+        if b[PT_FIX + (w >> 3)] >> (w & 7) & 1:
+            if not wid_ok(w):
+                raise ValueError("it stores a parameter that does not exist")
+            code, at = get_bits(b, at, ctx.bits(eng, w))
+            lo, hi = ctx.rng(eng, w)
+            v = min(lo + code, hi)
+            nv += 1
+            if w < 127:
+                vals[w] = v
+            else:
+                ext[w - 128] = v
+    if nv != b[19]:
+        raise ValueError("the value count does not match the bitmap")
+    o = PT_FIX + PT_VB + (((at - (PT_FIX + PT_VB) * 8) + 7) >> 3)
+    mb = None
+    if f & PTF["MB"]:
+        n = mbv_size(ctx, b, o, len(b) - o, eng) if o < len(b) else 0
+        if not n:
+            raise ValueError("the End B block is damaged")
+        mb = bytes(b[o:o + n])
+        o += n
     o += 32 if f & PTF["PAT"] else 0
     fm6 = bool(f & PTF["FM6"])
     o += 112 if f & PTF["FM6"] else 0
@@ -131,34 +185,29 @@ def parse_record(ctx, b):
     if f & PTF["AK"]:
         ln = b[o] | b[o + 1] << 8
         c = b[o + 2:o + 2 + ln]
-        g = c[0]
-        grp = g & 7
-        ak = {}
-        for k, nm in enumerate(AK_NAMES):
-            og = 1 if k < 8 else 2 if k < 11 else 4
-            if og & grp:
-                ak[ctx.ids.get(nm, RETIRED_ID)] = 0 if k == 8 else ctx.default(eng, ctx.ids[nm])
-        p = 2
-        if g & 8:
-            bm = c[1] | c[2] << 8
-            p = 3
+        grp = c[0] & 7 if len(c) >= 3 and not c[0] & ~7 else 0
+        bm = c[1] | c[2] << 8 if grp else 0
+        if grp and not bm >> 8 & 1:                  # (the retired SCALE ordinal 8 in the bitmap: the unit ignores the whole block)
+            ak = {}
+            for k, nm in enumerate(AK_NAMES):
+                if k != 8 and (1 if k < 8 else 2 if k < 11 else 4) & grp:
+                    ak[ctx.ids[nm]] = ctx.default(eng, ctx.ids[nm])
+            at = 24
             for k in range(16):
                 if bm >> k & 1:
-                    ak[ctx.ids.get(AK_NAMES[k], RETIRED_ID)] = c[p] - 64
-                    p += 1
-        else:
-            for _ in range(c[1]):
-                ak[c[p]] = c[p + 1] - 64
-                p += 2
-        if grp & 4:
-            m = c[p] | c[p + 1] << 8
-            steps = bin(m).count("1")
-        vals.update(ak)
+                    code, at = get_bits(c, at, ctx.bits(eng, ctx.ids[AK_NAMES[k]]))
+                    lo, hi = ctx.rng(eng, ctx.ids[AK_NAMES[k]])
+                    ak[ctx.ids[AK_NAMES[k]]] = min(lo + code, hi)
+            if grp & 4:
+                p = 3 + ((at - 24 + 7) >> 3)
+                steps = bin(c[p] | c[p + 1] << 8).count("1")
+            vals.update(ak)
     full = {}
     for pid in range(ctx.e0 + 8):
         d = ctx.store_default(eng, pid)
         if d is not None:
-            full[pid] = d
+            lo, hi = ctx.rng(eng, pid)                  # (upreset.c pt_encode leaves out a value whose CODE equals the stored default's: the default fitted into the range, as a load fits it: FREED's stored 0 is 1 = 12 dB)
+            full[pid] = min(max(d, lo), hi)
     full.update(vals)
     if not f & PTF["TR"]:                            # before 0.2.19: the LEVEL was the trim
         full[ctx.ids["P_TRIM"]] = full.get(0, 104)
@@ -188,12 +237,15 @@ def sound_from_record(ctx, rec, factory):
     if (cat0 in ("BASS", "PERC") or "KICK" in rec["name"]) and "KTRK" not in p:
         p["KTRK"] = rec["values"][ctx.ids["P_KTRK"]]
     s = dict(engine=ctx.eng_names[eng], idx=factory["idx"], name=rec["name"], cat=CATS[rec["cat"]] if rec["cat"] else factory["cat"], p=p)
-    if rec["mb"] and rec["mb"][0] == ord("M"):
-        seed, amt = rec["mb"][1] | rec["mb"][2] << 8, rec["mb"][3]
-        if seed:
-            s["bseed"] = seed
-        if 1 <= amt <= 40:
-            s["bamt"] = amt
+    if rec["mb"]:                                    # PT_VER 4: End B as exact values (the block of the record): 'bend' {label: End B value} (where it differs from the Original), 'bpin' (the marks of the values set by hand), 'bfm' (FM6 bytes), 'bamt' (the AMOUNT)
+        d = endb.decode(rec["mb"], eng)
+        if d["amt"]:
+            s["bamt"] = d["amt"] - 1
+        s["bend"] = {ctx.wlabel[w]: v for w, v in sorted(d["vals"].items())}
+        if d["marks"]:
+            s["bpin"] = [ctx.wlabel[w] for w in d["marks"]]
+        if d["fm"] is not None:
+            s["bfm"] = d["fm"]
     return s
 
 
@@ -204,13 +256,15 @@ def build_list(ctx, lst):
 
 
 def same_sound(ctx, a, b):
-    """equal as sounds: the same values (a pair equal to the default counts as absent), name, category, End B AMOUNT; a factory seed of 0 (the hash) matches any"""
+    """equal as sounds: the same values (a pair equal to the default counts as absent), name, category, End B (the block of values, else the AMOUNT); a factory seed of 0 (the hash) matches any"""
     pa, pb = dict(a["pairs"]), dict(b["pairs"])
     eng = a["e"]
     for pid in set(pa) | set(pb):
         d = ctx.default(eng, pid) if pid < 255 else None
         if pa.get(pid, d) != pb.get(pid, d):
             return False
+    if a.get("endb") or b.get("endb"):               # End B as values: the block is the End B (its AMOUNT byte too); the seed no longer counts
+        return (a["name"], a["cat"], a["e"], a["idx"], a.get("endb")) == (b["name"], b["cat"], b["e"], b["idx"], b.get("endb"))
     return (a["name"], a["cat"], a["e"], a["idx"], a["bamt"]) == (b["name"], b["cat"], b["e"], b["idx"], b["bamt"]) and \
         (not a["bseed"] or not b["bseed"] or a["bseed"] == b["bseed"])
 
@@ -262,6 +316,10 @@ def read_files(paths):
                 if b and zlib.crc32(b) != o.get("crc"):
                     notes.append("%s: object %s fails its checksum: skipped" % (Path(path).name, o.get("id")))
                     continue
+                if o.get("id") == 40:                                                    # a backup file v5: a patch record {id: 40, slot} (PT_VER 4), whole
+                    if b and isinstance(o.get("slot"), int) and 0 <= o["slot"] < 128:
+                        patches[o["slot"]] = bytes(b)
+                    continue
                 objs[o["id"]] = b
             best = {}
             for oid, b in objs.items():
@@ -307,8 +365,11 @@ def write_sounds(entries, path):
              'Each entry replaces the factory sound with the same (engine, idx) in tools/duell_sounds.py as the build sees it (tools/gen_duell_sounds.py with_owner).',
              'Do not edit by hand: import again, or delete an entry to go back to the recipe sound."""', "", "OWNER_SOUNDS = ["]
     for s in sorted(entries.values(), key=lambda s: (s["engine"], s["idx"])):
-        lines.append("    dict(engine=%r, idx=%d, name=%r, cat=%r%s%s,\n         p=%s)," % (
-            s["engine"], s["idx"], s["name"], s["cat"], ", bseed=%d" % s["bseed"] if "bseed" in s else "", ", bamt=%d" % s["bamt"] if "bamt" in s else "", py(s["p"])))
+        tail = ""
+        if "bend" in s:                                   # End B as values, in the form duell_sounds.py holds it (tools/endb.py sound_kwargs)
+            tail = ",\n         " + ",\n         ".join(endb.sound_kwargs(s["bend"], s.get("bpin"), s.get("bfm")))
+        lines.append("    dict(engine=%r, idx=%d, name=%r, cat=%r%s%s,\n         p=%s%s)," % (
+            s["engine"], s["idx"], s["name"], s["cat"], ", bseed=%d" % s["bseed"] if "bseed" in s else "", ", bamt=%d" % s["bamt"] if "bamt" in s else "", py(s["p"]), tail))
     lines.append("]")
     Path(path).write_text("\n".join(lines) + "\n")
 
@@ -394,6 +455,8 @@ def main(argv):
                     if v != fp.get(pid, ctx.default(e_fac["e"], pid))]
             if e_new["name"] != e_fac["name"]:
                 diff.append("name %s>%s" % (e_fac["name"], e_new["name"]))
+            if e_new.get("endb") != e_fac.get("endb"):
+                diff.append("End B values")
             if k not in own or own[k] != s:
                 changed += 1
                 report.append("#%d %s: edited (%s)" % (slot + 1, s["name"], ", ".join(diff[:8]) + (" ..." if len(diff) > 8 else "") if diff else "End B only"))
@@ -413,8 +476,8 @@ def main(argv):
         cur = TOOLS / "factory_multis" / ("M%02d.bin" % (slot + 1))
         if cur.exists() and cur.read_bytes() == b:
             continue
-        if len(b) < 20 or b[0] != 7 or b[1] != len(ctx.tp) and b[1] != 127:
-            refused.append("M%02d: not a version 7 multi record: not imported" % (slot + 1))
+        if len(b) < 20 or b[0] != 8 or b[1] != len(ctx.tp) and b[1] != 127:
+            refused.append("M%02d: not a version 8 multi record: not imported" % (slot + 1))
             continue
         try:
             parts, _ = ctx.fm.parts_of(b)

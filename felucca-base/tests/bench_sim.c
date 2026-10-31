@@ -10,7 +10,7 @@
  * so a row's average here is the host model's prediction for that row; cpu_sum / cpu_n / cpu_pk / cpu_miss as audio.c keeps them. The
  * main loop: a frame (ui_test.c frame: ui_input, then ui_draw) every 16 ms, so the bench is driven through the real BENCH screen.
  * Checks:
- *   1 the list: every name unique and within the table's name column (AF_S, 88 px); every ref and every bench_baseline.txt line exists
+ *   1 the list: every name unique and within the table's name column (AF_S, 94 px); every ref and every bench_baseline.txt line exists
  *   2 a whole run started from the menu (the BENCH row, a knob right, then OCT+): every row measured, in order, the progress, the pages drawn,
  *     the voices of the rows (1, 4, the pool's 8), the delta rows against their refs
  *   3 the log: the INFO and header lines, one CSV line per row with the header's field count, the END line
@@ -104,7 +104,7 @@ static void bench_tm_get(bench_tmv_t *v)
     *v = sim_tm.v;
     v->sd_mean = n ? (int32_t)(sim_tm.sd_sum / n) : 0, v->rt_mean = n ? (int32_t)(sim_tm.rt_sum / n) : 0, v->mg_mean = n ? (int32_t)(sim_tm.mg_sum / (int64_t)n) : 0;
     v->slack = sim_tm.slack, v->calm_ms = sim_tm.calm_ms, v->lrun = sim_tm.lrun, v->vrun = sim_tm.vrun;
-    v->vwin_k = sim_tm.vwin_k, v->vwin_ms = sim_tm.vwin_ms, v->floor = sim_tm.floor;
+    v->vwin_k = sim_tm.vwin_k, v->vwin_ms = sim_tm.vwin_ms, v->floor = sim_tm.floor, v->nocore1 = sim_tc.v.nocore1;
     v->c1x10 = n ? 253u : 0u, v->c1pkx10 = n ? 310u : 0u;
     if (n) {
         uint32_t i;
@@ -129,8 +129,10 @@ static void bench_tm_set(uint32_t what, uint32_t val)
         sim_tm.vwin_k = d ? 0u : val;
     else if (what == 5)
         sim_tm.vwin_ms = d ? 2000u : val;
-    else
+    else if (what == 6)
         sim_tm.floor = d ? 0u : val;
+    else
+        sim_tc.v.nocore1 = (uint8_t)(d ? 0u : val != 0u);   /* (item 112) */
 }
 static void sim_tm_job(int vlate)
 {
@@ -907,7 +909,7 @@ int main(int argc, char **argv)
         for (i = 0; i < BENCH_NSCN; i++) {
             for (j = i + 1u; j < BENCH_NSCN; j++)
                 dup += str_eq(BENCH_SCN[i].name, BENCH_SCN[j].name);
-            if (host_text_w(BENCH_SCN[i].name) > 88u) {
+            if (host_text_w(BENCH_SCN[i].name) > 94u) {
                 printf("bench_sim: %s is %u px wide\n", BENCH_SCN[i].name, host_text_w(BENCH_SCN[i].name));
                 wide++;
             }
@@ -983,14 +985,14 @@ int main(int argc, char **argv)
         bad += check("the run: every row measured, in order, about 7 minutes", !bench.on && order && done == BENCH_NAUTO && secs > 300u && secs < 600u);
         v1 = bench_res[bench_find("ANALOG 1")].vox, v4 = bench_res[bench_find("ANALOG 4")].vox;
         v8 = bench_res[bench_find("TYP ST 8+8")].vox, vl = bench_res[bench_find("TYP LAY 4+4")].vox;
-        vok = v1 >= 9u && v1 <= 11u && v4 >= 38u && v4 <= 42u && v8 <= 80u && v8 >= 60u && vl >= 70u && vl <= 80u;
-        printf("bench_sim: voices ANALOG 1 %.1f, ANALOG 4 %.1f, TYP ST 8+8 %.1f (the pool: 8), TYP LAY 4+4 %.1f\n", v1 / 10.0, v4 / 10.0, v8 / 10.0, vl / 10.0);
-        bad += check("the rows' voices: 1, 4, at most the pool's 8 with 8 + 8 asked for, LAYER doubles", vok);
+        vok = v1 >= 9u && v1 <= 11u && v4 >= 38u && v4 <= 42u && v8 <= 160u && v8 >= 120u && vl >= 70u && vl <= 80u;   /* (DUELL 1.1 item 90: each part its own 8 voices, no shared pool of 8) */
+        printf("bench_sim: voices ANALOG 1 %.1f, ANALOG 4 %.1f, TYP ST 8+8 %.1f (8 a part), TYP LAY 4+4 %.1f\n", v1 / 10.0, v4 / 10.0, v8 / 10.0, vl / 10.0);
+        bad += check("the rows' voices: 1, 4, at most 8 a part with 8 + 8 asked for (16), LAYER doubles", vok);
         {
-            uint32_t ia = bench_find("INS PHASR"), ra = bench_find("ANALOG 1"), ic = bench_find("IDLE ST"), dl = bench_find("DL RAND ST"), bo = bench_find("BUS OFF ST");
+            uint32_t ia = bench_find("INS PHASER"), ra = bench_find("ANALOG 1"), ic = bench_find("IDLE ST"), dl = bench_find("DL RAND ST"), bo = bench_find("BUS OFF ST");
             int ok = bench_res[ia].avg > bench_res[ra].avg && bench_res[ra].avg > bench_res[ic].avg && bench_res[dl].avg > bench_res[bo].avg &&
                      bench_res[bench_find("HVY DUEL 8+8")].avg > bench_res[bench_find("TYP DUEL 8+8")].avg;
-            printf("bench_sim: IDLE ST %.1f %%, ANALOG 1 %.1f %%, INS PHASR %.1f %%, BUS OFF ST %.1f %%, DL RAND ST %.1f %%\n", row_avg(ic), row_avg(ra), row_avg(ia), row_avg(bo), row_avg(dl));
+            printf("bench_sim: IDLE ST %.1f %%, ANALOG 1 %.1f %%, INS PHASER %.1f %%, BUS OFF ST %.1f %%, DL RAND ST %.1f %%\n", row_avg(ic), row_avg(ra), row_avg(ia), row_avg(bo), row_avg(dl));
             bad += check("the stages cost something: a voice over idle, an insert over its voice, RANDOM over SENDS OFF, heavy over typical", ok);
         }
         {                                               /* (the log as the console had it: host_tests.sh feeds it to tools/bench_log.py) */

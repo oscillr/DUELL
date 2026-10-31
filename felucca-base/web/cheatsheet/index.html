@@ -32,12 +32,17 @@ h2{font:600 16px/1.2 "Oswald","DM Sans",sans-serif;margin:10px 0 4px;padding-bot
 ul{margin:4px 0 0;padding-left:18px}
 li{margin:3px 0;break-inside:avoid}
 li::marker{color:var(--pink)}
+.dg{display:grid;gap:5px;margin:6px 0 4px;font-size:.85em;text-align:center}
+.dg .r{display:flex;gap:5px;align-items:stretch}
+.dg .r>div{flex:1;border:1px solid var(--vio2);border-radius:6px;padding:3px 2px;background:var(--chip)}
+.dg .scr{flex:1.6;color:var(--mute)}
+.dg .keys{border-style:dashed}
 footer{margin-top:10px;font-size:12px;color:var(--mute)}
 @media (max-width:560px){.row{grid-template-columns:1fr;gap:2px}section{padding:4px 12px 10px}}
 @media print{
  @page{size:A4;margin:8mm}
  :root{--bg:#fff;--panel:#fff;--fg:#000;--mute:#333;--line:#bbb;--acc:#b0206a;--pink:#d6247f;--vio:#6a2c9a;--vio2:#6a2c9a;--chip:#fff;--chipfg:#000}
- body{font-size:9pt;line-height:1.25;background:#fff;color:#000}
+ body{font-size:9pt;line-height:1.15;background:#fff;color:#000}
  main{max-width:none;padding:0}
  header{padding:0 0 1.5mm;border-bottom:1.5px solid var(--vio)}
  header h1{font-size:20pt;color:#000}
@@ -46,10 +51,11 @@ footer{margin-top:10px;font-size:12px;color:var(--mute)}
  header .sub{margin-top:1mm}
  header .sub,header .stamp,footer{font-size:9pt}
  .bar{display:none}
+ footer{display:none}
  .cols{columns:2;column-gap:5mm}
- section{margin:0 0 1.2mm;border:0;border-radius:0;padding:0;background:#fff}
+ section{break-inside:auto;margin:0 0 1.2mm;border:0;border-radius:0;padding:0;background:#fff}
  h2{font-size:10pt;margin:2mm 0 1mm;color:var(--vio);border-bottom-color:var(--pink)}
- .row{padding:.3px 0;gap:4px;grid-template-columns:42% 1fr}
+ .row{padding:.3px 0;gap:4px;grid-template-columns:34% 1fr}
  .g b{border-color:var(--vio)}
  li{margin:0}
 }
@@ -62,85 +68,78 @@ footer{margin-top:10px;font-size:12px;color:var(--mute)}
  <p class="tag"><i>Multi</i><b>Morphing</b> Bitimbral Synthesizer</p>
  <p class="by">by OSCILL/R</p>
  <p class="sub">cheat sheet for the M-VAVE FM-1</p>
- <p class="stamp">checked against DUELL 1.0 &middot; community-style quick reference; full details in SPEC.md and docs/QUICKSTART.md</p>
+ <p class="stamp">checked against DUELL 1.1 &middot; community-style quick reference; full details in SPEC.md and docs/QUICKSTART.md</p>
  <p class="bar"><button type="button" onclick="window.print()">Print</button></p>
 </header>
 
 <div class="cols">
 
 <section>
+<h2>Part marker</h2>
+<svg viewBox="0 0 440 150" width="100%" role="img" aria-label="The part marker at the top of a page: part number, morph end letter, voices" style="display:block;max-width:440px;color:var(--fg);font:12px/1.2 sans-serif">
+<g fill="none" stroke="var(--mute)" stroke-width="1"><path d="M160 46V70H205"/><path d="M100 46V96H205"/><path d="M40 46V122H205"/></g>
+<rect x="10" y="10" width="180" height="36" rx="18" fill="var(--pink)"/>
+<rect x="70" y="11" width="119" height="34" rx="17" fill="var(--chip)" stroke="var(--pink)"/>
+<rect x="70" y="11" width="10" height="34" fill="var(--chip)"/>
+<g text-anchor="middle" font-size="18" font-weight="700"><text x="40" y="35" fill="#fff">1</text><text x="100" y="35" fill="currentColor">A</text><text x="160" y="35" fill="currentColor">8</text></g>
+<g fill="currentColor"><text x="212" y="66">In POLY the number is the voices still free.</text><text x="212" y="82">M, L, U in MONO, LEGATO, UNISON.</text>
+<text x="212" y="100">The letter shows which morph end you edit, A or B.</text>
+<text x="212" y="126">The number marks part 1 or part 2.</text></g>
+</svg>
+</section>
+
+<section>
 <h2>Getting around</h2>
-<div class="row"><div class="g">Turn <b>SELECT</b></div><div class="e">Previous / next sub-page; in lists and the menu it moves the row.</div></div>
-<div class="row"><div class="g">Tap <b>HOME</b></div><div class="e">MORPH page (HOME's round: MORPH, MORPH SET, MODE).</div></div>
-<div class="row"><div class="g">Hold <b>HOME</b></div><div class="e">Opens the menu. SELECT moves row to row; any knob or <b>OCT+</b> / <b>OCT-</b> changes the value; HOME closes it.</div></div>
-<div class="row"><div class="g">Press <b>ALGORITHM</b></div><div class="e">Selects the part you edit (1 or 2). On the MORPH page and on PERFORM: PART 1, BOTH, PART 2.</div></div>
-<div class="row"><div class="g">Tap <b>GLO</b>, then turn <b>SELECT</b></div><div class="e">Steps through the GLO pages, first MIXER.</div></div>
-<div class="row"><div class="g">Hold <b>EDIT</b> / <b>LFO</b> / <b>ENV</b> / <b>ARP</b> / <b>GLO</b></div><div class="e">Quick edit: the four knobs become performance controls. The keys still play. Let go and you are back on your page.</div></div>
-<div class="row"><div class="g">Hold <b>OCT-</b> + turn a knob</div><div class="e">Resets that knob's card to its default.</div></div>
-<div class="row"><div class="g"><b>OCT-</b> / <b>OCT+</b> in a dialog or menu</div><div class="e">OCT- means back / no, OCT+ means do it / yes.</div></div>
-<div class="row"><div class="g">MENU &gt; SYSTEM &gt; GUIDE</div><div class="e">Shows the first-start guide again.</div></div>
+<div class="row"><div class="g">Turn <b>SELECT</b></div><div class="e">Switches between the pages of a module; in lists and the menu it moves the row.</div></div>
+<div class="row"><div class="g">Tap <b>FX</b> / <b>SEL</b> / <b>ENV</b> / <b>LFO</b> / <b>EDIT</b> / <b>GLO</b> / <b>ARP</b> / <b>SEQ</b></div><div class="e">Switches between the modules.</div></div>
+<div class="row"><div class="g">Tap <b>HOME</b></div><div class="e">MORPH page; turn <b>SELECT</b> for MORPH SET and MODE.</div></div>
+<div class="row"><div class="g">Hold <b>HOME</b></div><div class="e">Opens the menu. <b>HOME</b> closes it.</div></div>
+<div class="row"><div class="g">Press <b>ALGORITHM</b></div><div class="e">Selects the part you edit. On the MORPH page and on PERFORM: PART 1, BOTH, PART 2.</div></div>
+<div class="row"><div class="g">Hold <b>EDIT</b> / <b>LFO</b> / <b>ENV</b> / <b>ARP</b> / <b>GLO</b> / <b>SEQ</b> / <b>REC</b></div><div class="e">Quick page: the four knobs become performance controls. Let go to go back.</div></div>
+<div class="row"><div class="g">Hold <b>FX</b></div><div class="e">PERFORM page. Tap <b>FX</b> to leave.</div></div>
+<div class="row"><div class="g">Hold <b>OCT-</b> + turn a knob</div><div class="e">Resets that knob's card to its default. In a dialog or menu <b>OCT-</b> means back / no, <b>OCT+</b> do it / yes.</div></div>
 </section>
 
 <section>
 <h2>Playing</h2>
 <div class="row"><div class="g">Tap <b>OCT-</b> / <b>OCT+</b></div><div class="e">Octave down / up of the keys. Both together reset the octave to 0.</div></div>
-<div class="row"><div class="g">Tap <b>REC</b> (not on sequencer pages)</div><div class="e">HOLD switch for the part(s) the keys play; bright light = HOLD on. Tap again to release.</div></div>
+<div class="row"><div class="g">Tap <b>REC</b> (not on sequencer pages)</div><div class="e">HOLD for the part(s) the keys play. Tap again to release.</div></div>
 <div class="row"><div class="g">Tap <b>PLAY/STOP</b></div><div class="e">Stopped: starts when you let go. Running: stops at once.</div></div>
-<div class="row"><div class="g">Hold <b>PLAY/STOP</b> 0.6 s, or press it twice</div><div class="e">STOP ALL: silences everything, delay, chorus and reverb tails too.</div></div>
-<div class="row"><div class="g">Hold <b>GLO</b> + keys / knobs</div><div class="e">Keys play; knob 1 LEVEL 1, knob 2 PAN 1, knob 3 LEVEL 2, knob 4 PAN 2. <b>OCT-</b> mutes / unmutes part 1, <b>OCT+</b> part 2.</div></div>
-<div class="row"><div class="g"><b>ARP</b> (tap / hold)</div><div class="e">Arpeggiator of the selected part. Hold: QUICK ARP.</div></div>
+<div class="row"><div class="g">Hold <b>PLAY/STOP</b>, or press it twice</div><div class="e">STOP ALL: silences everything, delay, chorus and reverb tails too.</div></div>
+<div class="row"><div class="g">Hold <b>GLO</b> + <b>OCT-</b> / <b>OCT+</b></div><div class="e">Mutes / unmutes part 1 / part 2.</div></div>
 <div class="row"><div class="g">Mod wheel (CC1)</div><div class="e">Moves the MORPH fader.</div></div>
 </section>
 
 <section>
 <h2>Sound</h2>
-<div class="row"><div class="g">Tap <b>HOME</b>, turn knob 1</div><div class="e">MORPH: glide from End A to End B (MIDI: CC70).</div></div>
-<div class="row"><div class="g">MORPH page, knob 2</div><div class="e">ROLL: a new random end (turn left = A, right = B; MIDI: CC102, 0 to 42 rolls End A, 85 to 127 rolls End B).</div></div>
-<div class="row"><div class="g">MORPH page, knob 3</div><div class="e">UNDO the last roll of A or B.</div></div>
-<div class="row"><div class="g">MORPH page, knob 4</div><div class="e">AMOUNT: how far a roll may go (MIDI: CC103).</div></div>
-<div class="row"><div class="g">Turn BLEND on the TWIN FILTER</div><div class="e">Reads MULTI, BOTH or TWIN.</div></div>
-<div class="row"><div class="g">Tap <b>SCL</b></div><div class="e">SCALE page (whole instrument). Second page CHORD (selected part).</div></div>
+<div class="row"><div class="g">MORPH page</div><div class="e">Knob 1 glides from End A to End B. Knob 2 ROLL: turn left to roll End A, right to roll End B. Knob 3 UNDO goes back up to 2 rolls. End B is saved exactly as it sounds, with the patch.</div></div>
 </section>
 
 <section>
 <h2>Sequencer / patterns</h2>
-<div class="row"><div class="g">Tap <b>SEQ</b></div><div class="e">Opens the 16-step pattern (32 patterns, P01 to P32) of the arp's SEQUENCER mode.</div></div>
-<div class="row"><div class="g">Tap <b>REC</b> on STEP / AUTOMATION or in the SEQ layer</div><div class="e">Arms recording on the selected part. A red dot and REC show in the bottom row of every page.</div></div>
-<div class="row"><div class="g">Tap <b>SAVE</b> on STEP / GRID / AUTOMATION</div><div class="e">Opens PATTERNS (32 patterns, P01 to P32).</div></div>
-<div class="row"><div class="g">Hold <b>SAVE</b> on PATTERNS</div><div class="e">"SAVE OVER &lt;name&gt;?" for the slot picked; <b>OCT+</b> says yes.</div></div>
-</section>
-
-<section>
-<h2>Effects</h2>
-<div class="row"><div class="g">Tap <b>FX</b> (again)</div><div class="e">The part's own pages. Tap again for the next sub-page.</div></div>
-<div class="row"><div class="g">SEND FX page, turn knob 1 / 2 / 3</div><div class="e">Jumps to the CHORUS, DELAY 1/2 or REVERB page of GLO.</div></div>
-<div class="row"><div class="g">Hold <b>FX</b> (or hold FX + a white key)</div><div class="e">PERFORM page. Tap FX to leave.</div></div>
-<div class="row"><div class="g">PERFORM: hold white keys</div><div class="e">REPEAT 1/8, REPEAT 1/16, REPEAT 1/32, REVERSE; TAPE STOP, FREEZE, OCT UP, OCT DN; FLANGER, PHASER, DRIVE, PUMP; ROLL A, ROLL B, MUTE 1, MUTE 2.</div></div>
-<div class="row"><div class="g">GLO &gt; COMPRESSOR, knob 1 RATIO</div><div class="e">Starts at OFF. Turn up and THRESH, ATTACK, RELEASE appear.</div></div>
+<div class="row"><div class="g">Turn a knob with <b>REC</b> armed</div><div class="e">Records a parameter lock. Tap <b>SEQ</b>, turn <b>SELECT</b> to PARAMETER LOCKS to change or delete them.</div></div>
+<div class="row"><div class="g">Hold <b>SEQ</b></div><div class="e">QUICK SEQ tools on the white keys from F3.</div></div>
 </section>
 
 <section>
 <h2>Saving &amp; loading</h2>
-<div class="row"><div class="g">Tap <b>SAVE</b></div><div class="e">Opens the page that fits: PATTERNS on a sequencer page, otherwise MULTIS in LAYER and PATCHES in DUEL and STEREO. SELECT moves between PATCHES, PATTERNS, MULTIS, TOOLS.</div></div>
-<div class="row"><div class="g">Hold <b>SAVE</b></div><div class="e">Asks to overwrite the slot your sound came from. Knob 1 picks another slot, knob 2 RENAME, <b>OCT+</b> yes, <b>OCT-</b> no.</div></div>
-<div class="row"><div class="g">Hold <b>SAVE</b> on MORPH page, TARGET BOTH</div><div class="e">"OVERWRITE BOTH PATCHES?", each part over its own slot.</div></div>
-<div class="row"><div class="g">Hold <b>SAVE</b> on MULTIS</div><div class="e">"SAVE OVER &lt;name&gt;?"; <b>OCT+</b> yes. An empty multi slot asks for a name first.</div></div>
-<div class="row"><div class="g">SAVE &gt; TOOLS, RESTORE ALL</div><div class="e">Every patch slot gets its factory sound.</div></div>
-<div class="row"><div class="g">Backup (installer page or editor Backup page)</div><div class="e">Saves patches, multis, patterns, user wavetables and settings. Back up before every flash.</div></div>
+<div class="row"><div class="g">Tap <b>SAVE</b></div><div class="e">Opens the page that fits: PATTERNS on a sequencer page, otherwise MULTIS in LAYER and PATCHES in DUEL and STEREO. <b>SELECT</b> moves between PATCHES, PATTERNS, MULTIS, TOOLS.</div></div>
+<div class="row"><div class="g">Hold <b>SAVE</b></div><div class="e">Overwrites the slot your sound came from; <b>OCT+</b> yes, <b>OCT-</b> no. On the MORPH page with TARGET BOTH, each part goes over its own slot.</div></div>
+<div class="row"><div class="g">MIDI program change</div><div class="e">LAYER: program 0 to 15 on part 1's channel loads multis M01 to M16 (bank 0). DUEL and STEREO: bank 0, program n loads entry n of the PATCHES list; bank 1, program n loads patch slot n.</div></div>
+<div class="row"><div class="g">Backup (installer page or editor Backup page)</div><div class="e">Saves patches, multis, patterns, user wavetables and settings. A flash keeps your saved data; back up before every flash. Room for 128 patches, 16 multis (M01 to M16), 32 patterns (P01 to P32).</div></div>
 </section>
 
 <section>
 <h2>Good to know</h2>
 <ul>
 <li>The <b>PATCH LEVEL</b> is saved with the patch; the <b>PART LEVEL</b> on the mixer is yours.</li>
-<li><b>AFTERTOUCH</b> is on by default; <b>KEY VELOCITY</b> default is OFF; switch it ON to play dynamically.</li>
-<li>BASS MONO, WIDTH and COMPRESSOR belong to the unit, not to a patch or multi.</li>
+<li><b>KEY VELOCITY</b> and <b>AFTERTOUCH</b> are on by default; switch them off in MENU &gt; CONTROL.</li>
 <li>Teach a CC with MIDI LEARN on the unit. CC1 mod wheel, CC11 expression, CC64 sustain pedal are inputs.</li>
 </ul>
 </section>
 
 </div>
-<footer>DUELL &middot; MultiMorphing Bitimbral Synthesizer &middot; by OSCILL/R &middot; checked against DUELL 1.0.</footer>
+<footer>DUELL &middot; MultiMorphing Bitimbral Synthesizer &middot; by OSCILL/R &middot; checked against DUELL 1.1.</footer>
 </main>
 </body>
 </html>

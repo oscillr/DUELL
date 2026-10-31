@@ -35,7 +35,6 @@ static void clean(void)
     trk[0].eqlv = trk[1].eqlv = 0;
     memset(pan_x, 0, sizeof pan_x);
     memset(pan_gv, 0, sizeof pan_gv);
-    mix_bal = 0;
     vage = 0;
     mod_seed = 0x2545F491u;
     duell_mode_force(DM_SPLIT);

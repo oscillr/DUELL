@@ -34,12 +34,13 @@
  * OUTDIR/align.txt: per place, how often measured, the worst offsets and where.
  * Exit 1 on a finding, a GREY pixel off gray, a MONO one off neutral, or an alignment 1 px or more off. */
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
 #include <time.h>
 #include <math.h>
 
-typedef struct { int16_t x0, y0, x1, y1; uint8_t flags; char s[28]; char fnt; } rbox_t;   /* fnt: S M L (its face) */
+typedef struct { int16_t x0, y0, x1, y1; uint8_t flags; char s[28]; char fnt; int16_t c0, c1; } rbox_t;   /* c0, c1: the capitals' band (rows c0 .. c1 - 1) of a text, 0 for an icon / keycap (item 122, the keycap table) */   /* fnt: S M L (its face) */
 static rbox_t pend[256], scr[1200];
 static int16_t cells[64][4];                    /* GFX_HOOK_CELL: the cells and cards of the canvas being drawn */
 static uint32_t ncells, nspill;
@@ -163,8 +164,9 @@ static void al_flush(void)                      /* a canvas blitted or begun: de
 static int32_t icon_cell(uint32_t *size, uint32_t id);
 static void hk_icon(int32_t x, int32_t y, uint32_t size, uint32_t id);   /* (after the icons: their cells' nibbles) */
 #define GFX_HOOK_ALIGN(x0, y0, x1, y1, mode, tag) hk_align(x0, (y0) + cv_oy, x1, (y1) + cv_oy, mode, tag)
+static int32_t pen_c0, pen_c1;                  /* GFX_HOOK_PEN: the capitals' band of the text being hooked, always (item 122's keycap table) */
 static uint8_t pen_h;                           /* GFX_HOOK_PEN: the line height of the text being hooked (its face) */
-#define GFX_HOOK_PEN(y, f) (pen_h = (f)->h, al_n ? (al_cy0 = (y) + cv_oy + (f)->g[glyph((f), 'H')].by, al_cy1 = al_cy0 + (f)->g[glyph((f), 'H')].bh) : 0)
+#define GFX_HOOK_PEN(y, f) (pen_h = (f)->h, pen_c0 = (y) + cv_oy + (f)->g[glyph((f), 'H')].by, pen_c1 = pen_c0 + (f)->g[glyph((f), 'H')].bh, al_n ? (al_cy0 = pen_c0, al_cy1 = pen_c1) : 0)
 #define GFX_HOOK_ITEM(x0, y0, x1, y1) al_item(x0, (y0) + cv_oy, x1, (y1) + cv_oy, 1, "cushion")
 #define GFX_HOOK_ICON(x, y, size, id) hk_icon(x, (y) + cv_oy, size, id)
 static void hk_text(int32_t x0, int32_t y0, int32_t x1, int32_t y1, const char *s, uint32_t flags)
@@ -172,7 +174,8 @@ static void hk_text(int32_t x0, int32_t y0, int32_t x1, int32_t y1, const char *
     al_text(x0, y0, x1, y1, s, flags);
     n_text++;
     if (npend >= 256u) return;
-    pend[npend] = (rbox_t){(int16_t)x0, (int16_t)y0, (int16_t)x1, (int16_t)y1, (uint8_t)flags, {0}};
+    pend[npend] = (rbox_t){(int16_t)x0, (int16_t)y0, (int16_t)x1, (int16_t)y1, (uint8_t)flags, {0}, 0, 0, 0};
+    if (!(flags & 4u) && pen_h) { pend[npend].c0 = (int16_t)pen_c0; pend[npend].c1 = (int16_t)pen_c1; }
     strncpy(pend[npend].s, s, 27);
     pend[npend].fnt = (flags & 4u) ? 'K' : pen_h >= 30u ? 'L' : pen_h >= 18u ? 'M' : 'S';
     pen_h = 0;
@@ -214,7 +217,15 @@ static void rules_cover(int32_t x0, int32_t y0, int32_t x1, int32_t y1)
 #define GFX_HOOK_CELL(x0, y0, x1, y1) hk_cell(x0, y0, x1, y1)
 #define GFX_HOOK_RULE(x, y, w, h) hk_rule(x, y, w, h)
 static uint32_t nink;                           /* GFX_HOOK_INK: inks drawn on their own colour */
+
 static void hk_ink(uint16_t ink, uint16_t bg);
+static int16_t allow_p[256][4], allow_s[256][4];      /* GFX_HOOK_ALLOW: pending (canvas coordinates) and on the screen */
+static uint32_t nallow_p, nallow_s;
+static void hk_allow(int32_t x0, int32_t y0, int32_t x1, int32_t y1)
+{
+    if (nallow_p < 256u) { allow_p[nallow_p][0] = (int16_t)x0; allow_p[nallow_p][1] = (int16_t)y0; allow_p[nallow_p][2] = (int16_t)x1; allow_p[nallow_p][3] = (int16_t)y1; nallow_p++; }
+}
+#define GFX_HOOK_ALLOW(x0, y0, x1, y1) hk_allow(x0, (y0) + cv_oy, x1, (y1) + cv_oy)
 #define GFX_HOOK_INK(ink, bg) hk_ink(ink, bg)
 #define GFX_HOOK_PIXELS(n) (px_visited += (n))
 #define UI_FILL_HOOK(x, y, w, h) hk_fill(x, y, w, h)
@@ -222,8 +233,22 @@ static void fm6_hook(uint32_t kind, uint32_t a, uint32_t b);
 #define FM6_CHART_HOOK(kind, a, b) fm6_hook(kind, a, b)
 static void cs_hook(const char *v, const char *u);
 #define CARD_HOOK(v, u) cs_hook(v, u)
+static void cl_hook(uint32_t c, const char *l, int32_t need, int32_t room);
+static void cl_hook_v(uint32_t c, const char *v, int32_t need, int32_t room);
+#define CARD_VALUE_HOOK(c, v, need, room) cl_hook_v(c, v, need, room)   /* item 120: a value of an old four-card page wider than its card */
+#define CARD_LABEL_HOOK(c, l, need, room) cl_hook(c, l, need, room)   /* item 114: a template-1 label wider than its room */
 #define UI_TEST_NO_MAIN 1
 #include "ui_test.c"
+/* ui_target: this render is built WITHOUT the developer switches (generated duell_multis.h is the release flavour, hostsim has no
+ * sense.c), so the rows that exist only in those builds stand in with a row every build has (scenes keep running; the KEY VELOCITY /
+ * TEST scenes then show BUTTON HOLD / ABOUT, the release has neither row) */
+#if !DUELL_VELO
+#define MI_KEYVEL MI_HOLD
+#endif
+#if !DUELL_TEST_MODE
+#define MI_TEST MI_ABOUT
+static uint32_t test_t;
+#endif
 
 /* the card values set in S (ui_draw.c CARD_HOOK: M too wide for the card with its unit), distinct, for the report
  */
@@ -238,6 +263,26 @@ static void cs_hook(const char *v, const char *u)
     snprintf(b, sizeof b, "%s%s%s", v, u[0] ? " " : "", u);
     for (i = 0; i < cs_n && strcmp(cs_seen[i], b); i++) ;
     if (i == cs_n) { if (cs_n < 64u) snprintf(cs_seen[cs_n++], 16, "%s", b); else cs_more++; }
+}
+/* item 114: the template-1 labels that do not fit their card (ui_draw.c card_t1_paint cuts them at the card's edge, never shortens or ellipsises them): distinct (screen, knob, label), the width the
+ * label needs and the room it has; listed in the report under "LABELS CUT" */
+static struct { char scr[40], lab[32]; uint32_t k; int32_t need, room; } cl_seen[8000];
+static uint32_t cl_n, cl_more;
+static void cl_hook(uint32_t c, const char *l, int32_t need, int32_t room)
+{
+    uint32_t i;
+    char scr[40];
+    snprintf(scr, sizeof scr, "%s", cur_name);
+    for (i = 0; i < cl_n; i++)
+        if (cl_seen[i].k == c + 1u && !strcmp(cl_seen[i].lab, l) && !strcmp(cl_seen[i].scr, scr)) return;
+    if (cl_n < 8000u) { snprintf(cl_seen[cl_n].scr, 40, "%s", scr); snprintf(cl_seen[cl_n].lab, 32, "%s", l); cl_seen[cl_n].k = c + 1u; cl_seen[cl_n].need = need; cl_seen[cl_n].room = room; cl_n++; }
+    else cl_more++;
+}
+static void cl_hook_v(uint32_t c, const char *v, int32_t need, int32_t room)
+{
+    char b[32];
+    snprintf(b, sizeof b, "VALUE %s", v);
+    cl_hook(c, b, need, room);
 }
 /* an icon drawn: its ink, read from its cell's nibbles here (not icons.c icon_ink's table: measured, not trusted) */
 /* n alpha values of a cell from its bit stream (the canonical Huffman code AI_HC, as gen_aa_font.py huff_unpack:
@@ -332,7 +377,7 @@ static void fmp_check(uint32_t alg)
             if (!mk) continue;
             for (i = 0; i < fmp_n; i++) {
                 if (!(mk >> i & 1u) || fmp_kind[i] == FMH_BOX) continue;
-                if (x < 6 || x > 233 || y < 2 || y > 119)
+                if (x < 5 || x > 234 || y < 1 || y > (int32_t)h - 2)   /* (the panel's inner edge: item 119, the card is 76 rows high) */
                     fmp_find(alg, "FM6 part off the panel", i, x, y, FMP_MAX);
                 for (j = 0; j < fmp_n; j++) {
                     if (fmp_kind[j] != FMH_BOX) continue;
@@ -454,6 +499,8 @@ static void contain(int32_t x, int32_t y)
             if (strlen(tight) + strlen(b->s) + 8u < sizeof tight)
                 snprintf(tight + strlen(tight), sizeof tight - strlen(tight), "%s'%s' %dpx", tight[0] ? ", " : "", b->s, (int)gap);
         }
+        if ((b->flags & 32u) && y >= 180)                /* item 120: the footer's scrolling patch name runs under the REC mark and the counter by design (ui_draw.c draw_foot draws their margins over it) */
+            continue;
         for (c = 0; c < ncells; c++) {
             const int16_t *r = cells[c];
             int touch = b->x0 < r[2] && r[0] < b->x1 && b->y0 < r[3] && r[1] < b->y1;
@@ -472,6 +519,11 @@ static void contain(int32_t x, int32_t y)
 static void hk_blit(uint32_t x, uint32_t y, uint32_t r0, uint32_t w, uint32_t h)
 {
     uint32_t i, k = 0;
+    for (i = 0; i < nallow_p && nallow_s < 256u; i++, nallow_s++) {
+        allow_s[nallow_s][0] = (int16_t)(allow_p[i][0] + (int32_t)x); allow_s[nallow_s][1] = (int16_t)(allow_p[i][1] + (int32_t)y);
+        allow_s[nallow_s][2] = (int16_t)(allow_p[i][2] + (int32_t)x); allow_s[nallow_s][3] = (int16_t)(allow_p[i][3] + (int32_t)y);
+    }
+    nallow_p = 0;
     al_flush();
     contain((int32_t)x, (int32_t)y);
     ncells = 0;
@@ -481,6 +533,7 @@ static void hk_blit(uint32_t x, uint32_t y, uint32_t r0, uint32_t w, uint32_t h)
         if (b.y1 <= (int32_t)r0) continue;           /* rows not blitted */
         if (b.y0 < (int32_t)r0) b.flags |= 2u;
         b.x0 += (int16_t)x; b.x1 += (int16_t)x; b.y0 += (int16_t)y; b.y1 += (int16_t)y;
+        if (b.c1) { b.c0 += (int16_t)y; b.c1 += (int16_t)y; }
         if (!split_pair(&b)) pend[k++] = b;
     }
     cover((int32_t)x, (int32_t)(y + r0), (int32_t)(x + w), (int32_t)(y + h));
@@ -572,8 +625,111 @@ static void mono_check(void)
 static void hk_ink(uint16_t ink, uint16_t bg)
 {
     if (ink != bg) return;
+    if (nink < 40u && getenv("INKDBG")) fprintf(stderr, "%s: ink %04x palette %s\n", cur_name, ink, UI_PALETTES[settings.palette % NPALETTES].name);
     if (nink < 20u) fprintf(rep, "%s: ink %04x drawn on its own colour (%s)\n", cur_name, ink, UI_PALETTES[settings.palette % NPALETTES].name);
     nink++;
+}
+/* ITEM 122, the BOX lint: the owner's rule is NO background box, card, border or divider behind text or graphics; pages are plain background. A box: a filled
+ * square of 12 x 12 px or more, all one colour, that is not the page background (ux.bg) and is not inside a region the drawing code declared as allowed
+ * (GFX_HOOK_ALLOW: the selected row / option, capsules, keycap pills, bars and meters, the RECOMMENDED pill, and DATA: the picture, roll, envelope fill, curves).
+ * Measured on the panel value (host_screen is the RGB565 the firmware sends). OUTDIR/boxes.txt: per screen the regions found (box, colour, the palette token it equals). */
+static uint32_t nbox, nbox_scr;
+static FILE *boxf;
+static const char *box_token(uint16_t c)
+{
+    uint32_t k;
+    if (c == ux.base) return "BASE";
+    if (c == ux.raise) return "RAISE";
+    if (c == ux.tint) return "TINT";
+    if (c == ux.lane) return "LANE";
+    if (c == ux.line) return "LINE";
+    if (c == ux.sel) return "SEL";
+    if (c == ux.key) return "KEY";
+    if (c == ux.grid) return "GRID";
+    for (k = 0; k < 2u; k++) {
+        if (c == UI_PALETTES[ux.pal % NPALETTES].surf[k]) return "SURF_P";
+        if (c == ux.pth[k]) return "PTHEME";
+        if (c == ux.psel[k]) return "PSEL";
+        if (c == ux.ptint[k]) return "PTINT";
+    }
+    return "other";
+}
+static void box_lint(const char *name)
+{
+    static uint16_t px[240 * 240];
+    static uint8_t sq[240 * 240], cov[240 * 240], seen[240 * 240];
+    static int16_t stk[240 * 240][2];
+    uint32_t x, y, i, n = 0;
+    uint16_t bg = ux.bg;
+    nbox_scr = 0;
+    for (i = 0; i < 240u * 240u; i++) px[i] = swap16(host_screen[i]);
+    memset(cov, 0, sizeof cov); memset(seen, 0, sizeof seen);
+    for (y = 0; y < 240u; y++)
+        for (x = 0; x < 240u; x++) {
+            uint32_t v = 1, a, b2, c2;
+            i = y * 240u + x;
+            if (x && y && px[i] == px[i - 1] && px[i] == px[i - 240] && px[i] == px[i - 241]) {
+                a = sq[i - 1]; b2 = sq[i - 240]; c2 = sq[i - 241];
+                v = 1u + (a < b2 ? (a < c2 ? a : c2) : (b2 < c2 ? b2 : c2));
+            }
+            sq[i] = (uint8_t)(v > 250u ? 250u : v);
+            if (v >= 12u && px[i] != bg) {
+                uint32_t yy, xx;
+                for (yy = y + 1u - 12u; yy <= y; yy++) for (xx = x + 1u - 12u; xx <= x; xx++) cov[yy * 240u + xx] = 1;
+            }
+        }
+    for (i = 0; i < 240u * 240u; i++) {
+        if (!cov[i] || seen[i]) continue;
+        {   /* one connected region of one colour */
+            uint16_t c = px[i];
+            int32_t sp = 0, x0 = 240, y0 = 240, x1 = -1, y1 = -1, area = 0, ok;
+            uint32_t j;
+            stk[sp][0] = (int16_t)(i % 240u); stk[sp][1] = (int16_t)(i / 240u); sp++; seen[i] = 1;
+            while (sp) {
+                int32_t cx = stk[--sp][0], cy = stk[sp][1], d;
+                static const int8_t D[4][2] = {{1,0},{-1,0},{0,1},{0,-1}};
+                if (cx < x0) x0 = cx; if (cx > x1) x1 = cx; if (cy < y0) y0 = cy; if (cy > y1) y1 = cy;
+                area++;
+                for (d = 0; d < 4; d++) {
+                    int32_t nx = cx + D[d][0], ny = cy + D[d][1];
+                    uint32_t k = (uint32_t)(ny * 240 + nx);
+                    if (nx < 0 || ny < 0 || nx > 239 || ny > 239 || seen[k] || !cov[k] || px[k] != c) continue;
+                    seen[k] = 1; stk[sp][0] = (int16_t)nx; stk[sp][1] = (int16_t)ny; sp++;
+                }
+            }
+            ok = 0;
+            for (j = 0; j < nallow_s && !ok; j++)
+                if (x0 >= allow_s[j][0] && y0 >= allow_s[j][1] && x1 < allow_s[j][2] && y1 < allow_s[j][3]) ok = 1;
+            if (!ok) {
+                nbox++; nbox_scr++; n++;
+                if (boxf) fprintf(boxf, "%s\t%d,%d-%d,%d\t%dx%d\t%04x\t%s\n", name, x0, y0, x1 + 1, y1 + 1, x1 - x0 + 1, y1 - y0 + 1, c, box_token(c));
+            }
+        }
+    }
+}
+/* ITEM 122, the KEYCAP table: every keycap pill of a screen that has a word beside it on its line (left or right, up to 8 px away): the word's capitals' band
+ * (c0 .. c1 - 1, its baseline = the last row) against the pill's rows (y0 .. y1 - 1); the offset of the pill's centre from the capitals' centre in px, must be 0.
+ * OUTDIR/keycap_table.txt (VIOLET: every pair), the count of pairs off by anything over all nine palettes. */
+static FILE *kcf;
+static uint32_t nkc_pairs, nkc_off;
+static void keycap_table(const char *scene, int print)
+{
+    uint32_t i, j;
+    for (i = 0; i < nscr; i++) {
+        const rbox_t *k = &scr[i];
+        if (!(k->flags & 4u) || !strcmp(k->s, "icon") || k->y1 - k->y0 != KC_H) continue;
+        for (j = 0; j < nscr; j++) {
+            const rbox_t *t = &scr[j];
+            int32_t gr = t->x0 - k->x1, gl = k->x0 - t->x1, off2;
+            if ((t->flags & 4u) || !t->c1 || t->y1 <= k->y0 || t->y0 >= k->y1) continue;
+            if (!((gr >= 0 && gr <= 8) || (gl >= 0 && gl <= 8))) continue;
+            off2 = (k->y0 + k->y1 - 1) - (t->c0 + t->c1 - 1);       /* twice the offset */
+            nkc_pairs++;
+            if (off2) nkc_off++;
+            if (print && kcf)
+                fprintf(kcf, "%s\t%s\t'%s'\t%c\tbaseline %d\tpill %d..%d\tcentre offset %+.1f\n", scene, k->s, t->s, t->fnt, t->c1 - 1, k->y0, k->y1 - 1, off2 / 2.0);
+        }
+    }
 }
 static void write_ppm(const char *dir, const char *pal, const char *name)
 {
@@ -684,7 +840,7 @@ enum { S_HOME, S_HOME_IDLE, S_MESSAGE, S_MESSAGE_KEY, S_MESSAGE_NOFILE, S_PRESET
        S_GUIDE1, S_GUIDE2, S_GUIDE3, S_GUIDE4, S_GUIDE5, S_GUIDE6, S_GUIDE_MSG, S_GUIDE_KNOB, S_GUIDE_OCT, S_GUIDE_ROW,
        S_QUICK_FILTER, S_QUICK_GLO, S_MULTIS, S_MULTIS2, S_MODULES, S_MODULES_OFF, S_MODS_FX, S_MODS_ARP, S_MODS_ARP_SEQ,
        S_MODS_MIXER, S_MODS_PERFORM, S_MODS_SCHAIN, S_MODS_AUTO, S_MODS_QUICK_ARP, S_MODS_MSG, S_TOOLS_RESTORE, S_PATCH_SAVE_BOTH, S_CONFIRM_RESTORE_ALL, S_PATCH_SAVE_NAMED, S_NAME_SAVE_PATCH, S_FXSUM, S_FXSUM_DUEL,
-       S_EQ_CURVE, S_EQ_CURVE2, S_COMP_CURVE, S_COMP_OFF, S_SMASTER, S_SMASTER_WIDE, S_FILT_MULTI, S_FILT_MULTI24, S_FILT_VCF, S_ARP_PATTERN, S_ARP_CHORD, S_SIDECHAIN_PARTS, S_VOICE_PATCH, S_COUNT };
+       S_EQ_CURVE, S_EQ_CURVE2, S_COMP_CURVE, S_COMP_OFF, S_SMASTER, S_SMASTER_WIDE, S_FILT_MULTI, S_FILT_MULTI24, S_FILT_VCF, S_ARP_PATTERN, S_ARP_CHORD, S_SIDECHAIN_PARTS, S_VOICE_PATCH, S_OCTAVE, S_SPLASH_FIRST, S_GUIDE_MENU, S_ENGINE_LOFI, S_ENGINE_PHASE, S_ENGINE_VOICE, S_ENGINE_TRIO, S_ENGINE_PHYS, S_ENGINE_NOISE, S_ENGINE_WAVE, S_ENGINE_WHEEL, S_CAPSULES, S_STEREO_HOME, S_ENGINE_LIST, S_MODE_DUEL, S_SUB, S_EDIT_WAVE1, S_EDIT_VOICE1, S_CYCLE, S_TWIN, S_ABOUT_TOP, S_CYCLE2, S_CYCLE2_ALL, S_MIXER4, S_MOD_LONG, S_CONFIRM_ERASE_ALL, S_OFF_ARP, S_OFF_SEQ, S_OFF_SENDS, S_OFF_PFX, S_OFF_QARP, S_OFF_QSEQ, S_COUNT };
 static const char *const S_NAME[S_COUNT] = {"home", "home_idle", "message", "message_key", "message_nofile", "presets",
     "presets_nofav", "user", "phrases", "project", "tools", "pslot_empty", "pslot", "step", "auto_steps", "auto_add_chance",
     "automation", "mixer", "mixer_from_home", "mixer_pan", "env", "env_dest", "lfo", "mod", "fx", "dly", "scl", "chord", "chord_wide",
@@ -715,7 +871,7 @@ static const char *const S_NAME[S_COUNT] = {"home", "home_idle", "message", "mes
     "mod_pan_duel", "mod_retired", "guide_1", "guide_2", "guide_3", "guide_4", "guide_5", "guide_6", "guide_message", "guide_knob",
     "guide_octave", "menu_guide_row", "layer_quick_filter", "quick_glo", "multis", "multis_2", "modules", "modules_off", "mods_fx",
     "mods_arp", "mods_arp_seq", "mods_mixer", "mods_perform", "mods_schain", "mods_auto", "mods_quick_arp", "mods_msg", "tools_restore", "patches_save_both", "confirm_restore_all", "patches_save_named", "name_save_patch", "fxsum", "fxsum_duel",
-    "eq_curve", "eq_curve2", "comp_curve", "comp_off", "stereo_master", "stereo_master_wide", "filt_multi", "filt_multi24", "filt_vcf", "arp_pattern", "arp_chord", "sidechain_parts", "voice_patch"};
+    "eq_curve", "eq_curve2", "comp_curve", "comp_off", "stereo_master", "stereo_master_wide", "filt_multi", "filt_multi24", "filt_vcf", "arp_pattern", "arp_chord", "sidechain_parts", "voice_patch", "octave", "splash_first", "guide_menu", "engine_lofi", "engine_phase", "engine_voice", "engine_trio", "engine_phys", "engine_noise", "engine_wave", "engine_wheel", "capsules", "stereo_home", "engine_list", "mode_duel", "sub", "edit_wave1", "edit_voice1", "cycle", "twin", "about_top", "cycle2", "cycle2_all", "mixer4", "mod_long", "confirm_erase_all", "off_arp", "off_seq", "off_sends", "off_pfx", "off_quick_arp", "off_quick_seq"};
 
 /* the STEP page's piano roll (ui_graph.c graph_roll) on track 1, stopped unless said: an empty pattern; ACID in
  * A minor; POLY chords (Am7 F C G, tied); a line with ties, slides and accents in C major; LEN 32 on its second
@@ -883,7 +1039,7 @@ static void setup(int s)
      * name with REC, the octave at -8 and a slot number "16*" (everything gives way in turn); GLO's page; a two-unit page (MATRIX) with the octave */
     case S_HEAD_PLAY_REC: song.rec = 1u << song.sel; go_home(); break;
     case S_HEAD_REC_OTHER: song.rec = 1u << ((song.sel + 1u) % NTRK); go_home(); break;
-    case S_HEAD_BPM_TURN: song.rec = 1u << song.sel; song.octave = -8; go_title("AUTOMATION"); break;
+    case S_HEAD_BPM_TURN: song.rec = 1u << song.sel; song.octave = -8; go_title("PARAMETER LOCKS"); break;   /* (item 138: the page AUTOMATION is PARAMETER LOCKS, the longest title) */
     case S_HEAD_GLO_TURN: go_title("TEMPO"); break;   /* (0.2.21: GLO has no page of its own; GLO's first page is TEMPO) */
     case S_HEAD_DOWNBEAT: song.rec = 1u << song.sel; song.octave = -8; pat_from[song.sel] = 16; pat_from_h[song.sel] ^= 1u; go_title("MIDI LEARN"); break;
     case S_HEAD_BEAT_2: song.octave = 2; go_title("MATRIX 5-8"); break;
@@ -969,6 +1125,34 @@ static void setup(int s)
     case S_ARP_PATTERN: TSEL->p[P_AMODE] = 3; TSEL->p[P_AOCT] = 2; TSEL->p[P_AGATE] = 100; TSEL->p[P_ASWING] = 50; go_title("ARP 2/3"); break;
     case S_ARP_CHORD: TSEL->p[P_AMODE] = 14; TSEL->p[P_AOCT] = 3; TSEL->p[P_APROB] = 90; go_title("ARP 1/3"); break;
     case S_SIDECHAIN_PARTS: go_title("SIDECHAIN"); ui.hot_col = 2; ui.hot_t = 30; break;
+    case S_OCTAVE: go_title("ENGINE"); song.octave = 1; oct_show_t0 = fm1_ms ? fm1_ms : 1u; break;
+    case S_SPLASH_FIRST: break;
+    case S_GUIDE_MENU: go_home(); ui.menu = 1; guide_open(1); break;
+    case S_CAPSULES: go_home(); break;
+    case S_SUB: go_title("SUB OSC"); break;
+    case S_ABOUT_TOP: ui.menu = 2; ui.menu_scroll = 1; break;
+    case S_EDIT_WAVE1: eng(14); go_title("EDIT 1"); { uint32_t k; wv_mem_t *wm = (wv_mem_t *)ENG_MEM(0); eng_mem_owner[0] = ENGI_WAVE + 1u; wm->h.want = 12; for (k = 0; k < 4000u; k++) (void)wave_service(); } break;
+    case S_EDIT_VOICE1: eng(5); go_title("EDIT 1"); break;
+    case S_CYCLE: go_title("CYCLE ENV 1/2"); break;
+    case S_TWIN: go_title("TWIN FILTER"); break;
+    case S_MIXER4: duell_mode_req = DM_STEREO; go_title("MIXER"); break;
+    case S_MOD_LONG:   /* V12: the widest destination names */
+        eng(ENGI_WAVE); apply_preset_to(TSEL, 0);
+        mslot_ui(0, MS_ENV2, 36, 40); mslot_ui(1, MS_LFO, 35, -100); mslot_ui(2, MS_ENV, 42, 63); mslot_ui(3, MS_VEL, 11, -100);
+        mod_ui_slot = 0; go_title("MATRIX 1-4"); break;
+    case S_CYCLE2: go_title("CYCLE ENV 2/2"); break;                                   /* (TWIN FILTER off, DUEL mode: TWIN CUTOFF and PAN are hidden) */
+    case S_CYCLE2_ALL: duell_mode_req = DM_STEREO; TSEL->p[P_TWTYPE] = 1; go_title("CYCLE ENV 2/2"); break;   /* (all four cards) */
+    case S_MODE_DUEL: duell_mode_req = DM_SPLIT; go_title("MODE"); break;
+    case S_ENGINE_LIST: go_title("ENGINE"); ui.hot_col = 0; ui.hot_t = 30; break;
+    case S_STEREO_HOME: duell_mode_req = DM_STEREO; go_home(); break;
+    case S_ENGINE_PHASE: eng(2); TSEL->p[P_E0] = 3; TSEL->p[P_E1] = 6; TSEL->p[P_E2] = 60; go_title("ENGINE"); break;
+    case S_ENGINE_VOICE: eng(5); TSEL->p[P_E0] = 20; TSEL->p[P_E1] = 90; go_title("ENGINE"); break;
+    case S_ENGINE_TRIO: eng(6); go_title("ENGINE"); break;
+    case S_ENGINE_PHYS: eng(9); go_title("ENGINE"); break;
+    case S_ENGINE_NOISE: eng(11); go_title("ENGINE"); break;
+    case S_ENGINE_WAVE: eng(14); TSEL->p[P_E1] = 64; go_title("ENGINE"); { uint32_t k; wv_mem_t *wm = (wv_mem_t *)ENG_MEM(0); eng_mem_owner[0] = ENGI_WAVE + 1u; wm->h.want = 12; for (k = 0; k < 4000u; k++) (void)wave_service(); } break;
+    case S_ENGINE_WHEEL: eng(7); go_title("ENGINE"); break;
+    case S_ENGINE_LOFI: eng(3); go_title("ENGINE"); break;
     case S_VOICE_PATCH: TSEL->p[P_VOICE] = 3; go_title("VOICE 2/2"); ui.hot_col = 3; ui.hot_t = 30; break;
     case S_FXSUM_DUEL: go_title("SEND FX"); TSEL->p[P_CHOR] = 127; TSEL->p[P_DLY] = 127; TSEL->p[P_REV] = 127; duell_mode_req = DM_SPLIT; song.g[G_DMODE] = DMD_RAND; song.g[G_DTIME] = 2; song.g[G_RTYPE] = 1; song.g[G_RSIZE] = 127; break;   /* DUEL: no delay modes (the time alone), the widest reverb card */
     case S_SCL: scale_g = 2; go_title("SCALE"); break;                 /* GLOBAL: SCALE ROOT OFF-SCALE */
@@ -996,7 +1180,7 @@ static void setup(int s)
     case S_MENU_TUNE: ui.menu = 1; ui.menu_sel = MI_TUNE; song.g[G_TUNE] = 4388; break;
     /* 1.3: HOME > TRACKS playing (T2 selected), stopped (T1 selected, its cursor's page), K2 just turned; the MENU's DISPLAY
      * tab with HOME TRACKS selected (8 rows) */
-    case S_MENU_HOME: ui.menu = 1; ui.menu_sel = MI_CPU; break;   /* (0.2.14: OVERVIEW is gone: DISPLAY's last row, CPU METER) */
+    case S_MENU_HOME: ui.menu = 1; ui.menu_sel = MI_NOTESLEFT; break;   /* (DISPLAY's last row; the CPU METER row is gone) */
     /* 1.5 (#134): HOME LEVELS: the rows of TRACKS, the cards T1..T4 LEVEL (T3 muted: DIM), K2 just turned */
     case S_INSERT_CRUSH: set_ins_ui(IT_CRUSH, 64, 96, 80, 127); go_title("INSERT 1/2"); break;
     case S_INSERT_FOLD: set_ins_ui(IT_FOLD, 100, 96, 100, 76); go_title("INSERT 1/2"); break;
@@ -1051,6 +1235,7 @@ static void setup(int s)
         break;
     case S_FM6_OP_ENV: eng(ENGI_FM6); fop_op = 0; fop_stg = 1; go_title("OP ENV"); ui.hot_col = 2; ui.hot_t = 30; break;
     case S_FM6_OP_ENV_REL: eng(ENGI_FM6); fop_op = 5; fop_stg = 3; go_title("OP ENV"); break;
+    case S_CONFIRM_ERASE_ALL: ui.menu = 1; ui.menu_sel = MI_ERASE; ui.confirm = CF_ERASE_ALL; ui.confirm_trk = 0; break;   /* (item 119: MENU > SYSTEM > ERASE DATA's dialog, five lines on a card of two strips) */
     case S_CONFIRM_SEQ: ui.confirm = CF_CLEAR_SEQ; ui.confirm_trk = 2; break;
     case S_CONFIRM_PROJ: ui.confirm = CF_OVR_PROJ; ui.confirm_trk = 0; break;
     case S_CONFIRM_USER: song.playing = 0; up_store(6, "A VERY LONG SOUND NAME"); ui.confirm = CF_RESTORE; ui.confirm_trk = 6; break;
@@ -1109,6 +1294,13 @@ static void setup(int s)
     case S_MODS_AUTO: mods_put(MODS_SEQ, 1u); go_page(GR_EVENTS); break;
     case S_MODS_QUICK_ARP: mods_put(MODS_ARP, 1u); go_home(); TSEL->p[P_AMODE] = 1; ui.layer = LAYER_ARP; break;
     case S_MODS_MSG: mods_put(MODS_PFX, 1u); go_title("EQ 1/2"); ui_message(MODS_FULL[3]); break;
+    /* item 125: the pages of a function GLO > MODULES has switched OFF show only the notice (one scene per module; QUICK ARP / QUICK SEQ over them) */
+    case S_OFF_ARP: mods_put(MODS_ARP, 1u); go_title("ARP 1/3"); break;
+    case S_OFF_SEQ: mods_put(MODS_SEQ, 1u); go_page(GR_ROLL); break;
+    case S_OFF_SENDS: mods_put(MODS_SENDS, 1u); go_title("CHORUS"); break;
+    case S_OFF_PFX: mods_put(MODS_PFX, 1u); go_title("EQ 1/2"); break;
+    case S_OFF_QARP: mods_put(MODS_ARP, 1u); go_home(); ui.layer = LAYER_ARP; break;
+    case S_OFF_QSEQ: mods_put(MODS_SEQ, 1u); go_home(); ui.layer = LAYER_SEQ; break;
     case S_QUICK_ARP: go_home(); TSEL->p[P_AMODE] = 1; ui.layer = LAYER_ARP; break;
     case S_MENU_END: ui.menu = 1; ui.menu_sel = MI_COUNT - 1u; ui_prefs = 0xFF; ui_rec_prefs = 0x2A; break;   /* the last row,
                                                      * every flag set (CLICK ON, LEVEL HIGH, COUNT-IN 2 BARS) */
@@ -1162,18 +1354,18 @@ static void setup(int s)
      * KNOB 3 / 4 building up; MORPH SET (SELECTED, BOTH) */
     case S_MORPH: go_home(); home_tap(); break;   /* (DUELL 3.5: HOME tapped from OVERVIEW: the main page) */
     /* DUELL 0.2.5 PERFORM (FX held): the map at rest over AMP ENV; REPEAT 1/16, FLANGER and MUTE 2 held, the knobs turned (SPACE -40,
-     * FILTER 60 HP, DEPTH 75), BOTH parts, BALANCE +20; at 40 BPM (REPEAT 1/8, 1/16 and REVERSE greyed: TEMPO); CLK USB with no clock
-     * (PUMP greyed), FILTER all the way left; in LAYER with part 2, the fader at B and BALANCE -100 */
+     * FILTER 60 HP, DEPTH 75), BOTH parts; at 40 BPM (REPEAT 1/8, 1/16 and REVERSE greyed: TEMPO); CLK USB with no clock
+     * (PUMP greyed), FILTER all the way left; in LAYER with part 2, the fader at B */
     case S_PERFORM: go_title("AMP ENV"); perf_enter(); break;
     case S_PERFORM_HELD:
-        go_title("AMP ENV"); perf_enter(); morph_set_target(1); mix_bal = 20;
+        go_title("AMP ENV"); perf_enter(); morph_set_target(1);   /* (item 160: no balance value: SELECT moves the MIXER LEVELs) */
         kb_perf = 1u << key_at(0, PF_R16) | 1u << key_at(0, PF_FLG) | 1u << key_at(0, PF_M2);
         perf_held = perf_act = PF_BIT(PF_R16) | PF_BIT(PF_FLG) | PF_BIT(PF_M2);
         perf_space = -40; perf_filt = 60; perf_depth = 75; ui.hot_col = 2; ui.hot_t = 30;
         break;
     case S_PERFORM_SLOW: song.g[G_BPM] = 40; go_title("FX"); perf_enter(); break;
     case S_PERFORM_NOCLK: song.g[G_CLOCK] = 1; song.playing = 0; go_home(); perf_enter(); perf_filt = -100; break;
-    case S_PERFORM_LAYER: duell_mode_req = DM_LAYER; song.sel = 1; mix_bal = -100; go_title("MORPH"); perf_enter(); morph_do(MQ_FADER, 2u, 127u); break;
+    case S_PERFORM_LAYER: duell_mode_req = DM_LAYER; song.sel = 1; go_title("MORPH"); perf_enter(); morph_do(MQ_FADER, 2u, 127u); break;
     case S_MORPH_ROLLED:
         morph_do(MQ_AMOUNT, 1u, 100u); morph_roll_seed(0, 0, 65535u); morph_roll_seed(0, 1, 12345u); morph_roll_seed(0, 1, 4242u);
         morph_do(MQ_FADER, 1u, 40u); go_title("MORPH"); ui.hot_col = 0; ui.hot_t = 30; break;
@@ -1319,7 +1511,29 @@ static void setup(int s)
 }
 static void draw(int s)
 {
+    if (!strstr(S_NAME[s], "rec") && !strstr(S_NAME[s], "head") && !strstr(S_NAME[s], "batt") && !strstr(S_NAME[s], "motion") && !strstr(S_NAME[s], "layer_hint")) {
+        song.rec = 0;                                  /* (the scenes arm the recording and set USB power for their own tests: an ordinary unit shows neither REC nor the charging bolt) */
+        usb.config = 0;
+    }
+    if (s == S_CAPSULES) {   /* the capsule header at real size: 1 A 8, 2 B 6, 1 A 10, 2 B 10, lit and dim */
+        int32_t row;
+        static const int8_t V[3][2] = {{8, 6}, {10, 10}, {8, 6}};
+        lcd_fill(0, 0, 240, 240, T_BG);
+        for (row = 0; row < 3; row++) {
+            cv_begin(240, 24, T_BG);
+            head_capsule(CAP_X, 0, row < 2 ? 1u : 0u, 0u, V[row][0], 0u);
+            head_capsule(240 - CAP_X - CAP_W, 1, row == 2 ? 1u : 0u, 1u, V[row][1], 0u);
+            cv_blit(0, 10u + (uint32_t)row * 30u);
+        }
+        return;
+    }
+    if (s == S_OCTAVE) {
+        fm1_ms += 100u;
+        oct_show_t0 = fm1_ms - 50u;
+    } else
+        oct_show_t0 = 0;
     nscr = npend = nrules = 0;
+    nallow_p = nallow_s = 0;
     ntight = 0;
     tight[0] = 0;
     memset(host_screen, 0, sizeof host_screen);
@@ -1328,14 +1542,20 @@ static void draw(int s)
         setup_show("TURN RIGHT", "ALGORITHM");
         return;
     }
+    if (s == S_SPLASH_FIRST) {   /* the first start's splash with its hint (LOGO_SCREENS_V1.png) */
+        splash_on = 1; splash_guide = 1;
+        splash_frame(5, 0);
+        splash_on = 0; splash_guide = 0;
+        return;
+    }
     if (s == S_SPLASH) {                          /* the power-on splash (ui_draw.c, the ribbon at step 5): the lockup (a graphic: its mask in the
-                                                   * text colour, no text drawn) over lines coloured part 1 -> part 2 of the theme (HI-CON: two flat colours) */
+                                                   * text colour, no text drawn) over lines coloured part 1 -> part 2 of the theme (POLICE: two flat colours) */
         const ui_pal_t *pl = &UI_PALETTES[ux.pal % NPALETTES];
         uint32_t x, y, c0 = 0, c1 = 0, other = 0, ink = 0, soft = 0;
         uint16_t top = pl->hc ? pl->c[0] : ux_mix(ux_mix(pl->c[0], pl->c[2], 0), T_BG, 18), bot = pl->hc ? pl->c[2] : ux_mix(ux_mix(pl->c[0], pl->c[2], 100), T_BG, 18);
         n_text = 0;
         splash_frame(5, 0);
-        for (y = 0; y < 240u; y++)                /* the ribbon's pixels: the two end colours present; HI-CON: nothing but them and the page */
+        for (y = 0; y < 240u; y++)                /* the ribbon's pixels: the two end colours present; POLICE: nothing but them and the page */
             for (x = 0; x < 240u; x++) {
                 uint16_t p = swap16(host_screen[y * 240u + x]);
                 c0 += p == top; c1 += p == bot;
@@ -1347,7 +1567,7 @@ static void draw(int s)
                     other++;
             }
         if (!c0 || !c1 || other) {
-            if (rep) fprintf(rep, "FIND %-26s the splash lines: part 1 colour %u px, part 2 colour %u px, %u px of a blend in HI-CON\n", cur_name, c0, c1, other);
+            if (rep) fprintf(rep, "FIND %-26s the splash lines: part 1 colour %u px, part 2 colour %u px, %u px of a blend in POLICE\n", cur_name, c0, c1, other);
             nfind++;
         }
         if (ink + soft < 800u || (!pl->hc && pl->name[0] != 'M' && !ink) || n_text) {   /* (MONO's two-level screen may blend every edge) */
@@ -1406,6 +1626,8 @@ static void sweep_columns(void)
             snprintf(name, sizeof name, "%s%s/%s%s%s", "", ENGINES[e]->name, PAGES[i].title,
                      esync_pass ? " ESYNC" : "", twin_pass == 1u ? " TWIN LP" : twin_pass == 2u ? " TWIN COMB" : "");
             cur_name = name;
+            draw(-1);                                    /* item 138 (as items 119 / 120's scratch harness): the page's own grid (grid_on, card geometry) before the value sweep; draw_columns alone kept the previous page's grid */
+            nscr = npend = 0;
             for (c = 0; c < 4u; c++) {
                 int16_t *vp;
                 const param_desc_t *d = PAGES[i].scope == SC_GLOBAL || PAGES[i].scope == SC_TRACK || PAGES[i].scope == SC_ENGINE
@@ -1648,8 +1870,8 @@ static void align_sweeps(void)
         cur_name = st ? "sweep LINE: cushions" : "sweep FLAT: cushions";
         for (k = 0; k < NTRK; k++)
             for (i = 0; i < 3u; i++) {
-                cv_begin(40, 40, T_SURF);
-                cv_icon_on(4, 4, i == 0u ? 12u : i == 1u ? 16u : 24u, trk_icon(k, 1), T_ACCENT, T_SURF);
+                cv_begin(40, 40, T_BG);
+                cv_icon_on(4, 4, i == 0u ? 12u : i == 1u ? 16u : 24u, trk_icon(k, 1), T_ACCENT, T_BG);
             }
         cur_name = st ? "sweep LINE: card icons" : "sweep FLAT: card icons";
         for (i = 0; i < ICON_COUNT; i++) {
@@ -1768,12 +1990,13 @@ static void align_sweeps(void)
         roll_scene(S_ROLL_ACID);
         for (v = 0; v + PR_ROWS <= 128; v++) {
             proll.lo = (uint8_t)v;
-            cv_begin(240, H_GRAPH, T_SURF);
+            cv_begin(240, H_GRAPH, T_BG);
             graph_roll(TSEL, T_THEME);
         }
         state(); pal(UI_GREY_INDEX);
         cur_name = st ? "sweep LINE: mixer" : "sweep FLAT: mixer";
-        go_page(GR_GLO);                             /* (0.2.14: both parts side by side, ui_layer.c mixer_panel; every value of LEVEL PAN and the
+        go_page(GR_GLO); draw(-1); nscr = npend = 0;   /* item 138: the page's own grid first (draw_layer alone kept the previous screen's: the cards' value room read 49 px, the old four-card code's) */
+        /* (0.2.14: both parts side by side, ui_layer.c mixer_panel; every value of LEVEL PAN and the
                                                       * three sends on both, MUTE, DUEL's fixed PAN, the value just turned, either part selected) */
         for (v = 0; v < 256; v++) {
             uint32_t k = v & 1u, w = (v >> 1) & 127u;
@@ -1835,8 +2058,222 @@ static void al_table(void)
             al_count, al_nst, al_fail, al_lost);
 }
 
+
+/* ------------------------------------------------------------------ ui_target: the ten final-design pictures --- */
+/* ui_render --target OUTDIR: one scene per picture of DUELL/release_drafts/ui_redesign/FINAL_V1_01 .. 10 (240 x 240, VIOLET, part 1 selected,
+ * ANALOG, patch #5 SQUELCH), drawn by the firmware's own page code; OUTDIR/ppm/NN_name.ppm (tests/ui_render.py --target makes the PNGs,
+ * tools/ui_diff.py compares them with the pictures). No lint, no other scene. */
+static void target_prelude(void)
+{
+    state();
+    pal(UI_DEFAULT_INDEX);
+    song.sel = 0; song.playing = 0; song.rec = 0; usb.config = 0; usb.suspended = 0; song.batt_raw = 500;
+    duell_mode_req = DM_STEREO; ui_mode_set = DM_STEREO;
+    sl_load(4);                                      /* patch #5 SQUELCH (slot 4: ANALOG's factory sound 5) */
+    ui.msg_t = 0;
+}
+static void target_draw(void)
+{
+    uint32_t i;
+    oct_show_t0 = 0;
+    memset(host_screen, 0, sizeof host_screen);
+    ui.force = 1;
+    mt.frame = ui.frame + 7u;
+    for (i = 0; i < 3u; i++) ui_draw();              /* (animations settle: the morph picture, the bars) */
+}
+static void target_save(const char *dir, const char *name)
+{
+    char path[600];
+    uint32_t i;
+    FILE *f;
+    snprintf(path, sizeof path, "%s/ppm/%s.ppm", dir, name);
+    f = fopen(path, "wb");
+    if (!f) { fprintf(stderr, "cannot write %s\n", path); return; }
+    fprintf(f, "P6\n240 240\n255\n");
+    for (i = 0; i < 240u * 240u; i++) {
+        uint16_t c = swap16(host_screen[i]);
+        uint8_t b[3] = {(uint8_t)((c >> 11) * 255u / 31u), (uint8_t)(((c >> 5) & 63u) * 255u / 63u), (uint8_t)((c & 31u) * 255u / 31u)};
+        fwrite(b, 1, 3, f);
+    }
+    fclose(f);
+    printf("target %s\n", name);
+}
+static int target_main(const char *out)
+{
+    static const char *const NM[] = {"01_morph", "02_engine", "03_patches", "04_fx-send", "05_env", "06_lfo", "07_sequencer", "08_setup", "09_mixer", "07b_sequencer_help", "11_modules"};
+    int t;
+    char rp[600];
+    snprintf(rp, sizeof rp, "%s/target_report.txt", out);
+    rep = fopen(rp, "w");                            /* (the hooks of the lint write here; nothing reads it) */
+    for (t = 0; t < 11; t++) {
+        target_prelude();
+        switch (t) {
+        case 0: song.rec = 1; go_home(); break;
+        case 1: go_title("ENGINE"); break;
+        case 2: favorite_set(NENGINES, 2, 1); go_page(GR_BROWSE); break;
+        case 3: go_title("SEND FX"); TSEL->p[P_CHOR] = TSEL->p[P_DLY] = TSEL->p[P_REV] = 40; song.g[G_DMODE] = DMD_DIGITAL; song.g[G_DTIME] = 1; song.g[G_RTYPE] = 0; song.g[G_RSIZE] = 64;   /* (64 of 127 = 50 %, the picture's) */ break;
+        case 4: go_title("AMP ENV"); break;
+        case 5: go_title("LFO 1"); break;
+        case 6: {
+            static const uint8_t N[16] = {48, 51, 55, 0, 48, 0, 50, 51, 55, 58, 61, 51, 50, 46, 0, 48};   /* (step 11: 61, the picture's 60 one row higher, so that the roll's centred view is the picture's: rows 46 .. 62) */
+            static const uint8_t K[16] = {0, 0, 0, 2, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0};   /* 0 note, 1 tie, 2 rest */
+            track_t *tr = TSEL;
+            uint32_t i;
+            track_defaults_steps(tr);
+            tr->p[P_SLEN] = 16;
+            for (i = 0; i < 16u; i++) {
+                uint8_t n = N[i];
+                if (K[i] == 0u) step_put(&tr->step[i], ST_NOTE, i == 7u ? SF_ACCENT : i == 8u ? SF_SLIDE : 0u, 1, &n);
+                else step_put(&tr->step[i], K[i] == 1u ? ST_TIE : ST_REST, 0, 0, &n);
+            }
+            root_g = 0; scale_g = 2;                         /* (C natural minor: the picture's lit rows) */
+            go_page(GR_ROLL); ui.cursor = 4; ui.bank = 0;
+            break; }
+        case 7: go_home(); guide_open(0); ui.guide = 1; break;
+        case 8: go_title("MIXER"); trk[0].p[P_LEVEL] = trk[1].p[P_LEVEL] = 100; break;   /* (the picture shows -6.0 dB) */
+        case 9: go_title("SEQUENCER HELP"); break;                                       /* (item 118: FINAL_V1_07b_sequencer_help, page 2 of the STEP family) */
+        default: mods_put(MODS_ALL, 0u); mods_put(MODS_SEQ, 1u); go_title("MODULES"); break;   /* (item 124: GLO > MODULES, SEQ off, the others on) */
+        }
+        target_draw();
+        target_save(out, NM[t]);
+        if (t == 10) mods_put(MODS_ALL, 0u);
+    }
+    {   /* 10: the firmware has no battery sheet: the three states (empty, full, charging) are each footer's battery, set onto one
+         * frame at the picture's three rows (73 / 123 / 173 + 0), nothing else drawn (the picture's EMPTY / FULL / CHARGING words are
+         * not in the firmware) */
+        static uint16_t sheet[240 * 240];
+        static const uint32_t R[3] = {500, 600, 500}, U[3] = {0, 0, 1};
+        uint32_t k, x, y;
+        for (k = 0; k < 3u; k++) {
+            target_prelude();
+            song.batt_raw = (uint16_t)R[k]; usb.config = (uint8_t)U[k];
+            go_home();
+            target_draw();
+            if (!k) for (x = 0; x < 240u * 240u; x++) sheet[x] = host_screen[1u * 240u + 120u];   /* (the page's background colour) */
+            for (y = 0; y < 14u; y++)
+                for (x = 216; x < 240u; x++)
+                    sheet[(73u + 50u * k + y - 3u) * 240u + x] = host_screen[(220u + y) * 240u + x];
+        }
+        memcpy(host_screen, sheet, sizeof host_screen);
+        target_save(out, "10_battery");
+    }
+    return 0;
+}
+
+/* item 124, the GLO round: walked with real GLO button taps (ui_input.c page_tap), in every output mode, with the reverb on SHIM or not and with the modules all on or all off; MODULES must be in it, once,
+ * its header must say MODULES and the page must draw four lines (ARP SEQ SENDS PART FX). A failure counts as a lint finding. Prints the page's number in the round. */
+static void round_check(void)
+{
+    static const uint8_t MODE[3] = {DM_STEREO, DM_LAYER, DM_SPLIT};
+    static const char *const MN[3] = {"STEREO", "LAYER", "DUEL"};
+    uint32_t m, shim, off;
+    for (m = 0; m < 3u; m++)
+        for (shim = 0; shim < 2u; shim++)
+            for (off = 0; off < 2u; off++) {
+                char nm[28], ct[8], mct[8] = "", tb[24], first[28] = "";
+                uint32_t n, at = 0, found = 0, total = 0, pi;
+                setup(S_HOME);
+                pal(UI_DEFAULT_INDEX);
+                ui_mode_set = MODE[m]; duell_mode_req = MODE[m]; duell_mode = MODE[m];
+                song.g[G_RTYPE] = shim ? 3 : 0;
+                mods_put(MODS_ALL, off ? 1u : 0u);
+                for (n = 0; n < 24u; n++) {
+                    (void)page_tap(B_GLO);
+                    (void)page_parts(nm, ct);
+                    if (cur_page()->fam != FAM_GLO) { fprintf(stderr, "ui_render: GLO round (%s, SHIM %u, modules off %u): tap %u left GLO: '%s'\n", MN[m], shim, off, n + 1u, nm); nfind++; break; }
+                    if (!n) str_cpy(first, nm, sizeof first);
+                    else if (!strcmp(nm, first)) break;
+                    total++;
+                    if (!strcmp(nm, "MODULES")) {
+                        found++;
+                        at = n + 1u;
+                        str_cpy(mct, ct, sizeof mct);
+                        ui.force = 1;
+                        ui_draw();
+                        head_page_title(tb, &pi);
+                        if (strcmp(tb, "MODULES")) { fprintf(stderr, "ui_render: GLO round: the MODULES page's header says '%s'\n", tb); nfind++; }
+                        if (grid_on != 12) { fprintf(stderr, "ui_render: GLO round: the MODULES page is not drawn as its four lines (grid %u)\n", (unsigned)grid_on); nfind++; }
+                    }
+                }
+                (void)at;
+                if (found != 1u) { fprintf(stderr, "ui_render: GLO round (%s, SHIM %u, modules off %u): MODULES found %u times in %u pages\n", MN[m], shim, off, found, total); nfind++; }
+                else printf("ui_render: GLO round (%s, SHIM %u, modules %s): MODULES is page %u of %u (counter %s)\n", MN[m], shim, off ? "off" : "on", at, total, mct);
+                if (!m && !shim && !off) printf("ui_render: the GLO round has %u pages; MODULES is page %u (the footer counter reads %u/%u)\n", total, at, at, total);
+            }
+    mods_put(MODS_ALL, 0u);
+}
+
+/* item 125: every page of a switched-off function says so and a knob turn lands on MODULES. For each module: the pages (by title) are visited with the module OFF; each must draw the notice (grid 13), show its own
+ * title in the header, and a real turn of each of its knobs must end on GLO > MODULES. With the module ON none of them may show the notice. Also QUICK ARP / QUICK SEQ held (button down 52 frames, a turn). */
+static void off_check(void)
+{
+    static const struct { uint32_t bit; const char *name; const char *pages[12]; } M[4] = {
+        {MODS_ARP, "ARP", {"ARP 1/3", "ARP 2/3", "ARP 3/3", 0}},
+        {MODS_SEQ, "SEQ", {"STEP", "PARAMETER LOCKS", "PATTERNS", 0}},
+        {MODS_SENDS, "SENDS", {"CHORUS", "DELAY 1/2", "DELAY 2/2", "REVERB", "SEND FX", 0}},
+        {MODS_PFX, "PART FX", {"FX", "INSERT 1/2", "INSERT 2/2", "EQ 1/2", "EQ 2/2", "DUCK 1/2", "DUCK 2/2", 0}},
+    };
+    uint32_t m, i, k, on, walks = 0, bad = 0;
+    for (m = 0; m < 4u; m++)
+        for (i = 0; M[m].pages[i]; i++)
+            for (on = 0; on < 2u; on++)
+                for (k = 0; k < 4u; k++) {
+                    char tb[24];
+                    uint32_t pi;
+                    setup(S_HOME);
+                    pal(UI_DEFAULT_INDEX);
+                    mods_put(MODS_ALL, 0u);
+                    if (!strcmp(M[m].pages[i], "STEP")) go_page(GR_ROLL);
+                    else if (!strcmp(M[m].pages[i], "PATTERNS")) go_page(GR_PATS);
+                    else if (!strcmp(M[m].pages[i], "PARAMETER LOCKS")) go_page(GR_EVENTS);
+                    else go_title(M[m].pages[i]);
+                    if (!on) mods_put(M[m].bit, 1u);
+                    ui.force = 1; ui_draw();
+                    head_page_title(tb, &pi);
+                    walks++;
+                    if (!on) {
+                        if (grid_on != 13 || off_module(cur_page()) != M[m].bit) { fprintf(stderr, "ui_render: %s OFF: page %s does not show the notice (grid %u)\n", M[m].name, M[m].pages[i], (unsigned)grid_on); nfind++; bad++; continue; }
+                        if (strcmp(tb, !strcmp(M[m].pages[i], "SEND FX") ? "SENDS" : M[m].pages[i]) && strcmp(M[m].pages[i], "STEP")) { fprintf(stderr, "ui_render: %s OFF: page %s header says '%s'\n", M[m].name, M[m].pages[i], tb); nfind++; bad++; }
+                        fm1_ms += 1000u;                    /* (the quiet time of the knob's last jump: kr_on) */
+                        turn(EN_K1 + k, 1);
+                        { char nm[28], ct[8]; (void)page_parts(nm, ct);
+                          if (cur_page()->scope != SC_MODS || strcmp(nm, "MODULES")) { fprintf(stderr, "ui_render: %s OFF: page %s knob %u did not land on MODULES ('%s')\n", M[m].name, M[m].pages[i], k + 1u, nm); nfind++; bad++; } }
+                    } else if (off_module(cur_page()) || grid_on == 13) { fprintf(stderr, "ui_render: %s ON: page %s shows the notice\n", M[m].name, M[m].pages[i]); nfind++; bad++; }
+                }
+    for (m = 0; m < 2u; m++)
+        for (k = 0; k < 4u; k++) {
+            uint32_t l = m ? LAYER_SEQ : LAYER_ARP, b = m ? B_SEQ : B_ARP, f;
+            char nm[28], ct[8];
+            setup(S_HOME); pal(UI_DEFAULT_INDEX); mods_put(MODS_ALL, 0u);
+            mods_put(m ? MODS_SEQ : MODS_ARP, 1u);
+            btn_down(b);
+            for (f = 0; f < 60u; f++) frame();
+            if (ui.layer != l || grid_on != 13) { fprintf(stderr, "ui_render: %s layer OFF: layer %u grid %u\n", m ? "SEQ" : "ARP", (unsigned)ui.layer, (unsigned)grid_on); nfind++; bad++; }
+            fm1_ms += 1000u;
+            turn(EN_K1 + k, 1);
+            btn_up(b);
+            for (f = 0; f < 4u; f++) frame();
+            (void)page_parts(nm, ct);
+            walks++;
+            if (cur_page()->scope != SC_MODS || ui.layer) { fprintf(stderr, "ui_render: %s layer OFF: knob %u did not land on MODULES ('%s', layer %u)\n", m ? "SEQ" : "ARP", k + 1u, nm, (unsigned)ui.layer); nfind++; bad++; }
+        }
+    {   /* the widths of every notice line at the floor size (M 15 / S 15): whole text, and each wrapped line against UT_OFF_W */
+        static const struct { const char *t; int m; } L[6] = {{UT_OFF_TXT_ARP, 1}, {UT_OFF_TXT_SEQ, 1}, {UT_OFF_TXT_SENDS, 1}, {UT_OFF_TXT_PFX, 1}, {UT_OFF_NOTE_IT, 0}, {UT_OFF_NOTE_THEM, 0}};
+        for (i = 0; i < 6u; i++) {
+            char o[4][48];
+            uint32_t n = off_wrap(L[i].m ? &AF_M : &AF_S, L[i].t, o), j;
+            printf("ui_render: OFF text '%s' (%s) whole %d px, %u line%s:", L[i].t, L[i].m ? "M" : "S", text_w(L[i].m ? &AF_M : &AF_S, L[i].t), n, n == 1u ? "" : "s");
+            for (j = 0; j < n; j++) { int w = text_w(L[i].m ? &AF_M : &AF_S, o[j]); printf(" '%s' %d", o[j], w); if (w > UT_OFF_W) { nfind++; bad++; } }
+            printf("\n");
+        }
+    }
+    mods_put(MODS_ALL, 0u);
+    printf("ui_render: OFF notice walks: %u, %u failures\n", walks, bad);
+}
+
 int main(int argc, char **argv)
 {
+    if (argc > 2 && !strcmp(argv[1], "--target")) return target_main(argv[2]);
     const char *out = argc > 1 ? argv[1] : "build/ui_new";
     char path[600];
     uint32_t p, s;
@@ -1862,6 +2299,17 @@ int main(int argc, char **argv)
         fontf = fopen(ap, "w");
         if (fontf) fprintf(fontf, "mode\tscreen\tface\tx0\ty0\tx1\ty1\ttext\n");
     }
+    {
+        char ap[600];
+        snprintf(ap, sizeof ap, "%s/keycap_table.txt", out);
+        kcf = fopen(ap, "w");
+        if (kcf) fprintf(kcf, "scene\tkeycap\tword beside it\tface\ttext baseline (row)\tpill rows\tcentre offset\n");
+    }
+    {
+        char ap[600];
+        snprintf(ap, sizeof ap, "%s/boxes.txt", out);
+        boxf = fopen(ap, "w");
+    }
     if (audf) fprintf(audf, "screen\ttexts\ttext_px\ticons\ticon_px\tkeycaps\tkeycap_px\tellipsised\ttight\twords\ttight_list\n");
     {   /* the lint itself: an overlap, a value too wide for its column, a text past its canvas, one past its cell */
         state(); pal(0); cur_name = "self-test";
@@ -1871,7 +2319,7 @@ int main(int argc, char **argv)
         cv_text(10, 4, &AF_S, "BBBB", T_TEXT);
         cv_text_fit(0, 15, &AF_M, "WWWWWWWW", T_THEME, T_BG, COL_W);
         cv_text(40, 30, &AF_M, "CUT", T_THEME);
-        cv_rrect(2, 31, 20, 13, 3, T_SURF, T_BG);          /* a cell narrower than its word */
+        cv_rrect(2, 31, 20, 13, 3, T_BG, T_BG);          /* a cell narrower than its word */
         cv_text(4, 31, &AF_S, "SPILL", T_TEXT);
         cv_blit(4, Y_LABEL);
         lint();
@@ -1891,6 +2339,180 @@ int main(int argc, char **argv)
         fprintf(rep, "(self-test: %u findings above are expected)\n\n", nfind);
         nfind = 0;
     }
+    if (getenv("UI_RENDER_STALE")) {   /* DUELL 1.1 general rule check: a stored value changed, NO forced redraw: the screen must change (the card or panel shows the new value at once) */
+        static const struct { int scene; const char *what; } C[] = {
+            {S_LFO, "LFO page: WAVE"}, {S_FILTER, "MULTI FILTER: CUTOFF"}, {S_MOD, "MATRIX: AMOUNT"}, {S_DLY, "DELAY page (global): TIME"}, {S_MIDI, "MIDI page: MIDI IN"},
+            {S_MODULES, "MODULES: ARP"}, {S_MENU_CONTROL, "MENU: NOTES LEFT"}, {S_MENU_CONTROL, "MENU: KEY VELOCITY (step 3)"}, {S_ENGINE_WAVE, "ENGINE WAVE page: TABLE"},
+            {S_CLOCK, "TEMPO page: BPM"}, {S_ENV, "AMP ENV: DECAY"}};
+        uint32_t c, bad = 0;
+        for (c = 0; c < sizeof C / sizeof C[0]; c++) {
+            uint32_t h0, h1, i;
+            setup(C[c].scene);
+            pal(UI_DEFAULT_INDEX);
+            if (C[c].scene == S_MENU_CONTROL) {
+                ui.menu = 1;
+                ui.menu_sel = c == 6u ? MI_NOTESLEFT : MI_KEYVEL;
+            }
+            draw(C[c].scene);
+            for (i = 0; i < 40u; i++) { ui.force = 0; ui_draw(); }
+            for (h0 = 2166136261u, i = 0; i < 240u * 240u; i++) h0 = (h0 ^ host_screen[i]) * 16777619u;
+            switch (c) {
+            case 0: TSEL->p[P_LWAVE] = (TSEL->p[P_LWAVE] + 2) % 5; break;
+            case 1: TSEL->p[P_FREEA] = (int16_t)(TSEL->p[P_FREEA] > 30 ? TSEL->p[P_FREEA] - 20 : TSEL->p[P_FREEA] + 20); break;
+            case 2: TSEL->p[P_M1AMT] = (int16_t)(TSEL->p[P_M1AMT] > 0 ? -30 : 40); break;
+            case 3: song.g[G_DTIME] = (int16_t)(song.g[G_DTIME] > 8 ? 3 : 12); break;
+            case 4: song.g[G_ROUTE] ^= 1; break;
+            case 5: mods_put(MODS_ARP, (mods_get() & MODS_ARP) ? 0u : 1u); break;
+            case 6: fprintf(stderr, "  notes left before %u ", menu_get(MI_NOTESLEFT)); menu_put(MI_NOTESLEFT, menu_get(MI_NOTESLEFT) ? 0u : 1u); fprintf(stderr, "after %u sel %u menu %d\n", menu_get(MI_NOTESLEFT), (unsigned)ui.menu_sel, (int)ui.menu); break;
+            case 7: menu_put(MI_KEYVEL, menu_get(MI_KEYVEL) == 4u ? 1u : 4u); break;
+            case 8: TSEL->p[P_E0] = (int16_t)(TSEL->p[P_E0] == 5 ? 9 : 5); { wv_mem_t *wm = (wv_mem_t *)ENG_MEM(0); wm->h.have = 0; wm->h.want = (uint8_t)TSEL->p[P_E0] + 1u; { uint32_t k; for (k = 0; k < 4000u; k++) (void)wave_service(); } } break;
+            case 9: song.g[G_BPM] = (int16_t)(song.g[G_BPM] + 7); break;
+            default: TSEL->p[P_DEC] = (int16_t)(TSEL->p[P_DEC] > 60 ? 20 : 90); break;
+            }
+            for (i = 0; i < 40u; i++) { ui.force = 0; ui_draw(); }
+            for (h1 = 2166136261u, i = 0; i < 240u * 240u; i++) h1 = (h1 ^ host_screen[i]) * 16777619u;
+            if (h0 == h1) { uint32_t h2, j; ui.force = 1; ui_draw(); for (h2 = 2166136261u, j = 0; j < 240u * 240u; j++) h2 = (h2 ^ host_screen[j]) * 16777619u; fprintf(stderr, "  (forced redraw: %s)\n", h2 != h0 ? "the screen does differ: the page is STALE" : "the screen is the same: the row is not on this page"); }
+            fprintf(stderr, "stale check: %-34s screen %s\n", C[c].what, h0 != h1 ? "changes at once" : "STALE (did not change)");
+            bad += h0 == h1;
+        }
+        fprintf(stderr, "stale check: %s\n", bad ? "FAIL" : "ok");
+    }
+    if (getenv("UI_RENDER_NAMES")) {   /* V12: every matrix destination name against the room a matrix row gives it (L, then M); a name that fits neither is listed */
+        int32_t v; uint32_t e;
+        for (e = 0; e < NENGINES; e++) {
+            TSEL->eng_req = (uint8_t)e;
+            for (v = 1; v < MD_N; v++) {
+                char dn[40]; int32_t wl, wm;
+                one_line(dn, sizeof dn, mod_dst_name(TSEL, v));
+                wl = text_w(&AF_L, dn); wm = text_w(&AF_M, dn);
+                if (wl > 132) fprintf(stderr, "name eng %u dst %d '%s' L %d M %d\n", (unsigned)e, (int)v, dn, (int)wl, (int)wm);
+            }
+        }
+    }
+    if (getenv("UI_RENDER_V14")) {   /* DUELL 1.1 item 96 source check (owner 2026-10-26): the DEST pages' cards that do not apply are greyed with their cause; the two new depth pages.
+                                      * UI_RENDER_V14=OUTDIR: the pictures (VIOLET) as OUTDIR/ppm/VIOLET_v14_*.ppm, then a sweep of every such page over the engines, waves and modes: any ellipsised text is printed. Then exit */
+        static const struct { const char *name, *title; int twin, eng, wave, duel; } SH[] = {
+            {"v14_lfo2_depths_twin_off", "LFO 2 DEPTHS", 0, 0, 0, 0},
+            {"v14_env_depths_twin_off", "ENVELOPE DEPTHS", 0, 0, 0, 0},
+            {"v14_lfo1_dest_timbre_grey", "LFO 1 DEST", 0, 0, 0, 0},
+            {"v14_cycle2_duel", "CYCLE ENV 2/2", 1, 0, 0, 1},
+            {"v14_lfo2_depths_twin_on", "LFO 2 DEPTHS", 1, 0, 0, 0},
+            {"v14_env_depths_twin_on", "ENVELOPE DEPTHS", 1, 0, 0, 0},
+        };
+        static const char *const SWT[] = {"AMP DEST", "ENV 2 DEST", "LFO 1 DEST", "LFO 2 DEST", "CYCLE ENV 2/2", "LFO 2 DEPTHS", "ENVELOPE DEPTHS"};
+        uint32_t k, w, e, ti, twin, duel, bad = 0, shown = 0;
+        for (k = 0; k < sizeof SH / sizeof SH[0]; k++) {
+            uint32_t pi;
+            setup(S_HOME);
+            pal(UI_DEFAULT_INDEX);
+            song.rec = 0;
+            usb.config = 0;
+            eng(SH[k].eng);
+            TSEL->p[P_E0] = (int16_t)SH[k].wave;
+            TSEL->p[P_TWTYPE] = (int16_t)(SH[k].twin ? 1 : 0);
+            duell_mode_req = SH[k].duel ? DM_SPLIT : DM_STEREO;
+            for (pi = 0; pi < NPAGES && strcmp(PAGES[pi].title, SH[k].title); pi++) ;
+            if (pi == NPAGES) { fprintf(stderr, "v14: no page %s\n", SH[k].title); continue; }
+            ui.page = (uint8_t)pi;
+            ui.perf = 0;
+            ui.force = 1;
+            cur_name = SH[k].name;
+            draw(S_HOME);
+            lint();
+            write_ppm(out, "VIOLET", SH[k].name);
+        }
+        for (ti = 0; ti < sizeof SWT / sizeof SWT[0]; ti++)
+            for (e = 0; e < NENGINES; e++)
+                for (w = 0; w < 16u; w++)
+                    for (twin = 0; twin < 2u; twin++)
+                        for (duel = 0; duel < 2u; duel++) {
+                            uint32_t pi, q;
+                            char nm[64];
+                            setup(S_HOME);
+                            pal(UI_DEFAULT_INDEX);
+                            song.rec = 0;
+                            usb.config = 0;
+                            eng(e);
+                            TSEL->p[P_E0] = (int16_t)w;
+                            TSEL->p[P_E1] = (int16_t)(w & 3u);
+                            TSEL->p[P_TWTYPE] = (int16_t)twin;
+                            duell_mode_req = duel ? DM_SPLIT : DM_STEREO;
+                            for (pi = 0; pi < NPAGES && strcmp(PAGES[pi].title, SWT[ti]); pi++) ;
+                            if (pi == NPAGES) continue;
+                            ui.page = (uint8_t)pi;
+                            ui.perf = 0;
+                            ui.force = 1;
+                            snprintf(nm, sizeof nm, "%s eng %u w %u twin %u duel %u", SWT[ti], e, w, twin, duel);
+                            cur_name = nm;
+                            draw(S_HOME);
+                            for (q = 0; q < nscr; q++)
+                                if ((scr[q].flags & 1u) && shown < 40u) { fprintf(stderr, "v14 ELLIPSIS: %s: '%s'\n", nm, scr[q].s); shown++; bad++; }
+                        }
+        fprintf(stderr, "v14 sweep: %u ellipsised texts\n", bad);
+        return 0;
+    }
+    if (getenv("UI_RENDER_PAGES")) {   /* DUELL 1.1 source check: EVERY page of the page table, rendered one after the other (VIOLET), captions in out/pages.txt */
+        uint32_t pi;
+        FILE *cf = fopen("/tmp/pages_list.txt", "w");
+        for (pi = 0; pi < NPAGES; pi++) {
+            char nm[32];
+            char cn[48];
+            setup(S_HOME);
+            pal(UI_DEFAULT_INDEX);
+            song.rec = 0;                                 /* (the scene S_HOME is armed for recording and on USB power: the page check looks at the pages as an ordinary unit shows them) */
+            usb.config = 0;
+            ui.page = (uint8_t)pi;
+            ui.perf = 0;
+            ui.force = 1;
+            snprintf(cn, sizeof cn, "PAGE pg_%02u %s", pi, PAGES[pi].title);
+            cur_name = cn;
+            draw(S_HOME);
+            lint();
+            { uint32_t q; for (q = 0; q < nscr; q++) if (scr[q].flags & 1u) fprintf(stderr, "scan: page %2u %-18s truncated text: '%s'\n", pi, PAGES[pi].title, scr[q].s); }
+            snprintf(nm, sizeof nm, "pg_%02u", pi);
+            write_ppm(out, "VIOLET", nm);
+            if (cf) fprintf(cf, "pg_%02u %s\n", pi, PAGES[pi].title);
+        }
+        if (cf) fclose(cf);
+    }
+    if (getenv("UI_RENDER_VELO")) {
+        uint32_t v;
+        setup(S_MENU_CONTROL);
+        pal(UI_DEFAULT_INDEX);
+        ui.menu = 1;
+        ui.menu_sel = MI_KEYVEL;
+        draw(S_MENU_CONTROL);
+        for (v = 0; v < 6u; v++) {   /* the six values of KEY VELOCITY, stepped, NO forced redraw between the steps */
+            char nm[32];
+            menu_put(MI_KEYVEL, v);
+            ui.force = 0;
+            ui_draw();
+            fprintf(stderr, "velocity step %u: %s\n", v, menu_vname(MI_KEYVEL, menu_get(MI_KEYVEL)));
+            snprintf(nm, sizeof nm, "velo_%u", v);
+            write_ppm(out, "VIOLET", nm);
+        }
+    }
+    if (getenv("UI_RENDER_WAVE")) {   /* DUELL 1.1 source check: the WAVE engine page for every factory table, built the way the main loop builds it, and the picture's signature before and after the build */
+        uint32_t tb;
+        for (tb = 0; tb < WV_NTF; tb++) {
+            wv_mem_t *wm;
+            char nm[32];
+            uint32_t sig0, sig1, k;
+            setup(S_ENGINE_WAVE);
+            pal(UI_DEFAULT_INDEX);
+            wm = (wv_mem_t *)ENG_MEM(0);
+            TSEL->p[P_E0] = (int16_t)tb;
+            wm->h.have = 0;
+            wm->h.want = (uint8_t)(tb + 1u);
+            sig0 = graph_signature();
+            for (k = 0; k < 4000u; k++) (void)wave_service();
+            sig1 = graph_signature();
+            fprintf(stderr, "wave table %2u %-8s have %u want %u  signature %s\n", tb, N_WV_TABLE[tb], wm->h.have, wm->h.want, sig0 != sig1 ? "changes when built" : "SAME (stale)");
+            draw(S_ENGINE_WAVE);
+            snprintf(nm, sizeof nm, "wavetbl_%02u", tb);
+            write_ppm(out, "VIOLET", nm);
+        }
+    }
     for (p = 0; p < NPALETTES; p++)
         for (s = 0; s < S_COUNT; s++) {
             char name[64];
@@ -1904,6 +2526,16 @@ int main(int argc, char **argv)
             lint();
             if (p == UI_GREY_INDEX) { audit_scene(S_NAME[s]); font_scene("FLAT", S_NAME[s]); aud = 0; }
             mono_check();
+            box_lint(cur_name);
+            if (getenv("UI_RENDER_HASH")) {   /* item 124: a hash of every screen's pixels (before / after comparisons) to OUTDIR/hashes.txt */
+                static FILE *hf;
+                uint32_t h = 2166136261u, i;
+                char hp[600];
+                if (!hf) { snprintf(hp, sizeof hp, "%s/hashes.txt", out); hf = fopen(hp, "w"); }
+                for (i = 0; i < 240u * 240u; i++) h = (h ^ host_screen[i]) * 16777619u;
+                if (hf) fprintf(hf, "%s %08x\n", name, h);
+            }
+            keycap_table(S_NAME[s], !strcmp(UI_PALETTES[p].name, "VIOLET"));
             for (k = 0; k < sizeof SHOW / sizeof SHOW[0]; k++)
                 if (!strcmp(UI_PALETTES[p].name, SHOW[k])) write_ppm(out, SHOW[k], S_NAME[s]);
             if (!strcmp(UI_PALETTES[p].name, "VIOLET")) {   /* DUELL 0.1: the changed MENU rows and GLO's MIDI pages, for the owner (VIOLET, the default theme) */
@@ -1920,16 +2552,18 @@ int main(int argc, char **argv)
                                                    "user", "patches_factory", "patches_restore", "patches_save", "patches_save_both", "tools", "tools_restore", "confirm_restore_all"};   /* (0.2.17: the one list of patch slots) */
                 for (k = 0; k < sizeof DECK / sizeof DECK[0]; k++)
                     if (!strcmp(S_NAME[s], DECK[k])) write_ppm(out, "VIOLET", S_NAME[s]);
+                if (getenv("UI_RENDER_ALL"))                 /* DUELL 1.1 source check: every screen of VIOLET (the host render next to the approved pictures) */
+                    write_ppm(out, "VIOLET", S_NAME[s]);
             }
             if ((s == S_SPLASH || s == S_ABOUT || s == S_ABOUT_REC || s == S_MENU_INFO) &&   /* DUELL: the splash, ABOUT, the CPU meter in */
-                (!strcmp(UI_PALETTES[p].name, "VIOLET") || !strcmp(UI_PALETTES[p].name, "HI-CON") || !strcmp(UI_PALETTES[p].name, "PALE")))   /* VIOLET (the default) and HI-CON */
+                (!strcmp(UI_PALETTES[p].name, "VIOLET") || !strcmp(UI_PALETTES[p].name, "POLICE") || !strcmp(UI_PALETTES[p].name, "PALE")))   /* VIOLET (the default) and POLICE */
                 write_ppm(out, UI_PALETTES[p].name, S_NAME[s]);
         }
     {   /* MORPH v4 stills: the fader at A, 64, B and BOTH (64, B), each silent and playing (40 steps of a part sounding:
          * notes every 8 steps, its level, envelope, LFO 1 and 2 moving), as OUTDIR/ppm/<PAL>_mv_<fader>_<silent|play>.ppm */
         static const int MS[] = {S_MORPH, S_MORPH_MID, S_MORPH_B, S_MORPH_BOTH_MID, S_MORPH_BOTH};
         static const char *const MN[] = {"A", "64", "B", "both64", "bothB"};
-        static const char *const MP[] = {"VIOLET", "COBALT", "ORANGE", "MINT", "GREY", "HI-CON"};
+        static const char *const MP[] = {"VIOLET", "COBALT", "ORANGE", "MINT", "PALE", "GREY", "POLICE"};
         uint32_t k, j, pl, st, q;
         for (p = 0; p < NPALETTES; p++)
             for (j = 0; j < sizeof MP / sizeof MP[0]; j++)
@@ -2093,8 +2727,10 @@ int main(int argc, char **argv)
             "neutral; %u column values swept; %u FM6 charts linted; %u cards linted with MOTION's icon\n", nfind, nink, nfree, mono_bad,
             nsweep, fmp_charts, nmotion);
     if (!nmotion) { fprintf(stderr, "ui_render: the MOTION sweep marked no card\n"); nfind++; }
+    round_check();
+    off_check();
     {   /* 0.2.19: the header names the page the way its PAGES entry does: MIXER says MIXER (never the engine: "ENGINE ANALOG") */
-        static const struct { int scene; const char *title; } HT[] = {{S_MIXER, "MIXER"}, {S_MIXER_SPLIT, "MIXER"}, {S_MODE_STEREO, "MODE"}};
+        static const struct { int scene; const char *title; } HT[] = {{S_MIXER, "MIXER"}, {S_MIXER_SPLIT, "MIXER"}, {S_MODE_STEREO, "MODE"}, {S_MODULES, "MODULES"}, {S_MODULES_OFF, "MODULES"}};
         uint32_t k;
         for (k = 0; k < sizeof HT / sizeof HT[0]; k++) {
             char tb[24];
@@ -2104,6 +2740,12 @@ int main(int argc, char **argv)
             if (strcmp(tb, HT[k].title)) { fprintf(stderr, "ui_render: scene %s: header '%s', want '%s'\n", S_NAME[HT[k].scene], tb, HT[k].title); nfind++; }
         }
     }
+    {   /* item 114: the template-1 labels cut at their card's edge */
+        uint32_t i;
+        fprintf(rep, "\nLABELS CUT (template 1, %u distinct screen / knob / label%s): screen, knob, full label, width needed, room\n", cl_n, cl_more ? ", list full" : "");
+        for (i = 0; i < cl_n; i++)
+            fprintf(rep, "LABELCUT %-34s K%u %-22s need %d room %d\n", cl_seen[i].scr, cl_seen[i].k, cl_seen[i].lab, cl_seen[i].need, cl_seen[i].room);
+    }
     fclose(rep);
     printf("ui_render: %u screens x %u palettes + the page/value sweep; %u lint findings, %u ellipsised free texts (%u distinct), "
            "%u inks on their own colour, %u GREY / MONO pixels off gray / neutral; report %s\n",
@@ -2111,5 +2753,7 @@ int main(int argc, char **argv)
            mono_bad, path);
     printf("ui_render: alignment: %u measurements of %u places, %u off by 1 px or more%s\n", al_count, al_nst - 1u, al_fail,
            al_fail ? " (see align.txt)" : "");
-    return nfind || nink || mono_bad || al_fail ? 1 : 0;
+    printf("ui_render: keycaps beside a word: %u pairs over all palettes, %u with the pill's centre off the capitals' centre (see keycap_table.txt)\n", nkc_pairs, nkc_off);
+    printf("ui_render: boxes (a flat fill of 12 x 12 px or more that is not the page background and not an allowed highlight or data): %u (see boxes.txt)\n", nbox);
+    return nfind || nink || mono_bad || al_fail || nbox || nkc_off ? 1 : 0;
 }

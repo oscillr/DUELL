@@ -3,7 +3,7 @@
 // "v7: full backup": BACKUP_LIST / GET / PUT; there is no command of their own). A LIST stops playback on the unit; a PUT is checked by the unit
 // (shape, version, CRC) and written power-cut safe; the partner records of an object are copied unchanged.
 //   multis: ids 13..20, two to an object (magic MUL1, u16 lengths, record 1, record 2; multi.c). A record is the whole multi (both parts, steps,
-//           effects, End B seeds, mode, name at byte 8); its first byte is its version (the firmware loads only its own: 6 in 0.2.22 .. 0.2.25).
+//           effects, End B as values, mode, name at byte 8); its first byte is its version (the firmware loads only its own: 8 since ROLL CHAINED storage, multi.c MU_VER).
 //   patterns: ids 21..23, 11 + 11 + 10 slots (magic PTS3: compact objects of the unit's own, patslot.js; patslot.c). The editor's record of one slot is 596 bytes: used 0xA7, version 2,
 //           LEN DIV SWING GATE QUANTIZE, flags, name 12, 64 x 9-byte steps
 // Files on the computer: "duell-multis" (records whole, base64) and "duell-patterns" (records whole). No DOM.

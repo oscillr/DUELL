@@ -79,12 +79,13 @@ static void map_unmap(uint32_t cc, uint32_t restore)
 
 /* --- the names ---------------------------------------------------------------------------------------------------------- */
 static const char *const MAP_ACT_NAME[MAP_T_RES_SMART - MAP_T_MORPH + 1u] = {
-    "MORPH", "ROLL A", "ROLL B", "UNDO", "ROLL", "MORPH AMOUNT", "MORPH TARGET", "MORPH SMART", "MORPH ARP", "MORPH PITCH", "MODE", "BALANCE", "XFADE",
+    "MORPH", "ROLL A", "ROLL B", "UNDO", "ROLL", "MORPH AMOUNT", "MORPH TARGET", "MORPH SMART", "MORPH ARP", "MORPH PITCH", "MODE", "-", "XFADE",
     "SPLIT NOTE", "CUTOFF", "RESONANCE"};
 static const char *const MAP_X_NAME[NX] = {"ROUTE", "LINK", "TWIN KEY TRK", "ENV TO TWIN CUTOFF", "LFO 1 TO TWIN CUTOFF", "LFO 2 TO TWIN CUTOFF", "SUB LEVEL",
                                            "SUB OCTAVE", "SUB WAVE", "SUB HARMONICS", "CYCLE MODE", "CYCLE RISE", "CYCLE FALL", "CYCLE CURVE",
-                                           "CYCLE SYNC", "-"};
-/* the name of line l's parameter (b holds 24): "CUTOFF", "MORPH", "T2 ATTACK" (a learned line leads with its track) */
+                                           "CYCLE SYNC", "AMP ENV TO SATURATION", "FILTER ENV TO FILTER BLEND", "FILTER ENV TO FILTER DRIVE", "FILTER ENV TO MULTI RES", "CYCLE TO TWIN CUTOFF", "CYCLE TO PAN", "CYCLE TO PITCH",
+                                           "LFO 2 TO TWIN RES", "LFO 2 TO MULTI MODE", "LFO 2 TO FILTER BLEND", "LFO 1 LEVEL", "LFO 2 LEVEL", "STRUM"};   /* (DUELL 1.1: X15 .. X26; X27 STRUM, item 144) */
+/* the name of line l's parameter (b holds 40): "CUTOFF", "MORPH", "T2 ATTACK" (a learned line leads with its track) */
 static void map_name(uint32_t l, char *b)
 {
     uint32_t code = MAP_TARGET(l), k = MAP_WHO(l) == MAP_W_LEARNED ? MAP_RULE(l) : MAP_RULE(l) == MAP_R_PART1 ? 0u : MAP_RULE(l) == MAP_R_PART2 ? 1u : trk_index(TSEL);
@@ -99,17 +100,17 @@ static void map_name(uint32_t l, char *b)
     if (code < P_COUNT) {
         s = code == P_TWTYPE ? "TWIN TYPE" : code == P_CUT2 ? "TWIN CUTOFF" : code == P_RES2 ? "TWIN RES" : code == P_DRV2 ? "DRIVE" : code == P_BLEND ? "BLEND" : 0;
         if (s)
-            str_cpy(b + str_len(b), s, 24u - str_len(b));
+            str_cpy(b + str_len(b), s, 40u - str_len(b));
         else
             ev_name(&trk[k % NTRK], code, b + str_len(b));
     } else if (code >= XW_BASE && code < XW_BASE + NX) {
-        str_cpy(b + str_len(b), MAP_X_NAME[code - XW_BASE], 24u - str_len(b));
+        str_cpy(b + str_len(b), MAP_X_NAME[code - XW_BASE], 40u - str_len(b));
     } else if (code >= MAP_T_MORPH && code <= MAP_T_RES_SMART) {
-        str_cpy(b + str_len(b), MAP_ACT_NAME[code - MAP_T_MORPH], 24u - str_len(b));
+        str_cpy(b + str_len(b), MAP_ACT_NAME[code - MAP_T_MORPH], 40u - str_len(b));
     } else if (code >= MAP_T_G0 && code < MAP_T_G0 + G_COUNT) {
-        desc_said(&GP[code - MAP_T_G0], b + str_len(b), 24u - str_len(b));
+        desc_said(&GP[code - MAP_T_G0], b + str_len(b), 40u - str_len(b));
     } else {
-        str_cpy(b + str_len(b), "-", 24u - str_len(b));
+        str_cpy(b + str_len(b), "-", 40u - str_len(b));
     }
 }
 
@@ -117,7 +118,7 @@ static void map_name(uint32_t l, char *b)
 /* 1: a target code the table may hold (a part value, an extension slot, an action, a global value) */
 static int map_code_ok(uint32_t code)
 {
-    return code < P_COUNT || (code >= XW_BASE && code < XW_BASE + NX - 1u) || (code >= MAP_T_MORPH && code <= MAP_T_RES_SMART) ||
+    return code < P_COUNT || (code >= XW_BASE && code < XW_BASE + NX) || (code >= MAP_T_MORPH && code <= MAP_T_RES_SMART && code != MAP_T_SPARE_BAL) ||   /* (item 144: every slot, X27 STRUM too, as CHRD / VOIC are; item 157: BALANCE's code is a spare) */
            (code >= MAP_T_G0 && code < MAP_T_G0 + G_COUNT);
 }
 /* the part rules the target may have: the generator's table (tools/gen_midi_map.py) */
@@ -129,8 +130,9 @@ static int map_rule_ok(uint32_t code, uint32_t rule)
         return rule == MAP_R_CHANNEL || rule == MAP_R_GLOBAL;
     return rule != MAP_R_GLOBAL;
 }
-/* kind, where it is saved, whether AUTOMATION records a CC move of it, whether it does nothing now (for part t, the editor's selected one).
+/* kind, where it is saved, whether PARAMETER LOCKS records a CC move of it, whether it does nothing now (for part t, the editor's selected one).
  * A CC on an extension slot is not recorded until the motion escape (id 127) is built */
+static int card_hidden_vp(const int16_t *vp);   /* ui_draw.c: the ONE rule for a control the current setup hides (DUELL 1.1: a hidden control is as inert as an unused one) */
 static void map_target_info(uint32_t code, const track_t *t, map_info_t *r)
 {
     r->kind = MAP_K_CONTINUOUS;
@@ -142,7 +144,7 @@ static void map_target_info(uint32_t code, const track_t *t, map_info_t *r)
         r->saved = code == P_LEVEL || code == P_PAN || code == P_MUTE ? MAP_S_MULTI : MAP_S_PATCH;
         r->automation = (uint8_t)motion_param(code);
         r->inert = d->max <= d->min || !d->label || d->label[0] == '-' || code == P_DKSRC ||
-                   ((code == P_IA || code == P_IB || code == P_IC || code == P_IMIX) && !t->p[P_ITYPE]);
+                   ((code == P_IA || code == P_IB || code == P_IC || code == P_IMIX) && !t->p[P_ITYPE]) || card_hidden_vp(&t->p[code]);   /* (LOFI PULSE WIDTH with WAVE not PLS, UNISON DETUNE in POLY, ...) */
         if (code == P_TWTYPE || code == P_CUT2 || code == P_RES2 || code == P_DRV2 || code == P_BLEND) {   /* (ext.h aliases: the TWIN filter) */
             r->kind = code == P_TWTYPE ? MAP_K_STEPPED : MAP_K_CONTINUOUS;
             r->inert = (code != P_TWTYPE && !t->p[P_TWTYPE]) || (code == P_BLEND && !XV(t, X_ROUTE));
@@ -150,11 +152,12 @@ static void map_target_info(uint32_t code, const track_t *t, map_info_t *r)
     } else if (code >= XW_BASE && code < XW_BASE + NX) {
         uint32_t k = code - XW_BASE;
         r->kind = k == X_ROUTE || k == X_LINK || k == X_CYMODE || k == X_CYSYNC ? MAP_K_SWITCH : k == X_SUBOCT || k == X_SUBWAVE ? MAP_K_STEPPED : MAP_K_CONTINUOUS;
-        r->inert = k >= NX - 1u || (k <= X_LFO2 && !t->p[P_TWTYPE]) || (k >= X_SUBOCT && k <= X_SUBHARM && !XV(t, X_SUBLVL));
+        r->inert = k >= NX || (k <= X_LFO2 && !t->p[P_TWTYPE]) || (k == X_E2BLD || k == X_E2DRV || k == X_CYCUT2 || k == X_L2RES2 || k == X_L2BLD ? !t->p[P_TWTYPE] : 0) || (k >= X_SUBOCT && k <= X_SUBHARM && !XV(t, X_SUBLVL)) || card_hidden_vp(&XV(t, k));
     } else if (code >= MAP_T_G0 && code < MAP_T_G0 + G_COUNT) {
         const param_desc_t *d = &GP[code - MAP_T_G0];
         r->kind = d->fmt == F_ENUM ? MAP_K_STEPPED : MAP_K_CONTINUOUS;
         r->saved = MAP_S_MULTI;
+        r->inert = (uint8_t)card_hidden_vp(&song.g[code - MAP_T_G0]);
     } else {
         r->saved = code >= MAP_T_TARGET && code <= MAP_T_PITCH ? MAP_S_DEVICE : MAP_S_MULTI;
         r->kind = code == MAP_T_ROLL_A || code == MAP_T_ROLL_B || code == MAP_T_UNDO || code == MAP_T_ROLL ? MAP_K_ACTION :
@@ -258,13 +261,13 @@ static void map_merge_new(void)
 static uint32_t ml_row_code, ml_row_rule;                /* the editor's MAP_ARM: the row whose CC the next one heard becomes (while ml_row_on) */
 static uint8_t ml_row_on;
 static uint8_t ml_conflict_cc;                           /* the CC the last learn refused + 1, for the page's "take it?" (0 none) */
-static char ml_conflict_txt[24];                         /* .. and the footer's first row while it stands: "CC74 IS CUTOFF" */
+static char ml_conflict_txt[56];                         /* .. and the footer's first row while it stands: "CC74 IS CUTOFF" */
 /* cc -> parameter id of track k, in place of what the parameter had; force takes a number that is another's.
  * 1 learned, 0 no room (ML_N others), 2 a CC never learned (or a parameter that is none), 3 the number is another's (refused) */
 static uint32_t ml_learn_f(uint32_t cc, uint32_t k, uint32_t id, uint32_t force, char *name)
 {
     uint32_t r;
-    if (k >= NTRK || !(id < P_COUNT || (id >= XW_BASE && id < XW_BASE + NX - 1u)))
+    if (k >= NTRK || !(id < P_COUNT || (id >= XW_BASE && id < XW_BASE + NX)))
         return 2;
     r = map_set(cc, id, k, MAP_W_LEARNED, force, name);
     return r == MAP_OK ? 1u : r == MAP_E_FULL ? 0u : r == MAP_E_CONFLICT ? 3u : 2u;
@@ -345,7 +348,7 @@ static void ml_arm_row(uint32_t code, uint32_t rule)
     ml_arm = 1;
     ui.foot_sig = 0;
 }
-/* the picked parameter's name: "T2 CUTOFF", "T1 FILT ENV ATTACK" (b: 24 bytes; T0227: the full name, as AUTOMATION's list: ui_events.c ev_name) */
+/* the picked parameter's name: "T2 CUTOFF", "T1 FILTER ENV ATTACK" (b: 24 bytes; T0227: the full name, as PARAMETER LOCKS' list: ui_events.c ev_name) */
 static void ml_name(char *b)
 {
     if (ml_row_on) {
@@ -378,7 +381,7 @@ static void ml_refused(uint32_t cc, const char *owner)
 static void ml_poll(void)
 {
     uint32_t cc = ml_heard, r;
-    char a[12], b[24];
+    char a[12], b[40];
     if (!cc)
         return;
     ml_heard = 0;
@@ -423,7 +426,7 @@ static void ml_poll(void)
 /* OCT- / OCT+ while learning (not on an action page): OCT- clears the picked parameter's CC, OCT+ is done */
 static void ml_oct(uint32_t oct)
 {
-    char b[24];
+    char b[40];
     if (oct & 2u) {
         ml_off();
         ui_message("LEARN DONE");
@@ -448,13 +451,13 @@ static void ml_line(char *b)
         return;
     }
     if (ml_conflict_cc) {                                /* a CC was refused: whose number it is, until the next pick */
-        str_cpy(b, ml_conflict_txt, 24);
+        str_cpy(b, ml_conflict_txt, 56);
         return;
     }
     ml_name(b);
     cc = ml_row_on ? 0u : ml_cc_of(ui.ml.trk, ui.ml.id);
     if (!cc) {
-        str_cpy(b + str_len(b), ": SEND A CC", 12);
+        str_cpy(b + str_len(b), ": SEND A CC", 16);
         return;
     }
     str_cpy(b + str_len(b), " = CC", 6);

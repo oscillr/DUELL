@@ -33,8 +33,8 @@ typedef struct { uint8_t wid; int16_t val; } xb_edit_t;     /* one hand-set B va
 /* the stored default of slot k (value + 64): what a record or multi that does not name the slot means. Job B: keep this equal to the
  * descriptors' defaults of the slots (TWIN LINK is ON and SUB OCTAVE is -1 = stored 1 by EXTENSION_BLOCK_PLAN 2A; CYCLE RISE / FALL are
  * "open" there; job B picked ENV 2's: RISE 10, FALL 70, stored 74 and 134; the store only needs the table to be the same on the way in and out) */
-#define XB_DEFS {64u, 65u, 64u, 64u, 64u, 64u, 64u, 65u, 64u, 64u, 64u, 74u, 134u, 64u, 64u, 64u}
-_Static_assert(NX == 16, "up_xb.h: XB_DEFS lists the 16 slots");
+#define XB_DEFS {64u, 65u, 64u, 64u, 64u, 64u, 64u, 65u, 64u, 64u, 64u, 74u, 134u, 64u, 64u, 64u, 64u, 64u, 64u, 64u, 64u, 64u, 64u, 64u, 64u, 191u, 191u, 64u}   /* (DUELL 1.1: X15..X24 depths 0, X25 / X26 the LFO LEVELs 127 = stored 191, X27 STRUM 0 (OFF) = stored 64, item 144) */
+_Static_assert(NX == 28, "up_xb.h: XB_DEFS lists the 28 slots");
 static uint8_t xb_def(uint32_t k) { static const uint8_t D[NX] = XB_DEFS; return D[k]; }   /* slot k's default, value + 64 */
 static void xb_defaults(uint8_t *xv)                        /* xv: NX bytes, value + 64 */
 {

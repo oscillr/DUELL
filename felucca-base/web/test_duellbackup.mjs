@@ -4,7 +4,7 @@
 import { OLD_PATCH_IDS, PATCH_ID, VERSION, GROUPS, DUELL_IDS, RESTORE_ORDER, patchKey, patchSlot, isPatchKey, objectLabel, parseInfo, parseList, parsePage, readArchive, objectsToFile, captureBackup, planRestore, runRestore,
          verifyRestore, describe, checkObject, listUnit, fileName, rawLines, MULTI_VERSION } from "./editor/duellbackup.js";
 import { MockUnit, buildPatchRecord, buildLegacyPatchChunk, buildMultiObject, buildPatternObject, MOCK_ENGINES } from "./editor/mockunit.js";
-import { buildRecord, parseRecord, storeDefaults, engineIndex, PTF, XB_DEFS } from "./editor/patchrecord.js";
+import { buildRecord, buildEndB, parseRecord, storeDefaults, engineIndex, PTF, XB_DEFS } from "./editor/patchrecord.js";
 import { CMD } from "./editor/proto.js";
 import { buildObject as wtObject, WT } from "./editor/wavetable.js";
 import { readFileSync } from "node:fs";
@@ -51,9 +51,9 @@ const bytesOf = (a) => new Map([...a.objects].map(([id, o]) => [id, o.bytes]));
   ok(throwsMsg(() => parseList([1, 3, 0]), /playing/), "LIST while playing (rc 3): says to stop playback");
   ok(throwsMsg(() => parseList([1, 0, 1, 99, ...bkU32(0), ...bkU32(0)]), /newer editor/), "LIST: an unknown object id is refused");
   const pgOk = [1, 0, 1, 40, ...bkU32(50), ...bkU32(7)];
-  ok(parsePage(pgOk, 2).get(patchKey(40)).size === 50 && throwsMsg(() => parsePage(pgOk, 1), /page 1/) && throwsMsg(() => parsePage([1, 0, 1, 40, ...bkU32(19), ...bkU32(7)], 2), /size/) && throwsMsg(() => parsePage([1, 0, 1, 40, ...bkU32(535), ...bkU32(7)], 2), /size/)
+  ok(parsePage(pgOk, 2).get(patchKey(40)).size === 50 && throwsMsg(() => parsePage(pgOk, 1), /page 1/) && throwsMsg(() => parsePage([1, 0, 1, 40, ...bkU32(19), ...bkU32(7)], 2), /size/) && throwsMsg(() => parsePage([1, 0, 1, 40, ...bkU32(578), ...bkU32(7)], 2), /size/)
      && throwsMsg(() => parsePage([1, 0, 2, 40, ...bkU32(50), ...bkU32(7), 40, ...bkU32(50), ...bkU32(7)], 2), /page 2/) && throwsMsg(() => parsePage(pgOk.slice(0, 10), 2), /incomplete/) && throwsMsg(() => parsePage([1, 5, 0], 1), /expired|Start again/),
-     "LIST page: a slot off the page, out of order, a size outside 20..534, a short reply and rc 5 are refused");
+     "LIST page: a slot off the page, out of order, a size outside 20..577, a short reply and rc 5 are refused");
 }
 
 // ---- checks of single objects
@@ -64,23 +64,24 @@ const bytesOf = (a) => new Map([...a.objects].map(([id, o]) => [id, o.bytes]));
   ok(t(14, mu, (c) => { c[0] ^= 1; }) && t(14, mu, (c) => { c[4]++; }) && t(14, mu, (c) => { c[8] = 0; }) && t(14, mu, (c) => { c[8] = 16; }) && t(14, mu, (c) => { c[8 + 8] = 7; }) && t(14, mu, (c) => { c[9] = 3; }),
      "objects: a multi with a bad magic, length, version, name character or part count is refused");
   const music = new MockUnit({ seed: false }).objs.get(0);
-  ok(checkObject(0, music) === null && t(0, music, (c) => { c[63] = 4; }) && t(0, music, (c) => { c[67] = 4; }) && t(0, music, (c) => { c[67] = 5; }) && t(0, music, (c) => { c[67] = 6; }) && t(0, music, (c) => { c[66] = 122; }) && t(0, music, (c) => { c[0] ^= 1; }) && checkObject(0, music.slice(0, 3000)) !== null
+  ok(checkObject(0, music) === null && t(0, music, (c) => { c[63] = 4; }) && t(0, music, (c) => { c[67] = 4; }) && t(0, music, (c) => { c[67] = 5; }) && t(0, music, (c) => { c[67] = 6; }) && t(0, music, (c) => { c[67] = 7; }) && t(0, music, (c) => { c[66] = 122; }) && t(0, music, (c) => { c[0] ^= 1; }) && checkObject(0, music.slice(0, 3000)) !== null
      && /older DUELL version/.test(checkObject(0, music.map((x, i) => i === 63 ? 4 : x))),
-     "objects: the music of two parts and revision 7 passes; one of four parts (byte 63), revision 4, 5 or 6 (byte 67), another P_COUNT, a bad magic or size is refused, the old one with a clear reason");
+     "objects: the music of two parts and revision 8 passes; one of four parts (byte 63), revision 4, 5, 6 or 7 (byte 67), another P_COUNT, a bad magic or size is refused, the old one with a clear reason");
   const at = 8 + 11;   // (the second slot's record would be later; the first slot's record starts at 8: rlen 2, flags, LEN, DIV, SWING, GATE, nlen, name ...)
   ok(t(21, pa, (c) => { c[0] ^= 1; }) && t(21, pa, (c) => { c[8 + 3] = 0; }) && t(21, pa, (c) => { c[8 + 8] = 3; }) && t(21, pa, (c) => { c[8 + 2] = 4; }) &&
      t(21, pa, (c) => { c[6] = 10; }) && t(21, pa, (c) => { c[4]--; }) && t(21, pa, (c) => { c[8 + 6] = 0; }) && checkObject(21, pa.slice(0, 300)) !== null && checkObject(23, pa) !== null && checkObject(21, new Uint8Array(0)) === null,
      "objects: a pattern object with a bad magic, LEN, name, flag bits, slot count, length, GATE or size, or another object's slot count, is refused; length 0 (the defaults again) passes");
   ok(checkObject(21, (() => { const c = pa.slice(); c[3] = 0x32; return c; })()) === "a pattern slot object of an older firmware (16 slots)", "objects: a PTS2 object of the 16-slot firmware is refused with that reason");
   const v = storeDefaults(0); v[45] = 60; v[46] = 20;
-  const pv = buildRecord({ engine: 0, name: "VALUES", values: v }), ex = buildRecord({ engine: 0, name: "XBLOCK", values: v, ext: XB_DEFS.map((d, k) => (k === 6 ? 10 : d - 64)), edits: [{ wid: 9, val: 5 }] });
+  const pv = buildRecord({ engine: 0, name: "VALUES", values: v }), ex = buildRecord({ engine: 0, name: "XBLOCK", values: v, ext: XB_DEFS.map((d, k) => (k === 6 ? 10 : d - 64)), mb: buildEndB({ engine: 0, amount: 40, values: { 9: 5, 45: 70 }, marks: [9] }) });
   const k = patchKey(7);
-  ok(checkObject(k, ex) === null && checkObject(k, pv) === null && (ex[4] & PTF.XB), "objects: a patch record with values, and one with the extension block and an edit, pass");
+  ok(checkObject(k, ex) === null && checkObject(k, pv) === null && (ex[4] & PTF.MB), "objects: a patch record with values, and one with an extension slot and an End B block, pass");
   ok(t(k, pc, (c) => { c[2] = 3; }) && t(k, pc, (c) => { c[3] = 1; }) && t(k, pc, (c) => { c[0]++; }) && t(k, pc, (c) => { c[4] &= ~PTF.CB; }) && t(k, pc, (c) => { c[5] = 99; }) && t(k, pc, (c) => { c[7] = 0; }) && t(k, pc, (c) => { c[8] = 7; }) && t(k, pc, (c) => { c[18] = 65; c[10] = 0; })
-     && checkObject(k, pc.slice(0, 19)) !== null && checkObject(k, nothing) !== null && checkObject(k, new Uint8Array(535)) !== null,
-     "objects: a patch record with a slot or revision byte not 0, a wrong length field, no CB flag, an unknown engine, no name, a control character or a gap in its name, a size under 20, 0 or over 534 is refused");
-  ok(t(k, pv, (c) => { c[c.length - 1] = 200; }) && t(k, pv, (c) => { c[20] = 127; }) && t(k, pv, (c) => { c[19]++; }) && t(k, ex, (c) => { c[21] = 2; }) && t(k, ex, (c) => { c[20]++; }) && t(k, ex, (c) => { c[4] &= ~PTF.XB; }),
-     "objects: a patch record with a value byte over 191, a parameter id that does not exist, a wrong value count, an extension block of version 2, a block length off by one or the flag cleared is refused");
+     && checkObject(k, pc.slice(0, 19)) !== null && checkObject(k, nothing) !== null && checkObject(k, new Uint8Array(578)) !== null,
+     "objects: a patch record with a slot or revision byte not 0, a wrong length field, no CB flag, an unknown engine, no name, a control character or a gap in its name, a size under 20, 0 or over 577 is refused");
+  ok(t(k, pv, (c) => { c[20 + 15] |= 128; }) && t(k, pv, (c) => { c[19]++; }) && t(k, pv, (c) => { c[4] |= 16; }) && t(k, pv, (c) => { c[4] |= 64; }) && t(k, ex, (c) => { c[4] &= ~PTF.MB; }) && t(k, ex, (c) => { c[c.length - 1] ^= 255; c[0]--; }),
+     "objects: a patch record that names wide id 127 in its bitmap, has a wrong value count, carries a flag of the older form (16 or 64) or has its End B flag cleared or its End B cut short is refused");
+  ok(/older DUELL version/.test(checkObject(k, (() => { const c = pv.slice(); c[4] |= 16; return c; })())), "objects: a patch record of the older form (flag 16 or 64) is refused with a plain message");
   ok(OLD_PATCH_IDS.every((id) => checkObject(id, buildLegacyPatchChunk([{ slot: 3, name: "P" }])) !== null) && checkObject(40, pc) !== null, "objects: a physical patch chunk (ids 6 7 9..12 27..31 35..39) and the bare wire id 40 are no objects of a backup");
   ok(checkObject(0, new Uint8Array(3840)) !== null && checkObject(1, new Uint8Array(584)) !== null && checkObject(2, new Uint8Array(0)) !== null, "objects: music / settings without their magic, and a retired id, are refused");
   ok(objectLabel(patchKey(6), pc) === "patch #07 P" && objectLabel(patchKey(127)) === "patch #128" && objectLabel(6) === "a chunk of the old patch store" && patchSlot(patchKey(9)) === 9 && !isPatchKey(40) && !isPatchKey(1128) && isPatchKey(1127), "labels: patch #NN NAME from the slot (1-based, as the Patches page) and the record");
@@ -105,7 +106,7 @@ const seen = []; const rqA = (r, o) => A.request(r, o);
 const file = await captureBackup(rqA, info, (d, t) => seen.push([d, t]));
 const archive = readArchive(JSON.stringify(file));
 ok(file.format === "duell-backup" && file.version === 5 && VERSION === 5 && file.firmware === info.version && file.objects.length === 20 && file.patchRecords === true && !Number.isNaN(Date.parse(file.created)), "file: format duell-backup, version 5, firmware, date, 20 objects (16 others and the 4 saved patches)");
-ok(file.objects.slice(16).every((o, i) => o.id === 40 && o.slot === [0, 1, 5, 64][i] && o.size >= 20 && o.size <= 534) && file.objects.slice(0, 16).every((o) => o.id !== 40) && archive.hasPatches && archive.oldPatchChunks === 0 && !archive.notes.length, "file: the patches are {id: 40, slot, size, crc, data} objects, sorted by slot, after the other objects");
+ok(file.objects.slice(16).every((o, i) => o.id === 40 && o.slot === [0, 1, 5, 64][i] && o.size >= 20 && o.size <= 577) && file.objects.slice(0, 16).every((o) => o.id !== 40) && archive.hasPatches && archive.oldPatchChunks === 0 && !archive.notes.length, "file: the patches are {id: 40, slot, size, crc, data} objects, sorted by slot, after the other objects");
 ok(seen.at(-1)[0] === seen.at(-1)[1] && seen.length > 10, "capture: progress ends at the total");
 ok(DUELL_IDS.every((id) => same(archive.objects.get(id).bytes, A.objs.get(id) || new Uint8Array(0))) && [...A.patches.keys()].every((k) => same(archive.objects.get(patchKey(k)).bytes, A.patchBytes(k))) && archive.objects.size === 20,
    "round trip: capture -> JSON -> bytes equal the unit's objects, empty ones as 0, and each patch equals the record the unit gives out");
@@ -121,10 +122,10 @@ ok(await athrows(() => captureBackup((r, o) => { const x = new MockUnit(); x.pla
   ok(f2.problems?.length === 1 && f2.problems[0].id === 0 && /changed/.test(f2.problems[0].problem) && a2.objects.get(0).raw && a2.objects.size === 20 && rawLines(a2.problems)[0].startsWith("Object 0 (the current music) could not be checked"),
      "capture (0.2.25): an object that changes during the read is kept as raw data with a warning line; the backup goes on");
 }
-{   // more than 32 patches: the four pages, every patch read in pieces of 256 (a record of 534 bytes needs three)
+{   // more than 32 patches: the four pages, every patch read in pieces of 256 (a record of 577 bytes needs three)
   const U = new MockUnit({ seed: false }), want = [];
   for (let slot = 0; slot < 128; slot += 3) {            // 43 patches over all four pages; a few with the extension block and a long FM6 record
-    const eng = slot % 5 === 0 ? 14 : 0, more = slot % 9 === 0 ? { ext: XB_DEFS.map((d, k) => (k === slot % 15 ? d - 64 + 3 : d - 64)), edits: Array.from({ length: 32 }, (_, i) => ({ wid: i + 1, val: i - 10 })) } : {};
+    const eng = slot % 5 === 0 ? 14 : 0, more = slot % 9 === 0 ? { ext: XB_DEFS.map((d, k) => (k === slot % 15 ? d - 64 + 3 : d - 64)), mb: buildEndB({ engine: eng, amount: 50, values: Object.fromEntries(Array.from({ length: 20 }, (_, i) => [i + 1, 3])) }) } : {};
     U.setRecord(slot, buildPatchRecord({ name: `PATCH ${slot}`, engine: eng, cat: slot % 9, values: storeDefaults(eng).map((v, i) => (i === 50 + slot % 20 ? v + 1 : v)), ...more })); want.push(slot);
   }
   U.rebuild();
@@ -133,9 +134,9 @@ ok(await athrows(() => captureBackup((r, o) => { const x = new MockUnit(); x.pla
   const a = readArchive(JSON.stringify(f)), keys = [...a.objects.keys()].filter(isPatchKey);
   ok(want.length === 43 && same(pagesSeen, [1, 2, 3, 4]) && same(keys, want.map(patchKey)) && want.every((k) => same(a.objects.get(patchKey(k)).bytes, U.patchBytes(k))) && gets.every((n) => n === 9) && gets.length >= 43,
      "capture: 43 patches over the four LIST pages (1..4), each read with GET 40 (9 byte requests with the slot), every record equals the unit's");
-  {   // a record of over 256 bytes (an FM6 sound with its patch, the extension block with 32 edits and 100 values off their default) is read in two pieces
+  {   // a record of over 256 bytes (an FM6 sound with its patch, End B as values and 100 values off their default) is read in two pieces
     const fm = engineIndex("FM6"), vv = storeDefaults(fm).map((v, i) => (i >= 20 && i < 120 ? (v >= 100 ? v - 1 : v + 1) : v));
-    U.setRecord(126, buildPatchRecord({ name: "BIGGEST", engine: fm, values: vv, patch128: Array.from({ length: 128 }, (_, i) => i), mb: [1, 2, 3, 4, 5, 6, 7], ext: XB_DEFS.map((d) => d - 64 + 1), edits: Array.from({ length: 32 }, (_, i) => ({ wid: i, val: i })) }));
+    U.setRecord(126, buildPatchRecord({ name: "BIGGEST", engine: fm, values: vv, patch128: Array.from({ length: 128 }, (_, i) => i), mb: buildEndB({ engine: fm, amount: 7, values: Object.fromEntries(Array.from({ length: 40 }, (_, i) => [i + 6, 5])), marks: [6, 7], fm6: Array.from({ length: 65 }, (_, i) => i) }), ext: XB_DEFS.map((d) => d - 64 + 1) }));
     const g = []; const f2 = await captureBackup(async (r, o) => { if (r[0] === 66 && r[1][8] === 126) g.push(r[1][6] | r[1][7] << 7); return rq(r, o); }, info), a2 = readArchive(JSON.stringify(f2));
     ok(a2.objects.get(patchKey(126)).size > 256 && g.length === 2 && g[0] === 256 && same(a2.objects.get(patchKey(126)).bytes, U.patchBytes(126)) && parseRecord(a2.objects.get(patchKey(126)).bytes).ok, `capture: a ${a2.objects.get(patchKey(126)).size} byte record is read in two pieces (256 and the rest) and equals the unit's`);
     U.patches.delete(126);
@@ -168,7 +169,7 @@ ok(await athrows(() => captureBackup((r, o) => { const x = new MockUnit(); x.pla
   const { readFileSync } = await import("node:fs");
   const recs = ["M01", "M02"].map((n) => readFileSync(new URL(`../tools/factory_multis/${n}.bin`, import.meta.url)));
   const ob = new Uint8Array(8 + recs[0].length + recs[1].length); ob.set([0x4D, 0x55, 0x4C, 0x31, recs[0].length & 255, recs[0].length >> 8, recs[1].length & 255, recs[1].length >> 8]); ob.set(recs[0], 8); ob.set(recs[1], 8 + recs[0].length);
-  ok(recs[0][0] === MULTI_VERSION && MULTI_VERSION === 7 && checkObject(13, ob) === null, "objects: a multi object as firmware 0.2.22 .. 0.2.24 writes it (version 7 now, 127 values: the factory records M01, M02) passes");
+  ok(recs[0][0] === MULTI_VERSION && MULTI_VERSION === 8 && checkObject(13, ob) === null, "objects: a multi object as the firmware writes it (version 8 now, End B as values, 127 values: the factory records M01, M02) passes");
   const oldCheck = (b) => { const at = 8; return b[at] > 2 ? "damaged multi" : null; };   // the 0.2.23 editor's rule (MUL_VER 2, b[at] > MUL_VER refused)
   ok(oldCheck(ob) === "damaged multi", "the 0.2.23 editor's multi check refused every version 6 record: that was the owner's 'Object 13: damaged multi'");
   const u = new MockUnit(); u.objs.set(13, ob);
@@ -302,8 +303,8 @@ const KEYS = [1000, 1001, 1005, 1064];
 {   // the unit's own rules for PUT 40, over the wire
   const U = new MockUnit({ seed: false }), rq = (r, o) => U.request(r, o), rec = buildPatchRecord({ name: "WIRE" }), crc = bkCrc(rec);
   const begin = (size, c, slot, tail = []) => rq([67, [0, 40, ...bkU32(size), ...bkU32(c), slot, ...tail]]);
-  ok((await begin(19, 0, 3))[2] === 1 && (await begin(535, 0, 3))[2] === 1 && (await begin(20, 0, 128))[2] === 1 && (await begin(20, 0, 3, [0]))[2] === 1 && (await rq([67, [0, 40, ...bkU32(20), ...bkU32(0)]]))[2] === 1 && (await begin(rec.length, crc, 3))[2] === 0,
-     "PUT 40 begin: a size 1..19 or over 534, a slot over 127 and a request of 12 or 14 bytes answer rc 1; size 20..534 with a slot is accepted");
+  ok((await begin(19, 0, 3))[2] === 1 && (await begin(578, 0, 3))[2] === 1 && (await begin(20, 0, 128))[2] === 1 && (await begin(20, 0, 3, [0]))[2] === 1 && (await rq([67, [0, 40, ...bkU32(20), ...bkU32(0)]]))[2] === 1 && (await begin(rec.length, crc, 3))[2] === 0,
+     "PUT 40 begin: a size 1..19 or over 577, a slot over 127 and a request of 12 or 14 bytes answer rc 1; size 20..577 with a slot is accepted");
   await rq([67, [3, 40]]);
   const piece = async (off, n) => rq([67, [1, 40, ...bkU32(off), ...bkPack(rec.subarray(off, off + n))]]);
   await begin(rec.length, crc ^ 1, 3); await piece(0, rec.length);
@@ -351,12 +352,12 @@ const KEYS = [1000, 1001, 1005, 1064];
   await runRestore((r, o) => J.request(r, o), planRestore(readArchive(safety), await listUnit((r, o) => J.request(r, o), 63), 63, all));
   ok(rows(J).split(",").slice(2).join() === before.split(",").slice(2).join() && J.patches.has(9), "safety: restoring the safety backup brings back patches, multis and patterns exactly");
 }
-{   // the whole path of a record with the extension block and 32 edits: build -> PATCH_RAW write -> read back -> backup -> restore onto a fresh unit -> bytes equal
+{   // the whole path of a record with extension slots and End B as values: build -> PATCH_RAW write -> read back -> backup -> restore onto a fresh unit -> bytes equal
   const { rawWrite, rawRead } = await import("./editor/librarian.js");
   const { Unit } = await import("./editor/unit.js"), { MockLink } = await import("./editor/mockunit.js");
-  const ext = XB_DEFS.map((d, k) => d - 64 + 2), edits = Array.from({ length: 32 }, (_, i) => ({ wid: i < 26 ? i * 4 : 128 + (i - 26), val: i * 4 - 60 }));
-  const rec = buildRecord({ engine: 0, name: "XB + 32 EDITS", cat: 4, values: storeDefaults(0).map((v, i) => (i === 60 ? v + 2 : v)), mb: [1, 2, 3, 4, 5, 6, 7], ext, edits });
-  ok((rec[4] & PTF.XB) && rec[20] === 101 && parseRecord(rec).edits.length === 32, "xblock path: the record has the block (102 bytes: L 101) and 32 edits");
+  const ext = XB_DEFS.map((d, k) => d - 64 + 2), endB = Object.fromEntries(Array.from({ length: 32 }, (_, i) => [i < 26 ? 6 + i * 4 : 128 + (i - 26), i * 2 - 30]));
+  const rec = buildRecord({ engine: 0, name: "XB + END B", cat: 4, values: storeDefaults(0).map((v, i) => (i === 60 ? v + 2 : v)), mb: buildEndB({ engine: 0, amount: 25, values: endB }), ext });
+  ok((rec[4] & PTF.MB) && parseRecord(rec).ok && parseRecord(rec).mb.length > 22 && parseRecord(rec).xv.every((x, k) => x === ext[k]), "xblock path: the record has the extension slots and the End B block");
   const src = new MockUnit({ seed: false }), u = new Unit(new MockLink(src)); await u.connect();
   await rawWrite(u, 9, rec);
   const back = await rawRead(u, 9);
@@ -366,16 +367,16 @@ const KEYS = [1000, 1001, 1005, 1064];
   const dst = new MockUnit({ seed: false }), rd = (r, o) => dst.request(r, o);
   const run = await runRestore(rd, planRestore(a, await listUnit(rd, 63), 63, all));
   const v = await verifyRestore(rd, planRestore(a, await listUnit(rd, 63), 63, all));
-  ok(run.failed === null && same(dst.patchBytes(9), rec) && v.differ.length === 0 && parseRecord(dst.patchBytes(9)).edits.length === 32, "xblock path: restored onto a fresh unit the bytes are equal, 32 edits and all, verify equal");
+  ok(run.failed === null && same(dst.patchBytes(9), rec) && v.differ.length === 0 && parseRecord(dst.patchBytes(9)).mb.length === parseRecord(rec).mb.length, "xblock path: restored onto a fresh unit the bytes are equal, End B and all, verify equal");
   const dst2 = new MockUnit({ seed: false }), u2 = new Unit(new MockLink(dst2)); await u2.connect();
   ok(same(await rawRead(u2, 9) ?? new Uint8Array(0), new Uint8Array(0)), "xblock path: (the fresh unit held nothing there before)");
   const mid = new MockUnit({ seed: false }), rm = (r, o) => mid.request(r, o);
   await runRestore(rm, planRestore(a, await listUnit(rm, 63), 63, all));
   const u3 = new Unit(new MockLink(mid)); await u3.connect();
   ok(same(await rawRead(u3, 9), rec), "xblock path: the restored record reads back through PATCH_RAW too");
-  const damaged = rec.slice(); damaged[20]++;
-  ok(await athrows(() => rawWrite(u, 10, damaged)) && !src.patches.has(10), "xblock path: PATCH_RAW refuses a record whose block length is off by one at commit (nothing written)");
-  ok(checkObject(patchKey(9), damaged) !== null && throwsMsg(() => readArchive(JSON.stringify(objectsToFile([...a.objects.values()].map((o) => (o.id === patchKey(9) ? { id: o.id, bytes: damaged } : o)), info))), /Patch #10/), "xblock path: a record whose block length is off by one is refused when a file is read (Patch #10)");
+  const damaged = rec.slice(); damaged[19]++;
+  ok(await athrows(() => rawWrite(u, 10, damaged)) && !src.patches.has(10), "xblock path: PATCH_RAW refuses a record whose value count is off by one at commit (nothing written)");
+  ok(checkObject(patchKey(9), damaged) !== null && throwsMsg(() => readArchive(JSON.stringify(objectsToFile([...a.objects.values()].map((o) => (o.id === patchKey(9) ? { id: o.id, bytes: damaged } : o)), info))), /Patch #10/), "xblock path: a record whose value count is off by one is refused when a file is read (Patch #10)");
 }
 
 // ---- older firmware and older files
@@ -420,10 +421,10 @@ const KEYS = [1000, 1001, 1005, 1064];
   ok(throwsMsg(() => readArchive(bad((c) => rewrite(c, (r) => { r[2] = 5; }))), /Patch #01: .*slot and revision/) && throwsMsg(() => readArchive(bad((c) => rewrite(c, (r) => { r[3] = 1; }))), /Patch #01: .*slot and revision/), "file v5: a good CRC over a record with a slot or revision byte is refused (the records of a backup have both 0)");
   ok(throwsMsg(() => readArchive(bad((c) => rewrite(c, (r) => { r[0]++; }))), /Patch #01: damaged patch record/) && throwsMsg(() => readArchive(bad((c) => rewrite(c, (r) => { r[4] &= ~PTF.CB; }))), /damaged patch record/) && throwsMsg(() => readArchive(bad((c) => rewrite(c, (r) => { r[7] = 7; }))), /damaged patch record/)
      && throwsMsg(() => readArchive(bad((c) => rewrite(c, (r) => { r[5] = 99; }))), /damaged patch record/), "file v5: a record with a wrong length field, no CB flag, a control character in the name or an unknown engine is refused");
-  ok(throwsMsg(() => readArchive(bad((c) => rewrite(c, (r) => { /* too short */ }, 0) || (P(c).size = 0, P(c).data = "", P(c).crc = 0))), /Patch #01/) && throwsMsg(() => readArchive(bad((c) => rewrite(c, () => {}, 0) || (() => { const r = new Uint8Array(535); r[0] = 535 & 255; r[1] = 535 >> 8; P(c).data = btoa(String.fromCharCode(...r)); P(c).size = 535; P(c).crc = bkCrc(r); })())), /Patch #01/),
-     "file v5: a patch of size 0 or of 535 bytes is refused (only saved patches, 20 to 534 bytes)");
+  ok(throwsMsg(() => readArchive(bad((c) => rewrite(c, (r) => { /* too short */ }, 0) || (P(c).size = 0, P(c).data = "", P(c).crc = 0))), /Patch #01/) && throwsMsg(() => readArchive(bad((c) => rewrite(c, () => {}, 0) || (() => { const r = new Uint8Array(578); r[0] = 578 & 255; r[1] = 578 >> 8; P(c).data = btoa(String.fromCharCode(...r)); P(c).size = 578; P(c).crc = bkCrc(r); })())), /Patch #01/),
+     "file v5: a patch of size 0 or of 578 bytes is refused (only saved patches, 20 to 577 bytes)");
   const xb = readArchive(JSON.stringify(file));
-  ok(throwsMsg(() => readArchive(bad((c) => rewrite(c, (r) => { r[4] |= PTF.XB; r[0] += 0; }))), /Patch #01/), "file v5: the extension flag with no block behind it is refused");
+  ok(throwsMsg(() => readArchive(bad((c) => rewrite(c, (r) => { r[4] |= 16; }))), /Patch #01: .*older DUELL version/), "file v5: a patch record of the older form (the extension flag, PT_VER 3) is refused with a plain message");
   ok(throwsMsg(() => readArchive(bad((c) => { c.version = 5; c.objects.find((o) => o.id === 40).id = 41; })), /Unknown object id 41/), "file v5: an object id 41 is unknown");
   ok(readArchive(JSON.stringify({ ...clone(file), objects: clone(file).objects.filter((o) => o.id !== 40) })).hasPatches === true && readArchive(JSON.stringify({ ...clone(file), patchRecords: undefined, objects: clone(file).objects.filter((o) => o.id !== 40) })).hasPatches === false, "file v5: patchRecords says a file without patches is the file of a unit with none; without the flag it leaves a unit's patches alone");
   ok(xb.objects.get(1000).size >= 20 && !xb.problems.length, "file v5: (no raw objects in the good file)");

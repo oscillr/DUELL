@@ -11,7 +11,12 @@
   python3 tools/bench_run.py --record [--two-core] [--suite NAME]   (stage 2) also record the unit's USB audio during every test and analyze it
                                                                      (clicks, gaps, level, DC, centroid, tail: tools/bench_analyze.py); --keep N runs keep their audio
   python3 tools/bench_run.py --record --repeat 3 --only STRESS-DEF   (BENCHR2) the test three times back to back; the summary has an aggregate line per test
-  python3 tools/bench_run.py --record --suite RECORD-2              (BENCHR2) the recorder suite with repeats, about 22 minutes: release_drafts/BENCH_RECORD2.md
+  python3 tools/bench_run.py --record --suite RECORD-2              (BENCHR2) the recorder suite with repeats, about 22 minutes: working docs/BENCH_RECORD2.md
+  python3 tools/bench_run.py --onset --suite POLY-MAX-BUDGET-A   (DUELL 1.1 item 142) also the run-wide counters: the unit's `status` before `bench run` and after the result line, so
+                                                     missed halves, shed voices and LIGHT FX from 0.0 s (the note-on burst) count, not only those inside the CPU window
+                                                     (`measure`, 1.0 .. 6.0 s in the POLY-MAX suites). Columns run_late, run_shed, run_lfx; any missed half or shed voice
+                                                     over the run is a FAIL, a LIGHT FX outside the window a WARN. (The core-1 counters tc* / tm* and vlate_events.csv
+                                                     always cover the whole run: they are taken at `bench run` and at the result; the ring of very late jobs keeps the newest 16)
   python3 tools/bench_run.py --prove-chain [--minutes N]   (stage 2, a FELUCCA_UAC_TONE build such as BENCHA1) record the unit's test triangle for 10 minutes and check
                                                            every frame follows the one before: zero breaks proves the recorder end to end
 
@@ -32,10 +37,11 @@ A suite is a plain text file (tools/bench_suites/*.txt), one test after another,
   tail 5       measure 1.0 12.0      the test ends 5 s after its last event; the CPU window (default: all)
   expect  exact|close|report         how a later comparison judges it (stage 3; recorded only)
   soak    600 repeat M07-CYCLE       the block repeated for 600 s            check 60     the RAM check and counters every 60 s
-  tune    slack 10443 | calm 2500 | pause off | lrun 4 | vrun 1 | vwin 8 2000 | floor 0     (BENCHT2 and later; vwin and floor BENCHT3) the runner's margin settings for this test (`bench slack ...`); the unit puts them back at the next `bench reset`
+  sound 1 ANALOG DEAR|N / mods SENDS OFF / bypass g REV ON / master COMP 4 / morph 1 OFF|ON|ROLL S A|FADER N / keysense OFF|VEL|AT|BOTH   (item 105, the COST-CAL words: bench.c bench_con_cal)
+  tune    slack 10443 | calm 2500 | pause off | lrun 4 | vrun 1 | vwin 8 2000 | floor 0 | core1 off|on     (BENCHT2 and later; vwin and floor BENCHT3; core1 BENCHV3: core 1 treated as down, core 0 plays part 2, the budget has the one-core numbers, tc column 1, no power-cycle) the runner's margin settings for this test (`bench slack ...`); the unit puts them back at the next `bench reset`
   ref     41.8 62.2                  (BENCHT3) the CPU average and peak the same test gave in an earlier build; the summary prints them beside this run's
   onecore-of NAME                    (inside a test, with --record) this test is the ONE-CORE REFERENCE of the test NAME: it must play the same scene with core 1 given no jobs
-                                     (`tune slack 400000`: every block's deadline is already past, core 0 plays part 2 itself; no power-cycle). The summary compares the
+                                     (`tune core1 off` since BENCHV3; `tune slack 400000` no longer does it since DUELL 1.1 item 90, HANDOFF_V2 item 110; no power-cycle). The summary compares the
                                      recorded clicks and gaps of NAME with this one's: only those above the reference count against NAME (BENCH_JOIN1.md)
   repeat N                           (inside a test) run this test N times back to back (--repeat N on the command line overrides it); each repeat does its own bench reset
   diag                               (a line of its own, before the first test) a diagnosis suite: very late blocks and pauses are WARN, not FAIL; inside a test: that test only (BENCHT4)
@@ -218,11 +224,13 @@ def parse_suite(text):
                 cur.setup.append(("scene", " ".join(tok[1:])))
             elif k == "budget":
                 cur.setup.append(("budget", tok[1].upper()))
+            elif k in ("sound", "mods", "bypass", "master", "morph", "keysense"):   # DUELL 1.1 item 105 (COST-CAL, tools/gen_cost_suite.py): console words passed on as they are
+                cur.setup.append(("raw", " ".join(tok)))
             elif k == "set":
                 cur.setup.append(("set", tok[1:]))
             elif k == "tune":
-                if not ((tok[1] in ("slack", "calm", "pause", "lrun", "vrun", "floor") and len(tok) == 3) or (tok[1] == "vwin" and len(tok) in (3, 4))):
-                    raise SuiteError("tune slack N | calm MS | pause on|off | lrun N | vrun N | vwin K [MS] | floor 0|1")
+                if not ((tok[1] in ("slack", "calm", "pause", "lrun", "vrun", "floor") and len(tok) == 3) or (tok[1] == "core1" and len(tok) == 3 and tok[2] in ("on", "off")) or (tok[1] == "vwin" and len(tok) in (3, 4))):
+                    raise SuiteError("tune slack N | calm MS | pause on|off | lrun N | vrun N | vwin K [MS] | floor 0|1 | core1 off|on")
                 cur.setup.append(("tune", tok[1:]))
             elif k == "ref":
                 cur.ref = (tok[1], tok[2])
@@ -335,6 +343,8 @@ def setup_words(test):
             out.append((f"scene {s[1]}", None))
         elif s[0] == "budget":
             out.append((f"budget {s[1]}", None))
+        elif s[0] == "raw":
+            out.append((s[1], None))
         elif s[0] == "set":
             out.append(("set " + " ".join(s[1]), None))
         elif s[0] == "tune":
@@ -616,6 +626,8 @@ def tc_info(r):
     if r.get("tc") not in ("1", "2"):
         return ""
     bits = []
+    if r.get("tcwhy") == "CORE1OFF":
+        bits.append("core 1 switched off by the test (tune core1 off): core 0 plays part 2, one-core budget")
     if tc_int(r, "tcown"):
         bits.append(f"own {r['tcown']} (core 0 played part 2 itself)")
         if r.get("tmjobs", "") != "":
@@ -665,7 +677,7 @@ def verdict(r, base, test):
             bump(2, "no flash write happened")
         if r.get("tc") in ("1", "2"):                       # core 1 (rules of BENCH_TWOCORE1.md): very late or silent = FAIL, late = WARN, own = info
             vl, sl, lt = tc_int(r, "tcvlate"), tc_int(r, "tcsilent"), tc_int(r, "tclate")
-            if base.get("cores") == "2" and r["tc"] == "1":
+            if base.get("cores") == "2" and r["tc"] == "1" and r.get("tcwhy") != "CORE1OFF":   # (CORE1OFF: the test switched core 1 off with `tune core1 off`: intended)
                 bump(2, f"core 1 stopped during the session ({r['tcwhy']})")
             diag = getattr(test, "diag", False)
             if r.get("tcvlok", "") != "":                   # BENCHT3 and later: a very late block whose job finished in its half and paused nothing is a WARN with its count; a pause is a FAIL
@@ -704,8 +716,9 @@ class RecCfg:
     under_limit USB underruns after the mark that are still a PASS (0: any underrun after the mark is a FAIL)                                       --under-limit
     match_s     the click of a two-core test is "the same" as one of its one-core reference when both are within this many seconds of the first note  --match-ms"""
 
-    def __init__(self, settle=1.0, setup_wait=None, lead=0.6, mark_after=0.35, under_limit=0, match_s=0.06):
+    def __init__(self, settle=1.0, setup_wait=None, lead=0.6, mark_after=0.35, under_limit=0, match_s=0.06, onset=False):
         self.settle, self.setup_wait, self.lead, self.mark_after, self.under_limit, self.match_s = settle, setup_wait, lead, mark_after, under_limit, match_s
+        self.onset = onset                                  # (item 142, --onset: the run-wide counters; not a recording setting, it rides along here because run_test gets rc)
 
     def check(self):
         if self.lead < self.mark_after + 0.1:
@@ -720,6 +733,17 @@ class RecCfg:
 
 
 COUNTER_KEYS = ("uac_underruns", "uac_overruns", "uac_missed", "uac_stalls")
+RUN_KEYS = (("run_late", "audio_late"), ("run_shed", "voices_shed"), ("run_lfx", "fx_light_count"))   # item 142, --onset: result column, the unit's `status` key (console.c con_status)
+
+
+def run_counters(unit):
+    """(item 142) the unit's own counters since power-on that cover every half: missed halves (the DMA overtook the render), shed voices, LIGHT FX engagements; None if absent"""
+    st = {}
+    for q in (0.4, 0.8):
+        st = unit.kv("status", quiet=q)
+        if all(k in st for _, k in RUN_KEYS) or unit.link.synchronous:
+            break
+    return {c: st.get(k) for c, k in RUN_KEYS}
 
 
 def counters(unit, quiet=0.4):
@@ -753,6 +777,10 @@ def run_test(unit, test, soak_override, base, after_run=None, recorder=None, out
         try:
             rep = unit.ok("bench " + word)
         except RuntimeError as e:
+            if "unknown word" in str(e) and word.split()[0] in ("sound", "mods", "bypass", "master", "morph", "keysense"):
+                raise RuntimeError(f"{word}: this bench build has no COST-CAL words (DUELL 1.1 item 105, firmware/src/bench.c): {e}")
+            if "unknown word" in str(e) and word.split()[0] == "core1":
+                raise RuntimeError(f"{word}: this bench build has no `core1 off|on` (BENCHV3 or newer, DUELL 1.1 item 112, firmware/src/bench.c): {e}")
             if "unknown word" in str(e) and word.split()[0] in ("slack", "calm", "pause", "lrun", "vrun", "vwin", "floor"):
                 raise RuntimeError(f"{word}: this build has no runtime switches (BENCHT3 or newer needed for vwin and floor, BENCHT2 for the others): {e}")
             raise
@@ -786,6 +814,7 @@ def run_test(unit, test, soak_override, base, after_run=None, recorder=None, out
             free = int(rep.split()[1])
             queue.pop(0)
     feed(10 ** 9)                                           # before the run: as many as fit
+    rw0 = run_counters(unit) if rc.onset else None          # (item 142, --onset: the run-wide counters, read just before the run; the setup is over)
     run_pos = recorder.position() if recorder else None     # the START MARK's anchor: how much sound the recording holds as the run command goes out
     unit.ok(f"bench run {test.name[:19]} {dur}")
     t_run = unit.link.now()
@@ -818,6 +847,11 @@ def run_test(unit, test, soak_override, base, after_run=None, recorder=None, out
         if unit.link.now() > deadline:
             raise LinkDown("no result line: the unit hangs or the link is lost")
     row = unit.bt.pop(0)
+    if rw0 is not None:                                      # (item 142: right after the result line: the run, its tail and nothing else)
+        rw1 = run_counters(unit)
+        for c, _ in RUN_KEYS:
+            if rw0.get(c) is not None and rw1.get(c) is not None:
+                res[c] = rw1[c] - rw0[c]
     rec_info = None
     if recorder:
         unit.sleep(0.4)                                      # (the USB audio is a little behind the unit's own clock)
@@ -842,6 +876,23 @@ def run_test(unit, test, soak_override, base, after_run=None, recorder=None, out
     res["late_events"] = late
     res["checks"] = checks
     res["verdict"], res["why"] = verdict(row, tbase, test)
+    if rw0 is not None:                                      # (item 142, --onset) the whole run from 0.0 s, the note-on burst included
+        ow, ol = [], 0
+        try:
+            win_miss, win_shed = int(row.get("miss") or 0), int(row.get("shed") or 0)
+        except ValueError:
+            win_miss = win_shed = 0
+        if res.get("run_late"):
+            ow.append(f"{res['run_late']} missed halves over the whole run (the CPU window has {win_miss})"); ol = 2
+        if res.get("run_shed") and res["run_shed"] > win_shed:
+            ow.append(f"{res['run_shed'] - win_shed} voices shed outside the CPU window (onset or release)"); ol = 2
+        if res.get("run_lfx"):
+            ow.append(f"LIGHT FX engaged {res['run_lfx']} times over the whole run"); ol = max(ol, 1)
+        if any(res.get(c) is None for c, _ in RUN_KEYS):
+            ow.append("the run-wide counters could not be read (`status`)"); ol = max(ol, 1)
+        if ow:
+            res["verdict"] = LEVELS[max(LEVELS.index(res["verdict"]), ol)]
+            res["why"] = (res["why"] + "; " if res["why"] else "") + "; ".join(ow)
     res["info"] = tc_info(row)
     if res.get("under_pre") and rec_info is not None:
         res["info"] = (res["info"] + "; " if res["info"] else "") + f"USB underruns before the mark: +{res['under_pre']} (stream start and setup, not counted)"
@@ -1149,6 +1200,8 @@ def main(argv=None):
     ap.add_argument("--under-limit", type=int, default=0, help="with --record: USB underruns after the mark that still pass (default 0: any underrun after the mark is a FAIL; before the mark they are information)")
     ap.add_argument("--match-ms", type=float, default=60.0, help="with --record: a two-core click is the one-core reference's when within this many ms of it (default 60)")
     ap.add_argument("--rec-device", default="DUELL", help="the Mac's input device of the unit")
+    ap.add_argument("--onset", action="store_true", help="(item 142) also the run-wide counters from 0.0 s (missed halves, shed voices, LIGHT FX: the unit's `status` before the run and after "
+                    "its result), so a note-on burst outside the CPU window is a FAIL; columns run_late, run_shed, run_lfx")
     ap.add_argument("--prove-chain", action="store_true", help="stage 2: needs a tone build (BENCHA1): record the test triangle and check every frame")
     ap.add_argument("--minutes", type=float, default=10.0, help="with --prove-chain: how long to record (default 10)")
     a = ap.parse_args(argv)
@@ -1168,7 +1221,7 @@ def main(argv=None):
         sel = [t for t in sel if any(p.match(t.name) for p in pats)]
         if not sel:
             raise SystemExit("no test matches --only")
-    rc = RecCfg(a.rec_settle, a.setup_wait, a.lead, a.mark_after, a.under_limit, a.match_ms / 1000.0)
+    rc = RecCfg(a.rec_settle, a.setup_wait, a.lead, a.mark_after, a.under_limit, a.match_ms / 1000.0, a.onset)
     try:
         rc.check()
     except SuiteError as e:
@@ -1183,7 +1236,7 @@ def main(argv=None):
         tot = 0.0
         for t in sel:
             evs, dur = expand(t, a.soak)
-            tot += (dur / 1000 + t.settle + 0.6 + ((rc.settle + rc.lead + 0.4) if a.record else 0.0)) * t.repeat
+            tot += (dur / 1000 + t.settle + 0.6 + ((rc.settle + rc.lead + 0.4) if a.record else 0.0) + (0.8 if a.onset else 0.0)) * t.repeat
             print(f"{t.name:<20} {dur / 1000:7.1f} s  {len(evs):4d} events  {t.text}" + (f"   x {t.repeat}" if t.repeat > 1 else ""))
             if a.dry_run:
                 for w, want in setup_words(t):
@@ -1369,6 +1422,8 @@ def run_all(a, link, log, sname, sel, text, out):
         pass
     cols = ["test", "rep", "reps", "text", "verdict", "why", "status", "dur_s", "avg", "peak", "miss", "shed", "lfx", "vox", "halves", "notes1", "notes2", "why1", "why2",
             "budget", "ramcode", "boots", "lost", "flashes", "uac_hz", "uac_under", "uac_over", "uac_missed", "uac_stalls", "erase_max_us", "c1", "c1pk", "c1late", "c1over", "c1holds", *TC_COLS, *TM_COLS, "info", "late_events", "expect"]
+    if a.rc.onset:
+        cols += [c for c, _ in RUN_KEYS]                     # (item 142, --onset)
     if recorder:
         apply_onecore(results, sel, a.rc.match_s)
         cols += [*brec.AUDIO_COLS, "clk_vs_1c", "gap_vs_1c", "onecore_of", "under_pre", "under_post"]

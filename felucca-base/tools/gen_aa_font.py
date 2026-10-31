@@ -11,6 +11,12 @@ Faces of the presets (S labels, M values/headers, L big numerals / titles):
   standin     an installed Inter (~/Library/Fonts/Inter.ttc, else Inter in fonts/ next to tools/) with
               -2.5 % tracking: a stand-in for Inter Tight, for previews only.
   inter-tight assets/fonts/InterTight[wght].ttf (SIL OFL 1.1, Google Fonts) at weights 400 / 500 / 600.
+  barlow      DUELL 1.1 consolidated set (HANDOFF_V2 item 113; the role map is firmware/src/ui_tokens.h): S SemiBold 15, M Medium 15, L Bold 23,
+              T Bold 15 capitals, D SemiBold 12 digits, N Bold 31 figures, X Bold 38, B Bold 64, P Bold 20 capitals (names). Every face PLAIN
+              (no kerning, no OpenType features: as the design pictures set text). The layout engine still changes the output: without
+              libraqm Pillow falls back to its basic layout (a warning) and the faces S M L T N X B come out different from the accepted
+              build/gen/ui_fonts.h. Pillow's own Raqm needs libfribidi at run time; on a Mac with Homebrew's fribidi run the generator with
+              DYLD_LIBRARY_PATH=/opt/homebrew/lib (then the output is byte for byte the accepted one).
 
 Output (a C header; the glyph / font types live in the renderer, firmware/src/gfx.c):
   AF_<N>_DATA   4-bit alpha, trimmed to the ink box, rows back to back, each glyph a byte-aligned bit stream
@@ -41,15 +47,29 @@ CODE = {0x2026: 0x85}                  # characters outside Latin-1 -> their one
 PHASES, PHASES_L = 4, 2                # horizontal phases per glyph (aa_raster.raster_font): S M, L
 # faces stored Huffman-coded (--huff): M and L. S, the most drawn and the least compressible (-15 %), stays
 # 2 px per byte, so the labels draw at full speed
-HUFF = [("M", "L")]
+PLAIN = []             # (filled by main(): every face of the barlow preset is PLAIN: as the design pictures set text, no kerning, no OpenType features)
+HUFF = [("M", "L")]   # (gfx.c HC_FONTS: three Huffman tables, M, L and the icons; the other faces stay nibbles)
 # L draws only "FELUCCA", the UPDATE MODE countdown digit, the calibration's control names (panel.c
 # B_NAME / E_NAME) (until DUELL 0.2.2 also MENU > LARGE's card values and page titles: some glyphs of the set below were only for those, a later size trim): a sparse face of those glyphs, the
 # space as its range and the rest as extras
 # (ui_test.c checks that every L string is covered)
-L_CHARS = " #+-./0123456789<=>ABCDEFGHIJKLMNOPQRSTUVWXY"   # (DUELL 0.2.11: "<", "=", ">" for the GUIDE's MORPH A<>B and REC = HOLD)
+L_CHARS = " #+-./0123456789<=>ABCDEFGHIJKLMNOPQRSTUVWXYZ:?!&'(),"   # (DUELL 0.2.11: "<", "=", ">" for the GUIDE's MORPH A<>B and REC = HOLD)
 
 
 def preset(name):
+    if name == "barlow":                       # DUELL 1.1 CONSOLIDATED face set (item 113; owner's floor rule: no text under the size of the engine name, Medium 15).
+        d = FONTS.parent / "assets" / "fonts"  # All faces PLAIN (no kerning, no OpenType features: as the design pictures set text; also what makes them reproducible without Raqm).
+        sb, md, bd = (str(d / f"BarlowSemiCondensed-{w}.ttf") for w in ("SemiBold", "Medium", "Bold"))
+        dig = [ord(c) for c in "0123456789"]
+        return [("S", sb, 15, (32, 126), [0xFC, 0x2026], 0.0, PHASES),      # S: SemiBold 15, small text of every kind: capsule letters / numbers, footer, labels, hints, notes, legends, list rows (was S 12 and F 15)
+                ("M", md, 15, (32, 126), [0x2026], 0.0, PHASES),            # M: Medium 15: engine name, units, patch numbers, menu rows (the design's M 15 / M 16 / M 18 roles)
+                ("L", bd, 23, (32, 126), [], 0.0, PHASES_L),                # L: Bold 23: values and big headings (the design's S 20 / S 23 values, the guide's headings, the splash word)
+                ("T", bd, 15, (32, 90), [], 0.0, PHASES),                   # T: Bold 15, capitals: the header's page title (a lower case letter shows as its capital: gfx.c glyph)
+                ("D", sb, 12, (32, 32), dig, 0.0, PHASES),                  # D: SemiBold 12 digits only: the number inside a numbered dot (knob marks 1 .. 4; a 15 px digit does not fit the 11 px dot)
+                ("N", bd, 31, (32, 32), [ord(c) for c in "0123456789.-+%"], 0.0, PHASES_L),   # N: Bold 31 figures only: the design's big values (ENGINE page, FINAL_V1_02); text values use L
+                ("X", bd, 38, (32, 32), [ord(c) for c in "AB0123456789"], 0.0, PHASES_L),     # X: Bold 38: HOME's big MORPH value (A, B and figures)
+                ("B", bd, 64, (32, 32), [ord(c) for c in "+-0123"], 0.0, PHASES_L),           # B: Bold 64: the OCTAVE page's big figure
+                ("P", bd, 20, (32, 32), [ord(c) for c in "+-/0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"], 0.0, PHASES_L)]   # P: Bold 20, capitals, figures, + - / and the space (owner, 2026-10-29): the TOOLS page's names and the big names of the PERFORM and QUICK SEQ boxes (role AF_NAME, firmware/src/ui_tokens.h); last in the list, so the faces before it come out byte for byte as before
     if name == "inter-tight":
         v = str(FONTS.parent / "assets" / "fonts" / "InterTight[wght].ttf")   # SIL OFL 1.1, Google Fonts
         return [("S", v + "@400", 12, (32, 126), EXTRAS, 0.0, PHASES),
@@ -163,7 +183,7 @@ def huff_unpack(hc, data, n):
 def emit(face, tracking, gamma, kern_min):
     name, font, px, (first, last), extras, ftrack, phases = face
     chars = [chr(c) for c in range(first, last + 1)] + [chr(c) for c in extras]
-    r = ar.raster_font(font, px, chars, tracking if ftrack is None else ftrack, gamma, True, kern_min, phases)
+    r = ar.raster_font(font, px, chars, tracking if ftrack is None else ftrack, gamma, True, kern_min, phases, name in PLAIN)
     data, table, lines = bytearray(), [], []
     for ch in chars:
         adv16, ph = r["glyphs"][ch]
@@ -216,8 +236,9 @@ def emit(face, tracking, gamma, kern_min):
     lines.append(f"static const aafont_t AF_{name} = {{{r['h']}, {r['asc']}, {first}, {last}, {len(extras)}, {len(keys)}, "
                  f"AF_{name}_G, AF_{name}_DATA, {'AF_%s_KERN' % name if keys else '0'}, "
                  f"{'AF_%s_KD' % name if keys else '0'}, AF_{name}_EX, {psh}, {'AF_%s_HC' % name if hc else '0'}}};")
-    if "H" in chars:                                  # the capitals' band (gfx.c CAP_IN: centring text by it)
-        cap = table[chars.index("H") * phases]
+    ref = "H" if "H" in chars else "0" if "0" in chars else None
+    if ref:                                           # the capitals' band (gfx.c CAP_IN: centring text by it); a figures-only face: the band of 0
+        cap = table[chars.index(ref) * phases]
         lines.append(f"#define AF_{name}_CAP_Y {cap[3]}   /* the ink of H: rows {cap[3]} .. {cap[3] + cap[5] - 1} of the line */")
         lines.append(f"#define AF_{name}_CAP_H {cap[5]}")
     cost = {"data": len(data) + len(hc), "glyph_table": 8 * len(table), "kern": 3 * len(keys), "extras": len(extras),
@@ -230,8 +251,9 @@ def emit(face, tracking, gamma, kern_min):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("out")
-    ap.add_argument("--preset", choices=["standin", "inter-tight"])
+    ap.add_argument("--preset", choices=["standin", "inter-tight", "barlow"])
     ap.add_argument("--face", action="append", default=[])
+    ap.add_argument("--plain", action="store_true", help="explicit --face faces PLAIN too (no kerning, no OpenType features)")
     ap.add_argument("--tracking", type=float, default=0.0, help="extra advance per glyph in em")
     ap.add_argument("--gamma", type=float, default=1.0, help="coverage curve; <1 thickens light-on-dark text")
     ap.add_argument("--kern-min", type=int, default=1, help="smallest kerning pair kept, in 1/16 px (0 pairs = no kerning)")
@@ -239,11 +261,13 @@ def main():
     a = ap.parse_args()
     HUFF[0] = tuple(x for x in a.huff.split(",") if x)
     faces = ([parse_face(s) for s in a.face] if a.face else []) or (preset(a.preset) if a.preset else None)
+    if (a.preset == "barlow" and not a.face) or a.plain:
+        PLAIN.extend(f[0] for f in faces)
     if not faces:
         ap.error("--preset or --face is required")
-    out = ["/* generated by tools/gen_aa_font.py: 4-bit alpha glyphs (Inter Tight, SIL OFL 1.1, "
-           "Copyright 2022 The Inter Project Authors; see assets/fonts/OFL.txt) */",
-           "#pragma once", "#include <stdint.h>", ""]
+    out = ["/* generated by tools/gen_aa_font.py: 4-bit alpha glyphs (" + ("Barlow Semi Condensed, SIL OFL 1.1, Copyright 2017 The Barlow Project Authors; see assets/fonts/OFL_Barlow.txt"
+                                                                 if a.preset == "barlow" else "Inter Tight, SIL OFL 1.1, Copyright 2022 The Inter Project Authors; see assets/fonts/OFL.txt") + ") */",
+           "#pragma once", "#include <stdint.h>", "#pragma GCC diagnostic ignored \"-Wunused-const-variable\"   /* a face no page draws (yet) is dropped by the compiler */", ""]
     total = 0
     for f in faces:
         text, c = emit(f, a.tracking, a.gamma, a.kern_min)
