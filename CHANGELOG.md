@@ -8,16 +8,12 @@ Each release: a one-line summary, then New, Fixed, Compatibility, Install, Files
 
 ## DUELL 1.1
 
-An update for the M-VAVE FM-1. The MORPH rolls on from where it is, a chord can be strummed, parameter locks are recorded by turning a knob, and many pages have been redrawn so you see more at a glance.
+An update for the M-VAVE FM-1. The whole user interface is redesigned, so you see more at a glance, and PERFORM, STRUM and MORPH have new things to play with.
 
-- **New:** LAYER, SPLIT and STEREO: the part selector starts on BOTH, SPLIT starts on the middle key, PERFORM SELECT is a balance between the two parts, TRANSPOSE is one setting from -24 to +24 semitones saved with the patch.
-- **New:** MORPH: ROLL is chained (each roll continues from the sound that end has now, UNDO goes back up to two rolls), End B is saved and loaded exactly as it sounds, SMART never rolls a switch and now also rolls smooth values that sit at zero.
-- **New:** the matrix and the CYCLE, SUB and TWIN MOD cards show each value as it sounds at the current morph position; matrix names are written out in full.
-- **New:** the SENDS and MODULES pages, and REVERB, CHORUS, SHIMMER, DELAY, DUCK, VOICE and TEMPO drawn as big cells that fill the screen.
-- **New:** program change shows "#NN NAME" in the header; the header capsule shows the available voices in POLY and M, L or U in MONO, LEGATO and UNISON; the quick pages GLO, SEQ, REC, ENV, LFO and EDIT look and behave the same in PERFORM as outside it.
-- **New:** STRUM on the CHORD page (OFF, or 1 to 100 ms between the notes of a chord, saved with the patch); a keyboard on SCALE and CHORD shows the notes, and the chord lights on the screen and on the key LEDs.
-- **New:** parameter locks are recorded by turning a knob while REC is armed, with a PARAMETER LOCKS list; TRANS + and TRANS - move a whole pattern by a semitone, SHIFT < and SHIFT > move it in time; swing runs from 50 to 75 percent; QUICK REC has four cells (CLICK, COUNT, LEVEL, CLEAR).
-- **New:** area pages and card layouts for ARP, SCALE, CHORD, PERFORM, TOOLS, PATCHES, MULTIS and PATTERNS; a page with nothing to adjust is skipped; units are written without a gap (12dB, 40%, 400Hz); PATCHES, MULTIS and PATTERNS have a SAVE knob.
+- **New:** the whole user interface is redesigned; the part marker in the header shows the available voices in POLY and M, L or U in MONO, LEGATO and UNISON; the quick pages GLO, SEQ, REC, ENV, LFO and EDIT look and behave the same in PERFORM as outside it; the matrix and the CYCLE, SUB and TWIN MOD cards show each value as it sounds at the current morph position, and matrix names are written out in full.
+- **New:** STRUM on the CHORD page (OFF, or 1 to 100ms between the notes of a chord, saved with the patch); on the PERFORM page the SELECT knob is the balance between the two parts; SPLIT starts on the middle key.
+- **New:** MORPH: ROLL is chained (each roll continues from the sound that end has now, UNDO goes back up to two rolls), End B is saved and loaded exactly as it sounds, the SMART and WILD randomizers are reworked.
+- **New:** parameter locks are recorded by turning any knob while REC is armed, with a PARAMETER LOCKS list; TRANS + and TRANS - move a whole pattern by a semitone, SHIFT < and SHIFT > move it in time; swing runs from 50 to 75 percent.
 - **Install:** save a backup, use the installer page, and make a new backup with 1.1.
 
 ## DUELL 1.0

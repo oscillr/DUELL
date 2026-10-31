@@ -2,7 +2,7 @@
 
 **DUELL 1.0**, MultiMorphing Bitimbral Synthesizer by OSCILL/R
 
-Plain version: **DUELL 1.0 has run on only one real FM-1 (the author's), the way back to the official firmware (V15) has worked on that unit and has not been tried on others, and nobody can promise that a failed flash is fixable.** You install at your own risk. This page says what we know, what we do not know, and what to try if you end up in this situation anyway.
+Plain version: **DUELL has run on two FM-1 units (the author's) and more than 100 people have installed it through the Firmware Hub, the way back to the official firmware (V15) has worked for the author, and nobody can promise that a failed flash is fixable.** You install at your own risk. This page says what we know, what we do not know, and what to try if you end up in this situation anyway.
 
 ## What is known
 - **The update screen.** While the loader writes the new firmware the unit shows DUELL, WRITING, a percent number, a bar of 20 segments and DO NOT SWITCH OFF. If the screen stays dark but the installer's bar moves, the write is running; the screen is only a guest of the loader and never stops it.
@@ -13,7 +13,7 @@ Plain version: **DUELL 1.0 has run on only one real FM-1 (the author's), the way
 - The installer can write the official firmware (V15) back, if you supply M-VAVE's own file.
 
 ## What is not known
-- Whether DUELL 1.0 behaves the same on other units. It has been flashed to and run on one FM-1 by the author, and works there; every other unit is untested.
+- Whether DUELL behaves the same on every unit. It has run on the author's two units and many installs through the Firmware Hub.
 - Whether the **return to the official firmware (V15)** works on every unit. It has worked on the author's unit with this installer's return button; the unit booted normally on V15.
 - What happens if power or USB is lost in the middle of step 2 on your particular unit. Felucca's author points to an external recovery tool (FM-1-transporter) for a unit that no longer starts. DUELL's author owns no such tool, and **we have not tested it**.
 - Whether every unit behaves alike.

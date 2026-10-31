@@ -9,7 +9,7 @@
 
 <p align="left"><img src="docs/duell-deck.png" alt="DUELL" width="720"></p>
 
-> **Install at your own risk.** DUELL has been flashed to and run on **one real FM-1, the author's**. The way back to the official firmware (V15) has worked on that unit; it has not been tried on others. The FM-1 has a single copy of its firmware and no known rollback. Back up first. Read [docs/RECOVERY.md](docs/RECOVERY.md) and [docs/KNOWN_LIMITS.md](docs/KNOWN_LIMITS.md). No warranty. DUELL is not affiliated with M-VAVE.
+> **Install at your own risk.** DUELL has run on **two FM-1 units, the author's**, and more than 100 people have installed it through the Firmware Hub. The way back to the official firmware (V15) has worked for the author. The FM-1 has a single copy of its firmware and no known rollback. Back up first. Read [docs/RECOVERY.md](docs/RECOVERY.md) and [docs/KNOWN_LIMITS.md](docs/KNOWN_LIMITS.md). No warranty. DUELL is not affiliated with M-VAVE.
 
 ## Install and update
 
