@@ -251,6 +251,7 @@ static void cdc_task(void) {}
 #define usb_start() ((void)0)
 #define usb_retry(ms) ((void)(ms))
 #define usb_detach() ((void)0)
+#include "../../firmware/src/bootguard.h"   /* main.c uses its BG_ macros (felucca.c includes it in the firmware build) */
 #include "../../firmware/src/master.c"
 #include "../../firmware/src/main.c"
 #undef usb_poll
