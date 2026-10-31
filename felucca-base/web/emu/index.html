@@ -86,10 +86,6 @@ footer nav button { font: inherit; color: inherit; background: none; border: 0; 
 footer small { font-size: 11px; opacity: .8; }
 
 .ver{margin:14px 0 0;font-size:12px;color:var(--dim)}
-section.info { max-width: 720px; margin: 24px auto 0; color: var(--fg); }
-section.info h2 { font-size: 15px; margin: 0 0 4px; }
-section.info ul { margin: 0 0 16px; padding-left: 20px; }
-section.info li { margin: 2px 0; }
 .head{margin:0 0 26px}.head img{display:block}.head .logo{width:300px}
 .head .row{display:flex;align-items:center;justify-content:space-between;margin-top:34px}.head .desc{width:210px}
 .install{display:inline-block;padding:14px 34px;background:#DC38FF;color:#12051a;font:700 20px/1 -apple-system,"Helvetica Neue",Arial,sans-serif;border-radius:10px;text-decoration:none;letter-spacing:.04em}
@@ -113,24 +109,6 @@ section.info li { margin: 2px 0; }
   <span><kbd>←</kbd> <kbd>→</kbd> ALGORITHM</span>
   <span><kbd>Shift</kbd>-click holds a button</span>
 </p>
-
-<section class="info" aria-labelledby="how">
-  <h2 id="how">How to play</h2>
-  <ul>
-    <li>Play the on-screen keys with the mouse or touch, or the computer keyboard (keys above).</li>
-    <li>MIDI keyboard: Chrome or Edge only. Allow MIDI access when the browser asks. Part 1 listens on channel 1, part 2 on channel 2. Pitch bend, mod wheel (CC1, moves the MORPH fader) and aftertouch are passed on to the firmware.</li>
-    <li>Turn a knob by dragging it up or down, with the mouse wheel over it, or with the arrow keys after you tab to it. Press PRESETS and turn it to load one of the 128 patches. ALGORITHM picks part 1 or part 2. HOME opens the MORPH page. Hold HOME for the menu.</li>
-    <li>The unit's own guide opens on the screen at the first start. The full tour is the <a href="https://github.com/oscillr/DUELL/blob/main/docs/QUICKSTART.md">quick start</a>.</li>
-  </ul>
-  <h2>What is different from the real FM-1</h2>
-  <ul>
-    <li>Single core. The unit plays part 2 on the chip's second core. Here both parts run on one core.</li>
-    <li>No USB. No firmware update, no USB audio, no editor connection. MIDI comes in through your browser (Web MIDI).</li>
-    <li>No flash storage. Patches and settings you save are kept in this browser only. Clearing the site data erases them. Use "Download saved data" to keep a copy of what the emulator saved. It is not a unit backup.</li>
-    <li>The sound can differ slightly from the unit. The firmware code is the same and its renders match the project's host test renders bit for bit. The unit's DAC, analog output and speaker are not modelled, and your browser may resample to your sound card's rate.</li>
-    <li>No TRS MIDI, no battery. The CPU meter is an estimate.</li>
-  </ul>
-</section>
 
 <footer>
   <small class="version">@VERSION@@PREVIEW@</small><br>
