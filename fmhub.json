@@ -4,5 +4,6 @@
   "kinds": ["synth"],
   "image": "docs/duell-card.jpg",
   "play": "https://oscillr.github.io/DUELL/emu/",
-  "editor": "https://oscillr.github.io/DUELL/editor/"
+  "editor": "https://oscillr.github.io/DUELL/editor/",
+  "cheat": "https://oscillr.github.io/DUELL/cheatsheet/"
 }
