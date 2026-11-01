@@ -29,7 +29,7 @@ Part 1 and Part 2 each have their own sound, effects, EQ, ducker and arp.
 |---|---|
 | **DUEL** | Dual mono. Part 1 hard left, part 2 hard right, isolated, effects included. |
 | **STEREO** | Both parts in one stereo field, for headphones. |
-| **LAYER** (the default) | Both parts on the keys at once, with balance, velocity crossfade and key split. The heart of DUELL. |
+| **LAYER** (the default) | Both parts on the keys at once, with velocity crossfade and key split. The heart of DUELL. |
 
 ### MORPH
 Glide between two versions of the same patch with one fader. End A is the sound; End B is rolled by a smart randomizer from your starting point (ROLL, UNDO, AMOUNT). Up to 32 values of End B can be set by hand and stay when it is saved.

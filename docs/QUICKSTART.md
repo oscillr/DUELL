@@ -9,10 +9,10 @@ DUELL turns the FM-1 into two synths in one box. This page is the short tour; [S
 
 ## The idea
 - **Two parts**, 1 and 2. Each has its own sound, effects, EQ, ducker and arp. The **ALGORITHM** knob picks which part you are editing.
-- **Three modes** (HOME, second sub-page, first knob: MODE):
-  - **DUEL** (default): part 1 hard left, part 2 hard right, kept apart, effects included. For playing two sounds into two channels.
+- **Three modes** (HOME, third page of its round, first knob: MODE):
+  - **DUEL**: part 1 hard left, part 2 hard right, kept apart, effects included. For playing two sounds into two channels.
   - **STEREO**: both parts in one stereo field, for headphones.
-  - **LAYER**: both parts play on the keys together. The MODE page has BALANCE, XFADE (velocity crossfade) and SPLIT (a key split point).
+  - **LAYER** (default): both parts play on the keys together. The MODE page has XFADE (velocity crossfade) and SPLIT (a key split point).
 - **MORPH**: every sound has two ends, A and B, and one fader between them.
 
 ## The first-start guide
@@ -28,7 +28,7 @@ The first time DUELL starts (and once after an update from an older build) a sho
 
 ## The menu
 Hold **HOME**. Four tabs: **DISPLAY** (COLOR, LEDS, SCALE LEDS, ANIMATION, SCREEN OFF, CPU METER), **CONTROL** (MULTI LOAD, HOME OPENS, KNOB ACCEL, BUTTON HOLD, STEP KEYS, STEP PREVIEW, PERF LEAVE), **AUDIO** (CLICK, CLICK LEVEL, COUNT-IN, TUNE: the frequency of A4 in Hz like a Roland keyboard, 415.3 to 466.2 Hz in steps of 0.1 Hz, 440.0 at first; with KNOB ACCEL on, a fast turn moves several steps) and **SYSTEM** (RESTORE LAST, BUTTON MAP, GUIDE, ABOUT, ERASE DATA; developer builds have a USB SERIAL row too). Turn **SELECT** to go from row to row (on through the tabs), turn any knob or press OCT+ / OCT- to change the value; HOME closes it. A tab with more rows than fit shows a second page (SYSTEM 1/2 in its tab). **BASS MONO** is a sound setting, so it is not in the MENU: it is on the **GLO** button's round (the page **STEREO MASTER**, after SHIMMER; KNOB 1; 200 Hz on a new unit). It makes the output mono below the frequency you pick (40 to 400 Hz; 100 to 150 Hz is the usual club setting) so wide effects do not smear the bass; it belongs to the unit (a multi does not change it), it works in STEREO and LAYER, and in DUEL its card is not shown.
-- Defaults worth knowing: KNOB ACCEL ON, CLICK REC (the metronome only while you record on the sequencer pages), USB SERIAL OFF (with it ON, macOS 13 to 15 do not show the USB audio input). MULTI LOAD KEEPS MODE: loading a multi keeps your MODE, BALANCE, XFADE and SPLIT; set SETS MODE to take the multi's.
+- Defaults worth knowing: KNOB ACCEL ON, CLICK REC (the metronome only while you record on the sequencer pages), USB SERIAL OFF (with it ON, macOS 13 to 15 do not show the USB audio input). MULTI LOAD KEEPS MODE: loading a multi keeps your MODE, XFADE and SPLIT; set SETS MODE to take the multi's.
 
 ## Make a first sound
 1. Press **PRESETS** and turn it to hear sounds. Press **ALGORITHM** to select part 2 and load another.
