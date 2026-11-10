@@ -5,5 +5,6 @@
   "image": "docs/duell-card.jpg",
   "play": "https://oscillr.github.io/DUELL/emu/",
   "editor": "https://oscillr.github.io/DUELL/editor/",
-  "cheat": "https://oscillr.github.io/DUELL/cheatsheet/"
+  "cheat": "https://oscillr.github.io/DUELL/cheatsheet/",
+  "color": "#8B5CF6"
 }
