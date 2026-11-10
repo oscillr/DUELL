@@ -1,0 +1,357 @@
+# C-CHECK (2026-11-07): test build 1.1-test-2026-11-07-c's changes, on its bench twin (1.1-bench-2026-11-07-d, the same code with the bench console).
+#   LOUD     the click fix: loud chords past the old 32-bit limit of the pan step (fx.c mul_q12), plain mix, LAYER, both parts
+#   OVER     the voice pool: more keys than the screen's voices, light and heavy, every heavy engine
+#   MIX / CHURN  both parts at once, two engines; chords changing with voice take-overs
+#   SPREAD   the SPREAD path's guard (fx.c mix_spread), hard left, centre, hard right
+# Pass (tools/wrap_check.py RUN): no click, no missed half, no silent block, no USB underrun, no flip-and-back (a jump over 0.5 and an opposite one within 6 samples: a wrap).
+# The analyser's "gaps" (16 equal frames in a row) are listed only: a hard-clipped stack of saws holds still between its edges.
+# Engine words are the console's (`sound N PHYS DEAR`); test names say PHYSICAL.
+suite C-CHECK
+
+test CK_LOUD12_P1  loud chord: plain ANALOG part 1 alone, 12 keys, PATCH LEVEL and TRIM at the top, heavy globals
+mode STEREO
+sound 1 ANALOG DEAR
+sound 2 ANALOG DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+set 1 0 127
+set 1 109 127
+budget ON
+tune core1 on
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 vel 127 ch 1
+at 5.0  release
+tail 1
+measure 1.0 5.0
+expect report
+
+test CK_LOUD16_P1  loud chord: plain ANALOG part 1 alone, 16 keys, PATCH LEVEL and TRIM at the top, heavy globals
+mode STEREO
+sound 1 ANALOG DEAR
+sound 2 ANALOG DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+set 1 0 127
+set 1 109 127
+budget ON
+tune core1 on
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 C4 D4 vel 127 ch 1
+at 5.0  release
+tail 1
+measure 1.0 5.0
+expect report
+
+test CK_LOUD_BOTH  loud chord on both parts: plain ANALOG, 16 keys each, PATCH LEVEL and TRIM at the top, heavy globals
+mode STEREO
+sound 1 ANALOG DEAR
+sound 2 ANALOG DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+set 1 0 127
+set 1 109 127
+set 2 0 127
+set 2 109 127
+budget ON
+tune core1 on
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 C4 D4 vel 127 ch 1
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 C4 D4 vel 127 ch 2
+at 5.0  release
+tail 1
+measure 1.0 5.0
+expect report
+
+test CK_LAYER_LOUD  LAYER: plain ANALOG on both parts from one keyboard, 16 keys, PATCH LEVEL and TRIM at the top
+mode LAYER
+sound 1 ANALOG DEAR
+sound 2 ANALOG DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+set 1 0 127
+set 1 109 127
+set 2 0 127
+set 2 109 127
+budget ON
+tune core1 on
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 C4 D4 vel 127 ch 1
+at 5.0  release
+tail 1
+measure 1.0 5.0
+expect report
+
+test CK_OVER_ANALOG_LIGHT  more keys than voices: plain ANALOG both parts, 24 keys each, light globals
+mode STEREO
+sound 1 ANALOG DEAR
+sound 2 ANALOG DEAR
+mods ALL ON
+mods SENDS OFF
+master COMP 0
+master WIDTH 100
+master BM 0
+budget ON
+tune core1 on
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 C4 D4 E4 F4 G4 A4 B4 C5 D5 E5 vel 100 ch 1
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 C4 D4 E4 F4 G4 A4 B4 C5 D5 E5 vel 100 ch 2
+at 5.0  release
+tail 1
+measure 1.0 5.0
+expect report
+
+test CK_OVER_PHYSICAL_HEAVY  more keys than voices: plain PHYSICAL both parts, 16 keys each, heavy globals
+mode STEREO
+sound 1 PHYS DEAR
+sound 2 PHYS DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget ON
+tune core1 on
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 C4 D4 vel 100 ch 1
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 C4 D4 vel 100 ch 2
+at 5.0  release
+tail 1
+measure 1.0 5.0
+expect report
+
+test CK_OVER_FM6_HEAVY  more keys than voices: plain FM6 both parts, 16 keys each, heavy globals
+mode STEREO
+sound 1 FM6 DEAR
+sound 2 FM6 DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget ON
+tune core1 on
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 C4 D4 vel 100 ch 1
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 C4 D4 vel 100 ch 2
+at 5.0  release
+tail 1
+measure 1.0 5.0
+expect report
+
+test CK_OVER_WHEEL_HEAVY  more keys than voices: plain WHEEL both parts, 16 keys each, heavy globals
+mode STEREO
+sound 1 WHEEL DEAR
+sound 2 WHEEL DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget ON
+tune core1 on
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 C4 D4 vel 100 ch 1
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 C4 D4 vel 100 ch 2
+at 5.0  release
+tail 1
+measure 1.0 5.0
+expect report
+
+test CK_OVER_VOICE_HEAVY  more keys than voices: plain VOICE both parts, 16 keys each, heavy globals
+mode STEREO
+sound 1 VOICE DEAR
+sound 2 VOICE DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget ON
+tune core1 on
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 C4 D4 vel 100 ch 1
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 C4 D4 vel 100 ch 2
+at 5.0  release
+tail 1
+measure 1.0 5.0
+expect report
+
+test CK_MIX_WAVE_ANALOG  both parts at once: plain WAVE part 1, plain ANALOG part 2, 16 keys each, loud, heavy globals
+mode STEREO
+sound 1 WAVE DEAR
+sound 2 ANALOG DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+set 1 0 127
+set 1 109 127
+set 2 0 127
+set 2 109 127
+budget ON
+tune core1 on
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 C4 D4 vel 127 ch 1
+at 0.0  chord C3 D3 E3 F3 G3 A3 B3 C4 D4 E4 F4 G4 A4 B4 C5 D5 vel 127 ch 2
+at 5.0  release
+tail 1
+measure 1.0 5.0
+expect report
+
+test CK_CHURN_LOUD  more keys than voices, changing: a new 4-key chord on each part every 0.4 s, no release, plain ANALOG, loud
+mode STEREO
+sound 1 ANALOG DEAR
+sound 2 ANALOG DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+set 1 0 127
+set 1 109 127
+set 2 0 127
+set 2 109 127
+budget ON
+tune core1 on
+at 0.0  chord C3 E3 G3 B3 vel 127 ch 1
+at 0.2  chord C3 E3 G3 B3 vel 127 ch 2
+at 0.4  chord D3 F3 A3 C4 vel 127 ch 1
+at 0.6  chord D3 F3 A3 C4 vel 127 ch 2
+at 0.8  chord E3 G3 B3 D4 vel 127 ch 1
+at 1.0  chord E3 G3 B3 D4 vel 127 ch 2
+at 1.2  chord F3 A3 C4 E4 vel 127 ch 1
+at 1.4  chord F3 A3 C4 E4 vel 127 ch 2
+at 1.6  chord G3 B3 D4 F4 vel 127 ch 1
+at 1.8  chord G3 B3 D4 F4 vel 127 ch 2
+at 2.0  chord A3 C4 E4 G4 vel 127 ch 1
+at 2.2  chord A3 C4 E4 G4 vel 127 ch 2
+at 2.4  chord B3 D4 F4 A4 vel 127 ch 1
+at 2.6  chord B3 D4 F4 A4 vel 127 ch 2
+at 2.8  chord C4 E4 G4 B4 vel 127 ch 1
+at 3.0  chord C4 E4 G4 B4 vel 127 ch 2
+at 3.2  chord D4 F4 A4 C5 vel 127 ch 1
+at 3.4  chord D4 F4 A4 C5 vel 127 ch 2
+at 3.6  chord E4 G4 B4 D5 vel 127 ch 1
+at 3.8  chord E4 G4 B4 D5 vel 127 ch 2
+at 5.0  release
+tail 1
+measure 1.0 5.0
+expect report
+
+test CK_SPREAD_LEFT  SPREAD at the top, PAN -64: plain ANALOG part 1 alone, 16 keys, PATCH LEVEL and TRIM at the top, heavy globals
+mode STEREO
+sound 1 ANALOG DEAR
+sound 2 ANALOG DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+set 1 0 127
+set 1 109 127
+set 1 95 127
+set 1 39 -64
+budget ON
+tune core1 on
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 C4 D4 vel 127 ch 1
+at 5.0  release
+tail 1
+measure 1.0 5.0
+expect report
+
+test CK_SPREAD_CENTRE  SPREAD at the top, PAN 0: plain ANALOG part 1 alone, 16 keys, PATCH LEVEL and TRIM at the top, heavy globals
+mode STEREO
+sound 1 ANALOG DEAR
+sound 2 ANALOG DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+set 1 0 127
+set 1 109 127
+set 1 95 127
+set 1 39 0
+budget ON
+tune core1 on
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 C4 D4 vel 127 ch 1
+at 5.0  release
+tail 1
+measure 1.0 5.0
+expect report
+
+test CK_SPREAD_RIGHT  SPREAD at the top, PAN 63: plain ANALOG part 1 alone, 16 keys, PATCH LEVEL and TRIM at the top, heavy globals
+mode STEREO
+sound 1 ANALOG DEAR
+sound 2 ANALOG DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+set 1 0 127
+set 1 109 127
+set 1 95 127
+set 1 39 63
+budget ON
+tune core1 on
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 C4 D4 vel 127 ch 1
+at 5.0  release
+tail 1
+measure 1.0 5.0
+expect report

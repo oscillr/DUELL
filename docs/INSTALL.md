@@ -22,20 +22,20 @@ by OSCILL/R
 5. When it says Done, **switch the FM-1 off and on** before you use it.
 
 ## The file
-The installer page is `felucca-base/web/install/index.html`. It keeps Felucca's install method (the running firmware stages an update loader, the loader writes the package) and works with a file that **`felucca-base/tools/build.py`** builds:
+The installer page is `duell/web/install/index.html`. It keeps Felucca's install method (the running firmware stages an update loader, the loader writes the package) and works with a file that **`duell/tools/build.py`** builds:
 
-| Command | File written to `felucca-base/build/` |
+| Command | File written to `duell/build/` |
 |---|---|
 | `tools/build.py --release` (recommended) | `duell-<VERSION>.fwsc` (e.g. `duell-1.0.fwsc`; the version is the `VERSION` file; a 0.x.y test version is named `duell-<VERSION>-beta.fwsc`), plus a folder `release-<VERSION>/` with the package, the app, `SHA256SUMS`, licences |
 | `tools/build.py` (no flag) | the same package, without the release folder |
 
 Every build also writes `duell-latest.fwsc` (the same file) and `duell-version.json` next to it.
 
-(The package is named `duell-...`; the older name `felucca-0.1-beta.fwsc` is still found by the installer page. The device shows the version as "DUELL 1.0" (the `VERSION` file). Build steps: [felucca-base/BUILDING.md](../felucca-base/BUILDING.md).)
+(The package is named `duell-...`; the older name `felucca-0.1-beta.fwsc` is still found by the installer page. The device shows the version as "DUELL 1.0" (the `VERSION` file). Build steps: [duell/BUILDING.md](../duell/BUILDING.md).)
 
-The page reads the version from `duell-version.json` and looks for **`duell-latest.fwsc` next to itself** (then `duell-<VERSION>.fwsc`, then the older names `duell-0.1-beta.fwsc`, `felucca-0.1-beta.fwsc`) (in `felucca-base/web/install/`). If it is not there, the page shows the notice **"DUELL firmware is not yet released"** and keeps the install flow hidden; the flow appears when the file exists. It accepts only a Felucca-loader package (identity `FM-1_9xx`, which `tools/build.py` makes `FM-1_901`), and it shows the SHA-256 so you can compare it with `SHA256SUMS`.
+The page reads the version from `duell-version.json` and looks for **`duell-latest.fwsc` next to itself** (then `duell-<VERSION>.fwsc`, then the older names `duell-0.1-beta.fwsc`, `felucca-0.1-beta.fwsc`) (in `duell/web/install/`). If it is not there, the page shows the notice **"DUELL firmware is not yet released"** and keeps the install flow hidden; the flow appears when the file exists. It accepts only a Felucca-loader package (identity `FM-1_9xx`, which `tools/build.py` makes `FM-1_901`), and it shows the SHA-256 so you can compare it with `SHA256SUMS`.
 
-To view the page, serve the folder `felucca-base/web/` with any static web server, for example `python3 -m http.server -d felucca-base/web 8000`, and open `http://localhost:8000/install/`. (Opening the file straight from disk does not work, because the page loads modules.) The same page is published at <https://oscillr.github.io/DUELL/install/> (GitHub Pages), which loads the package attached to the latest release.
+To view the page, serve the folder `duell/web/` with any static web server, for example `python3 -m http.server -d duell/web 8000`, and open `http://localhost:8000/install/`. (Opening the file straight from disk does not work, because the page loads modules.) The same page is published at <https://oscillr.github.io/DUELL/install/> (GitHub Pages), which loads the package attached to the latest release.
 
 ## The three cards
 The installer page has three separate action cards, each with its own button, progress bar, status line and result line:

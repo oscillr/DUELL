@@ -1,4 +1,4 @@
-# build outputs (rebuild with felucca-base/build.sh and felucca-base/web/emu/build.sh)
+# build outputs (rebuild with duell/build.sh and duell/web/emu/build.sh)
 build/
 site/
 *.fwsc

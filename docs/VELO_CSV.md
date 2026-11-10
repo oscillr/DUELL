@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: GPL-3.0-only -->
 # Key recording format (VELO_CSV)
 
-The raw logger on the unit and `felucca-base/tools/velo_replay.py` use one CSV, one row per converter reading of a key:
+The raw logger on the unit and `duell/tools/velo_replay.py` use one CSV, one row per converter reading of a key:
 
 ```
 ts_us,key,adc,drive

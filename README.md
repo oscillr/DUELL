@@ -3,7 +3,7 @@
 **MultiMorphing Bitimbral Synthesizer**  
 **by OSCILL/R**
 
-**Two synths in one small box.** DUELL is free, open-source firmware (GPL-3.0) for the M-VAVE FM-1. It turns the FM-1 into a bitimbral instrument: two complete parts, three ways to play them together, and a morph that glides between two versions of every sound. This is **DUELL 1.1**.
+**Two synths in one small box.** DUELL is free, open-source firmware (GPL-3.0) for the M-VAVE FM-1. It turns the FM-1 into a bitimbral instrument: two complete parts, three ways to play them together, and a morph that glides between two versions of every sound. This is **DUELL 1.2**.
 
 **Try it in your browser, no FM-1 needed:** <https://oscillr.github.io/DUELL/emu/>
 
@@ -18,7 +18,7 @@
 3. While the new firmware is written, the unit shows the **update screen**: the DUELL word over moving wave lines, WRITING, a percent number, a bar of 20 segments and DO NOT SWITCH OFF. Do not unplug until it is done. If the screen stays dark the write may still be running: wait for the installer to say Done.
 4. Details, the checklist and the way back to the official firmware: [docs/INSTALL.md](docs/INSTALL.md). If something goes wrong: [docs/RECOVERY.md](docs/RECOVERY.md).
 
-The package is `duell-1.1.fwsc` (compare its SHA-256 with `SHA256SUMS` on the release page).
+The package is `duell-1.2.fwsc` (compare its SHA-256 with `SHA256SUMS` on the release page).
 
 ## What is in it
 
@@ -50,13 +50,13 @@ ANALOG, PHASE, LOFI, VOICE, TRIO, WHEEL, PHYS, NOISE, FM6 and WAVE (with three u
 A part has two levels, as on a hardware synth. The sound has a **TRIM** (its own loudness, saved with the patch) and the mixer has a **LEVEL** (your volume for the part: loading a sound does not change it, a multi remembers it). The MASTER's top is 0 dB.
 
 ### Effects
-Per part: distortion, INSERT (including TAPE, VINYL, FOLD, HARD, CRUSH), EQ, a ducker with sidechain from MIDI. Shared: chorus (stereo), a delay with four modes (DIGI, PING, RAND, OCT+), six reverbs (ROOM, SPRING, HALL, SHIM, RESO, PLATE) with a low cut, BASS MONO, a master compressor and a stereo WIDTH on the GLO pages.
+Per part: distortion, INSERT (including TAPE, VINYL, FOLD, HARD, CRUSH), EQ, a ducker with sidechain from MIDI. Shared: chorus (stereo), a delay with four modes (DIGI, PING, RAND, OCT+), six reverbs (ROOM, SPRING, HALL, SHIMMER, RESONATOR, PLATE) with a low cut, BASS MONO, a master compressor and a stereo WIDTH on the GLO pages.
 
 ### Keys
 Key velocity and aftertouch (KEY SENSE): the menu has **AFTERTOUCH** (on by default) and **KEY VELOCITY** (on by default; a very hard press can come out quiet, and you can switch it off; the method is Velo's, see [NOTICE.md](NOTICE.md)).
 
 ### Two cores
-Part 2 plays on the chip's second core. It starts at every power-on and needs nothing from you. If the second core does not answer, misreads or stalls, DUELL plays on **one core** for the rest of that session without a break in the music; after a crash or hang that involved the second core, the next start uses one core too and the one after tries two again. The unit also keeps a limit on the number of notes per part (the NOTES budget) so that it does not crackle. There is no menu switch or on-screen notice for the second core yet.
+Both parts play from one shared pool of voices, spread over the chip's two cores: every voice goes to the core with more room. It starts at every power-on and needs nothing from you. If the second core does not answer, misreads or stalls, DUELL plays on **one core** for the rest of that session without a break in the music; after a crash or hang that involved the second core, the next start uses one core too and the one after tries two again. Each part's AVAILABLE VOICES in the header shows how many more notes that part can play right now, and that number is what really plays. There is no menu switch or on-screen notice for the second core yet.
 
 ### MIDI
 A MIDI channel for each part. Clock in (AUTO, INT, USB or TRS), program change, bank select, pitch bend, mod wheel, sustain pedal and the CC map below. MIDI LEARN teaches a CC to any other parameter. Not tested with a wide range of devices.
@@ -152,12 +152,12 @@ One map for the whole unit. A CC on a part's channel moves that part; "both part
 
 **Learn-only parameters** have no CC of their own: the matrix choices and amounts, EQ, ARP and SEQ set-up, DUCK, the LFOs beyond the vibrato rows, the voice set-up, the master settings, UNDO, the four MORPH switches (TARGET, SMART, ARP, PITCH) and the settings that belong to both parts (BALANCE, XFADE, SPLIT, MODE). Teach a CC to one with MIDI LEARN on the unit.
 
-## What is not in 1.1
+## What is not in 1.2
 The editor's MIDI MAP tab, switching multis with preset changes, the SUB HARMONICS card (switched off). The full list is in [docs/KNOWN_LIMITS.md](docs/KNOWN_LIMITS.md).
 
 ## Build and test
 
-Building a device image is described in [felucca-base/BUILDING.md](felucca-base/BUILDING.md); a normal build has the two-core firmware and the update screen. Host tests: `./host_tests.sh` (see [docs/TESTING.md](docs/TESTING.md)).
+Building a device image is described in [duell/BUILDING.md](duell/BUILDING.md); a normal build has the two-core firmware and the update screen. Host tests: `./host_tests.sh` (see [docs/TESTING.md](docs/TESTING.md)).
 
 ## Read more
 
@@ -174,4 +174,4 @@ Building a device image is described in [felucca-base/BUILDING.md](felucca-base/
 
 ## Credits and licence
 
-DUELL is a fork of **Felucca** by Leo Kuroshita (@kurogedelic), Hügelton Instruments, and is licensed under the **GPL-3.0-only** ([LICENSE](LICENSE)). The whole list of thanks and of third-party parts is in [CREDITS.md](CREDITS.md), [NOTICE.md](NOTICE.md) and [felucca-base/LICENSING.md](felucca-base/LICENSING.md); the upstream commit is in [UPSTREAM_COMMIT.txt](UPSTREAM_COMMIT.txt). The DUELL logo and artwork are the work of OSCILL/R and are not part of the GPL licence; the code and the splash graphic as shipped in the firmware are GPL-3.0-only. DUELL is an independent project and is not affiliated with M-VAVE.
+DUELL is a fork of **Felucca** by Leo Kuroshita (@kurogedelic), Hügelton Instruments, and is licensed under the **GPL-3.0-only** ([LICENSE](LICENSE)). The whole list of thanks and of third-party parts is in [CREDITS.md](CREDITS.md), [NOTICE.md](NOTICE.md) and [duell/LICENSING.md](duell/LICENSING.md); the upstream commit is in [UPSTREAM_COMMIT.txt](UPSTREAM_COMMIT.txt). The DUELL logo and artwork are the work of OSCILL/R and are not part of the GPL licence; the code and the splash graphic as shipped in the firmware are GPL-3.0-only. DUELL is an independent project and is not affiliated with M-VAVE.

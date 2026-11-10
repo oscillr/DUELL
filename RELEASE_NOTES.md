@@ -1,33 +1,34 @@
-# DUELL 1.1
+# DUELL 1.2
 
 **DUELL**
 **MultiMorphing Bitimbral Synthesizer**
 **by OSCILL/R**
 
-DUELL 1.1 is an update for the M-VAVE FM-1. The whole user interface is redesigned, so you see more at a glance, and PERFORM, STRUM and MORPH have new things to play with.
+DUELL 1.2 is an update for the M-VAVE FM-1. Up to 16 voices a part from one shared voice pool over both cores, and it works with newer FM-1 units.
 
 ## What is new
 
-**The new design**
-- Every page is redesigned.
-- The part marker in the header shows the available voices in POLY, and M, L or U in MONO, LEGATO and UNISON.
-- The quick pages GLO, SEQ, REC, ENV, LFO and EDIT look and behave the same in PERFORM as outside it. While you hold one, the white keys follow that page.
-- The matrix and the CYCLE, SUB and TWIN MOD cards show each value as it sounds at the current morph position, and matrix names are written out in full.
+**More voices**
+- Both parts play from one shared pool of voices, spread over both cores. The old limit of 8 voices a part is gone: a part plays as many voices as the pool holds, up to 16.
+- FM6 plays up to 12 voices (6 while the TWIN FILTER is COMB). VOICE is no longer held to 4.
+- The number on the screen is what really plays.
 
-**Play**
-- STRUM on the CHORD page (K3): OFF, or 1 to 100ms between the notes of a chord, saved with the patch.
-- On the PERFORM page the SELECT knob is the balance between the two parts.
-- SPLIT starts on the middle key: turn it up from OFF and the first step lands on F#4.
+**Fair sharing between the parts**
+- Each part's AVAILABLE VOICES shows how many more notes that part can play right now. It drops when the other part plays.
+- A key on a part that shows 0 takes the oldest note of the part that holds more.
 
-**MORPH**
-- ROLL is chained: each roll continues from the sound that end has now. UNDO goes back up to two rolls.
-- End B is saved and loaded exactly as it sounds. You can edit B and it is saved with the patch.
-- The SMART and WILD randomizers are reworked.
-
-**Sequencer**
-- Parameter locks are recorded by turning any knob while REC is armed. The PARAMETER LOCKS page is the list where you change, delete and switch what was recorded.
-- New tools TRANS + and TRANS - move the whole pattern by one semitone. SHIFT < and SHIFT > move it in time.
-- Swing runs from 50 to 75 percent on ARP, QUICK SEQ and TEMPO.
+## Fixed
+- No crackle when chords start, when knobs or MIDI CCs move, or when the MORPH fader moves.
+- WAVE chords in CHORD mode play clean.
+- ANALOG no longer clicks on loud parts.
+- WHEEL no longer freezes with 8 voices.
+- The panel lights stay on while the unit saves.
+- FM6: OP MODE, OP TUNE and OP ENV come right after the EDIT pages.
+- Updated SCALE and CHORD keyboards.
+- UI improvements: the header fits two-digit voice numbers, the voice number stays steady with the arp, lines under each parameter, text aligned on its baseline.
+- Newer FM-1 units with the UC25HQ80 flash chip can save and update ([issue #3](https://github.com/oscillr/DUELL/issues/3)).
+- The installer finds any FM-1, whatever its MIDI port is called.
+- Other FM-1 firmwares can be installed from DUELL.
 
 ## Read this before you flash
 - DUELL has run on **two FM-1 units, the author's**, and more than 100 people have installed it through the Firmware Hub. The FM-1 has a single copy of its firmware and no known rollback besides the way back to the official firmware (V15).
@@ -38,11 +39,11 @@ DUELL 1.1 is an update for the M-VAVE FM-1. The whole user interface is redesign
 ## Assets
 | File | What |
 |---|---|
-| `duell-1.1.fwsc` | the device package (the installer page loads this one) |
+| `duell-1.2.fwsc` | the device package (the installer page loads this one) |
 | `SHA256SUMS` | checksums |
 
 ```
-SHA256: f8f8cdee93bc72061c2ac1b82a4d3fa3704aa5a2247b498c6802f7c518c37dc3  duell-1.1.fwsc
+SHA256: 031a3feef898b407537214f2694cb0c7e5014e2c02553c8d57b4865308aa3690  duell-1.2.fwsc
 ```
 
 ## Links

@@ -1,0 +1,399 @@
+# POOL-SWEEP (2026-11-07): where late blocks start with two cores, both parts playing the same plain sound, N keys a part, the budget held OPEN (no limit),
+# the heavy globals of BENCH-HEAVY. Read: vox, avg (core 0), c1 (core 1), tcvlate, miss, silent per N. Estimate: 18 tests x about 9 s = about 3 min.
+suite POOL-SWEEP
+
+test SW_ANALOG_N06  plain ANALOG on both parts, 6 keys a part, budget OPEN, two cores
+mode STEREO
+sound 1 ANALOG DEAR
+sound 2 ANALOG DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget OPEN
+tune core1 on
+at 0.0  chord C2 D2 E2 F2 G2 A2 vel 100 ch 1
+at 0.0  chord C2 D2 E2 F2 G2 A2 vel 100 ch 2
+at 5.0  release
+tail 1
+measure 1.0 5.0
+expect report
+
+test SW_ANALOG_N08  plain ANALOG on both parts, 8 keys a part, budget OPEN, two cores
+mode STEREO
+sound 1 ANALOG DEAR
+sound 2 ANALOG DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget OPEN
+tune core1 on
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 vel 100 ch 1
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 vel 100 ch 2
+at 5.0  release
+tail 1
+measure 1.0 5.0
+expect report
+
+test SW_ANALOG_N10  plain ANALOG on both parts, 10 keys a part, budget OPEN, two cores
+mode STEREO
+sound 1 ANALOG DEAR
+sound 2 ANALOG DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget OPEN
+tune core1 on
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 vel 100 ch 1
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 vel 100 ch 2
+at 5.0  release
+tail 1
+measure 1.0 5.0
+expect report
+
+test SW_ANALOG_N12  plain ANALOG on both parts, 12 keys a part, budget OPEN, two cores
+mode STEREO
+sound 1 ANALOG DEAR
+sound 2 ANALOG DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget OPEN
+tune core1 on
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 vel 100 ch 1
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 vel 100 ch 2
+at 5.0  release
+tail 1
+measure 1.0 5.0
+expect report
+
+test SW_ANALOG_N14  plain ANALOG on both parts, 14 keys a part, budget OPEN, two cores
+mode STEREO
+sound 1 ANALOG DEAR
+sound 2 ANALOG DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget OPEN
+tune core1 on
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 vel 100 ch 1
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 vel 100 ch 2
+at 5.0  release
+tail 1
+measure 1.0 5.0
+expect report
+
+test SW_ANALOG_N16  plain ANALOG on both parts, 16 keys a part, budget OPEN, two cores
+mode STEREO
+sound 1 ANALOG DEAR
+sound 2 ANALOG DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget OPEN
+tune core1 on
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 C4 D4 vel 100 ch 1
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 C4 D4 vel 100 ch 2
+at 5.0  release
+tail 1
+measure 1.0 5.0
+expect report
+
+test SW_LOFI_N10  plain LOFI on both parts, 10 keys a part, budget OPEN, two cores
+mode STEREO
+sound 1 LOFI DEAR
+sound 2 LOFI DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget OPEN
+tune core1 on
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 vel 100 ch 1
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 vel 100 ch 2
+at 5.0  release
+tail 1
+measure 1.0 5.0
+expect report
+
+test SW_LOFI_N12  plain LOFI on both parts, 12 keys a part, budget OPEN, two cores
+mode STEREO
+sound 1 LOFI DEAR
+sound 2 LOFI DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget OPEN
+tune core1 on
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 vel 100 ch 1
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 vel 100 ch 2
+at 5.0  release
+tail 1
+measure 1.0 5.0
+expect report
+
+test SW_LOFI_N14  plain LOFI on both parts, 14 keys a part, budget OPEN, two cores
+mode STEREO
+sound 1 LOFI DEAR
+sound 2 LOFI DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget OPEN
+tune core1 on
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 vel 100 ch 1
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 vel 100 ch 2
+at 5.0  release
+tail 1
+measure 1.0 5.0
+expect report
+
+test SW_LOFI_N16  plain LOFI on both parts, 16 keys a part, budget OPEN, two cores
+mode STEREO
+sound 1 LOFI DEAR
+sound 2 LOFI DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget OPEN
+tune core1 on
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 C4 D4 vel 100 ch 1
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 C4 D4 vel 100 ch 2
+at 5.0  release
+tail 1
+measure 1.0 5.0
+expect report
+
+test SW_WHEEL_N04  plain WHEEL on both parts, 4 keys a part, budget OPEN, two cores
+mode STEREO
+sound 1 WHEEL DEAR
+sound 2 WHEEL DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget OPEN
+tune core1 on
+at 0.0  chord C2 D2 E2 F2 vel 100 ch 1
+at 0.0  chord C2 D2 E2 F2 vel 100 ch 2
+at 5.0  release
+tail 1
+measure 1.0 5.0
+expect report
+
+test SW_WHEEL_N06  plain WHEEL on both parts, 6 keys a part, budget OPEN, two cores
+mode STEREO
+sound 1 WHEEL DEAR
+sound 2 WHEEL DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget OPEN
+tune core1 on
+at 0.0  chord C2 D2 E2 F2 G2 A2 vel 100 ch 1
+at 0.0  chord C2 D2 E2 F2 G2 A2 vel 100 ch 2
+at 5.0  release
+tail 1
+measure 1.0 5.0
+expect report
+
+test SW_WHEEL_N08  plain WHEEL on both parts, 8 keys a part, budget OPEN, two cores
+mode STEREO
+sound 1 WHEEL DEAR
+sound 2 WHEEL DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget OPEN
+tune core1 on
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 vel 100 ch 1
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 vel 100 ch 2
+at 5.0  release
+tail 1
+measure 1.0 5.0
+expect report
+
+test SW_WHEEL_N10  plain WHEEL on both parts, 10 keys a part, budget OPEN, two cores
+mode STEREO
+sound 1 WHEEL DEAR
+sound 2 WHEEL DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget OPEN
+tune core1 on
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 vel 100 ch 1
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 vel 100 ch 2
+at 5.0  release
+tail 1
+measure 1.0 5.0
+expect report
+
+test SW_PHYSICAL_N02  plain PHYSICAL on both parts, 2 keys a part, budget OPEN, two cores
+mode STEREO
+sound 1 PHYS DEAR
+sound 2 PHYS DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget OPEN
+tune core1 on
+at 0.0  chord C2 D2 vel 100 ch 1
+at 0.0  chord C2 D2 vel 100 ch 2
+at 5.0  release
+tail 1
+measure 1.0 5.0
+expect report
+
+test SW_PHYSICAL_N03  plain PHYSICAL on both parts, 3 keys a part, budget OPEN, two cores
+mode STEREO
+sound 1 PHYS DEAR
+sound 2 PHYS DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget OPEN
+tune core1 on
+at 0.0  chord C2 D2 E2 vel 100 ch 1
+at 0.0  chord C2 D2 E2 vel 100 ch 2
+at 5.0  release
+tail 1
+measure 1.0 5.0
+expect report
+
+test SW_PHYSICAL_N04  plain PHYSICAL on both parts, 4 keys a part, budget OPEN, two cores
+mode STEREO
+sound 1 PHYS DEAR
+sound 2 PHYS DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget OPEN
+tune core1 on
+at 0.0  chord C2 D2 E2 F2 vel 100 ch 1
+at 0.0  chord C2 D2 E2 F2 vel 100 ch 2
+at 5.0  release
+tail 1
+measure 1.0 5.0
+expect report
+
+test SW_PHYSICAL_N06  plain PHYSICAL on both parts, 6 keys a part, budget OPEN, two cores
+mode STEREO
+sound 1 PHYS DEAR
+sound 2 PHYS DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget OPEN
+tune core1 on
+at 0.0  chord C2 D2 E2 F2 G2 A2 vel 100 ch 1
+at 0.0  chord C2 D2 E2 F2 G2 A2 vel 100 ch 2
+at 5.0  release
+tail 1
+measure 1.0 5.0
+expect report

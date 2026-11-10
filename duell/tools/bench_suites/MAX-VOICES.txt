@@ -1,0 +1,1508 @@
+# MAX-VOICES (owner, 2026-11-08): how many voices the unit REALLY plays, the voice limits off (bench builds with BENCH_NOLIMIT=1: no budget,
+# no VOICE CAP, no shedding, no LIGHT FX), the same suite on the 1.1 code and on today's code.
+# 
+#   python3 tools/gen_maxvoice_suite.py [M1 "NAME1" M2 "NAME2" M3 "NAME3"]     writes tools/bench_suites/MAX-VOICES.txt
+# 
+# The test sounds are made by bench words in the unit's working memory only (nothing saved, no slot used): the engine's dearest factory sound with
+# everything on and MOVING: MULTI filter 24 dB, TWIN filter LP in PARALLEL (BLEND BOTH), SUB, the CYCLE envelope, both LFOs running smooth
+# (SIN, TRI) on pitch / filter / shape, ENV 2 on filter / pitch / shape, all 8 matrix slots from LFO 1, LFO 2, CYCLE and ENV 2 to PITCH, MULTI CUTOFF,
+# TIMBRE, AMP, PAN, SATURATION, TWIN CUTOFF, TWIN RES; SAT, an INSERT, SPREAD, the three sends; MORPH rolled to an End B, measured at A and at B.
+# EQ and DUCK off (the owner's rule G25a). Engines: LOFI (cheapest), ANALOG, WAVE, PHYSICAL (dearest); plus three of the owner's multis as stored.
+# Each test: both parts, keys added one at a time every 0.25 s, alternating part 1 / part 2 (LAYER multis: a key plays both parts), no long notes;
+# the first dropout (the recording's USB break / click / gap, the unit's late half) says how many voices were sounding.
+suite MAX-VOICES
+
+test MV_LOFI_A  LOFI, everything on and moving, MORPH A, both parts, keys added one by one up to 16 + 16
+mode STEREO
+sound 1 LOFI DEAR
+sound 2 LOFI DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+set 1 45 52
+set 1 46 96
+set 1 47 40
+set 1 48 2
+set 1 43 1
+set 1 106 40
+set 1 101 0
+set 1 128 1
+set 1 131 40
+set 1 132 50
+set 1 133 -50
+set 1 134 127
+set 1 135 0
+set 1 136 3
+set 1 137 127
+set 1 139 30
+set 1 140 30
+set 1 9 80
+set 1 10 0
+set 1 77 60
+set 1 78 1
+set 1 5 40
+set 1 6 10
+set 1 7 40
+set 1 13 6
+set 1 14 -40
+set 1 15 30
+set 1 49 1
+set 1 50 1
+set 1 51 8
+set 1 52 12
+set 1 53 2
+set 1 54 50
+set 1 55 15
+set 1 56 3
+set 1 57 50
+set 1 58 11
+set 1 59 4
+set 1 60 30
+set 1 61 1
+set 1 62 5
+set 1 63 60
+set 1 64 12
+set 1 65 6
+set 1 66 40
+set 1 67 15
+set 1 68 51
+set 1 69 50
+set 1 70 11
+set 1 71 52
+set 1 72 30
+set 1 33 50
+set 1 96 3
+set 1 97 90
+set 1 98 90
+set 1 99 90
+set 1 100 127
+set 1 95 127
+set 1 34 100
+set 1 35 100
+set 1 36 100
+set 1 2 90
+set 1 3 110
+set 1 4 40
+morph 1 ROLL 11 100
+set 2 45 52
+set 2 46 96
+set 2 47 40
+set 2 48 2
+set 2 43 1
+set 2 106 40
+set 2 101 0
+set 2 128 1
+set 2 131 40
+set 2 132 50
+set 2 133 -50
+set 2 134 127
+set 2 135 0
+set 2 136 3
+set 2 137 127
+set 2 139 30
+set 2 140 30
+set 2 9 80
+set 2 10 0
+set 2 77 60
+set 2 78 1
+set 2 5 40
+set 2 6 10
+set 2 7 40
+set 2 13 6
+set 2 14 -40
+set 2 15 30
+set 2 49 1
+set 2 50 1
+set 2 51 8
+set 2 52 12
+set 2 53 2
+set 2 54 50
+set 2 55 15
+set 2 56 3
+set 2 57 50
+set 2 58 11
+set 2 59 4
+set 2 60 30
+set 2 61 1
+set 2 62 5
+set 2 63 60
+set 2 64 12
+set 2 65 6
+set 2 66 40
+set 2 67 15
+set 2 68 51
+set 2 69 50
+set 2 70 11
+set 2 71 52
+set 2 72 30
+set 2 33 50
+set 2 96 3
+set 2 97 90
+set 2 98 90
+set 2 99 90
+set 2 100 127
+set 2 95 127
+set 2 34 100
+set 2 35 100
+set 2 36 100
+set 2 2 90
+set 2 3 110
+set 2 4 40
+morph 2 ROLL 11 100
+morph 1 FADER 0
+morph 2 FADER 0
+budget OPEN
+tune core1 on
+at 0.00  note C2 vel 110 len 8.50 ch 1
+at 0.25  note C3 vel 110 len 8.25 ch 2
+at 0.50  note D2 vel 110 len 8.00 ch 1
+at 0.75  note D3 vel 110 len 7.75 ch 2
+at 1.00  note E2 vel 110 len 7.50 ch 1
+at 1.25  note E3 vel 110 len 7.25 ch 2
+at 1.50  note F2 vel 110 len 7.00 ch 1
+at 1.75  note F3 vel 110 len 6.75 ch 2
+at 2.00  note G2 vel 110 len 6.50 ch 1
+at 2.25  note G3 vel 110 len 6.25 ch 2
+at 2.50  note A2 vel 110 len 6.00 ch 1
+at 2.75  note A3 vel 110 len 5.75 ch 2
+at 3.00  note B2 vel 110 len 5.50 ch 1
+at 3.25  note B3 vel 110 len 5.25 ch 2
+at 3.50  note C3 vel 110 len 5.00 ch 1
+at 3.75  note C4 vel 110 len 4.75 ch 2
+at 4.00  note D3 vel 110 len 4.50 ch 1
+at 4.25  note D4 vel 110 len 4.25 ch 2
+at 4.50  note E3 vel 110 len 4.00 ch 1
+at 4.75  note E4 vel 110 len 3.75 ch 2
+at 5.00  note F3 vel 110 len 3.50 ch 1
+at 5.25  note F4 vel 110 len 3.25 ch 2
+at 5.50  note G3 vel 110 len 3.00 ch 1
+at 5.75  note G4 vel 110 len 2.75 ch 2
+at 6.00  note A3 vel 110 len 2.50 ch 1
+at 6.25  note A4 vel 110 len 2.25 ch 2
+at 6.50  note B3 vel 110 len 2.00 ch 1
+at 6.75  note B4 vel 110 len 1.75 ch 2
+at 7.00  note C4 vel 110 len 1.50 ch 1
+at 7.25  note C5 vel 110 len 1.25 ch 2
+at 7.50  note D4 vel 110 len 1.00 ch 1
+at 7.75  note D5 vel 110 len 0.75 ch 2
+at 8.50  release
+tail 0.5
+measure 0.0 8.50
+expect report
+
+test MV_LOFI_B  LOFI, everything on and moving, MORPH B, both parts, keys added one by one up to 16 + 16
+mode STEREO
+sound 1 LOFI DEAR
+sound 2 LOFI DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+set 1 45 52
+set 1 46 96
+set 1 47 40
+set 1 48 2
+set 1 43 1
+set 1 106 40
+set 1 101 0
+set 1 128 1
+set 1 131 40
+set 1 132 50
+set 1 133 -50
+set 1 134 127
+set 1 135 0
+set 1 136 3
+set 1 137 127
+set 1 139 30
+set 1 140 30
+set 1 9 80
+set 1 10 0
+set 1 77 60
+set 1 78 1
+set 1 5 40
+set 1 6 10
+set 1 7 40
+set 1 13 6
+set 1 14 -40
+set 1 15 30
+set 1 49 1
+set 1 50 1
+set 1 51 8
+set 1 52 12
+set 1 53 2
+set 1 54 50
+set 1 55 15
+set 1 56 3
+set 1 57 50
+set 1 58 11
+set 1 59 4
+set 1 60 30
+set 1 61 1
+set 1 62 5
+set 1 63 60
+set 1 64 12
+set 1 65 6
+set 1 66 40
+set 1 67 15
+set 1 68 51
+set 1 69 50
+set 1 70 11
+set 1 71 52
+set 1 72 30
+set 1 33 50
+set 1 96 3
+set 1 97 90
+set 1 98 90
+set 1 99 90
+set 1 100 127
+set 1 95 127
+set 1 34 100
+set 1 35 100
+set 1 36 100
+set 1 2 90
+set 1 3 110
+set 1 4 40
+morph 1 ROLL 11 100
+set 2 45 52
+set 2 46 96
+set 2 47 40
+set 2 48 2
+set 2 43 1
+set 2 106 40
+set 2 101 0
+set 2 128 1
+set 2 131 40
+set 2 132 50
+set 2 133 -50
+set 2 134 127
+set 2 135 0
+set 2 136 3
+set 2 137 127
+set 2 139 30
+set 2 140 30
+set 2 9 80
+set 2 10 0
+set 2 77 60
+set 2 78 1
+set 2 5 40
+set 2 6 10
+set 2 7 40
+set 2 13 6
+set 2 14 -40
+set 2 15 30
+set 2 49 1
+set 2 50 1
+set 2 51 8
+set 2 52 12
+set 2 53 2
+set 2 54 50
+set 2 55 15
+set 2 56 3
+set 2 57 50
+set 2 58 11
+set 2 59 4
+set 2 60 30
+set 2 61 1
+set 2 62 5
+set 2 63 60
+set 2 64 12
+set 2 65 6
+set 2 66 40
+set 2 67 15
+set 2 68 51
+set 2 69 50
+set 2 70 11
+set 2 71 52
+set 2 72 30
+set 2 33 50
+set 2 96 3
+set 2 97 90
+set 2 98 90
+set 2 99 90
+set 2 100 127
+set 2 95 127
+set 2 34 100
+set 2 35 100
+set 2 36 100
+set 2 2 90
+set 2 3 110
+set 2 4 40
+morph 2 ROLL 11 100
+morph 1 FADER 127
+morph 2 FADER 127
+budget OPEN
+tune core1 on
+at 0.00  note C2 vel 110 len 8.50 ch 1
+at 0.25  note C3 vel 110 len 8.25 ch 2
+at 0.50  note D2 vel 110 len 8.00 ch 1
+at 0.75  note D3 vel 110 len 7.75 ch 2
+at 1.00  note E2 vel 110 len 7.50 ch 1
+at 1.25  note E3 vel 110 len 7.25 ch 2
+at 1.50  note F2 vel 110 len 7.00 ch 1
+at 1.75  note F3 vel 110 len 6.75 ch 2
+at 2.00  note G2 vel 110 len 6.50 ch 1
+at 2.25  note G3 vel 110 len 6.25 ch 2
+at 2.50  note A2 vel 110 len 6.00 ch 1
+at 2.75  note A3 vel 110 len 5.75 ch 2
+at 3.00  note B2 vel 110 len 5.50 ch 1
+at 3.25  note B3 vel 110 len 5.25 ch 2
+at 3.50  note C3 vel 110 len 5.00 ch 1
+at 3.75  note C4 vel 110 len 4.75 ch 2
+at 4.00  note D3 vel 110 len 4.50 ch 1
+at 4.25  note D4 vel 110 len 4.25 ch 2
+at 4.50  note E3 vel 110 len 4.00 ch 1
+at 4.75  note E4 vel 110 len 3.75 ch 2
+at 5.00  note F3 vel 110 len 3.50 ch 1
+at 5.25  note F4 vel 110 len 3.25 ch 2
+at 5.50  note G3 vel 110 len 3.00 ch 1
+at 5.75  note G4 vel 110 len 2.75 ch 2
+at 6.00  note A3 vel 110 len 2.50 ch 1
+at 6.25  note A4 vel 110 len 2.25 ch 2
+at 6.50  note B3 vel 110 len 2.00 ch 1
+at 6.75  note B4 vel 110 len 1.75 ch 2
+at 7.00  note C4 vel 110 len 1.50 ch 1
+at 7.25  note C5 vel 110 len 1.25 ch 2
+at 7.50  note D4 vel 110 len 1.00 ch 1
+at 7.75  note D5 vel 110 len 0.75 ch 2
+at 8.50  release
+tail 0.5
+measure 0.0 8.50
+expect report
+
+test MV_ANALOG_A  ANALOG, everything on and moving, MORPH A, both parts, keys added one by one up to 16 + 16
+mode STEREO
+sound 1 ANALOG DEAR
+sound 2 ANALOG DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+set 1 45 52
+set 1 46 96
+set 1 47 40
+set 1 48 2
+set 1 43 1
+set 1 106 40
+set 1 101 0
+set 1 128 1
+set 1 131 40
+set 1 132 50
+set 1 133 -50
+set 1 134 127
+set 1 135 0
+set 1 136 3
+set 1 137 127
+set 1 139 30
+set 1 140 30
+set 1 9 80
+set 1 10 0
+set 1 77 60
+set 1 78 1
+set 1 5 40
+set 1 6 10
+set 1 7 40
+set 1 13 6
+set 1 14 -40
+set 1 15 30
+set 1 49 1
+set 1 50 1
+set 1 51 8
+set 1 52 12
+set 1 53 2
+set 1 54 50
+set 1 55 15
+set 1 56 3
+set 1 57 50
+set 1 58 11
+set 1 59 4
+set 1 60 30
+set 1 61 1
+set 1 62 5
+set 1 63 60
+set 1 64 12
+set 1 65 6
+set 1 66 40
+set 1 67 15
+set 1 68 51
+set 1 69 50
+set 1 70 11
+set 1 71 52
+set 1 72 30
+set 1 33 50
+set 1 96 3
+set 1 97 90
+set 1 98 90
+set 1 99 90
+set 1 100 127
+set 1 95 127
+set 1 34 100
+set 1 35 100
+set 1 36 100
+set 1 2 90
+set 1 3 110
+set 1 4 40
+morph 1 ROLL 11 100
+set 2 45 52
+set 2 46 96
+set 2 47 40
+set 2 48 2
+set 2 43 1
+set 2 106 40
+set 2 101 0
+set 2 128 1
+set 2 131 40
+set 2 132 50
+set 2 133 -50
+set 2 134 127
+set 2 135 0
+set 2 136 3
+set 2 137 127
+set 2 139 30
+set 2 140 30
+set 2 9 80
+set 2 10 0
+set 2 77 60
+set 2 78 1
+set 2 5 40
+set 2 6 10
+set 2 7 40
+set 2 13 6
+set 2 14 -40
+set 2 15 30
+set 2 49 1
+set 2 50 1
+set 2 51 8
+set 2 52 12
+set 2 53 2
+set 2 54 50
+set 2 55 15
+set 2 56 3
+set 2 57 50
+set 2 58 11
+set 2 59 4
+set 2 60 30
+set 2 61 1
+set 2 62 5
+set 2 63 60
+set 2 64 12
+set 2 65 6
+set 2 66 40
+set 2 67 15
+set 2 68 51
+set 2 69 50
+set 2 70 11
+set 2 71 52
+set 2 72 30
+set 2 33 50
+set 2 96 3
+set 2 97 90
+set 2 98 90
+set 2 99 90
+set 2 100 127
+set 2 95 127
+set 2 34 100
+set 2 35 100
+set 2 36 100
+set 2 2 90
+set 2 3 110
+set 2 4 40
+morph 2 ROLL 11 100
+morph 1 FADER 0
+morph 2 FADER 0
+budget OPEN
+tune core1 on
+at 0.00  note C2 vel 110 len 8.50 ch 1
+at 0.25  note C3 vel 110 len 8.25 ch 2
+at 0.50  note D2 vel 110 len 8.00 ch 1
+at 0.75  note D3 vel 110 len 7.75 ch 2
+at 1.00  note E2 vel 110 len 7.50 ch 1
+at 1.25  note E3 vel 110 len 7.25 ch 2
+at 1.50  note F2 vel 110 len 7.00 ch 1
+at 1.75  note F3 vel 110 len 6.75 ch 2
+at 2.00  note G2 vel 110 len 6.50 ch 1
+at 2.25  note G3 vel 110 len 6.25 ch 2
+at 2.50  note A2 vel 110 len 6.00 ch 1
+at 2.75  note A3 vel 110 len 5.75 ch 2
+at 3.00  note B2 vel 110 len 5.50 ch 1
+at 3.25  note B3 vel 110 len 5.25 ch 2
+at 3.50  note C3 vel 110 len 5.00 ch 1
+at 3.75  note C4 vel 110 len 4.75 ch 2
+at 4.00  note D3 vel 110 len 4.50 ch 1
+at 4.25  note D4 vel 110 len 4.25 ch 2
+at 4.50  note E3 vel 110 len 4.00 ch 1
+at 4.75  note E4 vel 110 len 3.75 ch 2
+at 5.00  note F3 vel 110 len 3.50 ch 1
+at 5.25  note F4 vel 110 len 3.25 ch 2
+at 5.50  note G3 vel 110 len 3.00 ch 1
+at 5.75  note G4 vel 110 len 2.75 ch 2
+at 6.00  note A3 vel 110 len 2.50 ch 1
+at 6.25  note A4 vel 110 len 2.25 ch 2
+at 6.50  note B3 vel 110 len 2.00 ch 1
+at 6.75  note B4 vel 110 len 1.75 ch 2
+at 7.00  note C4 vel 110 len 1.50 ch 1
+at 7.25  note C5 vel 110 len 1.25 ch 2
+at 7.50  note D4 vel 110 len 1.00 ch 1
+at 7.75  note D5 vel 110 len 0.75 ch 2
+at 8.50  release
+tail 0.5
+measure 0.0 8.50
+expect report
+
+test MV_ANALOG_B  ANALOG, everything on and moving, MORPH B, both parts, keys added one by one up to 16 + 16
+mode STEREO
+sound 1 ANALOG DEAR
+sound 2 ANALOG DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+set 1 45 52
+set 1 46 96
+set 1 47 40
+set 1 48 2
+set 1 43 1
+set 1 106 40
+set 1 101 0
+set 1 128 1
+set 1 131 40
+set 1 132 50
+set 1 133 -50
+set 1 134 127
+set 1 135 0
+set 1 136 3
+set 1 137 127
+set 1 139 30
+set 1 140 30
+set 1 9 80
+set 1 10 0
+set 1 77 60
+set 1 78 1
+set 1 5 40
+set 1 6 10
+set 1 7 40
+set 1 13 6
+set 1 14 -40
+set 1 15 30
+set 1 49 1
+set 1 50 1
+set 1 51 8
+set 1 52 12
+set 1 53 2
+set 1 54 50
+set 1 55 15
+set 1 56 3
+set 1 57 50
+set 1 58 11
+set 1 59 4
+set 1 60 30
+set 1 61 1
+set 1 62 5
+set 1 63 60
+set 1 64 12
+set 1 65 6
+set 1 66 40
+set 1 67 15
+set 1 68 51
+set 1 69 50
+set 1 70 11
+set 1 71 52
+set 1 72 30
+set 1 33 50
+set 1 96 3
+set 1 97 90
+set 1 98 90
+set 1 99 90
+set 1 100 127
+set 1 95 127
+set 1 34 100
+set 1 35 100
+set 1 36 100
+set 1 2 90
+set 1 3 110
+set 1 4 40
+morph 1 ROLL 11 100
+set 2 45 52
+set 2 46 96
+set 2 47 40
+set 2 48 2
+set 2 43 1
+set 2 106 40
+set 2 101 0
+set 2 128 1
+set 2 131 40
+set 2 132 50
+set 2 133 -50
+set 2 134 127
+set 2 135 0
+set 2 136 3
+set 2 137 127
+set 2 139 30
+set 2 140 30
+set 2 9 80
+set 2 10 0
+set 2 77 60
+set 2 78 1
+set 2 5 40
+set 2 6 10
+set 2 7 40
+set 2 13 6
+set 2 14 -40
+set 2 15 30
+set 2 49 1
+set 2 50 1
+set 2 51 8
+set 2 52 12
+set 2 53 2
+set 2 54 50
+set 2 55 15
+set 2 56 3
+set 2 57 50
+set 2 58 11
+set 2 59 4
+set 2 60 30
+set 2 61 1
+set 2 62 5
+set 2 63 60
+set 2 64 12
+set 2 65 6
+set 2 66 40
+set 2 67 15
+set 2 68 51
+set 2 69 50
+set 2 70 11
+set 2 71 52
+set 2 72 30
+set 2 33 50
+set 2 96 3
+set 2 97 90
+set 2 98 90
+set 2 99 90
+set 2 100 127
+set 2 95 127
+set 2 34 100
+set 2 35 100
+set 2 36 100
+set 2 2 90
+set 2 3 110
+set 2 4 40
+morph 2 ROLL 11 100
+morph 1 FADER 127
+morph 2 FADER 127
+budget OPEN
+tune core1 on
+at 0.00  note C2 vel 110 len 8.50 ch 1
+at 0.25  note C3 vel 110 len 8.25 ch 2
+at 0.50  note D2 vel 110 len 8.00 ch 1
+at 0.75  note D3 vel 110 len 7.75 ch 2
+at 1.00  note E2 vel 110 len 7.50 ch 1
+at 1.25  note E3 vel 110 len 7.25 ch 2
+at 1.50  note F2 vel 110 len 7.00 ch 1
+at 1.75  note F3 vel 110 len 6.75 ch 2
+at 2.00  note G2 vel 110 len 6.50 ch 1
+at 2.25  note G3 vel 110 len 6.25 ch 2
+at 2.50  note A2 vel 110 len 6.00 ch 1
+at 2.75  note A3 vel 110 len 5.75 ch 2
+at 3.00  note B2 vel 110 len 5.50 ch 1
+at 3.25  note B3 vel 110 len 5.25 ch 2
+at 3.50  note C3 vel 110 len 5.00 ch 1
+at 3.75  note C4 vel 110 len 4.75 ch 2
+at 4.00  note D3 vel 110 len 4.50 ch 1
+at 4.25  note D4 vel 110 len 4.25 ch 2
+at 4.50  note E3 vel 110 len 4.00 ch 1
+at 4.75  note E4 vel 110 len 3.75 ch 2
+at 5.00  note F3 vel 110 len 3.50 ch 1
+at 5.25  note F4 vel 110 len 3.25 ch 2
+at 5.50  note G3 vel 110 len 3.00 ch 1
+at 5.75  note G4 vel 110 len 2.75 ch 2
+at 6.00  note A3 vel 110 len 2.50 ch 1
+at 6.25  note A4 vel 110 len 2.25 ch 2
+at 6.50  note B3 vel 110 len 2.00 ch 1
+at 6.75  note B4 vel 110 len 1.75 ch 2
+at 7.00  note C4 vel 110 len 1.50 ch 1
+at 7.25  note C5 vel 110 len 1.25 ch 2
+at 7.50  note D4 vel 110 len 1.00 ch 1
+at 7.75  note D5 vel 110 len 0.75 ch 2
+at 8.50  release
+tail 0.5
+measure 0.0 8.50
+expect report
+
+test MV_WAVE_A  WAVE, everything on and moving, MORPH A, both parts, keys added one by one up to 16 + 16
+mode STEREO
+sound 1 WAVE DEAR
+sound 2 WAVE DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+set 1 45 52
+set 1 46 96
+set 1 47 40
+set 1 48 2
+set 1 43 1
+set 1 106 40
+set 1 101 0
+set 1 128 1
+set 1 131 40
+set 1 132 50
+set 1 133 -50
+set 1 134 127
+set 1 135 0
+set 1 136 3
+set 1 137 127
+set 1 139 30
+set 1 140 30
+set 1 9 80
+set 1 10 0
+set 1 77 60
+set 1 78 1
+set 1 5 40
+set 1 6 10
+set 1 7 40
+set 1 13 6
+set 1 14 -40
+set 1 15 30
+set 1 49 1
+set 1 50 1
+set 1 51 8
+set 1 52 12
+set 1 53 2
+set 1 54 50
+set 1 55 15
+set 1 56 3
+set 1 57 50
+set 1 58 11
+set 1 59 4
+set 1 60 30
+set 1 61 1
+set 1 62 5
+set 1 63 60
+set 1 64 12
+set 1 65 6
+set 1 66 40
+set 1 67 15
+set 1 68 51
+set 1 69 50
+set 1 70 11
+set 1 71 52
+set 1 72 30
+set 1 33 50
+set 1 96 3
+set 1 97 90
+set 1 98 90
+set 1 99 90
+set 1 100 127
+set 1 95 127
+set 1 34 100
+set 1 35 100
+set 1 36 100
+set 1 2 90
+set 1 3 110
+set 1 4 40
+morph 1 ROLL 11 100
+set 2 45 52
+set 2 46 96
+set 2 47 40
+set 2 48 2
+set 2 43 1
+set 2 106 40
+set 2 101 0
+set 2 128 1
+set 2 131 40
+set 2 132 50
+set 2 133 -50
+set 2 134 127
+set 2 135 0
+set 2 136 3
+set 2 137 127
+set 2 139 30
+set 2 140 30
+set 2 9 80
+set 2 10 0
+set 2 77 60
+set 2 78 1
+set 2 5 40
+set 2 6 10
+set 2 7 40
+set 2 13 6
+set 2 14 -40
+set 2 15 30
+set 2 49 1
+set 2 50 1
+set 2 51 8
+set 2 52 12
+set 2 53 2
+set 2 54 50
+set 2 55 15
+set 2 56 3
+set 2 57 50
+set 2 58 11
+set 2 59 4
+set 2 60 30
+set 2 61 1
+set 2 62 5
+set 2 63 60
+set 2 64 12
+set 2 65 6
+set 2 66 40
+set 2 67 15
+set 2 68 51
+set 2 69 50
+set 2 70 11
+set 2 71 52
+set 2 72 30
+set 2 33 50
+set 2 96 3
+set 2 97 90
+set 2 98 90
+set 2 99 90
+set 2 100 127
+set 2 95 127
+set 2 34 100
+set 2 35 100
+set 2 36 100
+set 2 2 90
+set 2 3 110
+set 2 4 40
+morph 2 ROLL 11 100
+morph 1 FADER 0
+morph 2 FADER 0
+budget OPEN
+tune core1 on
+at 0.00  note C2 vel 110 len 8.50 ch 1
+at 0.25  note C3 vel 110 len 8.25 ch 2
+at 0.50  note D2 vel 110 len 8.00 ch 1
+at 0.75  note D3 vel 110 len 7.75 ch 2
+at 1.00  note E2 vel 110 len 7.50 ch 1
+at 1.25  note E3 vel 110 len 7.25 ch 2
+at 1.50  note F2 vel 110 len 7.00 ch 1
+at 1.75  note F3 vel 110 len 6.75 ch 2
+at 2.00  note G2 vel 110 len 6.50 ch 1
+at 2.25  note G3 vel 110 len 6.25 ch 2
+at 2.50  note A2 vel 110 len 6.00 ch 1
+at 2.75  note A3 vel 110 len 5.75 ch 2
+at 3.00  note B2 vel 110 len 5.50 ch 1
+at 3.25  note B3 vel 110 len 5.25 ch 2
+at 3.50  note C3 vel 110 len 5.00 ch 1
+at 3.75  note C4 vel 110 len 4.75 ch 2
+at 4.00  note D3 vel 110 len 4.50 ch 1
+at 4.25  note D4 vel 110 len 4.25 ch 2
+at 4.50  note E3 vel 110 len 4.00 ch 1
+at 4.75  note E4 vel 110 len 3.75 ch 2
+at 5.00  note F3 vel 110 len 3.50 ch 1
+at 5.25  note F4 vel 110 len 3.25 ch 2
+at 5.50  note G3 vel 110 len 3.00 ch 1
+at 5.75  note G4 vel 110 len 2.75 ch 2
+at 6.00  note A3 vel 110 len 2.50 ch 1
+at 6.25  note A4 vel 110 len 2.25 ch 2
+at 6.50  note B3 vel 110 len 2.00 ch 1
+at 6.75  note B4 vel 110 len 1.75 ch 2
+at 7.00  note C4 vel 110 len 1.50 ch 1
+at 7.25  note C5 vel 110 len 1.25 ch 2
+at 7.50  note D4 vel 110 len 1.00 ch 1
+at 7.75  note D5 vel 110 len 0.75 ch 2
+at 8.50  release
+tail 0.5
+measure 0.0 8.50
+expect report
+
+test MV_WAVE_B  WAVE, everything on and moving, MORPH B, both parts, keys added one by one up to 16 + 16
+mode STEREO
+sound 1 WAVE DEAR
+sound 2 WAVE DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+set 1 45 52
+set 1 46 96
+set 1 47 40
+set 1 48 2
+set 1 43 1
+set 1 106 40
+set 1 101 0
+set 1 128 1
+set 1 131 40
+set 1 132 50
+set 1 133 -50
+set 1 134 127
+set 1 135 0
+set 1 136 3
+set 1 137 127
+set 1 139 30
+set 1 140 30
+set 1 9 80
+set 1 10 0
+set 1 77 60
+set 1 78 1
+set 1 5 40
+set 1 6 10
+set 1 7 40
+set 1 13 6
+set 1 14 -40
+set 1 15 30
+set 1 49 1
+set 1 50 1
+set 1 51 8
+set 1 52 12
+set 1 53 2
+set 1 54 50
+set 1 55 15
+set 1 56 3
+set 1 57 50
+set 1 58 11
+set 1 59 4
+set 1 60 30
+set 1 61 1
+set 1 62 5
+set 1 63 60
+set 1 64 12
+set 1 65 6
+set 1 66 40
+set 1 67 15
+set 1 68 51
+set 1 69 50
+set 1 70 11
+set 1 71 52
+set 1 72 30
+set 1 33 50
+set 1 96 3
+set 1 97 90
+set 1 98 90
+set 1 99 90
+set 1 100 127
+set 1 95 127
+set 1 34 100
+set 1 35 100
+set 1 36 100
+set 1 2 90
+set 1 3 110
+set 1 4 40
+morph 1 ROLL 11 100
+set 2 45 52
+set 2 46 96
+set 2 47 40
+set 2 48 2
+set 2 43 1
+set 2 106 40
+set 2 101 0
+set 2 128 1
+set 2 131 40
+set 2 132 50
+set 2 133 -50
+set 2 134 127
+set 2 135 0
+set 2 136 3
+set 2 137 127
+set 2 139 30
+set 2 140 30
+set 2 9 80
+set 2 10 0
+set 2 77 60
+set 2 78 1
+set 2 5 40
+set 2 6 10
+set 2 7 40
+set 2 13 6
+set 2 14 -40
+set 2 15 30
+set 2 49 1
+set 2 50 1
+set 2 51 8
+set 2 52 12
+set 2 53 2
+set 2 54 50
+set 2 55 15
+set 2 56 3
+set 2 57 50
+set 2 58 11
+set 2 59 4
+set 2 60 30
+set 2 61 1
+set 2 62 5
+set 2 63 60
+set 2 64 12
+set 2 65 6
+set 2 66 40
+set 2 67 15
+set 2 68 51
+set 2 69 50
+set 2 70 11
+set 2 71 52
+set 2 72 30
+set 2 33 50
+set 2 96 3
+set 2 97 90
+set 2 98 90
+set 2 99 90
+set 2 100 127
+set 2 95 127
+set 2 34 100
+set 2 35 100
+set 2 36 100
+set 2 2 90
+set 2 3 110
+set 2 4 40
+morph 2 ROLL 11 100
+morph 1 FADER 127
+morph 2 FADER 127
+budget OPEN
+tune core1 on
+at 0.00  note C2 vel 110 len 8.50 ch 1
+at 0.25  note C3 vel 110 len 8.25 ch 2
+at 0.50  note D2 vel 110 len 8.00 ch 1
+at 0.75  note D3 vel 110 len 7.75 ch 2
+at 1.00  note E2 vel 110 len 7.50 ch 1
+at 1.25  note E3 vel 110 len 7.25 ch 2
+at 1.50  note F2 vel 110 len 7.00 ch 1
+at 1.75  note F3 vel 110 len 6.75 ch 2
+at 2.00  note G2 vel 110 len 6.50 ch 1
+at 2.25  note G3 vel 110 len 6.25 ch 2
+at 2.50  note A2 vel 110 len 6.00 ch 1
+at 2.75  note A3 vel 110 len 5.75 ch 2
+at 3.00  note B2 vel 110 len 5.50 ch 1
+at 3.25  note B3 vel 110 len 5.25 ch 2
+at 3.50  note C3 vel 110 len 5.00 ch 1
+at 3.75  note C4 vel 110 len 4.75 ch 2
+at 4.00  note D3 vel 110 len 4.50 ch 1
+at 4.25  note D4 vel 110 len 4.25 ch 2
+at 4.50  note E3 vel 110 len 4.00 ch 1
+at 4.75  note E4 vel 110 len 3.75 ch 2
+at 5.00  note F3 vel 110 len 3.50 ch 1
+at 5.25  note F4 vel 110 len 3.25 ch 2
+at 5.50  note G3 vel 110 len 3.00 ch 1
+at 5.75  note G4 vel 110 len 2.75 ch 2
+at 6.00  note A3 vel 110 len 2.50 ch 1
+at 6.25  note A4 vel 110 len 2.25 ch 2
+at 6.50  note B3 vel 110 len 2.00 ch 1
+at 6.75  note B4 vel 110 len 1.75 ch 2
+at 7.00  note C4 vel 110 len 1.50 ch 1
+at 7.25  note C5 vel 110 len 1.25 ch 2
+at 7.50  note D4 vel 110 len 1.00 ch 1
+at 7.75  note D5 vel 110 len 0.75 ch 2
+at 8.50  release
+tail 0.5
+measure 0.0 8.50
+expect report
+
+test MV_PHYSICAL_A  PHYSICAL, everything on and moving, MORPH A, both parts, keys added one by one up to 3 + 3
+mode STEREO
+sound 1 PHYS DEAR
+sound 2 PHYS DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+set 1 45 52
+set 1 46 96
+set 1 47 40
+set 1 48 2
+set 1 43 1
+set 1 106 40
+set 1 101 0
+set 1 128 1
+set 1 131 40
+set 1 132 50
+set 1 133 -50
+set 1 134 127
+set 1 135 0
+set 1 136 3
+set 1 137 127
+set 1 139 30
+set 1 140 30
+set 1 9 80
+set 1 10 0
+set 1 77 60
+set 1 78 1
+set 1 5 40
+set 1 6 10
+set 1 7 40
+set 1 13 6
+set 1 14 -40
+set 1 15 30
+set 1 49 1
+set 1 50 1
+set 1 51 8
+set 1 52 12
+set 1 53 2
+set 1 54 50
+set 1 55 15
+set 1 56 3
+set 1 57 50
+set 1 58 11
+set 1 59 4
+set 1 60 30
+set 1 61 1
+set 1 62 5
+set 1 63 60
+set 1 64 12
+set 1 65 6
+set 1 66 40
+set 1 67 15
+set 1 68 51
+set 1 69 50
+set 1 70 11
+set 1 71 52
+set 1 72 30
+set 1 33 50
+set 1 96 3
+set 1 97 90
+set 1 98 90
+set 1 99 90
+set 1 100 127
+set 1 95 127
+set 1 34 100
+set 1 35 100
+set 1 36 100
+set 1 2 90
+set 1 3 110
+set 1 4 40
+morph 1 ROLL 11 100
+set 2 45 52
+set 2 46 96
+set 2 47 40
+set 2 48 2
+set 2 43 1
+set 2 106 40
+set 2 101 0
+set 2 128 1
+set 2 131 40
+set 2 132 50
+set 2 133 -50
+set 2 134 127
+set 2 135 0
+set 2 136 3
+set 2 137 127
+set 2 139 30
+set 2 140 30
+set 2 9 80
+set 2 10 0
+set 2 77 60
+set 2 78 1
+set 2 5 40
+set 2 6 10
+set 2 7 40
+set 2 13 6
+set 2 14 -40
+set 2 15 30
+set 2 49 1
+set 2 50 1
+set 2 51 8
+set 2 52 12
+set 2 53 2
+set 2 54 50
+set 2 55 15
+set 2 56 3
+set 2 57 50
+set 2 58 11
+set 2 59 4
+set 2 60 30
+set 2 61 1
+set 2 62 5
+set 2 63 60
+set 2 64 12
+set 2 65 6
+set 2 66 40
+set 2 67 15
+set 2 68 51
+set 2 69 50
+set 2 70 11
+set 2 71 52
+set 2 72 30
+set 2 33 50
+set 2 96 3
+set 2 97 90
+set 2 98 90
+set 2 99 90
+set 2 100 127
+set 2 95 127
+set 2 34 100
+set 2 35 100
+set 2 36 100
+set 2 2 90
+set 2 3 110
+set 2 4 40
+morph 2 ROLL 11 100
+morph 1 FADER 0
+morph 2 FADER 0
+budget OPEN
+tune core1 on
+at 0.00  note C2 vel 110 len 2.00 ch 1
+at 0.25  note C3 vel 110 len 1.75 ch 2
+at 0.50  note D2 vel 110 len 1.50 ch 1
+at 0.75  note D3 vel 110 len 1.25 ch 2
+at 1.00  note E2 vel 110 len 1.00 ch 1
+at 1.25  note E3 vel 110 len 0.75 ch 2
+at 2.00  release
+tail 0.5
+measure 0.0 2.00
+expect report
+
+test MV_PHYSICAL_B  PHYSICAL, everything on and moving, MORPH B, both parts, keys added one by one up to 3 + 3
+mode STEREO
+sound 1 PHYS DEAR
+sound 2 PHYS DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+set 1 45 52
+set 1 46 96
+set 1 47 40
+set 1 48 2
+set 1 43 1
+set 1 106 40
+set 1 101 0
+set 1 128 1
+set 1 131 40
+set 1 132 50
+set 1 133 -50
+set 1 134 127
+set 1 135 0
+set 1 136 3
+set 1 137 127
+set 1 139 30
+set 1 140 30
+set 1 9 80
+set 1 10 0
+set 1 77 60
+set 1 78 1
+set 1 5 40
+set 1 6 10
+set 1 7 40
+set 1 13 6
+set 1 14 -40
+set 1 15 30
+set 1 49 1
+set 1 50 1
+set 1 51 8
+set 1 52 12
+set 1 53 2
+set 1 54 50
+set 1 55 15
+set 1 56 3
+set 1 57 50
+set 1 58 11
+set 1 59 4
+set 1 60 30
+set 1 61 1
+set 1 62 5
+set 1 63 60
+set 1 64 12
+set 1 65 6
+set 1 66 40
+set 1 67 15
+set 1 68 51
+set 1 69 50
+set 1 70 11
+set 1 71 52
+set 1 72 30
+set 1 33 50
+set 1 96 3
+set 1 97 90
+set 1 98 90
+set 1 99 90
+set 1 100 127
+set 1 95 127
+set 1 34 100
+set 1 35 100
+set 1 36 100
+set 1 2 90
+set 1 3 110
+set 1 4 40
+morph 1 ROLL 11 100
+set 2 45 52
+set 2 46 96
+set 2 47 40
+set 2 48 2
+set 2 43 1
+set 2 106 40
+set 2 101 0
+set 2 128 1
+set 2 131 40
+set 2 132 50
+set 2 133 -50
+set 2 134 127
+set 2 135 0
+set 2 136 3
+set 2 137 127
+set 2 139 30
+set 2 140 30
+set 2 9 80
+set 2 10 0
+set 2 77 60
+set 2 78 1
+set 2 5 40
+set 2 6 10
+set 2 7 40
+set 2 13 6
+set 2 14 -40
+set 2 15 30
+set 2 49 1
+set 2 50 1
+set 2 51 8
+set 2 52 12
+set 2 53 2
+set 2 54 50
+set 2 55 15
+set 2 56 3
+set 2 57 50
+set 2 58 11
+set 2 59 4
+set 2 60 30
+set 2 61 1
+set 2 62 5
+set 2 63 60
+set 2 64 12
+set 2 65 6
+set 2 66 40
+set 2 67 15
+set 2 68 51
+set 2 69 50
+set 2 70 11
+set 2 71 52
+set 2 72 30
+set 2 33 50
+set 2 96 3
+set 2 97 90
+set 2 98 90
+set 2 99 90
+set 2 100 127
+set 2 95 127
+set 2 34 100
+set 2 35 100
+set 2 36 100
+set 2 2 90
+set 2 3 110
+set 2 4 40
+morph 2 ROLL 11 100
+morph 1 FADER 127
+morph 2 FADER 127
+budget OPEN
+tune core1 on
+at 0.00  note C2 vel 110 len 2.00 ch 1
+at 0.25  note C3 vel 110 len 1.75 ch 2
+at 0.50  note D2 vel 110 len 1.50 ch 1
+at 0.75  note D3 vel 110 len 1.25 ch 2
+at 1.00  note E2 vel 110 len 1.00 ch 1
+at 1.25  note E3 vel 110 len 0.75 ch 2
+at 2.00  release
+tail 0.5
+measure 0.0 2.00
+expect report
+
+test MV_M07  M07 FINAL REEL as stored, keys added one by one up to 16 (each key both parts)
+load multi 7 "FINAL REEL"
+budget OPEN
+tune core1 on
+at 0.00  note C2 vel 110 len 4.50 ch 1
+at 0.25  note G4 vel 110 len 4.25 ch 1
+at 0.50  note D2 vel 110 len 4.00 ch 1
+at 0.75  note A4 vel 110 len 3.75 ch 1
+at 1.00  note E2 vel 110 len 3.50 ch 1
+at 1.25  note B4 vel 110 len 3.25 ch 1
+at 1.50  note F2 vel 110 len 3.00 ch 1
+at 1.75  note C5 vel 110 len 2.75 ch 1
+at 2.00  note G2 vel 110 len 2.50 ch 1
+at 2.25  note D5 vel 110 len 2.25 ch 1
+at 2.50  note A2 vel 110 len 2.00 ch 1
+at 2.75  note E5 vel 110 len 1.75 ch 1
+at 3.00  note B2 vel 110 len 1.50 ch 1
+at 3.25  note F5 vel 110 len 1.25 ch 1
+at 3.50  note C3 vel 110 len 1.00 ch 1
+at 3.75  note G5 vel 110 len 0.75 ch 1
+at 4.50  release
+tail 0.5
+measure 0.0 4.50
+expect report
+
+test MV_M03  M03 PAD SPLIT as stored, keys added one by one up to 16 (each key both parts)
+load multi 3 "PAD SPLIT"
+budget OPEN
+tune core1 on
+at 0.00  note C2 vel 110 len 4.50 ch 1
+at 0.25  note G4 vel 110 len 4.25 ch 1
+at 0.50  note D2 vel 110 len 4.00 ch 1
+at 0.75  note A4 vel 110 len 3.75 ch 1
+at 1.00  note E2 vel 110 len 3.50 ch 1
+at 1.25  note B4 vel 110 len 3.25 ch 1
+at 1.50  note F2 vel 110 len 3.00 ch 1
+at 1.75  note C5 vel 110 len 2.75 ch 1
+at 2.00  note G2 vel 110 len 2.50 ch 1
+at 2.25  note D5 vel 110 len 2.25 ch 1
+at 2.50  note A2 vel 110 len 2.00 ch 1
+at 2.75  note E5 vel 110 len 1.75 ch 1
+at 3.00  note B2 vel 110 len 1.50 ch 1
+at 3.25  note F5 vel 110 len 1.25 ch 1
+at 3.50  note C3 vel 110 len 1.00 ch 1
+at 3.75  note G5 vel 110 len 0.75 ch 1
+at 4.50  release
+tail 0.5
+measure 0.0 4.50
+expect report
+
+test MV_M08  M08 HAZY TENSOR as stored, keys added one by one up to 16 (each key both parts)
+load multi 8 "HAZY TENSOR"
+budget OPEN
+tune core1 on
+at 0.00  note C2 vel 110 len 4.50 ch 1
+at 0.25  note G4 vel 110 len 4.25 ch 1
+at 0.50  note D2 vel 110 len 4.00 ch 1
+at 0.75  note A4 vel 110 len 3.75 ch 1
+at 1.00  note E2 vel 110 len 3.50 ch 1
+at 1.25  note B4 vel 110 len 3.25 ch 1
+at 1.50  note F2 vel 110 len 3.00 ch 1
+at 1.75  note C5 vel 110 len 2.75 ch 1
+at 2.00  note G2 vel 110 len 2.50 ch 1
+at 2.25  note D5 vel 110 len 2.25 ch 1
+at 2.50  note A2 vel 110 len 2.00 ch 1
+at 2.75  note E5 vel 110 len 1.75 ch 1
+at 3.00  note B2 vel 110 len 1.50 ch 1
+at 3.25  note F5 vel 110 len 1.25 ch 1
+at 3.50  note C3 vel 110 len 1.00 ch 1
+at 3.75  note G5 vel 110 len 0.75 ch 1
+at 4.50  release
+tail 0.5
+measure 0.0 4.50
+expect report

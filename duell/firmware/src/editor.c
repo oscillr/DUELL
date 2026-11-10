@@ -1,0 +1,992 @@
+/* SPDX-License-Identifier: GPL-3.0-only
+ * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
+/* Editor protocol: SysEx for the web editor (web/EDITOR_PROTOCOL.md; v2 = user presets + live sync,
+ * v3 = four tracks: the v1 / v2 commands act on the selected track, cmds 27-30 reach any track;
+ * v4 = TRACK_PARAM (31) and the TRACK_CHANGED push (32), enabled by WATCH bit 1).
+ *   F0 7D 46 4C cmd args.. F7     (7D = non-commercial ID, "FL")
+ * Values are 14 bit, two 7-bit bytes LSB first, offset by 8192 (so -8192..8191).
+ * Every request gets a reply with the same cmd; 23/24/26 are also pushed
+ * while watched. Frames arrive through sx_frame (usb.c), replies leave
+ * through ota_wire_send(). */
+#define ED_HDR0 0x7D
+#define ED_HDR1 0x46
+#define ED_HDR2 0x4C
+enum { ED_INFO = 1, ED_GET, ED_SET, ED_DUMP, ED_DESC, ED_STEP_GET, ED_STEP_SET, ED_PRESET, ED_PROJECT, ED_NAMES,
+       ED_SMP_BEGIN, ED_SMP_WRITE, ED_SMP_END, ED_SMP_ERASE, ED_SMP_INFO,
+       ED_UP_LIST, ED_UP_GET, ED_UP_PUT, ED_UP_STORE, ED_UP_LOAD, ED_UP_ERASE,   /* v2: user presets */
+       ED_WATCH, ED_CHANGED, ED_RELOAD, ED_PING, ED_STEP_CHANGED,              /* v2: live sync */
+       ED_TRACK, ED_TRACK_MIX, ED_TRACK_DUMP, ED_TRACK_STEP,                    /* v3: tracks */
+       ED_TRACK_PARAM, ED_TRACK_CHANGED, ED_SONG_RETIRED,   /* (DUELL: no song mode; the id stays taken) */
+       ED_UI_STATE, ED_UI_SET, ED_UI_PALETTES, ED_FAV_GET, ED_FAV_SET,
+       ED_MOTION = 64, ED_BACKUP_LIST, ED_BACKUP_GET, ED_BACKUP_PUT };
+
+static uint8_t ed_out[800] SCRATCH_BSS;   /* (MOTION op 8: 128 records and their kinds, 653 bytes) */
+static uint32_t ed_n;
+
+static void ed_begin(uint32_t cmd)
+{
+    ed_out[0] = 0xF0;
+    ed_out[1] = ED_HDR0;
+    ed_out[2] = ED_HDR1;
+    ed_out[3] = ED_HDR2;
+    ed_out[4] = (uint8_t)cmd;
+    ed_n = 5;
+}
+static void ed_b(uint32_t v)
+{
+    if (ed_n < sizeof ed_out - 1u)
+        ed_out[ed_n++] = (uint8_t)(v & 0x7Fu);
+}
+static void ed_v(int32_t v)
+{
+    uint32_t u = (uint32_t)(clamp(v, -8192, 8191) + 8192);
+    ed_b(u);
+    ed_b(u >> 7);
+}
+static void ed_str(const char *s, uint32_t max)   /* ASCII, 0-terminated */
+{
+    uint32_t i;
+    for (i = 0; s && s[i] && i < max; i++)
+        ed_b((uint8_t)s[i] & 0x7Fu);
+    ed_b(0);
+}
+static void ed_send(void)
+{
+    ed_out[ed_n++] = 0xF7;
+    ota_wire_send(ed_out, ed_n);
+}
+static int32_t ed_rv(const uint8_t *p) { return (int32_t)(p[0] | p[1] << 7) - 8192; }
+
+/* pack7 payloads (BACKUP_PUT pieces, editor_backup.c): msb byte, then up to 7 bytes. (DUELL 0.2.9: the user sample slots that
+ * SMP_BEGIN .. SMP_END wrote are gone with the SAMPLE engine; the commands stay reserved and answer "unsupported", ed_handle) */
+static uint32_t ed_unpack7(const uint8_t *a, uint32_t na, uint8_t *out, uint32_t max)
+{
+    uint32_t n = 0;                                 /* groups: msb byte, then up to 7 bytes */
+    while (na && n < max) {
+        uint32_t m = *a++, j;
+        na--;
+        uint32_t k = na > 7u ? 7u : na;
+        if (!k || n + k > max || (m >> k))
+            return 0;                              /* incomplete group, overflow, or unused mask bits */
+        for (j = 0; j < k; j++, na--)
+            out[n++] = (uint8_t)(*a++ | ((m >> j) & 1u) << 7);
+    }
+    return na ? 0u : n;
+}
+static uint8_t ed_smp_buf[256] __attribute__((aligned(4))) SCRATCH_BSS;   /* a BACKUP_PUT piece, unpacked (was the sample
+                                                                                     * upload's buffer too, 512) */
+
+/* the engine byte of DUMP / RELOAD / TRACK */
+static uint32_t ed_eng(const track_t *t) { return t->eng_req % NENGINES; }
+
+/* ---- live sync (v2): while the editor WATCHes, device-side changes are pushed.
+ * Shadows of the selected track's p[] + song.g[] and of its steps are kept in step
+ * with what the editor knows (its own SET / STEP_SET update them); the main loop
+ * compares and pushes CHANGED / STEP_CHANGED, or RELOAD after a load or when another
+ * track was selected (v3: RELOAD and STEP_CHANGED carry the selected track). Pushes
+ * go out only into a half-empty SysEx ring, so they never wait. */
+#define ED_PUSH_MAX 4u                                   /* frames per pass */
+#define ED_NV (P_COUNT + G_COUNT + NX)                   /* the track's parameters, the globals, then (scope 2) the track's extension slots */
+/* v4: the parameters of the tracks that are not selected which TRACK_CHANGED follows (the mixer) */
+static const uint8_t ED_TIDS[3] = {P_LEVEL, P_PAN, P_MUTE};
+#define ED_NT (NTRK * 3u)
+/* item 159 (owner: "We should be seeing the actual values of the current sound at the morph setting that we are at"): every value of a part the editor
+ * reads (GET, SET's reply, DUMP, TRACK_DUMP, TRACK_PARAM, CHANGED, TRACK_CHANGED, TRACK's level) is the value as the unit's cards show it: morph.c morph_view
+ * (the fader's blend; the stored value where the morph moves nothing). The stored Original is read and written only through the STORED forms (TRACK_DUMP's
+ * byte 1, TRACK_PARAM's scope bit 4: the librarian's value copy); saves (UP_STORE, PATCH_RAW, BACKUP, PROJECT) store what they always stored */
+#define ED_NO (P_COUNT + NX)                             /* WATCH bit 2: the other shown part's parameters, then its extension slots */
+_Static_assert(NSHOWN == 2u, "editor.c: one other shown part (WATCH bit 2)");
+static struct {
+    uint8_t on, eng, preset, sel;
+    uint8_t v4;                                          /* WATCH bit 1: TRACK_CHANGED pushes too */
+    uint8_t v5;                                          /* item 159, WATCH bit 2: TRACK_CHANGED for every value of the other shown part (scope byte 2 for a slot) */
+    uint32_t pos, last_ms, run_ms, resets;
+    int16_t v[ED_NV];                                    /* TSEL's values as shown (item 159), then song.g[], then TSEL's slots as shown */
+    uint16_t t[ED_NV];                                   /* ms (low 16 bits) of the last push */
+    uint32_t st[NSTEP];                                  /* step signatures */
+    int16_t tv[ED_NT];                                   /* v4: trk[k].p[ED_TIDS[j]] (as shown) at k * 3 + j */
+    uint16_t tt[ED_NT];
+    uint32_t tpos;
+    int16_t ov[ED_NO];                                   /* v5: the other shown part's values as shown */
+    uint16_t ot[ED_NO];
+    uint32_t opos;
+} ed_w;
+
+/* part k's values as its cards show them, all of them (EXT_P_LEN: the ids, the gap at 127, the slots) */
+static void ed_view(uint32_t k, int16_t *v) { morph_view_all(k, v); }
+/* one of them: part k, wide id wid */
+static int32_t ed_vw(uint32_t k, uint32_t wid) { return k < NSHOWN ? morph_view(k, wid) : trk[k].p[wid]; }
+static uint32_t ed_other(void) { return song.sel == 0u ? 1u : 0u; }
+/* value i of the shadow's order, sv: TSEL's values as shown (ed_view) */
+static int16_t ed_cur(uint32_t i, const int16_t *sv)
+{
+    return i < P_COUNT ? sv[i] : i < P_COUNT + G_COUNT ? song.g[i - P_COUNT] : sv[XW_BASE + i - P_COUNT - G_COUNT];
+}
+/* the shadow's index of (scope, id): scope 0 the selected track's parameter, 1 a global, 2 an extension slot of the selected track */
+static uint32_t ed_idx(uint32_t scope, uint32_t id) { return scope == 0 ? id : scope == 1 ? P_COUNT + id : P_COUNT + G_COUNT + id; }
+static uint32_t ed_step_sig(const step_t *s)
+{
+    return ((uint32_t)s->note[0] | (uint32_t)s->note[1] << 7 | (uint32_t)s->note[2] << 14 | (uint32_t)s->note[3] << 21) ^
+           ((uint32_t)s->n << 28) ^ ((uint32_t)s->time * 0x9E3779B1u) ^ ((uint32_t)s->flags * 0x85EBCA6Bu) ^
+           ((uint32_t)s->vel * 0xC2B2AE35u) ^ ((uint32_t)s->probability * 0x165667B1u);
+}
+static void ed_shadow(void)                              /* the editor is in sync */
+{
+    uint32_t i;
+    int16_t sv[EXT_P_LEN], ov[EXT_P_LEN];
+    ed_view(song.sel, sv);
+    ed_view(ed_other(), ov);
+    for (i = 0; i < ED_NV; i++)
+        ed_w.v[i] = ed_cur(i, sv);
+    for (i = 0; i < ED_NO; i++)
+        ed_w.ov[i] = ov[i < P_COUNT ? i : XW_BASE + i - P_COUNT];
+    for (i = 0; i < NSTEP; i++)
+        ed_w.st[i] = ed_step_sig(&seq_steps(TSEL)[i]);
+    for (i = 0; i < ED_NT; i++)
+        ed_w.tv[i] = (int16_t)ed_vw(i / 3u, ED_TIDS[i % 3u]);
+    ed_w.eng = (uint8_t)ed_eng(TSEL);
+    ed_w.preset = TSEL->preset;
+    ed_w.sel = song.sel;
+    sync_reload = 0;
+}
+/* the editor's own sound load on the selected track (PRESET, SET of G_ENGSEL): the editor re-reads DUMP after
+ * the reply, so the shadow takes the load (engine, preset, the parameters it changed) and no RELOAD echoes back
+ * (INFO 53 01 bit 1). A RELOAD already due before it (a load or selection on the device) still goes out. */
+typedef struct { int16_t p[P_COUNT], x[NX]; uint8_t eng, preset, due; } ed_load_t;   /* (item 159: the values as shown, ed_view) */
+static void ed_load_before(ed_load_t *b)
+{
+    int16_t sv[EXT_P_LEN];
+    ed_view(song.sel, sv);
+    memcpy(b->p, sv, sizeof b->p);
+    memcpy(b->x, sv + XW_BASE, sizeof b->x);
+    b->eng = (uint8_t)ed_eng(TSEL);
+    b->preset = TSEL->preset;
+    b->due = sync_reload || b->eng != ed_w.eng || b->preset != ed_w.preset || song.sel != ed_w.sel;
+}
+static void ed_load_after(const ed_load_t *b)
+{
+    uint32_t i;
+    int16_t sv[EXT_P_LEN];
+    if (!ed_w.on || b->due)
+        return;
+    sync_reload = 0;
+    ed_w.eng = (uint8_t)ed_eng(TSEL);
+    ed_w.preset = TSEL->preset;
+    ed_view(song.sel, sv);
+    for (i = 0; i < P_COUNT; i++)                        /* the load's values; a pending push of another stays */
+        if (sv[i] != b->p[i])
+            ed_w.v[i] = sv[i];
+    for (i = 0; i < NX; i++)                             /* (scope 2 too: the editor reads the slots again after a load) */
+        if (sv[XW_BASE + i] != b->x[i])
+            ed_w.v[ed_idx(2, i)] = sv[XW_BASE + i];
+}
+static int ed_room(void) { return so_w - so_r + 8u <= SXQ / 2u; }
+static void ed_known_x(uint32_t k, uint32_t slot)         /* the editor's own change of trk[k]'s extension slot: no push (the value as shown, item 159) */
+{
+    if (k == song.sel)
+        ed_w.v[ed_idx(2, slot)] = (int16_t)ed_vw(k, XW_BASE + slot);
+    else if (k == ed_other())
+        ed_w.ov[P_COUNT + slot] = (int16_t)ed_vw(k, XW_BASE + slot);
+}
+static void ed_known(uint32_t k, uint32_t id)            /* the editor's own change of trk[k].p[id]: no push (the value as shown, item 159) */
+{
+    uint32_t j;
+    int16_t v = (int16_t)ed_vw(k, id);
+    if (k == song.sel) {
+        ed_w.v[id] = v;
+        return;
+    }
+    if (k == ed_other())
+        ed_w.ov[id] = v;
+    for (j = 0; j < 3u; j++)
+        if (ED_TIDS[j] == id)
+            ed_w.tv[k * 3u + j] = v;
+}
+
+static void ed_sync(void)                                /* main loop */
+{
+    uint32_t i, n = 0, now = fm1_ms;
+    if (!ed_w.on || now - ed_w.run_ms < 5u)
+        return;
+    ed_w.run_ms = now;
+    if (!usb.config || usb.resets != ed_w.resets || now - ed_w.last_ms > 3000u) {
+        ed_w.on = 0;                                     /* no host, USB reset, or 3 s without a request */
+        return;
+    }
+    if (sync_reload || ed_eng(TSEL) != ed_w.eng || TSEL->preset != ed_w.preset || song.sel != ed_w.sel) {
+        if (!ed_room())
+            return;
+        ed_shadow();
+        ed_begin(ED_RELOAD);
+        ed_b(ed_eng(TSEL));
+        ed_b(TSEL->preset);
+        ed_b(song.sel);
+        ed_send();
+        return;
+    }
+    for (i = 0; i < NSTEP && n < ED_PUSH_MAX; i++) {
+        uint32_t h = ed_step_sig(&seq_steps(TSEL)[i]);
+        if (h == ed_w.st[i])
+            continue;
+        if (!ed_room())
+            return;
+        ed_w.st[i] = h;
+        ed_begin(ED_STEP_CHANGED);
+        ed_b(i);
+        ed_b(song.sel);
+        ed_send();
+        n++;
+    }
+    int16_t sv[EXT_P_LEN], ov[EXT_P_LEN];
+    ed_view(song.sel, sv);                               /* item 159: the values as shown (a fader move, a roll, AMOUNT, an UNDO push what they change) */
+    ed_view(ed_other(), ov);
+    for (i = 0; i < ED_NV && n < ED_PUSH_MAX; i++) {    /* round robin: nothing starves */
+        uint32_t k = (ed_w.pos + i) % ED_NV;
+        int16_t v = ed_cur(k, sv);
+        if (v == ed_w.v[k] || (uint16_t)(now - ed_w.t[k]) < 20u)
+            continue;                                    /* coalesced: the latest value goes out later */
+        if (!ed_room())
+            return;
+        ed_w.v[k] = v;
+        ed_w.t[k] = (uint16_t)now;
+        ed_begin(ED_CHANGED);
+        ed_b(k < P_COUNT ? 0u : k < P_COUNT + G_COUNT ? 1u : 2u);
+        ed_b(k < P_COUNT ? k : k < P_COUNT + G_COUNT ? k - P_COUNT : k - P_COUNT - G_COUNT);
+        ed_v(v);
+        ed_send();
+        n++;
+        ed_w.pos = k + 1u;
+    }
+    for (i = 0; ed_w.v5 && i < ED_NO && n < ED_PUSH_MAX; i++) {   /* item 159, v5: every value of the other shown part (TRACK_CHANGED; a slot with the scope byte 2) */
+        uint32_t k = (ed_w.opos + i) % ED_NO, o = ed_other();
+        int16_t v = ov[k < P_COUNT ? k : XW_BASE + k - P_COUNT];
+        if (v == ed_w.ov[k] || (uint16_t)(now - ed_w.ot[k]) < 20u)
+            continue;
+        if (!ed_room())
+            return;
+        ed_w.ov[k] = v;
+        ed_w.ot[k] = (uint16_t)now;
+        if (k < P_COUNT)                                 /* (the v4 shadow of the mix follows: no second push of the same value) */
+            for (uint32_t j = 0; j < 3u; j++)
+                if (ED_TIDS[j] == k)
+                    ed_w.tv[o * 3u + j] = v;
+        ed_begin(ED_TRACK_CHANGED);
+        ed_b(o);
+        ed_b(k < P_COUNT ? k : k - P_COUNT);
+        ed_v(v);
+        if (k >= P_COUNT)
+            ed_b(2u);
+        ed_send();
+        n++;
+        ed_w.opos = k + 1u;
+    }
+    for (i = 0; ed_w.v4 && i < ED_NT && n < ED_PUSH_MAX; i++) {   /* v4: the other tracks' mix */
+        uint32_t k = (ed_w.tpos + i) % ED_NT, tr = k / 3u, id = ED_TIDS[k % 3u];
+        int16_t v = tr == ed_other() ? ov[id] : trk[tr].p[id];   /* (item 159: as shown) */
+        if (tr == song.sel || (ed_w.v5 && tr < NSHOWN) || v == ed_w.tv[k] || (uint16_t)(now - ed_w.tt[k]) < 20u)
+            continue;                                    /* (the selected track: CHANGED above; v5: the loop before) */
+        if (!ed_room())
+            return;
+        ed_w.tv[k] = v;
+        ed_w.tt[k] = (uint16_t)now;
+        ed_begin(ED_TRACK_CHANGED);
+        ed_b(tr);
+        ed_b(id);
+        ed_v(v);
+        ed_send();
+        n++;
+        ed_w.tpos = k + 1u;
+    }
+}
+
+/* descriptor of parameter id of track t: the engine parameters of the engine it asked for
+ * (t->engine follows in the audio ISR, after a short fade) */
+static const param_desc_t *ed_tdesc(const track_t *t, uint32_t id) { return param_desc_of(t->eng_req % NENGINES, id); }
+/* descriptor and value slot of (scope, id): scope 0 = the selected track, 1 = global, 2 = an extension slot of the selected track (id 0 .. NX-1, ext.h: XV;
+ * the descriptor is the slot's, CYCLE's RISE / FALL as note values while its SYNC is on) */
+static const param_desc_t *ed_desc(uint32_t scope, uint32_t id, int16_t **vp)
+{
+    if (scope == 0 && id < P_COUNT) {
+        *vp = &TSEL->p[id];
+        return ed_tdesc(TSEL, id);
+    }
+    if (scope == 1 && id < G_COUNT) {
+        *vp = &song.g[id];
+        return &GP[id];
+    }
+    if (scope == 2 && id < NX) {
+        *vp = &XV(TSEL, id);
+        return xdesc(TSEL, id);
+    }
+    return 0;
+}
+/* a SET to extension slot k of t (the stored value v already clamped by the caller): the setter the knobs use. LINK converts CUTOFF 2 between OFFSET and CUTOFF (chain_f2.c);
+ * every other slot is a plain store */
+static void ed_xput(track_t *t, uint32_t k, int32_t v)
+{
+    if (k == X_LINK)
+        twin_link_set(t, (int)v);
+    else
+        XV(t, k) = (int16_t)v;
+}
+/* the stored value of wide id wid of t := v (clamped by the caller), through the setters the knobs use (TWIN TYPE, LINK) */
+static void ed_store(track_t *t, uint32_t wid, int32_t v)
+{
+    if (wid >= XW_BASE)
+        ed_xput(t, wid - XW_BASE, v);
+    else if (wid == P_TWTYPE)
+        twin_type_set(t, v);
+    else
+        t->p[wid] = (int16_t)v;
+}
+/* item 159: an editor write of v to part t's wide id wid, v being the value AS SHOWN (the editor shows the fader's values). The unit's knob decides
+ * (ui_input.c, the knob turn and reset_desc): at the B end of a live morph (morph_b_mode 1) the value is End B's (morph_b_set, its messages, nothing
+ * recorded); otherwise the stored Original is edited so that the shown value is v: set to v, then moved by the difference between v and what the
+ * fader makes of it (as reset_desc does for a reset under a live morph: up to three tries; where the morph moves nothing this is the plain store);
+ * a value both ends share at the B end says SAME ON A AND B. Returns 1 when End B took it (the caller records no MOTION and no undo step) */
+static int ed_put(track_t *t, uint32_t wid, int32_t v, const param_desc_t *d)
+{
+    uint32_t k = (uint32_t)(t - trk), bm = k < NSHOWN ? morph_b_mode(k, wid) : 0u, tries;
+    int32_t was = t->p[wid];
+    if (bm == 1u) {
+        if (v != morph_view(k, wid)) {
+            if (morph_b_set(k, wid, v))
+                ui_message("B FULL: 32 VALUES");
+            else if (rec_on(t) && morph_b_say(3u, wid))
+                ui_message("B: NOT RECORDED");
+        }
+        return 1;
+    }
+    ed_store(t, wid, v);
+    for (tries = 0; k < NSHOWN && morph_view_on(k) && tries < 3u; tries++) {
+        int32_t shown = morph_view(k, wid);
+        if (shown == v)
+            break;
+        ed_store(t, wid, clamp(t->p[wid] + (v - shown), d->min, d->max));
+    }
+    if (bm == 2u && t->p[wid] != was && morph_b_say(2u, wid))
+        ui_message("SAME ON A AND B");
+    return 0;
+}
+
+/* a step as STEP_SET / TRACK_STEP send it (na bytes): n, 4 notes, time, flags, vel, then (v5) three bytes that
+ * held the drum lane hits and their accents (DUELL 0.2.14: the grid is gone; read and dropped, sent as 0), (v7) the chance, (RATCH, INFO
+ * 52 01) the hits 1..4, (NUDGE, INFO 54 01, 1.2) the nudge + 8 (0..15: -8..+7 sixteenths of the step); each value
+ * made valid. 8 bytes (an editor of before the grid): without the chance, the ratchet or the nudge
+ * the step keeps its own (flags carry accent and slide only) */
+static void ed_step_put(step_t *st, const uint8_t *a, uint32_t na)
+{
+    uint32_t i;
+    st->n = (uint8_t)(a[0] > 4u ? 4u : a[0]);
+    for (i = 0; i < 4u; i++)
+        st->note[i] = a[1 + i] & 0x7Fu;
+    st->time = (uint8_t)(a[5] > ST_REST ? ST_REST : a[5]);
+    st->flags = (uint8_t)((a[6] & (SF_ACCENT | SF_SLIDE)) | (st->flags & (SF_RATCH | SF_NUDGE)));
+    st->vel = a[7] & 0x7Fu;
+    if (na >= 12u) step_set_chance(st, a[11] <= 100u ? a[11] : 100u);
+    if (na >= 13u) step_set_ratchet(st, a[12]);
+    if (na >= 14u) step_set_nudge(st, (int32_t)(a[13] & 15u) - 8);
+    ui.force = 1;
+}
+static void ed_step_reply(const step_t *st)              /* the same 14 bytes */
+{
+    uint32_t i;
+    ed_b(st->n);
+    for (i = 0; i < 4u; i++)
+        ed_b(st->note[i]);
+    ed_b(st->time);
+    ed_b(st->flags & (SF_ACCENT | SF_SLIDE));
+    ed_b(st->vel);
+    ed_b(0);                                             /* (the lane hits, accents and their bit 7: gone in 0.2.14) */
+    ed_b(0);
+    ed_b(0);
+    ed_b(step_chance(st));
+    ed_b(step_ratchet(st));
+    ed_b((uint32_t)(step_nudge(st) + 8));
+}
+
+/* a flash write from the editor while the transport runs: stop it first (the erase silences the audio and
+ * stalls the sequencer; the device's own SAVE refuses with "STOP TO SAVE", the editor's confirmed save stops) */
+static int ed_flash_stop(void)
+{
+    uint32_t t0 = fm1_ms;
+    if (!transport_busy())
+        return 0;
+    transport_req = 2;
+    while (song.playing && fm1_ms - t0 < 100u)          /* the audio ISR stops it at its next block */
+        fm1_wdt_feed();
+    return song.playing;
+}
+
+#include "editor_preferences.c"
+#include "editor_backup.c"
+#include "editor_wtab.c"
+#include "editor_patchraw.c"             /* DUELL 0.2.19: PATCH_RAW (cmd 84), a slot's stored record whole */
+#include "editor_fm6.c"
+#include "editor_menu.c"
+#include "editor_learn.c"                    /* 1.5: MIDI LEARN's map (cmds 78, 79) */
+#include "editor_map.c"                      /* DUELL: the MIDI MAP (cmds 85..88; INFO 4B 01 1) */
+#include "editor_bypass.c"                   /* DUELL 1.1: BYPASS (cmd 89; INFO 5B 01 1) */
+#include "editor_erase.c"                    /* DUELL 0.2.2: ERASE_ALL (cmd 80) */
+
+/* MOTION's reply: the records of track k as (step, id, v14), a lock's id without its MOTION_LOCK bit (a 7-bit SysEx
+ * byte); kinds (1.1: the ops 5..7): then one byte per record, in the same order, 0 automation, 1 lock. The query and
+ * the ops 1..4 reply as before 1.1 (an editor of before reads a lock as an automation event).
+ * 1.2 (128 records, INFO 41 01): the query and ops 1..7 reply as before, max 64 and at most the track's first 64
+ * records (an editor of before keeps working while a track holds no more); op 8 (full) is the query with the kinds,
+ * its count and max two 7-bit bytes each (LSB first): every record */
+static void ed_motion_reply(uint32_t k, uint32_t rc, uint32_t kinds, uint32_t full)
+{
+    track_t *t = &trk[k];
+    uint32_t i, n = motion_count(t), cap = full ? MOTION_MAX : 64u, j;
+    n = n < cap ? n : cap;
+    ed_b(k); ed_b(rc); ed_b(motion_enabled(t));
+    if (full) {
+        ed_b(n); ed_b(n >> 7); ed_b(MOTION_MAX); ed_b(MOTION_MAX >> 7);
+    } else {
+        ed_b(n); ed_b(64u);
+    }
+    for (i = j = 0; i < motion.count && j < n; i++) {
+        const motion_event_t *e = &motion.event[i];
+        if (MOTION_TRK(e) != k) continue;
+        ed_b(e->place & 63u); ed_b(MOTION_TID(e) & 0x7Fu); ed_v(e->value);   /* (the id's low 7 bits; the high bit follows the kinds, below) */
+        j++;
+    }
+    for (i = j = 0; kinds && i < motion.count && j < n; i++)
+        if (MOTION_TRK(&motion.event[i]) == k) {
+            ed_b((motion.event[i].param & MOTION_LOCK) != 0u);
+            j++;
+        }
+    for (i = j = 0; kinds && i < motion.count && j < n; i++)   /* DUELL 1.1 (INFO 4C caps bit 1): then one byte each, in the same order, the target id's high bit: 0 a P_ id, 1 the extended targets (extension slots 128.., virtual 192..) */
+        if (MOTION_TRK(&motion.event[i]) == k) {
+            ed_b((MOTION_TID(&motion.event[i]) >> 7) & 1u);
+            j++;
+        }
+}
+static int ed_args_ok(uint32_t cmd, const uint8_t *a, uint32_t n)
+{
+    switch (cmd) {
+    case ED_INFO: case ED_DUMP: case ED_SMP_INFO: case ED_PING:
+    case ED_UI_STATE: case ED_UI_PALETTES: case ED_LEARN_GET:
+        return !n;
+    case ED_GET: case ED_DESC: case ED_PRESET: case ED_PROJECT: case ED_UP_LIST:
+    case ED_TRACK_PARAM:
+        return n == 2u || (cmd == ED_TRACK_PARAM && (n == 3u || n == 4u || n == 5u));   /* (3, 5: with a scope byte last, 0 or 2) */
+    case ED_SET:
+        return n == 4u;
+    case ED_STEP_GET: case ED_NAMES: case ED_SMP_BEGIN: case ED_SMP_ERASE:
+    case ED_UP_GET: case ED_UP_LOAD: case ED_UP_ERASE: case ED_WATCH: case ED_MENU_DESC:
+        return n == 1u;
+    case ED_TRACK_DUMP:
+        return n == 1u || (n == 2u && a[1] == 1u);   /* (item 159: the byte 1 = the stored Original) */
+    case ED_MENU_SET:
+        return n == 3u;
+    case ED_STEP_SET:
+        return n == 9u || n == 12u || (n == 13u && a[12] <= 100u) ||               /* notes only, or the complete extension, */
+               ((n == 14u || (n == 15u && a[14] <= 15u)) && a[12] <= 100u && a[13] >= 1u && a[13] <= 4u);   /* its chance,
+                                                                                * its ratchet, its nudge (1.2) */
+    case ED_TRACK:
+        return n <= 1u;
+    case ED_TRACK_MIX:
+        return n == 1u || n == 4u;
+    case ED_TRACK_STEP:
+        return n == 2u || n == 10u || n == 13u || (n == 14u && a[13] <= 100u) ||
+               ((n == 15u || (n == 16u && a[15] <= 15u)) && a[13] <= 100u && a[14] >= 1u && a[14] <= 4u);
+    case ED_MOTION:
+        return (n == 1u || (n == 2u && (a[1] == 2u || a[1] == 7u || a[1] == 8u)) || (n == 3u && a[1] == 1u && a[2] <= 1u) ||
+                (n == 6u && (a[1] == 3u || a[1] == 5u)) || (n == 4u && a[1] == 4u) || (n == 3u && a[1] == 6u) ||
+                 (n == 7u && (a[1] == 9u || a[1] == 11u)) || (n == 5u && a[1] == 10u)) &&
+               a[0] < NTRK;
+    default:
+        return 1;                                  /* variable payloads validate in their handler */
+    }
+}
+
+static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0 and F7 */
+{
+    if (n < 4u)
+        return;
+    uint32_t cmd = f[3], i;
+    const uint8_t *a = f + 4;
+    uint32_t na = n - 4u;
+    int16_t *vp;
+    const param_desc_t *d;
+    if (!ed_args_ok(cmd, a, na))
+        return;
+    if ((cmd >= ED_SMP_BEGIN && cmd <= ED_SMP_INFO) || (cmd >= ED_BACKUP_LIST && cmd <= ED_BACKUP_PUT) ||
+        (cmd >= ED_FM6B_BEGIN && cmd <= ED_FM6B_END) || (cmd >= ED_WT_LIST && cmd <= ED_WT_PUT) || cmd == ED_PATCH_RAW)
+        autosave_hold();                                /* (a transfer: no autosave meanwhile, project.c) */
+    ed_begin(cmd);
+    if (ed_ui_handle(cmd, a, na)) { ed_send(); return; }
+    if (ed_backup_handle(cmd, a, na)) { ed_send(); return; }
+    if (ed_wt_handle(cmd, a, na)) { ed_send(); return; }
+    if (ed_patchraw_handle(cmd, a, na)) { ed_send(); return; }
+    if (ed_fm6_handle(cmd, a, na)) { ed_send(); return; }
+    if (ed_menu_handle(cmd, a, na)) { ed_send(); return; }
+    if (ed_learn_handle(cmd, a, na)) { ed_send(); return; }
+    if (ed_map_handle(cmd, a, na)) { ed_send(); return; }
+    if (cmd == ED_BYPASS) {                                    /* (no reply to a malformed request) */
+        if (ed_byp_handle(cmd, a, na)) ed_send();
+        return;
+    }
+    if (ed_erase_handle(cmd, a, na)) { ed_send(); return; }
+    switch (cmd) {
+    case ED_MOTION: {
+        track_t *t = &trk[a[0]]; uint32_t rc = 0;
+        if (na > 1u && a[1] >= 7u) {
+            /* (the query with the kinds; 8: all of them, 1.2) */
+        } else if (na > 1u) {
+            if (a[1] == 1u) motion_set_enabled(t, a[2]);
+            else if (a[1] == 2u) { load_begin(t, UNDO_PAT); motion_clear(t); load_end(t); }
+            else if (a[1] == 3u) rc = motion_set_event(t, a[2], a[3], (int16_t)ed_rv(a + 4));
+            else if (a[1] == 4u && a[2] < NSTEP && motion_param(a[3])) motion_delete_event(t, a[2], a[3]);
+            else if (a[1] == 5u) rc = motion_set_lock(t, a[2], a[3], (int16_t)ed_rv(a + 4));
+            else if (a[1] == 6u && (a[2] < NSTEP || a[2] == 127u)) (void)motion_clear_locks(t, a[2]);
+            else if (a[1] == 9u || a[1] == 11u) {      /* DUELL 1.1: the same as 3 / 5 for a target id past 127: id low 7 bits, then its high bit (0 / 1) */
+                uint32_t tid = a[3] | (uint32_t)(a[4] & 1u) << 7;
+                rc = a[1] == 9u ? motion_set_event(t, a[2], tid, (int16_t)ed_rv(a + 5)) : motion_set_lock(t, a[2], tid, (int16_t)ed_rv(a + 5));
+            } else if (a[1] == 10u && a[2] < NSTEP && motion_param(a[3] | (uint32_t)(a[4] & 1u) << 7)) motion_delete_event(t, a[2], a[3] | (uint32_t)(a[4] & 1u) << 7);
+            else rc = 1;
+            ui.force = 1;
+        }
+        ed_motion_reply(a[0], rc, na > 1u && a[1] >= 5u, na > 1u && a[1] == 8u);
+        break;
+    }
+    case ED_INFO:
+        ed_str(FELUCCA_VERSION, 32);                  /* "DUELL <version>": the unit's own name, no fork prefix (owner, 2026-11-07, as L/RRY) */
+        ed_b(NENGINES);
+        ed_b(P_COUNT);
+        ed_b(G_COUNT);
+        ed_b(NSTEP);
+        ed_b(P_E0);
+        for (i = 0; i < NENGINES; i++)
+            ed_str(ENGINES[i]->name, PV_LEN);
+        ed_b(NTRK);                                       /* v3 */
+        ed_b(0);                                           /* v6: song rows (DUELL: none, no song mode) */
+        ed_b(0x55); ed_b(1); ed_b(ed_ui_caps());             /* tagged preferences v1: commands 34..38 */
+        ed_b(0x4d); ed_b(1); ed_b(64); ed_b(1);   /* motion + chance v1 (64: what it said before 1.2; 41 01 has the real count) */
+        ed_b(0x42); ed_b(1); ed_b(63); /* bounded full-backup read + restore; bit 2 (DUELL 0.2.14): multis 13..20 and pattern slots 21..23 are in it;
+                                         * bit 3 (value 8): the user wavetables 24..26 are in it, and cmds 81..83 (editor_wtab.c);
+                                         * bit 4 (value 16, DUELL 0.2.15): the patch store's chunks 6..15 were backup ids 27..31 and 35..39 (gone in job A: see bit 5);
+                                         * bit 5 (value 32, the cloud plan's job A): the patch store is carried as LOGICAL records, one patch at a time: object id 40 plus a slot byte,
+                                         * LIST pages of the saved patches (editor_backup.c); the ids 6, 7, 9..12, 27..31 and 35..39 are no longer listed */
+        ed_b(0x46); ed_b(1); ed_b(FM6_NFACTORY); ed_b(0);   /* FM6 patches: cmds 68..71 (no bank since 1.0.3) */
+        ed_b(0x53); ed_b(1); ed_b(3);   /* live sync: bit 0 WATCH while on keeps the shadow, bit 1 no RELOAD echo */
+        ed_b(0x50); ed_b(1); ed_b(3);   /* FM6 patches v2: bit 0 no bank (SLOT F1..F8, 8 OWN), bit 1 user preset
+                                         * patches (FM6 target 3, backup id 9) */
+        ed_b(0x4E); ed_b(1); ed_b(ED_MENU_N);   /* MENU settings: cmds 72, 73; the items MENU_DESC offers */
+        ed_b(0x52); ed_b(1); ed_b(4);   /* RATCH: a step's ratchet (1..4 hits) after its chance */
+        ed_b(0x4C); ed_b(1); ed_b(3);   /* 1.1 parameter locks: MOTION ops 5..7, the kinds after the records; bit 1 (DUELL 1.1): target ids past 127 (ops 9..11, the high-bit bytes after the kinds) */
+        ed_b(0x41); ed_b(1); ed_b(MOTION_MAX); ed_b(MOTION_MAX >> 7);   /* 1.2: 128 motion records, MOTION op 8 */
+        ed_b(0x54); ed_b(1); ed_b(NUDGE_DIV);   /* 1.2: a step's nudge (1/16 step) after its ratchet; LFO 2, QNTZ */
+        ed_b(0x56); ed_b(1); ed_b(FM6_NBANK);   /* 1.4.1: FM6's voice bank (cmds 74..77; SLOT 9..40 = B1..B32) */
+        ed_b(0x43); ed_b(1); ed_b(ML_N);   /* 1.5: MIDI LEARN's map (cmds 78, 79; editor_learn.c) */
+        ed_b(0x58); ed_b(1); ed_b(UP_SLOTS & 127u); ed_b(UP_SLOTS >> 7);   /* DUELL 0.2.15: the patch store's capacity (all of them always fit), 14 bit */
+        ed_b(0x5A); ed_b(1); ed_b(1);   /* DUELL 0.2.19: bit 0 = PATCH_RAW (cmd 84, editor_patchraw.c): a slot's stored record read and written whole */
+        ed_b(0x59); ed_b(1); ed_b(NX);  /* cloud plan job I: scope 2 (GET, SET, DESC, CHANGED, TRACK_PARAM's scope byte): the extension slots 0 .. NX-1 (ext.h) */
+        ed_b(0x5B); ed_b(1); ed_b(1);   /* DUELL 1.1: bit 0 = BYPASS, cmd 89 (editor_bypass.c) */
+        ed_b(0x4B); ed_b(1); ed_b(1);   /* DUELL: bit 0 = the MIDI MAP, MAP_GET .. MAP_RESET (cmds 85..88, editor_map.c) */
+        ed_b(0x4F); ed_b(1); ed_b(1);   /* item 159: bit 0 = a part's values are read AS SHOWN at the MORPH fader (morph_view) and written as the knob writes (ed_put);
+                                         * TRACK_DUMP's byte 1 and TRACK_PARAM's scope + 4 = the stored Original; WATCH bit 2 = TRACK_CHANGED for the other shown part */
+        break;
+    case ED_GET:
+    case ED_SET:
+        if (na < 2u || !(d = ed_desc(a[0], a[1], &vp)))
+            return;
+        if (cmd == ED_SET && na >= 4u) {
+            if (a[0] == 1 && a[1] == G_ENGSEL) {          /* engine change: the safe path */
+                ed_load_t b;
+                ed_load_before(&b);
+                set_engine((uint32_t)clamp(ed_rv(a + 2), 0, NENGINES - 1));
+                ed_load_after(&b);
+            } else if (a[0] == 2) {                       /* an extension slot: clamped to its descriptor, then the knobs' setter (ed_xput) as the knob writes (item 159, ed_put) */
+                if (d->max > d->min)
+                    (void)ed_put(TSEL, XW_BASE + a[1], clamp(ed_rv(a + 2), d->min, d->max), d);
+            } else if (d->max > d->min) {
+                int b = 0;
+                if (a[0] == 0)                            /* item 159: the value as shown, written as the knob writes (ed_put; TWIN TYPE through twin_type_set: COMB is refused on WAVE and PHYS, entering or leaving COMB gives CUTOFF 2 and RES 2 the new kind's defaults, chain_f2.c) */
+                    b = ed_put(TSEL, a[1], clamp(ed_rv(a + 2), d->min, d->max), d);
+                else
+                    *vp = (int16_t)clamp(ed_rv(a + 2), d->min, d->max);
+                if (a[0] == 0 && a[1] == P_DKSRC)
+                    duck_set_part(song.sel);                /* DUCK SRC PART on one part only (params.c) */
+                if (a[0] == 0 && !b) {
+                    (void)motion_capture(TSEL, a[1], *vp);
+                    load_extend(TSEL);                      /* (ui.c undo: an audition's values after G_ENGSEL) */
+                    if (mod_is_src(a[1]) && !*vp)
+                        mod_compact(TSEL);                  /* (0.2.24: a matrix SRC set to OFF: the slots after it move up) */
+                }
+            }
+            ui.force = 1;
+            ed_w.v[ed_idx(a[0], a[1])] = a[0] == 1 ? *vp : (int16_t)ed_vw(song.sel, a[0] == 2 ? XW_BASE + a[1] : a[1]);   /* the editor's own change: no push (a value the setter moved besides it, CUTOFF 2 by LINK, is pushed) */
+        }
+        ed_b(a[0]);
+        ed_b(a[1]);
+        ed_v(a[0] == 1 ? *vp : ed_vw(song.sel, a[0] == 2 ? XW_BASE + a[1] : a[1]));   /* item 159: a part's value as shown */
+        break;
+    case ED_DUMP: {
+        int16_t sv[EXT_P_LEN];
+        ed_view(song.sel, sv);
+        for (i = 0; i < ED_NV; i++)                       /* the editor gets them all here */
+            ed_w.v[i] = ed_cur(i, sv);
+        ed_b(ed_eng(TSEL));
+        ed_b(TSEL->preset);
+        for (i = 0; i < P_COUNT; i++)                     /* item 159: as shown; a value a MOTION record drives now: its saved value, as before */
+            ed_v(motion_base_value(TSEL, i) != TSEL->p[i] ? motion_base_value(TSEL, i) : sv[i]);
+        for (i = 0; i < G_COUNT; i++)
+            ed_v(song.g[i]);
+        break;
+    }
+    case ED_DESC:
+        if (na < 2u || !(d = ed_desc(a[0], a[1], &vp)))
+            return;
+        ed_b(a[0]);
+        ed_b(a[1]);
+        ed_b(d->fmt);
+        ed_v(d->min);
+        ed_v(d->max);
+        ed_v(d->def);
+        ed_str(d->label, PV_LEN);
+        ed_str(d->unit, PV_LEN);
+        if (d->fmt == F_ENUM && d->names)                  /* up to 64 (0.2.7: the matrix DST has 46; before, 24); the names of min .. max (0.2.9: */
+            for (i = 0; i <= (uint32_t)(d->max - d->min) && i < 64u; i++)   /* SLOPE's 1, 2; every enum before starts at 0) */
+                ed_str(d->names[d->min + (int32_t)i], PV_LEN);
+        break;
+    case ED_STEP_GET:
+    case ED_STEP_SET: {
+        step_t *st;
+        if (na < 1u || a[0] >= NSTEP)
+            return;
+        st = &TSEL->step[a[0]];
+        if (cmd == ED_STEP_SET && na >= 9u) {
+            ed_step_put(st, a + 1, na - 1u);
+        }
+        ed_w.st[a[0]] = ed_step_sig(&seq_steps(TSEL)[a[0]]);
+        ed_b(a[0]);
+        ed_step_reply(&seq_steps(TSEL)[a[0]]);
+        break;
+    }
+    case ED_PRESET: {                                      /* engine, preset */
+        ed_load_t b;
+        if (na < 2u || a[0] >= NENGINES)
+            return;
+        ed_load_before(&b);
+        {
+            if (a[0] != TSEL->eng_req)
+                set_engine(a[0]);
+            apply_preset(a[1]);
+        }
+        ed_load_after(&b);
+        ui.force = 1;
+        ed_b(ed_eng(TSEL));
+        ed_b(TSEL->preset);
+        break;
+    }
+    case ED_PROJECT:                                       /* 0 = load, 1 = save, 2 = query; slot 0..15 (DUELL: the
+                                                            * multis M01..M16, project.c multi.c; Felucca's editor asks 0..3) */
+        if (na < 2u || a[0] > 2u || a[1] >= 16u)
+            return;
+        if (a[0] == 1u) {
+            if (ed_flash_stop() || project_save(a[1]))
+                return;                              /* the legacy reply has no failure bit: do not confirm a failed save */
+        }
+        else if (a[0] == 0u)
+            project_load(a[1]);
+        ed_b(a[0]);
+        ed_b(a[1]);
+        ed_b(project_used(a[1]));
+        break;
+    case ED_NAMES:                                         /* preset names of an engine */
+        if (na < 1u || a[0] >= NENGINES)
+            return;
+        ed_b(a[0]);
+        ed_b(ds_count(a[0]));                              /* (DUELL: the engine's factory sounds, sounds.c) */
+        for (i = 0; i < ds_count(a[0]); i++)
+            ed_str(ds_name(a[0], i), 12);
+        for (i = 0; i < 2u; i++)                           /* then the two edit-page titles */
+            ed_str(ENGINES[a[0]]->page_title[i], PV_LEN);
+        break;
+    /* DUELL 0.2.9: no user sample slots (the SAMPLE, GRAIN and SLICE engines are retired; flash 0xA0000..0xA5FFF holds the user wavetables from 0.2.14, 0xA6000..0xC7FFF stays unused).
+     * The commands keep their numbers and reply shapes and never write flash: BEGIN / WRITE / END rc 6 (unsupported); ERASE rc 0
+     * (there is nothing to erase: an archive's empty slot restores as before); INFO: no slots */
+    case ED_SMP_BEGIN:                                     /* slot -> slot, rc */
+    case ED_SMP_ERASE:
+    case ED_SMP_END:                                       /* slot, pack7 header -> slot, rc */
+        if (na < 1u || a[0] >= 3u)
+            return;
+        ed_b(a[0]);
+        ed_b(cmd == ED_SMP_ERASE ? 0u : 6u);
+        break;
+    case ED_SMP_WRITE:                                     /* slot, off (3 x 7 bit), pack7 data -> slot, off, rc */
+        if (na < 5u || a[0] >= 3u)
+            return;
+        for (i = 0; i < 4u; i++)
+            ed_b(a[i]);
+        ed_b(6u);
+        break;
+    case ED_SMP_INFO:                                      /* -> slots 0, slot KiB 0 */
+        ed_b(0u);
+        ed_b(0u);
+        break;
+    case ED_UP_LIST: {                                     /* start, count -> start, count, total, per slot: used, engine, name;
+                                                            * (1.2) then per slot its category (category.c CAT_*)
+                                                            * after the entries, so an older editor stops before them; 0.2.17: then per
+                                                            * slot SAVED (1: a saved record, RESTORE applies; 0: the factory sound) */
+        uint32_t s0, cnt;
+        if (na < 2u)
+            return;
+        s0 = a[0];
+        cnt = a[1] > 16u ? 16u : a[1];
+        if (s0 >= UP_SLOTS)
+            cnt = 0;
+        else if (s0 + cnt > UP_SLOTS)
+            cnt = UP_SLOTS - s0;
+        ed_b(s0);
+        ed_b(cnt);
+        ed_b(UP_SLOTS > 127u ? 127u : UP_SLOTS);            /* (DUELL: 128 slots; a data byte holds 127 at most: slots 0..127 are all there) */
+        for (i = s0; i < s0 + cnt; i++) {                  /* every slot holds a sound: its saved record, else its factory sound */
+            char nm[13] = {0};
+            sl_name(i, nm);
+            ed_b(1);
+            ed_b(sl_engine(i));
+            ed_str(nm, 12);
+        }
+        for (i = s0; i < s0 + cnt; i++)
+            ed_b(sl_cat(i));
+        for (i = s0; i < s0 + cnt; i++)
+            ed_b((uint32_t)up_used(i));
+        break;
+    }
+    case ED_UP_GET: {                                      /* slot -> slot, used, engine, name, P_COUNT x v14, 16 x (note,
+                                                            * flags), (v5) kind [, 16 x hi], (1.2) category, (0.2.17) SAVED
+                                                            * (upreset.c up_parse). A factory slot: its sound's values, no pattern */
+        int16_t v[P_COUNT];
+        char nm[13] = {0};
+        const up_rec_t *r;
+        uint32_t u;
+        if (na < 1u || a[0] >= UP_SLOTS)
+            return;
+        u = (uint32_t)up_used(a[0]);
+        r = up_rec(a[0]);
+        sl_values(a[0], v);                                /* today's P_* order, clamped */
+        sl_name(a[0], nm);
+        ed_b(a[0]);
+        ed_b(1);
+        ed_b(sl_engine(a[0]));
+        ed_str(nm, 12);
+        for (i = 0; i < P_COUNT; i++)
+            ed_v(v[i]);
+        for (i = 0; i < 16u; i++) {
+            ed_b(u ? r->note[i] & 0x7Fu : 0u);
+            ed_b(u ? r->flags[i] & 0x7Fu : 0u);
+        }
+        ed_b(0);                                /* kind: 1 was a drum grid (gone in 0.2.14) */
+        ed_b(sl_cat(a[0]));                     /* 1.2: the category (an older editor stops before it) */
+        ed_b(u);                                /* 0.2.17: SAVED (1) or the factory sound (0) */
+        break;
+    }
+    case ED_UP_PUT: {                                      /* slot, engine, name, values, pattern -> slot, rc */
+        static up_rec_t r;
+        uint32_t slot = 0, rc;
+        if (na < 1u)
+            return;
+        rc = (uint32_t)up_parse(a, na, &r, &slot);
+        if (!rc && ed_flash_stop())
+            rc = 2;
+        if (!rc) {
+            int16_t v[P_COUNT];
+            up_values(&r, v);                              /* each value inside its range */
+            for (i = 0; i < P_COUNT; i++)
+                up_set_value(&r, i, v[i]);                 /* the record's own form (v4: a byte each) */
+            rc = up_put(slot, &r) ? 2u : 0u;
+        }
+        ed_b(a[0]);
+        ed_b(rc);
+        break;
+    }
+    case ED_UP_STORE: {                                    /* slot, name -> slot, rc */
+        char nm[13] = {0};
+        uint32_t n0, rc = 1;
+        if (na < 1u)
+            return;
+        for (n0 = 0; 1u + n0 < na && a[1 + n0] && n0 < 13u; n0++)
+            ;
+        if (a[0] < UP_SLOTS && (!n0 || up_name_ok(a + 1, n0)) &&
+            (1u + n0 == na || (2u + n0 == na && !a[1u + n0]))) {   /* "" = automatic name */
+            for (i = 0; i < n0; i++)
+                nm[i] = (char)a[1 + i];
+            int r;
+            r = ed_flash_stop() ? 2 : up_store(a[0], nm);
+            rc = r ? 2u : 0u;
+            if (!r)
+                up_adopt(song.sel % NTRK, a[0]);           /* the selected part plays that slot now (as the device's SAVE) */
+        }
+        ed_b(a[0]);
+        ed_b(rc);
+        break;
+    }
+    case ED_UP_LOAD:                                       /* slot -> slot, rc */
+        if (na < 1u)
+            return;
+        ed_b(a[0]);
+        if (a[0] < UP_SLOTS)                               /* the slot's record, else its factory sound */
+            sl_load(a[0]);
+        ed_b(a[0] < UP_SLOTS ? 0u : 1u);
+        break;
+    case ED_UP_ERASE:                                      /* 0.2.17: RESTORE: the slot's saved record is removed, its factory sound is back
+                                                            * (a slot that holds the factory sound already: rc 0, nothing written) */
+        if (na < 1u)
+            return;
+        ed_b(a[0]);
+        ed_b(a[0] >= UP_SLOTS ? 1u : !up_used(a[0]) ? 0u : ed_flash_stop() || sl_restore(a[0]) ? 2u : 0u);
+        break;
+    case ED_WATCH: {                                       /* on -> on */
+        uint32_t keep, v4was = ed_w.v4, v5was = ed_w.v5;
+        if (na < 1u)
+            return;
+        keep = ed_w.on && ed_w.resets == usb.resets && (a[0] & 1u);   /* already watching: the changes not yet */
+        ed_w.on = a[0] & 1u;                                          /* pushed stay pending (INFO 53 01 bit 0) */
+        ed_w.v4 = (uint8_t)(ed_w.on && (a[0] & 2u));     /* v4: also TRACK_CHANGED; the reply says it is known */
+        ed_w.v5 = (uint8_t)(ed_w.on && (a[0] & 4u));     /* item 159 (INFO 4F 01 bit 0): TRACK_CHANGED for every value of the other shown part */
+        ed_w.resets = usb.resets;
+        if (ed_w.on && !keep)
+            ed_shadow();
+        else if (keep && ((ed_w.v4 && !v4was) || (ed_w.v5 && !v5was))) {   /* newly asked for: from the values as they are */
+            int16_t ov[EXT_P_LEN];
+            ed_view(ed_other(), ov);
+            for (i = 0; i < ED_NT; i++)
+                ed_w.tv[i] = (int16_t)ed_vw(i / 3u, ED_TIDS[i % 3u]);
+            for (i = 0; i < ED_NO; i++)
+                ed_w.ov[i] = ov[i < P_COUNT ? i : XW_BASE + i - P_COUNT];
+        }
+        ed_b(ed_w.on | ed_w.v4 << 1 | ed_w.v5 << 2);
+        break;
+    }
+    case ED_PING:
+        ed_b(0);
+        break;
+    case ED_TRACK:                                         /* [track] -> selected, NTRK, per track: engine, preset, level, mute, armed */
+        if (na >= 1u && a[0] < NSHOWN && a[0] != song.sel) {
+            track_select(a[0]);
+            if (ed_w.on)
+                ed_shadow();                               /* the editor re-reads it: no RELOAD for this */
+        }
+        ed_b(song.sel);
+        ed_b(NTRK);
+        for (i = 0; i < NTRK; i++) {
+            ed_b(ed_eng(&trk[i]));
+            ed_b(trk[i].preset);
+            ed_v(ed_vw(i, P_LEVEL));                       /* (item 159: as shown) */
+            ed_b(trk[i].p[P_MUTE] != 0);
+            ed_b((song.rec >> i) & 1u);
+        }
+        break;
+    case ED_TRACK_MIX: {                                   /* track [, level v14, mute] -> track, level, mute */
+        track_t *t;
+        int16_t *lv;
+        if (na < 1u || a[0] >= NTRK)
+            return;
+        t = &trk[a[0]];
+        lv = &t->p[P_LEVEL];
+        if (na >= 4u) {
+            *lv = (int16_t)clamp(ed_rv(a + 1), 0, 127);
+            t->p[P_MUTE] = (int16_t)(a[3] ? 1 : 0);
+            ed_known(a[0], P_LEVEL);                       /* the editor's own change: no push */
+            ed_known(a[0], P_MUTE);
+            ui.force = 1;
+        }
+        ed_b(a[0]);
+        ed_v(*lv);
+        ed_b(t->p[P_MUTE] != 0);
+        break;
+    }
+    case ED_TRACK_DUMP: {                                  /* track [, stored] -> track, engine, preset, P_COUNT x v14 */
+        int16_t tv[EXT_P_LEN];
+        if (na < 1u || a[0] >= NTRK)
+            return;
+        ed_view(a[0], tv);                                 /* item 159: as shown; with the byte 1 (INFO 4F 01 bit 0) the stored Original, as before item 159 */
+        ed_b(a[0]);
+        ed_b(ed_eng(&trk[a[0]]));
+        ed_b(trk[a[0]].preset);
+        for (i = 0; i < P_COUNT; i++)                      /* (a value a MOTION record drives now: its saved value, as before) */
+            ed_v(na >= 2u || motion_base_value(&trk[a[0]], i) != trk[a[0]].p[i] ? motion_base_value(&trk[a[0]], i) : tv[i]);
+        break;
+    }
+    case ED_TRACK_STEP: {                                  /* track, index [, step] -> track, index, step (as STEP_GET) */
+        step_t *st;
+        if (na < 2u || a[0] >= NTRK || a[1] >= NSTEP)
+            return;
+        st = &trk[a[0]].step[a[1]];
+        if (na >= 10u)
+            ed_step_put(st, a + 2, na - 2u);
+        if (a[0] == song.sel)
+            ed_w.st[a[1]] = ed_step_sig(&seq_steps(&trk[a[0]])[a[1]]);
+        ed_b(a[0]);
+        ed_b(a[1]);
+        ed_step_reply(&seq_steps(&trk[a[0]])[a[1]]);
+        break;
+    }
+    case ED_TRACK_PARAM: {                                 /* track, id [, v14] [, scope] -> track, id, v14 [, scope] */
+        track_t *t;
+        uint32_t sc = (na & 1u) ? a[na - 1u] : 0u;         /* na 3 or 5: the scope byte last. 2 = an extension slot (id 0 .. NX-1) of that track, otherwise as 0; */
+        uint32_t raw = sc & 4u, wid;                       /* item 159 (INFO 4F 01 bit 0): + 4 = the STORED Original (read and written as before item 159: the librarian's copy of a sound) */
+        sc &= ~4u;
+        if (na < 2u || a[0] >= NTRK || (sc != 0u && sc != 2u) || a[1] >= (sc == 2u ? NX : P_COUNT))
+            return;
+        t = &trk[a[0]];
+        d = sc == 2u ? xdesc(t, a[1]) : ed_tdesc(t, a[1]);
+        vp = sc == 2u ? &XV(t, a[1]) : &t->p[a[1]];
+        wid = sc == 2u ? XW_BASE + a[1] : a[1];
+        if (na >= 4u) {
+            int b = 0;
+            if (d->max > d->min) {                         /* as SET: clamped; a fixed value stays */
+                if (raw)
+                    ed_store(t, wid, clamp(ed_rv(a + 2), d->min, d->max));
+                else                                       /* item 159: the value as shown, written as the knob writes (ed_put) */
+                    b = ed_put(t, wid, clamp(ed_rv(a + 2), d->min, d->max), d);
+            }
+            if (sc == 2u)
+                ed_known_x(a[0], a[1]);                    /* (no MOTION for the slots: they have no old id) */
+            else {
+                if (!b)                                    /* (End B's value: not recorded, as the knob) */
+                    (void)motion_capture(t, a[1], t->p[a[1]]);
+                ed_known(a[0], a[1]);
+            }
+            ui.force = 1;
+        }
+        ed_b(a[0]);
+        ed_b(a[1]);
+        ed_v(raw ? *vp : ed_vw(a[0], wid));
+        if (na & 1u)
+            ed_b(a[na - 1u]);                              /* (the scope byte is echoed when it was sent, + 4 included) */
+        break;
+    }
+    default:
+        return;
+    }
+    ed_send();
+}
+
+/* main loop: editor frames first; anything else stays for ota_service() */
+static void ed_service(void)
+{
+    const uint8_t *p;
+    uint32_t n;
+    ed_sync();                                             /* v2 pushes (while watched) */
+    if (!ota_frame_get(&p, &n) || n < 4u || p[0] != ED_HDR0 || p[1] != ED_HDR1 || p[2] != ED_HDR2)
+        return;
+    ed_w.last_ms = fm1_ms;                                 /* any request keeps WATCH alive */
+    if (p[3] >= ED_SMP_BEGIN) {                            /* large frames: handled in place, then freed */
+        ed_handle(p, n);
+        ota_frame_done();
+        return;
+    }
+    {
+        static uint8_t f[64];
+        uint32_t k = n > sizeof f ? sizeof f : n, i;
+        for (i = 0; i < k; i++)
+            f[i] = p[i];
+        ota_frame_done();                                  /* free the frame buffer before replying */
+        ed_handle(f, k);
+    }
+}

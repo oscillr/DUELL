@@ -1,7 +1,7 @@
 #!/bin/sh
-# DUELL host tests that run on a Mac without the JieLi toolchain (subset of felucca-base/tests/run_tests.sh).
+# DUELL host tests that run on a Mac without the JieLi toolchain (subset of duell/tests/run_tests.sh).
 # Usage: ./host_tests.sh [name ...]   names: midiout level benchsim benchrun benchaudio stereochorus chorusskip bassmono comp master bench shimmer locut duck dlymod regress chord strum mod mxstep modinert halltail perform performcap ui select step3 engine morph morphui mode dlymod stereochorus dlyev hang atgt patslot multi release patch patchraw dx7import dx7compat splash sounds mrender fmbass fm6 loadcost cpuscen uf wave hold guide guidesetup wtab wavetable sidechain
-#   mixsplit partindep duckpart twocore tcmeas tcstage1 bootguard tcbench poolrule budget modules uitest project fun10 motion persist backup editor editorjson midictl audio erase flashled usb insert rollbrowser xvalues twin subcyc pages scope2 editb velo midimap midimapmut emu   (default: all; emu only when ~/emsdk exists)
+#   mixsplit partindep voicesplit duckpart twocore twocoreshare tcmeas tcstage1 bootguard tcbench poolrule budget modules uitest project fun10 motion persist backup editor editorjson midictl audio erase flashled usb insert rollbrowser xvalues twin subcyc pages scope2 editb velo midimap midimapmut emu   (default: all; emu only when ~/emsdk exists)
 # strum: tests/strum_test.c (DUELL 1.1 item 144): the CHORD page's STRUM (ext slot X27: the chord's tones low to high, STRUM ms apart; release cancels; pedal, HOLD ALL, ARP / MONO / CHRD OFF hide it,
 #   LAYER, panics) and the NOTE-START STAGGER (voice.c: at most VS_MAX = 2 (item 148; 3 before) new voices a POLY part starts in one block; 8 at once start 2 + 2 + 2 + 2), a random walk that must leave nothing sounding or waiting
 # chorusskip: tests/chorusskip_test.c (0.2.21), built twice (as it is, and -DCHO_NOSKIP = the firmware without fx_bus.c cho_zrun's skip): the plain bus leaves the chorus out of a block whose chorus input is 0 while the whole chorus
@@ -32,7 +32,7 @@
 #   ROOM SPRING HALL SHIM RESO: quiet after it, no click, the sends back (4 s window vs the lines cleared at once), a stopped unit's double press, single STOP leaves tails, user SENDS OFF stays OFF
 # editorjson: tests/editordump.c writes the web editor's layout from the firmware tables (PAGES[], every descriptor with its values formatted by param_format, the engines);
 #   the committed web/editor/layout.json must equal a fresh run, web/test_layout.mjs compares it with descdump.c's output (a second exporter), then web/test_editor.mjs (the editor against the
-#   simulated unit) and web/test_duellbackup.mjs run with the emsdk node. After a firmware table change: cp felucca-base/build/host/layout.json felucca-base/web/editor/layout.json
+#   simulated unit) and web/test_duellbackup.mjs run with the emsdk node. After a firmware table change: cp duell/build/host/layout.json duell/web/editor/layout.json
 # bassmono: tests/bassmono_test.c, 0.2.19's BASS MONO (fx.c bass_mono; the page FX > MASTER, core.h G_BM / song.bm; stored in multi byte 5 and project byte 65, no MENU row): OFF bit for bit (the sources-before hash; ON then OFF returns to it), L + R untouched,
 #   a 40 Hz out-of-phase tone made mono while 2 kHz passes, the -3 dB corner at all 11 settings, no click (settings walked, ON / OFF), exact silence, DUEL bypassed (and cleared at a mode change), the row (hidden in DUEL, SELECT passes it), the byte, cost
 # sidechain: tests/sidechain_test.c (0.2.22), GLO > SIDECHAIN's MIDI setup (P1 CH, P1 NOTE, P2 CH, P2 NOTE: fx.c sc_midi, the settings record's bytes 14..17), a DEVICE setting: the defaults (10, C2), saved ~2 s later, read back, an older record and every byte value read safely, ERASE DATA, a patch / multi / project load leaves it, a multi record and a project are bit for bit the same whatever it is, DUCK SRC PUMP / PART / MIDI (the old CH1..16 clamped), editable with every SRC
@@ -54,16 +54,29 @@
 # partindep: tests/partindep_test.c (MIXSPLIT job 2, partstate): the two parts' stages are independent: six scenes (STEREO, DUEL, LAYER; SPREAD, EQ, SAT, PART FX crossfade, PAN step, MUTE, MODE change, silent parts, MORPH on both parts, the matrix's bus offsets of both parts;
 #   no DUCK SRC PART, no FORMANT: the job 3 blockers) each rendered with the parts' stages in six schedules (1 then 2, 2 then 1, and four stage-interleaved orders): all bit for bit equal to the old combined path (tests/mixsplit_ref.h), to mix_block and to the
 #   hashes of the commit before the work. Self-check (name partindep_mut, in the same run): the test is built against a copy of the firmware with ONE shared write put back (the parts' block scratch, morph window, matrix window made one) and must FAIL
+# voicesplit: tests/voicesplit_test.c (VOICE SHARE stage B2 step 3, working docs/voice-split-b2-design_2026-11-03.md section 7): part 1's render split between two cores must not change one sample. Built with -DDUELL_VS_TEST (voice.c's test seam
+#   vs_mask_fn: the ranks of the render list that "core 1" renders in-thread into pscr_c1, merged before spread_sum; the take-over path is the same code). Scene 4 of partindep_scn.h (part 2 silent) with part 1's engine changed (ANALOG, WAVE, FM6, VOICE, PHYS,
+#   TRIO, WHEEL), an 8-note chord, a re-strike, a release: every mask (all 255 of 8 voices for ANALOG and WAVE, all of the cap for FM6 / VOICE / PHYS, sampled for TRIO / WHEEL / SPREAD off), a mask that changes every block, the 16 slots (voices copied into slots 8..15:
+#   ANALOG, WAVE, TRIO) must give the hash of the empty mask (every output sample, the voices' end state); and the dirty-buffer property (garbage in out, SPREAD and pscr_c1 changes nothing). Estimated 5 to 15 s (GUESS). Self-check (voicesplit_mut, same run): the
+#   test with -quick against copies of voice.c with ONE defect (merge twice, pscr_c1 not cleared, SPREAD side not merged, a stale control record, a voice in both sets, a part scalar written in the render) must FAIL. Not covered: threads and timing (twocore, step 6)
 # duckpart: tests/duckpart_test.c (job 3, one-sided ducking): DUCK SRC PART on one part only; the ducked part reads the other part's key of the block before. Renders the old path (shared key read live) and the new one and reports the largest sample
 #   difference and the RMS of the difference in dB: a ducked part 2 differs slightly (a block older key), a ducked part 1 is bit for bit equal
 # twocore: tests/twocore_sim.c (job 3, rewritten in job 5 to the unit's protocol): core 1 is a pthread running the real tc_c1_step loop (separate 32-bit words, a sequence number, core 1 decides who plays a job) with the computer hal, its job the real
 #   tc_job_run (part 2's stages); core 0 is the main thread running the firmware's own mix_block with DUELL_TWOCORE on (the runner: deadline, post, wait, take, the late cases, pausing; a half = 4 blocks of 32). Nine scenes of partindep_scn.h,
 #   each in a child process with one injected fault: torn reads (once: re-read; persistently: refused), late jobs (before core 1 looks: take / yld; after its claim: done in the half), a run of late blocks (pause, resume), a wrong check value,
 #   a stale done word, a done word ahead, a misread snapshot, a hung core 1 before and after its claim (HANG after 100 ms simulated), a flash park (in play; with core 1 stuck: FLASH after 20 ms), a core 1 that finishes after its half, no start
-#   (unarmed, NOANSWER). The output must equal the old combined path (tests/mixsplit_ref.h) bit for bit in every run, except the hung core 1: equal up to the hang, then equal to a one-core run that leaves out exactly the counted silent
+#   (unarmed, NOANSWER). The output must equal the one-core run of the same build bit for bit in every run (2026-11-05; it was the old combined path of tests/mixsplit_ref.h), except the hung core 1: equal up to the hang, then equal to a one-core run that leaves out exactly the counted silent
 #   blocks. Also: the late path taken and counted, no bus B state written by core 1 (stage 1), a deliberate shared write seen, the fade at once when the jobs pause or core 1 stops (no step over 1.5 x the calm before), counters per scene.
 #   Self-check (twocore_mut): copies of the firmware with ONE shared write put back, or the runner changed, must make it FAIL. twocore_tsan (not in the default list, slow): the runs without a silent window under ThreadSanitizer,
 #   TSAN_SCENES="0 8" picks the scenes; no data race may be reported
+#   THE VOICE SPLIT (owner 2026-11-05; twocore_run.c tcr_parts_a / tcr_parts_b; since the one-block step the sends and the master of the block before run on core 0 beside core 1's job): the runner under test deals every voice of both parts to the less full core and posts one job a block (core 1: its sets, then both parts' stages). The text above is the old
+#   runner's where it says "part 2": the job is the block's, a silent block is silent for both parts, and the hung core 1 and the word ahead are compared with the frozen reference (tests/twocore_sim.c, header). The ownership audit is the voice audit
+# twocoreshare: the same tests/twocore_sim.c built with -DTC_SIM_CHORD=1 (the scenes of the old voice share kept for the voice split's runner, owner 2026-11-05; the name of the entry is the old one): the chord scenes instead of the twelve. Part 1 plays
+#   an 8-note chord (a re-strike, a release; ANALOG with SPREAD 60 / ANALOG with SPREAD off / PHASE; no MORPH), so every block has many voices and the deal gives both cores some. Faults: none, torn reads, a wrong check value, a misread snapshot,
+#   a stale done word, no answer to the take, a late core 1 that never claims, a late core 1 done inside the limit, part 2 playing a chord too (p2chord), a core 1 claiming in the last block of a half and not done by the wait limit (freeze: both
+#   parts silent for that one block), a hung core 1 before / after its claim and a flash park with core 1 stuck, a flash park, no core 1. Output = the one-core render bit for bit, or, where a block froze, the frozen reference (see the file's
+#   header). Also: the job counters add up, every block counted once, the voice audit (core 1 writes only the voices dealt to it; core 0 writes none of them between the post and the claim), core 0 never waits past the limit. Mutants (twocore_mut,
+#   same run): core 1 renders every rank (OVERLAP), core 0 renders every rank too (BOTH), core 1's sets are not merged (NOMERGE); each must make it FAIL. Not covered: the engines' slots in ENG_MEM, ThreadSanitizer. Needs no -DDUELL_TWOCORE
 # tcmeas (BENCHT2): the same simulation built with -DTC_MEAS=1 (core 1 timestamps its jobs, core 0 collects start delay / run time / finish margin, the own split, the clear, the runtime switches' variables): in every run the own split adds up to
 #   own, the three histograms to the jobs measured, the very late jobs by block to the very late jobs; no fault: every job posted measured, margins never negative, all own blocks 'deadline already past'; late_pre: the taken-back jobs have no figures;
 #   late_post: every very late job measured with a run time and a negative margin; park, pause, strike and one-core runs show in the own split; the clear (tcmclr) restarts the figures at the block after the request. Five mutants of it
@@ -74,6 +87,7 @@
 #   the flash park (at once; a job left open: FLASH after 20 ms), the record across a reset and the armed one-shot start, which reasons are strikes, the stack mark. docs/TWOCORE_STAGE1.md
 # velomono: tests/velo_mono_test.c (DUELL 1.1): harder never quieter: the key velocity over every reading and every curve, never calibrated and calibrated, and the whole press through sense_update.
 # polylimits: tests/poly_limits_test.c (DUELL 1.1 item 90): the NOTES limits per engine, one core and two cores, the counter, each part its own voices, the instant fall-back.
+# deadline (REWRITTEN 2026-11-05 for the voice split's one-block order; the text below is the old test's, kept for the history of items 132 / 137 / 142): the runner's deal (every voice to the less full core), its take-back deadline (the half's end - core 1's share - the blocks still to come - the slack) and its wait limit (from the blocks still to come only: the sends and the master of this block are done before the wait), each worked out by the test on its own for every setup, rule, block and voice count; the posted deadline's SAME / LATER / INSIDE / TRUE / KEPT; the hashes DL_REF / DL_REF2 of 2026-11-05. See the file's header
 # deadline: tests/deadline_test.c (DUELL 1.1 item 132): the two-core runner's deadline and wait limit (twocore_run.c tcr_deadline) are bit for bit the values before item 132 raised BUDGET_LIMIT
 #   to 90 and stopped charging the hand-over: every engine pair x filter x MODE x SENDS / PART FX, every factory sound, the 16 multis, both rules, every block and voice count, one hash
 #   (item 137: margin 1.00 for the caps, item 142: limit 84 (was 81); the deadline keeps 1.15: the same hash; the posted deadline's true-cost take-over when the 1.15 one is past, checked at 16 post moments;
@@ -167,7 +181,7 @@
 #   table, engine pairs x rolls, what End B moves, the stages a move wakes, WAVE, fades, bursts); build -O1 -fno-builtin
 # loadcost: tests/loadcost_test.c, the cost of a CHANGE (a patch / multi load, a reverb or mode switch) in the audio half buffer, counted with the device's word-wise memset (build: -O1 -fno-builtin); LOADCOST_FULL=1 prints the whole table
 # sounds: the factory sound audit (tests/sound_audit.c: 10 s hold, level at 1 s / 3 s, sustained median, rise time, tap, hit peak; FAIL silent / clipping / NaN / quiet / slow / falls away / End B); SOUND_TRIM=1 adds the
-# suggested LEVEL per sound (copy into felucca-base/tools/duell_sounds.py). Needs build/gen/duell_sounds.h (DUELL/gen_only.py)
+# suggested LEVEL per sound (copy into duell/tools/duell_sounds.py). Needs build/gen/duell_sounds.h (DUELL/gen_only.py)
 #   0.2.23: then the factory multis (tools/factory_multis.py check: the sixteen records against the list, version, names, sounds, MODE, split, LOW CUT, and the multi
 #   similarity check: no two multis with the same two sounds, or one sound in the same place with the same MODE and split; selftest: the check catches such pairs)
 # ldrscreen: tests/ldr_test.c (the update loader against a fake host and flash) built twice, plain and with -DLDR_SCREEN_TEST=1 (the loader's screen, firmware/loader/ldr_screen.c, drawing on a fake
@@ -187,7 +201,7 @@
 #   (mix_bal, fx.c bal_lvl) gone: every mode's render bit for bit as the tree before with the old balance 0; the knob mid-render = the same levels written straight; the owner's worked example both ways
 # perflevelmut: its mutations, run once each (perflevel must FAIL): a boost allowed, the direction swapped, the total not kept, a memory of its own (the MIXER's writes between the steps ignored)
 # midimapmut: the safety rules' mutations, run once each (midimap_test must FAIL): the lock check removed, two parameters allowed on one CC, the morph's trigger back on the CC number
-cd "$(dirname "$0")/felucca-base" || exit 1
+cd "$(dirname "$0")/duell" || exit 1
 OUT=build/host; mkdir -p "$OUT" build/mod_demo build/ui_new build/ui_slot
 unset DUELL_TEST_MODE                                  # (the environment switch is for device / emulator builds; the tests set theirs below)
 CCR="cc -O2 -w -DHOST_MIX_FOLLOWS_MASTER=1 -Ibuild/gen -Ifirmware/src -Itests"      # the release configuration (switch off)
@@ -203,7 +217,7 @@ python3 tools/gen_midi_map.py --sym MIDI_MAP_SHIPPED build/gen_test/midi_map_shi
 python3 tools/gen_version.py build/gen/duell_version.h || exit 1   # VERSION file -> build/gen/duell_version.h
 FV=$(sed -n 's/^#define DUELL_VERSION_STR "\(.*\)"/\1/p' build/gen/duell_version.h)
 [ -f "$HOME/emsdk/emsdk_env.sh" ] && EMU=emu || EMU=
-want="${*:-velaccent regress chord strum mod perform perflevel perflevelmut performcap ui select step3 engine morph morphui mode dlymod dlyev hang atgt patslot multi release menuproduct patch patchraw bank dx7import dx7compat splash sounds mrender fmbass fm6 loadcost cpuscen uf wave hold reset resetwalk pan mixsplit partindep duckpart twocore tcmeas tcstage1 bootguard tcbench poolrule budget polylimits deadline velomono sat mxstep modinert eqon eq32 ovlguard matrixpack engswitch level guide guidesetup wtab wavetable modules uitest project fun10 motion persist backup editor editorjson midictl audio erase flashled usb elfcheck reverb halltail plate locut shimmer panic insert bassmono comp master stereochorus chorusskip sidechain tune bench benchsim benchrun benchaudio ownerimport rollbrowser sliders xb xbmut fuzz xvalues twin subcyc pages scope2 editb velo midimap midimapmut ldrscreen lcdboot $EMU converttwin}"
+want="${*:-velaccent regress chord strum mod perform perflevel perflevelmut performcap ui select step3 engine morph morphui mode dlymod dlyev hang atgt patslot multi release menuproduct patch patchraw bank dx7import dx7compat splash sounds mrender fmbass fm6 loadcost cpuscen uf wave hold reset resetwalk pan mixsplit partindep voicesplit duckpart twocore twocoreshare tcmeas tcstage1 bootguard tcbench poolrule budget polylimits deadline velomono sat mxstep modinert eqon eq32 ovlguard matrixpack engswitch level guide guidesetup wtab wavetable modules uitest project fun10 motion persist backup editor editorjson midictl audio erase flashled usb elfcheck reverb halltail plate locut shimmer panic insert bassmono comp master stereochorus chorusskip sidechain tune bench benchsim benchrun benchaudio ownerimport rollbrowser sliders xb xbmut fuzz xvalues twin subcyc pages scope2 editb velo midimap midimapmut ldrscreen lcdboot $EMU converttwin}"
 fail=0
 # mxstep's PHASE self-check (hunt4): tests/mx_step_test.c built against a COPY of firmware/ and tests/ in which eng_phase.c's bridge of a moved DCW is switched off (the bend steps at
 # every block seam again); the PHASE check must FAIL, a pass means it cannot see the seam
@@ -235,6 +249,23 @@ partindep_mut() {
   fi
   if $OUT/partindep_mut > $OUT/last.log 2>&1; then echo "   FAIL (the mutation was NOT detected)"; fail=1; else echo "   PASS (detected: $(grep -c 'partindep: FAIL' $OUT/last.log) checks failed)"; fi
 }
+# voicesplit's self-check: tests/voicesplit_test.c (built with -DDUELL_VS_TEST, run with -quick) against a COPY of firmware/ and tests/ in which one defect of the split has been put into voice.c (sed on the copy,
+# name FILE SEDEXPR [FILE SEDEXPR ..]); the test must FAIL, a pass means it cannot see that kind of defect
+voicesplit_mut() {
+  name=$1; shift
+  echo "== voicesplit_mut $name"
+  rm -rf build/voicesplit_mut; mkdir -p build/voicesplit_mut
+  cp -R firmware tests build/voicesplit_mut/ || { echo "   FAIL (copy)"; fail=1; return; }
+  while [ $# -ge 2 ]; do
+    f=build/voicesplit_mut/$1; sed "$2" "$f" > "$f.new" && mv "$f.new" "$f"
+    if cmp -s "$f" "$1"; then echo "   FAIL (the mutation changed nothing in $1)"; fail=1; return; fi
+    shift 2
+  done
+  if ! $CC -O1 -DDUELL_VS_TEST "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/voicesplit_mut build/voicesplit_mut/tests/voicesplit_test.c -lm > $OUT/last.log 2>&1; then
+    echo "   FAIL (the mutated build does not compile)"; tail -5 $OUT/last.log; fail=1; return
+  fi
+  if $OUT/voicesplit_mut -quick > $OUT/last.log 2>&1; then echo "   FAIL (the mutation was NOT detected)"; fail=1; else echo "   PASS (detected: $(grep -c 'voicesplit: FAIL' $OUT/last.log) check failed, the quick run stops at the first)"; fi
+}
 # twocore's self-check: the same, for tests/twocore_sim.c (threads): a copy of the firmware with ONE shared write put back must make the simulation FAIL
 twocore_mut() {
   name=$1; shift
@@ -249,11 +280,11 @@ twocore_mut() {
   if ! $CC -O1 $MUTFLAGS "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/twocore_mut build/twocore_mut/tests/twocore_sim.c -lm -lpthread > $OUT/last.log 2>&1; then
     echo "   FAIL (the mutated build does not compile)"; tail -5 $OUT/last.log; fail=1; return
   fi
-  # two runs: the ownership audit over ALL nine scenes (no race: core 1's job must change nothing of part 1's state; catches the shared-state mutants every time), then
+  # two runs: the voice audit over ALL scenes (no race: core 1's job must change no voice dealt to core 0; the run without a fault also compares the output), then
   # scene 0 with every fault (the output compare; catches the runner mutants). The mutation must fail at least one of them.
   if $OUT/twocore_mut -audit > $OUT/last.log 2>&1; then
     if $OUT/twocore_mut 0 -nomut > $OUT/last.log 2>&1; then echo "   FAIL (the mutation was NOT detected)"; fail=1; else echo "   PASS (detected by the scene-0 faults: $(grep -c 'twocore: FAIL' $OUT/last.log) checks failed)"; fi
-  else echo "   PASS (detected by the ownership audit: $(grep -c 'twocore: FAIL' $OUT/last.log) checks failed)"; fi
+  else echo "   PASS (detected by the audit run: $(grep -c 'twocore: FAIL' $OUT/last.log) checks failed)"; fi
 }
 run() { echo "== $1"; shift; "$@" > "$OUT/last.log" 2>&1 && echo "   PASS" || { echo "   FAIL"; tail -15 "$OUT/last.log"; fail=1; }; }
 for t in $want; do case $t in
@@ -327,24 +358,35 @@ for t in $want; do case $t in
              partindep_mut "the parts share one morph window (morph.c)" firmware/src/morph.c 's/t->mwon/trk[0].mwon/g; s/t->mwpi/trk[0].mwpi/g' &&
              partindep_mut "the parts share one matrix window (mod.c MODW)" firmware/src/core.h 's/#define MODW(t) ((t)->mdw)/#define MODW(t) (trk[0].mdw)/' ;;
   duckpart) $CC -O1 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/duckpart_test tests/duckpart_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run duckpart $OUT/duckpart_test ;;
+  voicesplit) $CC -O1 -DDUELL_VS_TEST "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/voicesplit_test tests/voicesplit_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run voicesplit $OUT/voicesplit_test &&
+             voicesplit_mut "the merge adds core 1's block twice (voice.c vs_merge)" firmware/src/voice.c 's/out\[k\] += pscr_c1.buf\[k\];/out[k] += pscr_c1.buf[k] + pscr_c1.buf[k];/' &&
+             voicesplit_mut "pscr_c1 is not cleared before the set renders into it (voice.c track_voices)" firmware/src/voice.c 's/pscr_c1.buf\[k\] = pscr_c1.sbuf\[k\] = 0;/;/' &&
+             voicesplit_mut "the SPREAD side is not merged (voice.c vs_merge)" firmware/src/voice.c 's/sbuf\[k\] += pscr_c1.sbuf\[k\];/;/' &&
+             voicesplit_mut "the masked set renders with the control records of the block before (stale vr_m)" firmware/src/voice.c 's|vs_render_set_c1(&rc1, vp->rl, vp->nl, cm, vr_m + vp->r0);|{ static vmod_t old_[NVOICE]; vmod_t cur_[NVOICE]; __builtin_memcpy(cur_, vr_m, sizeof cur_); vs_render_set_c1(\&rc1, vp->rl, vp->nl, cm, old_ + vp->r0); __builtin_memcpy(old_, cur_, sizeof old_); }|' &&
+             voicesplit_mut "a voice is in both sets: core 0 also renders rank 0 (voice.c track_voices)" firmware/src/voice.c 's/~cm & all, vr_m/(~cm | 1u) \& all, vr_m/' &&
+             voicesplit_mut "the render writes the part's parameters again, last writer wins (voice.c vs_render_set)" firmware/src/voice.c 's|voice_render(c, &c->t->v\[rl\[r\]\], &vm\[r\]);|{ uint32_t k_; voice_render(c, \&c->t->v[rl[r]], \&vm[r]); for (k_ = 0; k_ < 8u; k_++) ((track_t *)c->t)->p[P_E0 + k_] = (int16_t)(40 + (rl[r] \& 3u) * 9u + k_); }|' ;;
   twocore) $CC -O1 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/twocore_sim tests/twocore_sim.c -lm -lpthread || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run twocore $OUT/twocore_sim &&
-             twocore_mut "the parts share one block scratch (fx.c part_voice)" firmware/src/fx.c 's/int32_t \*b = pscr\[PART_OF(t)\]\.buf;/int32_t *b = pscr[0].buf;/' &&
-             twocore_mut "the parts share one matrix window (core.h MODW)" firmware/src/core.h 's/#define MODW(t) ((t)->mdw)/#define MODW(t) (trk[0].mdw)/' &&
-             twocore_mut "the parts share the envelope's ENV SYNC steps (voice.c)" firmware/src/voice.c 's/((track_t \*)t)->esk)/trk[0].esk)/' &&
-             twocore_mut "mix_gather reads part 2 while it is silent (twocore_run.c's skip)" firmware/src/fx.c 's/if (p == 1u \&\& tcr.skip2)/if (0)/' &&
-             twocore_mut "a stopped core 1's voices are not faded out (twocore_run.c fade2)" firmware/src/twocore_run.c 's/tcr.fade2 = 1;/tcr.fade2 = 0;/' &&
+             twocore_mut "the parts share one block scratch (fx.c part_open)" firmware/src/fx.c 's/int32_t \*b = pscr\[PART_OF(t)\]\.buf;/int32_t *b = pscr[0].buf;/' &&
+             twocore_mut "a stopped core 1's voices are not faded out (twocore_run.c fade)" firmware/src/twocore_run.c 's/tcr.fade = 1;/tcr.fade = 0;/' &&
+             twocore_mut "OVERLAP: core 1 renders every rank, not only the ones dealt to it (twocore_run.c tc_job_run)" firmware/src/twocore_run.c '/^static void tc_job_run/,/^}/ s/tc_set_run(vp, sel);/tc_set_run(vp, 0xFFFFu);/' &&
+             twocore_mut "BOTH: core 0 renders every rank too, the ones dealt to core 1 as well (twocore_run.c tcr_parts_a)" firmware/src/twocore_run.c 's/~tc_blk.sel\[p\] & ((1u << vp->nl) - 1u), vr_m + vp->r0);/((1u << vp->nl) - 1u), vr_m + vp->r0);/' &&
+             twocore_mut "NOMERGE: core 1's sets are not added to the parts (twocore_run.c tc_job_run)" firmware/src/twocore_run.c '/^static void tc_job_run/,/^}/ s/vs_merge(vp->rc.out, vp->rc.sbuf, vp->rc.spread_on);/;/' &&
              twocore_mut "BENCHT4: a very late block whose job finished pauses again (twocore_run.c TCR_VLATE_RUN 1)" firmware/src/twocore_run.c 's/#define TCR_VLATE_RUN 0u/#define TCR_VLATE_RUN 1u/' &&
              twocore_mut "BENCHT4: the window rule is on by default again (twocore_run.c TCR_VWIN_K 8)" firmware/src/twocore_run.c 's/#define TCR_VWIN_K 0u/#define TCR_VWIN_K 8u/' &&
-             twocore_mut "BENCHT4: a real fault (a job that gave no answer to the take) no longer pauses the jobs (twocore_run.c)" firmware/src/twocore_run.c 's|tcr_pause(TC_TICKS(), TCR_PW_FAULT); /\* \[no answer\] \*/||' &&
+             twocore_mut "BENCHT4: a real fault (a job that gave no answer to the take, then yielded) no longer pauses the jobs (twocore_run.c tcr_join)" firmware/src/twocore_run.c '/no answer in time, then yld/,/return 1u;/ s/tcr_pause(TC_TICKS(), TCR_PW_FAULT);//' &&
              twocore_mut "BENCHT4: no real fault pauses the jobs (twocore_run.c tcr_pause)" firmware/src/twocore_run.c 's/    if (!tcr.paused) {/    if (!tcr.paused \&\& why != TCR_PW_FAULT) {/' &&
-             twocore_mut "BENCHT4: a job not finished by its wait limit (a silent block) no longer pauses the jobs (twocore_run.c)" firmware/src/twocore_run.c 's|tcr_pause(TC_TICKS(), TCR_PW_FAULT); /\* \[silent\] \*/||' &&
-             twocore_mut "BENCHT4: core 0 waits for core 1 to the end of the half, not to the wait limit (twocore_run.c tcr_part2)" firmware/src/twocore_run.c 's/a, lim = tcr.lim, t1;/a, lim = tcr.t0 + TCR_HALF_TICKS, t1;/' ;;
+             twocore_mut "BENCHT4: core 0 waits for core 1 to the end of the half, not to the wait limit (twocore_run.c tcr_join)" firmware/src/twocore_run.c 's/a, lim = tcr.lim, t1;/a, lim = tcr.t0 + TCR_HALF_TICKS, t1;/' ;;
+  twocoreshare) $CC -O1 -DTC_SIM_CHORD=1 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/twocore_share tests/twocore_sim.c -lm -lpthread || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run twocoreshare $OUT/twocore_share;
+             MUTFLAGS=-DTC_SIM_CHORD=1
+             twocore_mut "OVERLAP: core 1 renders every rank, not only the ones dealt to it (twocore_run.c tc_job_run)" firmware/src/twocore_run.c '/^static void tc_job_run/,/^}/ s/tc_set_run(vp, sel);/tc_set_run(vp, 0xFFFFu);/';
+             twocore_mut "BOTH: core 0 renders every rank too, the ones dealt to core 1 as well (twocore_run.c tcr_parts_a)" firmware/src/twocore_run.c 's/~tc_blk.sel\[p\] & ((1u << vp->nl) - 1u), vr_m + vp->r0);/((1u << vp->nl) - 1u), vr_m + vp->r0);/';
+             twocore_mut "NOMERGE: core 1's sets are not added to the parts (twocore_run.c tc_job_run)" firmware/src/twocore_run.c '/^static void tc_job_run/,/^}/ s/vs_merge(vp->rc.out, vp->rc.sbuf, vp->rc.spread_on);/;/'; MUTFLAGS= ;;
   twocore_tsan) $CC -O1 -g -fsanitize=thread "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/twocore_tsan tests/twocore_sim.c -lm -lpthread || { echo "== compile"; echo "   FAIL (does not compile; ThreadSanitizer missing?)"; fail=1; false; } && run twocore_tsan sh -c "for s in \${TSAN_SCENES:-0 8}; do TSAN_OPTIONS=halt_on_error=1 $OUT/twocore_tsan \$s -tsan || exit 1; done" ;;
   tcmeas) $CC -O1 -DTC_MEAS=1 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/twocore_meas tests/twocore_sim.c -lm -lpthread || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run tcmeas $OUT/twocore_meas;
              MUTFLAGS=-DTC_MEAS=1
              twocore_mut "BENCHT2: core 1 stamps the end of a job before it ran it (twocore.h t_end)" firmware/src/twocore.h 's/te = TC_TICKS();/te = ts;/';
              twocore_mut "BENCHT2: the finish margin has the wrong sign (twocore_run.c tcm_collect)" firmware/src/twocore_run.c 's/mg = (int32_t)(tcr.dl - te);/mg = (int32_t)(te - tcr.dl);/';
-             twocore_mut "BENCHT2: a deadline already past is counted as paused (twocore_run.c own_why)" firmware/src/twocore_run.c 's/tcr.own_why = TCM_OWN_DL;/tcr.own_why = TCM_OWN_PAUSE;/';
+             twocore_mut "BENCHT2: a deadline already past is counted as paused (twocore_run.c own_why)" firmware/src/twocore_run.c 's/tcr.own_why = TCM_OWN_FL;/tcr.own_why = TCM_OWN_PAUSE;/';
              twocore_mut "BENCHT2: the block of a very late job is not counted (twocore_run.c vblk)" firmware/src/twocore_run.c 's/tcm.vblk\[tcj.blk % TCR_BLOCKS\]++;//';
              twocore_mut "BENCHT2: the clear request is ignored (twocore_run.c tcm.clr)" firmware/src/twocore_run.c 's/if (tcm.clr)/if (0)/';
              twocore_mut "BENCHT3: the deadline's floor removed (twocore_run.c tcr_deadline)" firmware/src/twocore_run.c 's/if (TCR_FLOOR_NOW) {/if (0) {/';
@@ -435,7 +477,7 @@ for t in $want; do case $t in
                    && $OUT/uac_test > "$OUT/last.log" 2>&1 || { echo "   FAIL (uac_test CDC $c)"; tail -15 "$OUT/last.log"; ub=1; }
            done
            [ $ub = 0 ] && echo "   PASS" || fail=1 ;;
-  emu)     { . "$HOME/emsdk/emsdk_env.sh" >/dev/null 2>&1; sh web/emu/build.sh >"$OUT/emu_build.log" 2>&1 && $CCD -ffp-contract=off -o build/emu/native_check web/emu/native_check.c -lm && build/emu/native_check build/emu/native.f32; } || { echo "== emu"; echo "   FAIL (build)"; tail -5 "$OUT/emu_build.log"; fail=1; false; } && run emu "$EMSDK_NODE" web/emu/emu_test.mjs build/emu/felucca.wasm build/emu/native.f32 ;;
+  emu)     { . "$HOME/emsdk/emsdk_env.sh" >/dev/null 2>&1; sh web/emu/build.sh >"$OUT/emu_build.log" 2>&1 && $CCD -ffp-contract=off -o build/emu/native_check web/emu/native_check.c -lm && build/emu/native_check build/emu/native.f32; } || { echo "== emu"; echo "   FAIL (build)"; tail -5 "$OUT/emu_build.log"; fail=1; false; } && run emu "$EMSDK_NODE" web/emu/emu_test.mjs build/emu/duell.wasm build/emu/native.f32 ;;
   # ---- the cloud plan's job A (the store): the extension block, the 22 chunks, the velocity store (tests/xb_test.c; patch, patchraw, backup, multi, project, persist, erase, fuzz_ed and fuzz_proj are extended in place)
   xb)      awk '/^#define FL_/{p=1} p{print} p&&!/\\$/{p=0}' firmware/hal/fm1_flash.h | grep -v 'FL_FAR\|FL_XIP' > $OUT/fl_macros.h     # (the real FL_* range macros of the device header)
            if cc -O1 -g -w -fsanitize=address,undefined -I$OUT -Ifirmware/src -Itests -o $OUT/xb_test tests/xb_test.c 2>/dev/null; then :; else echo "   (no AddressSanitizer here: the bounds checks run without it)"; $CC -O1 -I$OUT -o $OUT/xb_test tests/xb_test.c || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; }; fi && run xb $OUT/xb_test ;;
@@ -581,8 +623,8 @@ static __attribute__((noinline)) void mod_voice(track_t *t, voice_t *v, vmod_t *
            if $CC -O1 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/pages_fp tests/pages_fp.c -lm && $OUT/pages_fp > $OUT/pages_fp_new.txt 2>$OUT/last.log; then
              if git -C .. rev-parse --verify -q "$ref^{commit}" > /dev/null; then
                rm -rf build/pages_base; mkdir -p build/pages_base
-               if git -C .. archive "$ref" felucca-base | tar -x -C build/pages_base && mkdir -p build/pages_base/felucca-base/build && cp -R build/gen build/gen_test build/pages_base/felucca-base/build/ && cp tests/pages_fp.c build/pages_base/felucca-base/tests/ &&
-                  (cd build/pages_base/felucca-base && $CC -O1 "-DFELUCCA_VERSION=\"$FV\"" -o ../../host/pages_fp_base tests/pages_fp.c -lm) && $OUT/pages_fp_base > $OUT/pages_fp_base.txt 2>$OUT/last.log; then
+               if git -C .. archive "$ref" duell | tar -x -C build/pages_base && mkdir -p build/pages_base/duell/build && cp -R build/gen build/gen_test build/pages_base/duell/build/ && cp tests/pages_fp.c build/pages_base/duell/tests/ &&
+                  (cd build/pages_base/duell && $CC -O1 "-DFELUCCA_VERSION=\"$FV\"" -o ../../host/pages_fp_base tests/pages_fp.c -lm) && $OUT/pages_fp_base > $OUT/pages_fp_base.txt 2>$OUT/last.log; then
                  echo "   the existing UI renders against $ref:"
                  # the work with the A / B letter (job G) off against the base: nothing but the footer's page counter may change; then the work as it is against itself with the letter off: only the header
                  $CC -O1 -DDUELL_TEST_NO_AB "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/pages_fp_noab tests/pages_fp.c -lm && $OUT/pages_fp_noab > $OUT/pages_fp_noab.txt 2>$OUT/last.log || { echo "   FAIL (pages_fp with the letter off does not build or run)"; pg=1; }
@@ -673,9 +715,9 @@ static void midi_cc_set(track_t *t, uint32_t id, uint32_t value)
            pb=; [ -n "$VELO_BASE" ] && pb=$(git rev-parse --verify -q "$VELO_BASE")
            if [ -z "$pb" ]; then echo "   skipped: VELO_BASE not set (e.g. VELO_BASE=cloud/base3-wave4 on the merge commit of KEY SENSE)"; else
              rm -rf build/velo_base; mkdir -p build/velo_base
-             git -C .. archive $pb felucca-base/firmware | tar -x -C build/velo_base && vb=0
+             git -C .. archive $pb duell/firmware | tar -x -C build/velo_base && vb=0
              for m in "" "-DDUELL_TEST_MODE=1"; do
-               (cd build/velo_base/felucca-base && cc -E -P -Ifirmware/hal -Ifirmware/src -I"$OLDPWD/build/gen" '-DFELUCCA_ID="FM-1_900"' $m firmware/src/felucca.c > "$OLDPWD/$OUT/velo/pp_base.i" 2>/dev/null)
+               (cd build/velo_base/duell && cc -E -P -Ifirmware/hal -Ifirmware/src -I"$OLDPWD/build/gen" '-DFELUCCA_ID="FM-1_900"' $m firmware/src/felucca.c > "$OLDPWD/$OUT/velo/pp_base.i" 2>/dev/null)
                cc -E -P -Ifirmware/hal -Ifirmware/src -Ibuild/gen '-DFELUCCA_ID="FM-1_900"' $m firmware/src/felucca.c > $OUT/velo/pp_new.i 2>/dev/null
                if cmp -s $OUT/velo/pp_base.i $OUT/velo/pp_new.i && [ -s $OUT/velo/pp_new.i ]; then echo "   same ($(wc -l < $OUT/velo/pp_new.i) lines) ${m:-release}"; else echo "   DIFFERENT ${m:-release}"; vb=1; fi
              done

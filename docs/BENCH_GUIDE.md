@@ -1,6 +1,6 @@
 # DUELL developer bench: how to use it (private)
 
-> **Bench suite stage 1 (BENCHC1 and newer):** the automatic runner `felucca-base/tools/bench_run.py` drives the unit over the USB serial console (`bench ...` words; the console is on whatever MENU > USB SERIAL says), plays the tests of `tools/bench_suites/OWNER-1.txt` on the unit's own audio clock and writes the results. Read release_drafts/BENCH_STAGE1.md (in the DUELL folder). The K4 run of this guide still works.
+> **Bench suite stage 1 (BENCHC1 and newer):** the automatic runner `duell/tools/bench_run.py` drives the unit over the USB serial console (`bench ...` words; the console is on whatever MENU > USB SERIAL says), plays the tests of `tools/bench_suites/OWNER-1.txt` on the unit's own audio clock and writes the results. Read release_drafts/BENCH_STAGE1.md (in the DUELL folder). The K4 run of this guide still works.
 
 Two developer packages, built from branch `wip/bench0226` (= the 0.2.25 test build T0225 plus the bench). Both say **DEVELOPER BENCH BUILD: not for normal use**.
 
@@ -48,10 +48,10 @@ After it is done: **page 1** (the state), then **every table page** with K1 (BEN
 `bench info` also tells how deep core 0's two stacks have been since power-on (`c0stack user/exception`, in bytes, of 24,320 / 7,936: painted at start-up, read back; memory trim 1, developer builds only). Each row is also sent as one text line to the USB serial console. On the Mac, in Terminal, in the DUELL folder:
 
 ```
-python3 felucca-base/tools/bench_log.py
+python3 duell/tools/bench_log.py
 ```
 
-It finds the unit, then listens. Either start it before the bench (it records the lines as the rows are done), or after the bench: start it, then turn **K2 right** on the BENCH screen (SEND THE LOG). It writes `bench.csv` when the END line comes (Ctrl-C stops it earlier). Send me `bench.csv`. If you copied the lines from another terminal, `python3 felucca-base/tools/bench_log.py --from copied.txt` makes the CSV from them.
+It finds the unit, then listens. Either start it before the bench (it records the lines as the rows are done), or after the bench: start it, then turn **K2 right** on the BENCH screen (SEND THE LOG). It writes `bench.csv` when the END line comes (Ctrl-C stops it earlier). Send me `bench.csv`. If you copied the lines from another terminal, `python3 duell/tools/bench_log.py --from copied.txt` makes the CSV from them.
 
 ## The table
 
@@ -125,9 +125,9 @@ If the unit misbehaves:
 ## For the developer: how they are built
 
 ```
-cd felucca-base
+cd duell
 DUELL_BENCH=1 BENCH_TAG=A1 tools/build.py                        # build/duell-0.2.25-bench-A1.fwsc
 DUELL_BENCH=1 DUELL_CORE1_PROBE=1 BENCH_TAG=B1 tools/build.py    # build/duell-0.2.25-bench-B1.fwsc
 ```
 
-(with `JIELI_TOOLCHAIN`, `AC79_SDK`, and `DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib` for the generators). A plain `tools/build.py` from the same branch gives the T0225 package byte for byte. The host side: `./host_tests.sh benchsim` (the bench run on the Mac); `BENCH_MODEL_UPDATE=1 felucca-base/build/host/bench_sim1` rewrites `firmware/src/bench_model.h` after a change of the sound code.
+(with `JIELI_TOOLCHAIN`, `AC79_SDK`, and `DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib` for the generators). A plain `tools/build.py` from the same branch gives the T0225 package byte for byte. The host side: `./host_tests.sh benchsim` (the bench run on the Mac); `BENCH_MODEL_UPDATE=1 duell/build/host/bench_sim1` rewrites `firmware/src/bench_model.h` after a change of the sound code.

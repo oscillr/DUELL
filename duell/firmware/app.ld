@@ -1,0 +1,38 @@
+/* SPDX-License-Identifier: GPL-3.0-only
+ * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
+/* FELUCCA memory map.
+ * Code + constants execute in place from XIP (app.bin offset 0 = 0x02000120).
+ * 0x01C00000..0x01C06000 holds .ram_text (code that must run while the flash
+ * is busy: the flash driver); 0x01C06000..0x01C08000 stays for RAM-run debug.
+ * RAM  : .data/.bss (72 KiB): what the audio and key-scan interrupts touch, small variables
+ * POOL : big zero-initialised buffers (FX lines, canvases, the parts' engine memory, the main loop's work
+ *        buffers), section .pool. The same SRAM: the RAM / POOL boundary only splits the budget (1.5: 96 / 336
+ *        KiB -> 72 / 360 KiB); tools/build.py reads both lengths from here
+ * STACKS with 256-byte guard bands; NOINIT survives resets and UBOOT entry.
+ * 0x01C7FD4C.. is reserved: boot_info (52 B, the SDK's linker.ld: 0x1c7fe00 - 128 - 52), boot-state mailbox (0x01C7FD80), vector table
+ * (DUELL bench branch, 2026-10-14: NOINIT ended at 0x01C7FD50, 4 bytes into boot_info on paper; nothing lay there: .noinit is 0xCC
+ * bytes at 0x01C7C000 (duell.elf, 0.2.12). Now it ends where boot_info starts; the image is the same) */
+MEMORY
+{
+    XIP    (rx)  : ORIGIN = 0x02000120, LENGTH = 0x8DFBC
+    RAMTEXT (rwx): ORIGIN = 0x01C00000, LENGTH = 0x6000
+    RAM    (rwx) : ORIGIN = 0x01C08000, LENGTH = 72K
+    POOL   (rw)  : ORIGIN = 0x01C1A000, LENGTH = 0x5A000
+    NOINIT (rw)  : ORIGIN = 0x01C7C000, LENGTH = 0x3D4C
+}
+/* DUELL bench builds: .bench_text / .bench_rodata / .bench_bss (src/bench.c) after all other code, constants and data; .pool.* after .pool
+ * (app_hot.ld says why; none of these input sections exists in a normal build) */
+SECTIONS
+{
+    .text : { KEEP(*(.text.crt0)) *(.text*) *(.rodata*) *(.bench_text*) *(.bench_rodata*) . = ALIGN(4); _etext = .; } > XIP
+    .ram_text : { _rt_start = .; KEEP(*(.ram_text*)) . = ALIGN(4); _rt_end = .; } > RAMTEXT AT > XIP
+    _rt_load = LOADADDR(.ram_text);
+    .data : { . = ALIGN(4); _data_start = .; *(.data*) *(.sdata*) *(.bench_data*) . = ALIGN(4); _data_end = .; } > RAM AT > XIP
+    _data_load = LOADADDR(.data);
+    .bss (NOLOAD) : { _bss_start = .; *(.bss*) *(.sbss*) *(COMMON) *(.bench_bss*) . = ALIGN(4); _bss_end = .; } > RAM
+    .pool (NOLOAD) : { _pool_start = .; *(.pool) *(.pool.*) . = ALIGN(4); _pool_end = .; } > POOL
+    .noinit (NOLOAD) : { *(.noinit*) } > NOINIT
+    _guard0 = 0x01C74000; _ustack_lo = 0x01C74100; _ustack_top = 0x01C7A000;
+    _guard1 = 0x01C7A000; _sstack_lo = 0x01C7A100; _sstack_top = 0x01C7C000;
+    /DISCARD/ : { *(.comment) *(.note*) }
+}

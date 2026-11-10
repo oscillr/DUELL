@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>DUELL cheat sheet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,600;0,700;1,400;1,700&family=Krona+One&family=Oswald:wght@600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0e0c1b;--panel:#1e1330;--fg:#f2eefa;--mute:#b9b0d0;--line:#2e1b4e;--pink:#fe8cc1;--vio:#8a3ebf;--vio2:#6545b7;--acc:#fe8cc1;--chip:#2e1b4e;--chipfg:#f2eefa}
+*{box-sizing:border-box}
+body{margin:0;background:radial-gradient(1200px 600px at 85% -10%,#2a1650 0,transparent 60%),var(--bg);color:var(--fg);font:14px/1.45 "DM Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:1100px;margin:0 auto;padding:20px 16px}
+header{padding:18px 0 10px;border-bottom:2px solid var(--vio2)}
+header h1{margin:0;font:400 clamp(40px,9vw,72px)/1 "Krona One","DM Sans",sans-serif;letter-spacing:.01em;color:var(--fg)}
+header .tag{margin:10px 0 0;font-size:clamp(16px,3.4vw,22px);text-transform:uppercase;color:var(--fg)}
+header .tag i{font-weight:400}header .tag b{font-weight:700}
+header .by{margin:6px 0 0;font-size:clamp(15px,3vw,18px);letter-spacing:.22em;color:var(--pink)}
+header .sub{margin:8px 0 0;color:var(--mute)}
+header .stamp{margin:4px 0 0;font-size:12px;color:var(--mute)}
+.bar{margin:12px 0 4px}
+button{font:inherit;font-family:"Oswald","DM Sans",sans-serif;font-weight:600;letter-spacing:.08em;padding:6px 18px;border:0;background:var(--pink);color:#0e0c1b;border-radius:10px;cursor:pointer}
+button:hover{background:#ffa6d0}
+.cols{columns:2 420px;column-gap:24px}
+section{break-inside:avoid;margin:0 0 14px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:4px 14px 10px}
+h2{font:600 16px/1.2 "Oswald","DM Sans",sans-serif;margin:10px 0 4px;padding-bottom:3px;border-bottom:2px solid var(--vio);color:var(--pink);text-transform:uppercase;letter-spacing:.1em}
+.row{display:grid;grid-template-columns:42% 1fr;gap:8px;padding:4px 0;border-bottom:1px solid var(--line);break-inside:avoid}
+.g{font-weight:600}
+.g b{display:inline-block;padding:0 6px;border-radius:5px;background:var(--chip);color:var(--chipfg);border:1px solid var(--vio2);font-size:.92em}
+.e{color:var(--fg)}
+ul{margin:4px 0 0;padding-left:18px}
+li{margin:3px 0;break-inside:avoid}
+li::marker{color:var(--pink)}
+.dg{display:grid;gap:5px;margin:6px 0 4px;font-size:.85em;text-align:center}
+.dg .r{display:flex;gap:5px;align-items:stretch}
+.dg .r>div{flex:1;border:1px solid var(--vio2);border-radius:6px;padding:3px 2px;background:var(--chip)}
+.dg .scr{flex:1.6;color:var(--mute)}
+.dg .keys{border-style:dashed}
+footer{margin-top:10px;font-size:12px;color:var(--mute)}
+@media (max-width:560px){.row{grid-template-columns:1fr;gap:2px}section{padding:4px 12px 10px}}
+@media print{
+ @page{size:A4;margin:8mm}
+ :root{--bg:#fff;--panel:#fff;--fg:#000;--mute:#333;--line:#bbb;--acc:#b0206a;--pink:#d6247f;--vio:#6a2c9a;--vio2:#6a2c9a;--chip:#fff;--chipfg:#000}
+ body{font-size:9pt;line-height:1.15;background:#fff;color:#000}
+ main{max-width:none;padding:0}
+ header{padding:0 0 1.5mm;border-bottom:1.5px solid var(--vio)}
+ header h1{font-size:20pt;color:#000}
+ header .tag{font-size:10pt;margin-top:1mm;color:#000}
+ header .by{font-size:9pt;margin-top:.5mm;color:var(--pink)}
+ header .sub{margin-top:1mm}
+ header .sub,header .stamp,footer{font-size:9pt}
+ .bar{display:none}
+ footer{display:none}
+ .cols{columns:2;column-gap:5mm}
+ section{break-inside:auto;margin:0 0 1.2mm;border:0;border-radius:0;padding:0;background:#fff}
+ h2{font-size:10pt;margin:2mm 0 1mm;color:var(--vio);border-bottom-color:var(--pink)}
+ .row{padding:.3px 0;gap:4px;grid-template-columns:34% 1fr}
+ .g b{border-color:var(--vio)}
+ li{margin:0}
+}
+</style>
+</head>
+<body>
+<main>
+<header>
+ <h1>DUELL</h1>
+ <p class="tag"><i>Multi</i><b>Morphing</b> Bitimbral Synthesizer</p>
+ <p class="by">by OSCILL/R</p>
+ <p class="sub">cheat sheet for the M-VAVE FM-1</p>
+ <p class="stamp">checked against DUELL 1.2 &middot; community-style quick reference; full details in SPEC.md and docs/QUICKSTART.md</p>
+ <p class="bar"><button type="button" onclick="window.print()">Print</button></p>
+</header>
+
+<div class="cols">
+
+<section>
+<h2>Part marker</h2>
+<svg viewBox="0 0 440 150" width="100%" role="img" aria-label="The part marker at the top of a page: part number, morph end letter, voices" style="display:block;max-width:440px;color:var(--fg);font:12px/1.2 sans-serif">
+<g fill="none" stroke="var(--mute)" stroke-width="1"><path d="M160 46V70H205"/><path d="M100 46V96H205"/><path d="M40 46V122H205"/></g>
+<rect x="10" y="10" width="180" height="36" rx="18" fill="var(--pink)"/>
+<rect x="70" y="11" width="119" height="34" rx="17" fill="var(--chip)" stroke="var(--pink)"/>
+<rect x="70" y="11" width="10" height="34" fill="var(--chip)"/>
+<g text-anchor="middle" font-size="18" font-weight="700"><text x="40" y="35" fill="#fff">1</text><text x="100" y="35" fill="currentColor">A</text><text x="160" y="35" fill="currentColor">8</text></g>
+<g fill="currentColor"><text x="212" y="50">In POLY: the notes this part can still play.</text><text x="212" y="66">It drops while the other part plays.</text><text x="212" y="82">M, L, U in MONO, LEGATO, UNISON.</text>
+<text x="212" y="100">The letter shows which morph end you edit, A or B.</text>
+<text x="212" y="126">The number marks part 1 or part 2.</text></g>
+</svg>
+</section>
+
+<section>
+<h2>Getting around</h2>
+<div class="row"><div class="g">Turn <b>SELECT</b></div><div class="e">Switches between the pages of a module; in lists and the menu it moves the row.</div></div>
+<div class="row"><div class="g">Tap <b>FX</b> / <b>SEL</b> / <b>ENV</b> / <b>LFO</b> / <b>EDIT</b> / <b>GLO</b> / <b>ARP</b> / <b>SEQ</b></div><div class="e">Switches between the modules.</div></div>
+<div class="row"><div class="g">Tap <b>HOME</b></div><div class="e">MORPH page; turn <b>SELECT</b> for MORPH SET and MODE.</div></div>
+<div class="row"><div class="g">Hold <b>HOME</b></div><div class="e">Opens the menu. <b>HOME</b> closes it.</div></div>
+<div class="row"><div class="g">Press <b>ALGORITHM</b></div><div class="e">Selects the part you edit. On the MORPH page and on PERFORM: PART 1, BOTH, PART 2.</div></div>
+<div class="row"><div class="g">Hold <b>EDIT</b> / <b>LFO</b> / <b>ENV</b> / <b>ARP</b> / <b>GLO</b> / <b>SEQ</b> / <b>REC</b></div><div class="e">Quick page: the four knobs become performance controls. Let go to go back.</div></div>
+<div class="row"><div class="g">Hold <b>FX</b></div><div class="e">PERFORM page. Tap <b>FX</b> to leave.</div></div>
+<div class="row"><div class="g">Hold <b>OCT-</b> + turn a knob</div><div class="e">Resets that knob's card to its default. In a dialog or menu <b>OCT-</b> means back / no, <b>OCT+</b> do it / yes.</div></div>
+</section>
+
+<section>
+<h2>Playing</h2>
+<div class="row"><div class="g">Tap <b>OCT-</b> / <b>OCT+</b></div><div class="e">Octave down / up of the keys. Both together reset the octave to 0.</div></div>
+<div class="row"><div class="g">Tap <b>REC</b> (not on sequencer pages)</div><div class="e">HOLD for the part(s) the keys play. Tap again to release.</div></div>
+<div class="row"><div class="g">Tap <b>PLAY/STOP</b></div><div class="e">Stopped: starts when you let go. Running: stops at once.</div></div>
+<div class="row"><div class="g">Hold <b>PLAY/STOP</b>, or press it twice</div><div class="e">STOP ALL: silences everything, delay, chorus and reverb tails too.</div></div>
+<div class="row"><div class="g">Hold <b>GLO</b> + <b>OCT-</b> / <b>OCT+</b></div><div class="e">Mutes / unmutes part 1 / part 2.</div></div>
+<div class="row"><div class="g">Mod wheel (CC1)</div><div class="e">Moves the MORPH fader.</div></div>
+</section>
+
+<section>
+<h2>Sound</h2>
+<div class="row"><div class="g">MORPH page</div><div class="e">Knob 1 glides from End A to End B. Knob 2 ROLL: turn left to roll End A, right to roll End B. Knob 3 UNDO goes back up to 2 rolls. End B is saved exactly as it sounds, with the patch.</div></div>
+</section>
+
+<section>
+<h2>Sequencer / patterns</h2>
+<div class="row"><div class="g">Turn a knob with <b>REC</b> armed</div><div class="e">Records a parameter lock. Tap <b>SEQ</b>, turn <b>SELECT</b> to PARAMETER LOCKS to change or delete them.</div></div>
+<div class="row"><div class="g">Hold <b>SEQ</b></div><div class="e">QUICK SEQ tools on the white keys from F3.</div></div>
+</section>
+
+<section>
+<h2>Saving &amp; loading</h2>
+<div class="row"><div class="g">Tap <b>SAVE</b></div><div class="e">Opens the page that fits: PATTERNS on a sequencer page, otherwise MULTIS in LAYER and PATCHES in DUEL and STEREO. <b>SELECT</b> moves between PATCHES, PATTERNS, MULTIS, TOOLS.</div></div>
+<div class="row"><div class="g">Hold <b>SAVE</b></div><div class="e">Overwrites the slot your sound came from; <b>OCT+</b> yes, <b>OCT-</b> no. On the MORPH page with TARGET BOTH, each part goes over its own slot.</div></div>
+<div class="row"><div class="g">MIDI program change</div><div class="e">LAYER: program 0 to 15 on part 1's channel loads multis M01 to M16 (bank 0). DUEL and STEREO: bank 0, program n loads entry n of the PATCHES list; bank 1, program n loads patch slot n.</div></div>
+<div class="row"><div class="g">Backup (installer page or editor Backup page)</div><div class="e">Saves patches, multis, patterns, user wavetables and settings. A flash keeps your saved data; back up before every flash. Room for 128 patches, 16 multis (M01 to M16), 32 patterns (P01 to P32).</div></div>
+</section>
+
+<section>
+<h2>Good to know</h2>
+<ul>
+<li>The <b>PATCH LEVEL</b> is saved with the patch; the <b>PART LEVEL</b> on the mixer is yours.</li>
+<li><b>KEY VELOCITY</b> and <b>AFTERTOUCH</b> are on by default; switch them off in MENU &gt; CONTROL.</li>
+<li>Teach a CC with MIDI LEARN on the unit. CC1 mod wheel, CC11 expression, CC64 sustain pedal are inputs.</li>
+</ul>
+</section>
+
+</div>
+<footer>DUELL &middot; MultiMorphing Bitimbral Synthesizer &middot; by OSCILL/R &middot; checked against DUELL 1.2.</footer>
+</main>
+</body>
+</html>

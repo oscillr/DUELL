@@ -6,6 +6,16 @@ by OSCILL/R
 
 Each release: a one-line summary, then New, Fixed, Compatibility, Install, Files.
 
+## DUELL 1.2
+
+An update for the M-VAVE FM-1. Up to 16 voices a part from one shared voice pool over both cores, and it works with newer FM-1 units.
+
+- **New:** one shared pool of voices for both parts over both cores; the limit of 8 voices a part is gone (up to 16 a part, FM6 up to 12, 6 while the TWIN FILTER is COMB, VOICE no longer held to 4); the number on the screen is what really plays.
+- **New:** each part's AVAILABLE VOICES shows how many more notes that part can play right now and drops when the other part plays; a key on a part that shows 0 takes the oldest note of the part that holds more.
+- **Fixed:** no crackle when chords start, when knobs or MIDI CCs move or when the MORPH fader moves; WAVE chords in CHORD mode play clean; ANALOG clicks on loud parts; a rare WHEEL freeze with 8 voices; the panel lights stay on during saves; FM6's OP pages come right after the EDIT pages; updated SCALE and CHORD keyboards; UI improvements (two-digit voice numbers in the header, a steady voice number with the arp, lines under each parameter, text on its baseline).
+- **Fixed:** newer FM-1 units with the UC25HQ80 flash chip can save and update; the installer finds any FM-1 whatever its MIDI port is called; other FM-1 firmwares can be installed from DUELL.
+- **Install:** save a backup, use the installer page, and make a new backup with 1.2.
+
 ## DUELL 1.1
 
 An update for the M-VAVE FM-1. The whole user interface is redesigned, so you see more at a glance, and PERFORM, STRUM and MORPH have new things to play with.

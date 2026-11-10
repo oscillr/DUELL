@@ -8,16 +8,16 @@ Stage 1 goal: core 1 plays part 2 (its voices, part effects and part mix into it
 
 | File | What |
 |---|---|
-| `felucca-base/firmware/src/twocore.h` | The words (`tc_mb`), the check value, the reasons (`TCR_*`) and which are strikes, core 1's side (`tc_c1_step`, one pass of its waiting loop), core 0's state type, the stack mark. Plain C, compiles on the unit and on a computer. |
-| `felucca-base/firmware/src/twocore.c` | Core 0's side: the hand-over primitives (`tc_post`, `tc_take`, `tc_answer`, `tc_closed`), the safety net (`tc_fail`, `tc_hold_clean`, `tc_watch`), the flash park (`tc_flash_park`), power-on (`tc_boot_reason`, `tc_boot`, `tc_arm`). The runner and the job are in `src/twocore_run.c` (section 8). |
-| `felucca-base/firmware/hal/fm1_core1.h` | The unit's half of the hal: core 1's registers, its entry, its stack limit, its waiting loop in RAM (calls `tc_c1_step`), `fm1_cpu1_start`. From the bench code that ran on the owner's unit, changed to the words below. |
-| `felucca-base/firmware/hal/fm1_sys.h` | `fm1_cpu1_halt` (hold core 1; first in every reset path through `FM1_RESET_PREP`), `fm1_supply_stock` / `fm1_supply_read` (M-VAVE's stock supply levels: VDC14 1.60 V, SYSVDD 1.38 V, one step per 100 us, up only), all under `DUELL_TWOCORE`. |
-| `felucca-base/firmware/hal/fm1_irq.h` | `FM1_RESET_PREP()` in the fault report (nothing without the flag). |
+| `duell/firmware/src/twocore.h` | The words (`tc_mb`), the check value, the reasons (`TCR_*`) and which are strikes, core 1's side (`tc_c1_step`, one pass of its waiting loop), core 0's state type, the stack mark. Plain C, compiles on the unit and on a computer. |
+| `duell/firmware/src/twocore.c` | Core 0's side: the hand-over primitives (`tc_post`, `tc_take`, `tc_answer`, `tc_closed`), the safety net (`tc_fail`, `tc_hold_clean`, `tc_watch`), the flash park (`tc_flash_park`), power-on (`tc_boot_reason`, `tc_boot`, `tc_arm`). The runner and the job are in `src/twocore_run.c` (section 8). |
+| `duell/firmware/hal/fm1_core1.h` | The unit's half of the hal: core 1's registers, its entry, its stack limit, its waiting loop in RAM (calls `tc_c1_step`), `fm1_cpu1_start`. From the bench code that ran on the owner's unit, changed to the words below. |
+| `duell/firmware/hal/fm1_sys.h` | `fm1_cpu1_halt` (hold core 1; first in every reset path through `FM1_RESET_PREP`), `fm1_supply_stock` / `fm1_supply_read` (M-VAVE's stock supply levels: VDC14 1.60 V, SYSVDD 1.38 V, one step per 100 us, up only), all under `DUELL_TWOCORE`. |
+| `duell/firmware/hal/fm1_irq.h` | `FM1_RESET_PREP()` in the fault report (nothing without the flag). |
 | `felucca.c`, `main.c`, `storage_hw.c` | The hooks, each under `#if DUELL_TWOCORE`: the includes; core 1 held at the very start of `fm1_cstart`; `tc_boot` before `audio_init`; `tc_watch` every main-loop pass; `tc_hold_clean` before an update; `tc_flash_park` before every flash read, erase and program. |
-| `felucca-base/tools/build.py` | `DUELL_TWOCORE=0/1` passed through like the other flags; `=1` needs a `BENCH_TAG` (a developer build) and is refused together with `DUELL_CORE1_PROBE`; its elfcheck expects the larger `.noinit` then. |
-| `felucca-base/tools/elfcheck.py` | `tc_nv` (12 B) in `NOINIT_OBJECTS`, optional (only `DUELL_TWOCORE` builds have it). The source scan reads every source, compiled in or not, so the record is declared by its name in `hal/fm1_core1.h`, not through a macro. |
-| `felucca-base/tests/twocore_hal_host.h` | The computer's half of the hal: atomics, a fault hook on every load and store, a simulated clock, a simulated start and hold. |
-| `felucca-base/tests/twocore_stage1_test.c` | `./host_tests.sh tcstage1` (in the default list since job 5): the primitives and the safety net, one thread, every case exact (section 7). |
+| `duell/tools/build.py` | `DUELL_TWOCORE=0/1` passed through like the other flags; `=1` needs a `BENCH_TAG` (a developer build) and is refused together with `DUELL_CORE1_PROBE`; its elfcheck expects the larger `.noinit` then. |
+| `duell/tools/elfcheck.py` | `tc_nv` (12 B) in `NOINIT_OBJECTS`, optional (only `DUELL_TWOCORE` builds have it). The source scan reads every source, compiled in or not, so the record is declared by its name in `hal/fm1_core1.h`, not through a macro. |
+| `duell/tests/twocore_hal_host.h` | The computer's half of the hal: atomics, a fault hook on every load and store, a simulated clock, a simulated start and hold. |
+| `duell/tests/twocore_stage1_test.c` | `./host_tests.sh tcstage1` (in the default list since job 5): the primitives and the safety net, one thread, every case exact (section 7). |
 
 RAM with the flag on (estimated from the declarations): core 1's stacks 4,352 B, the pattern block 1,024 B, the words 128 B, core 0's state 32 B, the record 12 B (`.noinit`), about 5.5 KB in all; code: core 0's side well under 1 KB, core 1's loop a few hundred bytes (in RAM). Nothing with the flag off.
 

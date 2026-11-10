@@ -40,10 +40,10 @@ Put both files in the project folder `DUELL/owner_edits/` (make it if it is not 
 
 ## 5. What happens next (the developer)
 
-`felucca-base/tools/import_owner_edits.py` reads both files, compares every saved patch with its factory sound and every saved multi with its factory record, and writes only what is different:
+`duell/tools/import_owner_edits.py` reads both files, compares every saved patch with its factory sound and every saved multi with its factory record, and writes only what is different:
 
-- `felucca-base/tools/owner_sounds.py`: your patches, as the factory data (each replaces the factory sound of its slot);
-- `felucca-base/tools/owner_multis.py` and `felucca-base/tools/factory_multis/Mnn.bin`: your multis, byte for byte.
+- `duell/tools/owner_sounds.py`: your patches, as the factory data (each replaces the factory sound of its slot);
+- `duell/tools/owner_multis.py` and `duell/tools/factory_multis/Mnn.bin`: your multis, byte for byte.
 
 Then the build, the tests and the sound audit run. **Your values are never changed to pass a test.** If the audit finds something (for example a patch much quieter than the others, or one that clips), the developer tells you which patch and what the audit says, and you decide.
 

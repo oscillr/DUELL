@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: GPL-3.0-only -->
 # The MIDI MAP engine (job C): what the unit page (job H) and the editor tab (job I) build on
 
-The design is `docs/design/MIDI_MAP_DESIGN_2.md`; the shipped list is `docs/MIDI_MAP_DEFAULTS.csv` (a change of the map is a change of that file). Code: `felucca-base/firmware/src/midi_map.h` (constants),
+The design is `docs/design/MIDI_MAP_DESIGN_2.md`; the shipped list is `docs/MIDI_MAP_DEFAULTS.csv` (a change of the map is a change of that file). Code: `duell/firmware/src/midi_map.h` (constants),
 `midi_control.c` (the table and the CC dispatch, ISR side), `midi_learn.c` (edits, names, facts, the learn page's calls, main loop), `settings_persist.c` (the record), `editor_map.c` and `editor_learn.c` (commands),
 `tools/gen_midi_map.py` (csv to header). Protocol: `web/EDITOR_PROTOCOL.md` "MIDI MAP".
 

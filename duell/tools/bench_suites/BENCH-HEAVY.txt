@@ -1,0 +1,898 @@
+# BENCH-HEAVY (2026-11-04), a bench suite for the voice share (VS_SHARE): core 1 renders half of part 1's voices while part 2 is silent.
+# COPY of DUELL/working docs/patches/bench-heavy-scenes_2026-11-04.txt (the source of record: edit THAT file, then copy it here again). The sh_* counters are in the result line since the 2026-11-04 wiring (bench.c, bench_run.py SH_COLS).
+# Needs: the 12 patches of bench-heavy-patches_2026-11-04.json in slots #117..#128 and (for the last group) the 4 multis of bench-heavy-multis_2026-11-04.json in M13..M16, on FM1_901 only, a bench build (BENCHV7 or newer, TC_MEAS).
+# Run: python3 tools/bench_run.py --onset --suite BENCH-HEAVY            (--only 'BH_S1_*' for one group)
+# Estimated time, one run, no repeats: about 8 minutes (43 tests of about 10 s: 6 s of play, 1 s tail, setup). Estimate, not measured.
+# Scene: STEREO (each part its own channel), only channel 1 plays, so part 2 (BENCH LOFI, loaded, not muted) is silent and the share can run. Chord keys DIA7 OPEN are in each patch: 1 key = 4 voices.
+#   S1  2 keys = 8 voices, budget ON (the number the owner sees), two cores   -> the share runs; read notes1 (AVAILABLE VOICES) against vox
+#   S2  3 keys = 12 voices, budget OPEN (past every cap), two cores           -> the share under overload
+#   S3  as S1 with core 1 treated as down (tune core1 off)                  -> the one-core reference of S1 (the share must not run: sh_posts 0)
+#   S4  both parts play, 2 keys each, budget ON                              -> the normal two-core case (the share must not run: sh_posts 0)
+#   S5  the four multis from the multi file, same keys as S1 / S4
+# Globals (same in every test; a multi holds the first four, MASTER is the device's): delay OCT+ (G_DMODE 15 = 3), reverb SHIM (G_RTYPE 24 = 3) pitch DOWN (G_SHPITCH 26 = 1) mod 50 (G_SHMOD 17 = 50), MASTER COMP 4, WIDTH 150, BASS MONO 3.
+# Pass (as POLY-MAX-BUDGET-A, item 139): 0 silent, 0 pauses, 0 missed halves over the whole run, shed 0, LIGHT FX 0, peak <= 90 %.
+suite BENCH-HEAVY
+
+test BH_S1_ANALOG  BENCH ANALOG #117, part 2 silent, 2 keys x4, budget ON, core 1 on
+mode STEREO
+load patch 1 #117 "BENCH ANALOG"
+load patch 2 #121 "BENCH LOFI"
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget ON
+tune core1 on
+at 0.0  chord C3 G3 vel 100 ch 1
+at 6.0  release
+tail 1
+measure 1.0 6.0
+expect report
+
+test BH_S1_WAVE  BENCH WAVE #118, part 2 silent, 2 keys x4, budget ON, core 1 on
+mode STEREO
+load patch 1 #118 "BENCH WAVE"
+load patch 2 #121 "BENCH LOFI"
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget ON
+tune core1 on
+at 0.0  chord C3 G3 vel 100 ch 1
+at 6.0  release
+tail 1
+measure 1.0 6.0
+expect report
+
+test BH_S1_FM6  BENCH FM6 #119, part 2 silent, 2 keys x4, budget ON, core 1 on
+mode STEREO
+load patch 1 #119 "BENCH FM6"
+load patch 2 #121 "BENCH LOFI"
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget ON
+tune core1 on
+at 0.0  chord C3 G3 vel 100 ch 1
+at 6.0  release
+tail 1
+measure 1.0 6.0
+expect report
+
+test BH_S1_PHASE  BENCH PHASE #120, part 2 silent, 2 keys x4, budget ON, core 1 on
+mode STEREO
+load patch 1 #120 "BENCH PHASE"
+load patch 2 #121 "BENCH LOFI"
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget ON
+tune core1 on
+at 0.0  chord C3 G3 vel 100 ch 1
+at 6.0  release
+tail 1
+measure 1.0 6.0
+expect report
+
+test BH_S1_LOFI  BENCH LOFI #121, part 2 silent, 2 keys x4, budget ON, core 1 on
+mode STEREO
+load patch 1 #121 "BENCH LOFI"
+load patch 2 #121 "BENCH LOFI"
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget ON
+tune core1 on
+at 0.0  chord C3 G3 vel 100 ch 1
+at 6.0  release
+tail 1
+measure 1.0 6.0
+expect report
+
+test BH_S1_NOISE  BENCH NOISE #122, part 2 silent, 2 keys x4, budget ON, core 1 on
+mode STEREO
+load patch 1 #122 "BENCH NOISE"
+load patch 2 #121 "BENCH LOFI"
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget ON
+tune core1 on
+at 0.0  chord C3 G3 vel 100 ch 1
+at 6.0  release
+tail 1
+measure 1.0 6.0
+expect report
+
+test BH_S1_TRIO  BENCH TRIO #123, part 2 silent, 2 keys x4, budget ON, core 1 on
+mode STEREO
+load patch 1 #123 "BENCH TRIO"
+load patch 2 #121 "BENCH LOFI"
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget ON
+tune core1 on
+at 0.0  chord C3 G3 vel 100 ch 1
+at 6.0  release
+tail 1
+measure 1.0 6.0
+expect report
+
+test BH_S1_VOICE  BENCH VOICE #124, part 2 silent, 2 keys x4, budget ON, core 1 on
+mode STEREO
+load patch 1 #124 "BENCH VOICE"
+load patch 2 #121 "BENCH LOFI"
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget ON
+tune core1 on
+at 0.0  chord C3 G3 vel 100 ch 1
+at 6.0  release
+tail 1
+measure 1.0 6.0
+expect report
+
+test BH_S1_WHEEL  BENCH WHEEL #125, part 2 silent, 2 keys x4, budget ON, core 1 on
+mode STEREO
+load patch 1 #125 "BENCH WHEEL"
+load patch 2 #121 "BENCH LOFI"
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget ON
+tune core1 on
+at 0.0  chord C3 G3 vel 100 ch 1
+at 6.0  release
+tail 1
+measure 1.0 6.0
+expect report
+
+test BH_S1_PHYS  BENCH PHYS #126, part 2 silent, 2 keys x4, budget ON, core 1 on
+mode STEREO
+load patch 1 #126 "BENCH PHYS"
+load patch 2 #121 "BENCH LOFI"
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget ON
+tune core1 on
+at 0.0  chord C3 G3 vel 100 ch 1
+at 6.0  release
+tail 1
+measure 1.0 6.0
+expect report
+
+test BH_S1_WORST1  BENCH WORST1 #127, part 2 silent, 2 keys x4, budget ON, core 1 on
+mode STEREO
+load patch 1 #127 "BENCH WORST1"
+load patch 2 #121 "BENCH LOFI"
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget ON
+tune core1 on
+at 0.0  chord C3 G3 vel 100 ch 1
+at 6.0  release
+tail 1
+measure 1.0 6.0
+expect report
+
+test BH_S1_WORST2  BENCH WORST2 #128, part 2 silent, 2 keys x4, budget ON, core 1 on
+mode STEREO
+load patch 1 #128 "BENCH WORST2"
+load patch 2 #121 "BENCH LOFI"
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget ON
+tune core1 on
+at 0.0  chord C3 G3 vel 100 ch 1
+at 6.0  release
+tail 1
+measure 1.0 6.0
+expect report
+
+test BH_S2_ANALOG  BENCH ANALOG #117, part 2 silent, 3 keys x4, budget OPEN, core 1 on
+mode STEREO
+load patch 1 #117 "BENCH ANALOG"
+load patch 2 #121 "BENCH LOFI"
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget OPEN
+tune core1 on
+at 0.0  chord C3 E3 G3 vel 100 ch 1
+at 6.0  release
+tail 1
+measure 1.0 6.0
+expect report
+
+test BH_S2_WAVE  BENCH WAVE #118, part 2 silent, 3 keys x4, budget OPEN, core 1 on
+mode STEREO
+load patch 1 #118 "BENCH WAVE"
+load patch 2 #121 "BENCH LOFI"
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget OPEN
+tune core1 on
+at 0.0  chord C3 E3 G3 vel 100 ch 1
+at 6.0  release
+tail 1
+measure 1.0 6.0
+expect report
+
+test BH_S2_FM6  BENCH FM6 #119, part 2 silent, 3 keys x4, budget OPEN, core 1 on
+mode STEREO
+load patch 1 #119 "BENCH FM6"
+load patch 2 #121 "BENCH LOFI"
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget OPEN
+tune core1 on
+at 0.0  chord C3 E3 G3 vel 100 ch 1
+at 6.0  release
+tail 1
+measure 1.0 6.0
+expect report
+
+test BH_S2_PHASE  BENCH PHASE #120, part 2 silent, 3 keys x4, budget OPEN, core 1 on
+mode STEREO
+load patch 1 #120 "BENCH PHASE"
+load patch 2 #121 "BENCH LOFI"
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget OPEN
+tune core1 on
+at 0.0  chord C3 E3 G3 vel 100 ch 1
+at 6.0  release
+tail 1
+measure 1.0 6.0
+expect report
+
+test BH_S2_LOFI  BENCH LOFI #121, part 2 silent, 3 keys x4, budget OPEN, core 1 on
+mode STEREO
+load patch 1 #121 "BENCH LOFI"
+load patch 2 #121 "BENCH LOFI"
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget OPEN
+tune core1 on
+at 0.0  chord C3 E3 G3 vel 100 ch 1
+at 6.0  release
+tail 1
+measure 1.0 6.0
+expect report
+
+test BH_S2_NOISE  BENCH NOISE #122, part 2 silent, 3 keys x4, budget OPEN, core 1 on
+mode STEREO
+load patch 1 #122 "BENCH NOISE"
+load patch 2 #121 "BENCH LOFI"
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget OPEN
+tune core1 on
+at 0.0  chord C3 E3 G3 vel 100 ch 1
+at 6.0  release
+tail 1
+measure 1.0 6.0
+expect report
+
+test BH_S2_TRIO  BENCH TRIO #123, part 2 silent, 3 keys x4, budget OPEN, core 1 on
+mode STEREO
+load patch 1 #123 "BENCH TRIO"
+load patch 2 #121 "BENCH LOFI"
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget OPEN
+tune core1 on
+at 0.0  chord C3 E3 G3 vel 100 ch 1
+at 6.0  release
+tail 1
+measure 1.0 6.0
+expect report
+
+test BH_S2_VOICE  BENCH VOICE #124, part 2 silent, 3 keys x4, budget OPEN, core 1 on
+mode STEREO
+load patch 1 #124 "BENCH VOICE"
+load patch 2 #121 "BENCH LOFI"
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget OPEN
+tune core1 on
+at 0.0  chord C3 E3 G3 vel 100 ch 1
+at 6.0  release
+tail 1
+measure 1.0 6.0
+expect report
+
+test BH_S2_WHEEL  BENCH WHEEL #125, part 2 silent, 3 keys x4, budget OPEN, core 1 on
+mode STEREO
+load patch 1 #125 "BENCH WHEEL"
+load patch 2 #121 "BENCH LOFI"
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget OPEN
+tune core1 on
+at 0.0  chord C3 E3 G3 vel 100 ch 1
+at 6.0  release
+tail 1
+measure 1.0 6.0
+expect report
+
+test BH_S2_PHYS  BENCH PHYS #126, part 2 silent, 3 keys x4, budget OPEN, core 1 on
+mode STEREO
+load patch 1 #126 "BENCH PHYS"
+load patch 2 #121 "BENCH LOFI"
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget OPEN
+tune core1 on
+at 0.0  chord C3 E3 G3 vel 100 ch 1
+at 6.0  release
+tail 1
+measure 1.0 6.0
+expect report
+
+test BH_S2_WORST1  BENCH WORST1 #127, part 2 silent, 3 keys x4, budget OPEN, core 1 on
+mode STEREO
+load patch 1 #127 "BENCH WORST1"
+load patch 2 #121 "BENCH LOFI"
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget OPEN
+tune core1 on
+at 0.0  chord C3 E3 G3 vel 100 ch 1
+at 6.0  release
+tail 1
+measure 1.0 6.0
+expect report
+
+test BH_S2_WORST2  BENCH WORST2 #128, part 2 silent, 3 keys x4, budget OPEN, core 1 on
+mode STEREO
+load patch 1 #128 "BENCH WORST2"
+load patch 2 #121 "BENCH LOFI"
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget OPEN
+tune core1 on
+at 0.0  chord C3 E3 G3 vel 100 ch 1
+at 6.0  release
+tail 1
+measure 1.0 6.0
+expect report
+
+test BH_S3_ANALOG  BENCH ANALOG #117, part 2 silent, 2 keys x4, budget ON, core 1 off
+mode STEREO
+load patch 1 #117 "BENCH ANALOG"
+load patch 2 #121 "BENCH LOFI"
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget ON
+tune core1 off
+at 0.0  chord C3 G3 vel 100 ch 1
+at 6.0  release
+tail 1
+measure 1.0 6.0
+expect report
+
+test BH_S3_WAVE  BENCH WAVE #118, part 2 silent, 2 keys x4, budget ON, core 1 off
+mode STEREO
+load patch 1 #118 "BENCH WAVE"
+load patch 2 #121 "BENCH LOFI"
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget ON
+tune core1 off
+at 0.0  chord C3 G3 vel 100 ch 1
+at 6.0  release
+tail 1
+measure 1.0 6.0
+expect report
+
+test BH_S3_FM6  BENCH FM6 #119, part 2 silent, 2 keys x4, budget ON, core 1 off
+mode STEREO
+load patch 1 #119 "BENCH FM6"
+load patch 2 #121 "BENCH LOFI"
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget ON
+tune core1 off
+at 0.0  chord C3 G3 vel 100 ch 1
+at 6.0  release
+tail 1
+measure 1.0 6.0
+expect report
+
+test BH_S3_PHASE  BENCH PHASE #120, part 2 silent, 2 keys x4, budget ON, core 1 off
+mode STEREO
+load patch 1 #120 "BENCH PHASE"
+load patch 2 #121 "BENCH LOFI"
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget ON
+tune core1 off
+at 0.0  chord C3 G3 vel 100 ch 1
+at 6.0  release
+tail 1
+measure 1.0 6.0
+expect report
+
+test BH_S3_LOFI  BENCH LOFI #121, part 2 silent, 2 keys x4, budget ON, core 1 off
+mode STEREO
+load patch 1 #121 "BENCH LOFI"
+load patch 2 #121 "BENCH LOFI"
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget ON
+tune core1 off
+at 0.0  chord C3 G3 vel 100 ch 1
+at 6.0  release
+tail 1
+measure 1.0 6.0
+expect report
+
+test BH_S3_NOISE  BENCH NOISE #122, part 2 silent, 2 keys x4, budget ON, core 1 off
+mode STEREO
+load patch 1 #122 "BENCH NOISE"
+load patch 2 #121 "BENCH LOFI"
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget ON
+tune core1 off
+at 0.0  chord C3 G3 vel 100 ch 1
+at 6.0  release
+tail 1
+measure 1.0 6.0
+expect report
+
+test BH_S3_TRIO  BENCH TRIO #123, part 2 silent, 2 keys x4, budget ON, core 1 off
+mode STEREO
+load patch 1 #123 "BENCH TRIO"
+load patch 2 #121 "BENCH LOFI"
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget ON
+tune core1 off
+at 0.0  chord C3 G3 vel 100 ch 1
+at 6.0  release
+tail 1
+measure 1.0 6.0
+expect report
+
+test BH_S3_VOICE  BENCH VOICE #124, part 2 silent, 2 keys x4, budget ON, core 1 off
+mode STEREO
+load patch 1 #124 "BENCH VOICE"
+load patch 2 #121 "BENCH LOFI"
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget ON
+tune core1 off
+at 0.0  chord C3 G3 vel 100 ch 1
+at 6.0  release
+tail 1
+measure 1.0 6.0
+expect report
+
+test BH_S3_WHEEL  BENCH WHEEL #125, part 2 silent, 2 keys x4, budget ON, core 1 off
+mode STEREO
+load patch 1 #125 "BENCH WHEEL"
+load patch 2 #121 "BENCH LOFI"
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget ON
+tune core1 off
+at 0.0  chord C3 G3 vel 100 ch 1
+at 6.0  release
+tail 1
+measure 1.0 6.0
+expect report
+
+test BH_S3_PHYS  BENCH PHYS #126, part 2 silent, 2 keys x4, budget ON, core 1 off
+mode STEREO
+load patch 1 #126 "BENCH PHYS"
+load patch 2 #121 "BENCH LOFI"
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget ON
+tune core1 off
+at 0.0  chord C3 G3 vel 100 ch 1
+at 6.0  release
+tail 1
+measure 1.0 6.0
+expect report
+
+test BH_S3_WORST1  BENCH WORST1 #127, part 2 silent, 2 keys x4, budget ON, core 1 off
+mode STEREO
+load patch 1 #127 "BENCH WORST1"
+load patch 2 #121 "BENCH LOFI"
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget ON
+tune core1 off
+at 0.0  chord C3 G3 vel 100 ch 1
+at 6.0  release
+tail 1
+measure 1.0 6.0
+expect report
+
+test BH_S3_WORST2  BENCH WORST2 #128, part 2 silent, 2 keys x4, budget ON, core 1 off
+mode STEREO
+load patch 1 #128 "BENCH WORST2"
+load patch 2 #121 "BENCH LOFI"
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget ON
+tune core1 off
+at 0.0  chord C3 G3 vel 100 ch 1
+at 6.0  release
+tail 1
+measure 1.0 6.0
+expect report
+
+test BH_S4_ANALOG_WAVE  BENCH ANALOG + BENCH WAVE, both parts play, 2 keys x4 each, budget ON
+mode STEREO
+load patch 1 #117 "BENCH ANALOG"
+load patch 2 #118 "BENCH WAVE"
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget ON
+tune core1 on
+at 0.0  chord C3 G3 vel 100 ch 1
+at 0.0  chord C3 G3 vel 100 ch 2
+at 6.0  release
+tail 1
+measure 1.0 6.0
+expect report
+
+test BH_S4_WAVE_ANALOG  BENCH WAVE + BENCH ANALOG, both parts play, 2 keys x4 each, budget ON
+mode STEREO
+load patch 1 #118 "BENCH WAVE"
+load patch 2 #117 "BENCH ANALOG"
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget ON
+tune core1 on
+at 0.0  chord C3 G3 vel 100 ch 1
+at 0.0  chord C3 G3 vel 100 ch 2
+at 6.0  release
+tail 1
+measure 1.0 6.0
+expect report
+
+test BH_S4_WORST2_ANALOG  BENCH WORST2 + BENCH ANALOG, both parts play, 2 keys x4 each, budget ON
+mode STEREO
+load patch 1 #128 "BENCH WORST2"
+load patch 2 #117 "BENCH ANALOG"
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget ON
+tune core1 on
+at 0.0  chord C3 G3 vel 100 ch 1
+at 0.0  chord C3 G3 vel 100 ch 2
+at 6.0  release
+tail 1
+measure 1.0 6.0
+expect report
+
+test BH_S5_BENCHSHARE1  multi M13 BENCH SHARE1, part 2 silent, 2 keys x4, budget ON
+load multi 13 "BENCH SHARE1"
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+budget ON
+tune core1 on
+at 0.0  chord C3 G3 vel 100 ch 1
+at 6.0  release
+tail 1
+measure 1.0 6.0
+expect report
+
+test BH_S5_BENCHSHARE2  multi M14 BENCH SHARE2, part 2 silent, 2 keys x4, budget ON
+load multi 14 "BENCH SHARE2"
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+budget ON
+tune core1 on
+at 0.0  chord C3 G3 vel 100 ch 1
+at 6.0  release
+tail 1
+measure 1.0 6.0
+expect report
+
+test BH_S5_BENCHSHARE3  multi M15 BENCH SHARE3, part 2 silent, 2 keys x4, budget ON
+load multi 15 "BENCH SHARE3"
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+budget ON
+tune core1 on
+at 0.0  chord C3 G3 vel 100 ch 1
+at 6.0  release
+tail 1
+measure 1.0 6.0
+expect report
+
+test BH_S5_BENCHBOTH  multi M16 BENCH BOTH, both parts play, 2 keys x4 each, budget ON
+load multi 16 "BENCH BOTH"
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+budget ON
+tune core1 on
+at 0.0  chord C3 G3 vel 100 ch 1
+at 0.0  chord C3 G3 vel 100 ch 2
+at 6.0  release
+tail 1
+measure 1.0 6.0
+expect report
+

@@ -3,7 +3,7 @@
 import os, subprocess, sys
 from pathlib import Path
 root = Path(__file__).resolve().parent
-base = root / "felucca-base"
+base = root / "duell"
 env = dict(os.environ, DYLD_FALLBACK_LIBRARY_PATH="/opt/homebrew/lib")  # libraqm for Pillow
 (base / "build/gen").mkdir(parents=True, exist_ok=True)
 jobs = [("gen_version.py", "duell_version.h"), ("gen_aa_font.py", "ui_fonts.h", "--preset", "barlow"), ("gen_aa_icons.py", "ui_icons.h"),

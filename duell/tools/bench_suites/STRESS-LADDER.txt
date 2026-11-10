@@ -1,0 +1,1175 @@
+# STRESS-LADDER (2026-11-07): what each "everything on" piece costs. ANALOG, both parts, 6 keys each, budget OPEN, heavy globals.
+# Each test adds one group to the one before (cumulative). Internal cost rows, not voice numbers (rule G25).
+suite STRESS-LADDER
+
+test LD_00_ENV  ANALOG, 6 keys a part, cumulative up to ENV
+mode STEREO
+sound 1 ANALOG DEAR
+sound 2 ANALOG DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+set 1 2 90
+set 1 3 110
+set 1 4 90
+set 2 2 90
+set 2 3 110
+set 2 4 90
+budget OPEN
+tune core1 on
+at 0.0  chord C2 D2 E2 F2 G2 A2 vel 127 ch 1
+at 0.0  chord C3 D3 E3 F3 G3 A3 vel 127 ch 2
+at 4.0  release
+tail 1
+measure 1.0 4.0
+expect report
+
+test LD_01_FILTER  ANALOG, 6 keys a part, cumulative up to FILTER
+mode STEREO
+sound 1 ANALOG DEAR
+sound 2 ANALOG DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+set 1 2 90
+set 1 3 110
+set 1 4 90
+set 1 45 52
+set 1 46 96
+set 1 47 40
+set 1 48 2
+set 2 2 90
+set 2 3 110
+set 2 4 90
+set 2 45 52
+set 2 46 96
+set 2 47 40
+set 2 48 2
+budget OPEN
+tune core1 on
+at 0.0  chord C2 D2 E2 F2 G2 A2 vel 127 ch 1
+at 0.0  chord C3 D3 E3 F3 G3 A3 vel 127 ch 2
+at 4.0  release
+tail 1
+measure 1.0 4.0
+expect report
+
+test LD_02_TWIN  ANALOG, 6 keys a part, cumulative up to TWIN
+mode STEREO
+sound 1 ANALOG DEAR
+sound 2 ANALOG DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+set 1 2 90
+set 1 3 110
+set 1 4 90
+set 1 45 52
+set 1 46 96
+set 1 47 40
+set 1 48 2
+set 1 43 5
+set 1 106 40
+set 1 101 0
+set 1 128 1
+set 1 131 40
+set 1 132 50
+set 1 133 -50
+set 2 2 90
+set 2 3 110
+set 2 4 90
+set 2 45 52
+set 2 46 96
+set 2 47 40
+set 2 48 2
+set 2 43 5
+set 2 106 40
+set 2 101 0
+set 2 128 1
+set 2 131 40
+set 2 132 50
+set 2 133 -50
+budget OPEN
+tune core1 on
+at 0.0  chord C2 D2 E2 F2 G2 A2 vel 127 ch 1
+at 0.0  chord C3 D3 E3 F3 G3 A3 vel 127 ch 2
+at 4.0  release
+tail 1
+measure 1.0 4.0
+expect report
+
+test LD_03_SUB  ANALOG, 6 keys a part, cumulative up to SUB
+mode STEREO
+sound 1 ANALOG DEAR
+sound 2 ANALOG DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+set 1 2 90
+set 1 3 110
+set 1 4 90
+set 1 45 52
+set 1 46 96
+set 1 47 40
+set 1 48 2
+set 1 43 5
+set 1 106 40
+set 1 101 0
+set 1 128 1
+set 1 131 40
+set 1 132 50
+set 1 133 -50
+set 1 134 127
+set 1 135 0
+set 1 136 3
+set 1 137 127
+set 2 2 90
+set 2 3 110
+set 2 4 90
+set 2 45 52
+set 2 46 96
+set 2 47 40
+set 2 48 2
+set 2 43 5
+set 2 106 40
+set 2 101 0
+set 2 128 1
+set 2 131 40
+set 2 132 50
+set 2 133 -50
+set 2 134 127
+set 2 135 0
+set 2 136 3
+set 2 137 127
+budget OPEN
+tune core1 on
+at 0.0  chord C2 D2 E2 F2 G2 A2 vel 127 ch 1
+at 0.0  chord C3 D3 E3 F3 G3 A3 vel 127 ch 2
+at 4.0  release
+tail 1
+measure 1.0 4.0
+expect report
+
+test LD_04_LFO_CYCLE  ANALOG, 6 keys a part, cumulative up to LFO+CYCLE
+mode STEREO
+sound 1 ANALOG DEAR
+sound 2 ANALOG DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+set 1 2 90
+set 1 3 110
+set 1 4 90
+set 1 45 52
+set 1 46 96
+set 1 47 40
+set 1 48 2
+set 1 43 5
+set 1 106 40
+set 1 101 0
+set 1 128 1
+set 1 131 40
+set 1 132 50
+set 1 133 -50
+set 1 134 127
+set 1 135 0
+set 1 136 3
+set 1 137 127
+set 1 139 5
+set 1 140 5
+set 1 9 127
+set 1 10 3
+set 1 77 127
+set 1 78 4
+set 1 5 40
+set 1 6 10
+set 1 7 40
+set 1 13 10
+set 1 14 -40
+set 1 15 30
+set 2 2 90
+set 2 3 110
+set 2 4 90
+set 2 45 52
+set 2 46 96
+set 2 47 40
+set 2 48 2
+set 2 43 5
+set 2 106 40
+set 2 101 0
+set 2 128 1
+set 2 131 40
+set 2 132 50
+set 2 133 -50
+set 2 134 127
+set 2 135 0
+set 2 136 3
+set 2 137 127
+set 2 139 5
+set 2 140 5
+set 2 9 127
+set 2 10 3
+set 2 77 127
+set 2 78 4
+set 2 5 40
+set 2 6 10
+set 2 7 40
+set 2 13 10
+set 2 14 -40
+set 2 15 30
+budget OPEN
+tune core1 on
+at 0.0  chord C2 D2 E2 F2 G2 A2 vel 127 ch 1
+at 0.0  chord C3 D3 E3 F3 G3 A3 vel 127 ch 2
+at 4.0  release
+tail 1
+measure 1.0 4.0
+expect report
+
+test LD_05_MATRIX  ANALOG, 6 keys a part, cumulative up to MATRIX
+mode STEREO
+sound 1 ANALOG DEAR
+sound 2 ANALOG DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+set 1 2 90
+set 1 3 110
+set 1 4 90
+set 1 45 52
+set 1 46 96
+set 1 47 40
+set 1 48 2
+set 1 43 5
+set 1 106 40
+set 1 101 0
+set 1 128 1
+set 1 131 40
+set 1 132 50
+set 1 133 -50
+set 1 134 127
+set 1 135 0
+set 1 136 3
+set 1 137 127
+set 1 139 5
+set 1 140 5
+set 1 9 127
+set 1 10 3
+set 1 77 127
+set 1 78 4
+set 1 5 40
+set 1 6 10
+set 1 7 40
+set 1 13 10
+set 1 14 -40
+set 1 15 30
+set 1 49 1
+set 1 50 1
+set 1 51 63
+set 1 52 12
+set 1 53 2
+set 1 54 -50
+set 1 55 9
+set 1 56 3
+set 1 57 63
+set 1 58 15
+set 1 59 4
+set 1 60 -50
+set 1 61 1
+set 1 62 5
+set 1 63 63
+set 1 64 12
+set 1 65 6
+set 1 66 -50
+set 1 67 9
+set 1 68 12
+set 1 69 63
+set 1 70 15
+set 1 71 2
+set 1 72 -50
+set 2 2 90
+set 2 3 110
+set 2 4 90
+set 2 45 52
+set 2 46 96
+set 2 47 40
+set 2 48 2
+set 2 43 5
+set 2 106 40
+set 2 101 0
+set 2 128 1
+set 2 131 40
+set 2 132 50
+set 2 133 -50
+set 2 134 127
+set 2 135 0
+set 2 136 3
+set 2 137 127
+set 2 139 5
+set 2 140 5
+set 2 9 127
+set 2 10 3
+set 2 77 127
+set 2 78 4
+set 2 5 40
+set 2 6 10
+set 2 7 40
+set 2 13 10
+set 2 14 -40
+set 2 15 30
+set 2 49 1
+set 2 50 1
+set 2 51 63
+set 2 52 12
+set 2 53 2
+set 2 54 -50
+set 2 55 9
+set 2 56 3
+set 2 57 63
+set 2 58 15
+set 2 59 4
+set 2 60 -50
+set 2 61 1
+set 2 62 5
+set 2 63 63
+set 2 64 12
+set 2 65 6
+set 2 66 -50
+set 2 67 9
+set 2 68 12
+set 2 69 63
+set 2 70 15
+set 2 71 2
+set 2 72 -50
+budget OPEN
+tune core1 on
+at 0.0  chord C2 D2 E2 F2 G2 A2 vel 127 ch 1
+at 0.0  chord C3 D3 E3 F3 G3 A3 vel 127 ch 2
+at 4.0  release
+tail 1
+measure 1.0 4.0
+expect report
+
+test LD_06_SAT_INSERT  ANALOG, 6 keys a part, cumulative up to SAT+INSERT
+mode STEREO
+sound 1 ANALOG DEAR
+sound 2 ANALOG DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+set 1 2 90
+set 1 3 110
+set 1 4 90
+set 1 45 52
+set 1 46 96
+set 1 47 40
+set 1 48 2
+set 1 43 5
+set 1 106 40
+set 1 101 0
+set 1 128 1
+set 1 131 40
+set 1 132 50
+set 1 133 -50
+set 1 134 127
+set 1 135 0
+set 1 136 3
+set 1 137 127
+set 1 139 5
+set 1 140 5
+set 1 9 127
+set 1 10 3
+set 1 77 127
+set 1 78 4
+set 1 5 40
+set 1 6 10
+set 1 7 40
+set 1 13 10
+set 1 14 -40
+set 1 15 30
+set 1 49 1
+set 1 50 1
+set 1 51 63
+set 1 52 12
+set 1 53 2
+set 1 54 -50
+set 1 55 9
+set 1 56 3
+set 1 57 63
+set 1 58 15
+set 1 59 4
+set 1 60 -50
+set 1 61 1
+set 1 62 5
+set 1 63 63
+set 1 64 12
+set 1 65 6
+set 1 66 -50
+set 1 67 9
+set 1 68 12
+set 1 69 63
+set 1 70 15
+set 1 71 2
+set 1 72 -50
+set 1 33 50
+set 1 96 3
+set 1 97 90
+set 1 98 90
+set 1 99 90
+set 1 100 127
+set 2 2 90
+set 2 3 110
+set 2 4 90
+set 2 45 52
+set 2 46 96
+set 2 47 40
+set 2 48 2
+set 2 43 5
+set 2 106 40
+set 2 101 0
+set 2 128 1
+set 2 131 40
+set 2 132 50
+set 2 133 -50
+set 2 134 127
+set 2 135 0
+set 2 136 3
+set 2 137 127
+set 2 139 5
+set 2 140 5
+set 2 9 127
+set 2 10 3
+set 2 77 127
+set 2 78 4
+set 2 5 40
+set 2 6 10
+set 2 7 40
+set 2 13 10
+set 2 14 -40
+set 2 15 30
+set 2 49 1
+set 2 50 1
+set 2 51 63
+set 2 52 12
+set 2 53 2
+set 2 54 -50
+set 2 55 9
+set 2 56 3
+set 2 57 63
+set 2 58 15
+set 2 59 4
+set 2 60 -50
+set 2 61 1
+set 2 62 5
+set 2 63 63
+set 2 64 12
+set 2 65 6
+set 2 66 -50
+set 2 67 9
+set 2 68 12
+set 2 69 63
+set 2 70 15
+set 2 71 2
+set 2 72 -50
+set 2 33 50
+set 2 96 3
+set 2 97 90
+set 2 98 90
+set 2 99 90
+set 2 100 127
+budget OPEN
+tune core1 on
+at 0.0  chord C2 D2 E2 F2 G2 A2 vel 127 ch 1
+at 0.0  chord C3 D3 E3 F3 G3 A3 vel 127 ch 2
+at 4.0  release
+tail 1
+measure 1.0 4.0
+expect report
+
+test LD_07_EQ_DUCK  ANALOG, 6 keys a part, cumulative up to EQ+DUCK
+mode STEREO
+sound 1 ANALOG DEAR
+sound 2 ANALOG DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+set 1 2 90
+set 1 3 110
+set 1 4 90
+set 1 45 52
+set 1 46 96
+set 1 47 40
+set 1 48 2
+set 1 43 5
+set 1 106 40
+set 1 101 0
+set 1 128 1
+set 1 131 40
+set 1 132 50
+set 1 133 -50
+set 1 134 127
+set 1 135 0
+set 1 136 3
+set 1 137 127
+set 1 139 5
+set 1 140 5
+set 1 9 127
+set 1 10 3
+set 1 77 127
+set 1 78 4
+set 1 5 40
+set 1 6 10
+set 1 7 40
+set 1 13 10
+set 1 14 -40
+set 1 15 30
+set 1 49 1
+set 1 50 1
+set 1 51 63
+set 1 52 12
+set 1 53 2
+set 1 54 -50
+set 1 55 9
+set 1 56 3
+set 1 57 63
+set 1 58 15
+set 1 59 4
+set 1 60 -50
+set 1 61 1
+set 1 62 5
+set 1 63 63
+set 1 64 12
+set 1 65 6
+set 1 66 -50
+set 1 67 9
+set 1 68 12
+set 1 69 63
+set 1 70 15
+set 1 71 2
+set 1 72 -50
+set 1 33 50
+set 1 96 3
+set 1 97 90
+set 1 98 90
+set 1 99 90
+set 1 100 127
+set 1 8 6
+set 1 88 -6
+set 1 103 6
+set 1 90 6
+set 1 107 60
+set 1 111 1
+set 1 112 16
+set 2 2 90
+set 2 3 110
+set 2 4 90
+set 2 45 52
+set 2 46 96
+set 2 47 40
+set 2 48 2
+set 2 43 5
+set 2 106 40
+set 2 101 0
+set 2 128 1
+set 2 131 40
+set 2 132 50
+set 2 133 -50
+set 2 134 127
+set 2 135 0
+set 2 136 3
+set 2 137 127
+set 2 139 5
+set 2 140 5
+set 2 9 127
+set 2 10 3
+set 2 77 127
+set 2 78 4
+set 2 5 40
+set 2 6 10
+set 2 7 40
+set 2 13 10
+set 2 14 -40
+set 2 15 30
+set 2 49 1
+set 2 50 1
+set 2 51 63
+set 2 52 12
+set 2 53 2
+set 2 54 -50
+set 2 55 9
+set 2 56 3
+set 2 57 63
+set 2 58 15
+set 2 59 4
+set 2 60 -50
+set 2 61 1
+set 2 62 5
+set 2 63 63
+set 2 64 12
+set 2 65 6
+set 2 66 -50
+set 2 67 9
+set 2 68 12
+set 2 69 63
+set 2 70 15
+set 2 71 2
+set 2 72 -50
+set 2 33 50
+set 2 96 3
+set 2 97 90
+set 2 98 90
+set 2 99 90
+set 2 100 127
+set 2 8 6
+set 2 88 -6
+set 2 103 6
+set 2 90 6
+set 2 107 60
+set 2 111 1
+set 2 112 16
+budget OPEN
+tune core1 on
+at 0.0  chord C2 D2 E2 F2 G2 A2 vel 127 ch 1
+at 0.0  chord C3 D3 E3 F3 G3 A3 vel 127 ch 2
+at 4.0  release
+tail 1
+measure 1.0 4.0
+expect report
+
+test LD_08_SPREAD  ANALOG, 6 keys a part, cumulative up to SPREAD
+mode STEREO
+sound 1 ANALOG DEAR
+sound 2 ANALOG DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+set 1 2 90
+set 1 3 110
+set 1 4 90
+set 1 45 52
+set 1 46 96
+set 1 47 40
+set 1 48 2
+set 1 43 5
+set 1 106 40
+set 1 101 0
+set 1 128 1
+set 1 131 40
+set 1 132 50
+set 1 133 -50
+set 1 134 127
+set 1 135 0
+set 1 136 3
+set 1 137 127
+set 1 139 5
+set 1 140 5
+set 1 9 127
+set 1 10 3
+set 1 77 127
+set 1 78 4
+set 1 5 40
+set 1 6 10
+set 1 7 40
+set 1 13 10
+set 1 14 -40
+set 1 15 30
+set 1 49 1
+set 1 50 1
+set 1 51 63
+set 1 52 12
+set 1 53 2
+set 1 54 -50
+set 1 55 9
+set 1 56 3
+set 1 57 63
+set 1 58 15
+set 1 59 4
+set 1 60 -50
+set 1 61 1
+set 1 62 5
+set 1 63 63
+set 1 64 12
+set 1 65 6
+set 1 66 -50
+set 1 67 9
+set 1 68 12
+set 1 69 63
+set 1 70 15
+set 1 71 2
+set 1 72 -50
+set 1 33 50
+set 1 96 3
+set 1 97 90
+set 1 98 90
+set 1 99 90
+set 1 100 127
+set 1 8 6
+set 1 88 -6
+set 1 103 6
+set 1 90 6
+set 1 107 60
+set 1 111 1
+set 1 112 16
+set 1 95 127
+set 2 2 90
+set 2 3 110
+set 2 4 90
+set 2 45 52
+set 2 46 96
+set 2 47 40
+set 2 48 2
+set 2 43 5
+set 2 106 40
+set 2 101 0
+set 2 128 1
+set 2 131 40
+set 2 132 50
+set 2 133 -50
+set 2 134 127
+set 2 135 0
+set 2 136 3
+set 2 137 127
+set 2 139 5
+set 2 140 5
+set 2 9 127
+set 2 10 3
+set 2 77 127
+set 2 78 4
+set 2 5 40
+set 2 6 10
+set 2 7 40
+set 2 13 10
+set 2 14 -40
+set 2 15 30
+set 2 49 1
+set 2 50 1
+set 2 51 63
+set 2 52 12
+set 2 53 2
+set 2 54 -50
+set 2 55 9
+set 2 56 3
+set 2 57 63
+set 2 58 15
+set 2 59 4
+set 2 60 -50
+set 2 61 1
+set 2 62 5
+set 2 63 63
+set 2 64 12
+set 2 65 6
+set 2 66 -50
+set 2 67 9
+set 2 68 12
+set 2 69 63
+set 2 70 15
+set 2 71 2
+set 2 72 -50
+set 2 33 50
+set 2 96 3
+set 2 97 90
+set 2 98 90
+set 2 99 90
+set 2 100 127
+set 2 8 6
+set 2 88 -6
+set 2 103 6
+set 2 90 6
+set 2 107 60
+set 2 111 1
+set 2 112 16
+set 2 95 127
+budget OPEN
+tune core1 on
+at 0.0  chord C2 D2 E2 F2 G2 A2 vel 127 ch 1
+at 0.0  chord C3 D3 E3 F3 G3 A3 vel 127 ch 2
+at 4.0  release
+tail 1
+measure 1.0 4.0
+expect report
+
+test LD_09_SENDS  ANALOG, 6 keys a part, cumulative up to SENDS
+mode STEREO
+sound 1 ANALOG DEAR
+sound 2 ANALOG DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+set 1 2 90
+set 1 3 110
+set 1 4 90
+set 1 45 52
+set 1 46 96
+set 1 47 40
+set 1 48 2
+set 1 43 5
+set 1 106 40
+set 1 101 0
+set 1 128 1
+set 1 131 40
+set 1 132 50
+set 1 133 -50
+set 1 134 127
+set 1 135 0
+set 1 136 3
+set 1 137 127
+set 1 139 5
+set 1 140 5
+set 1 9 127
+set 1 10 3
+set 1 77 127
+set 1 78 4
+set 1 5 40
+set 1 6 10
+set 1 7 40
+set 1 13 10
+set 1 14 -40
+set 1 15 30
+set 1 49 1
+set 1 50 1
+set 1 51 63
+set 1 52 12
+set 1 53 2
+set 1 54 -50
+set 1 55 9
+set 1 56 3
+set 1 57 63
+set 1 58 15
+set 1 59 4
+set 1 60 -50
+set 1 61 1
+set 1 62 5
+set 1 63 63
+set 1 64 12
+set 1 65 6
+set 1 66 -50
+set 1 67 9
+set 1 68 12
+set 1 69 63
+set 1 70 15
+set 1 71 2
+set 1 72 -50
+set 1 33 50
+set 1 96 3
+set 1 97 90
+set 1 98 90
+set 1 99 90
+set 1 100 127
+set 1 8 6
+set 1 88 -6
+set 1 103 6
+set 1 90 6
+set 1 107 60
+set 1 111 1
+set 1 112 16
+set 1 95 127
+set 1 34 127
+set 1 35 127
+set 1 36 127
+set 2 2 90
+set 2 3 110
+set 2 4 90
+set 2 45 52
+set 2 46 96
+set 2 47 40
+set 2 48 2
+set 2 43 5
+set 2 106 40
+set 2 101 0
+set 2 128 1
+set 2 131 40
+set 2 132 50
+set 2 133 -50
+set 2 134 127
+set 2 135 0
+set 2 136 3
+set 2 137 127
+set 2 139 5
+set 2 140 5
+set 2 9 127
+set 2 10 3
+set 2 77 127
+set 2 78 4
+set 2 5 40
+set 2 6 10
+set 2 7 40
+set 2 13 10
+set 2 14 -40
+set 2 15 30
+set 2 49 1
+set 2 50 1
+set 2 51 63
+set 2 52 12
+set 2 53 2
+set 2 54 -50
+set 2 55 9
+set 2 56 3
+set 2 57 63
+set 2 58 15
+set 2 59 4
+set 2 60 -50
+set 2 61 1
+set 2 62 5
+set 2 63 63
+set 2 64 12
+set 2 65 6
+set 2 66 -50
+set 2 67 9
+set 2 68 12
+set 2 69 63
+set 2 70 15
+set 2 71 2
+set 2 72 -50
+set 2 33 50
+set 2 96 3
+set 2 97 90
+set 2 98 90
+set 2 99 90
+set 2 100 127
+set 2 8 6
+set 2 88 -6
+set 2 103 6
+set 2 90 6
+set 2 107 60
+set 2 111 1
+set 2 112 16
+set 2 95 127
+set 2 34 127
+set 2 35 127
+set 2 36 127
+budget OPEN
+tune core1 on
+at 0.0  chord C2 D2 E2 F2 G2 A2 vel 127 ch 1
+at 0.0  chord C3 D3 E3 F3 G3 A3 vel 127 ch 2
+at 4.0  release
+tail 1
+measure 1.0 4.0
+expect report
+
+test LD_10_MORPH  ANALOG, 6 keys a part, cumulative up to MORPH
+mode STEREO
+sound 1 ANALOG DEAR
+sound 2 ANALOG DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+set 1 2 90
+set 1 3 110
+set 1 4 90
+set 1 45 52
+set 1 46 96
+set 1 47 40
+set 1 48 2
+set 1 43 5
+set 1 106 40
+set 1 101 0
+set 1 128 1
+set 1 131 40
+set 1 132 50
+set 1 133 -50
+set 1 134 127
+set 1 135 0
+set 1 136 3
+set 1 137 127
+set 1 139 5
+set 1 140 5
+set 1 9 127
+set 1 10 3
+set 1 77 127
+set 1 78 4
+set 1 5 40
+set 1 6 10
+set 1 7 40
+set 1 13 10
+set 1 14 -40
+set 1 15 30
+set 1 49 1
+set 1 50 1
+set 1 51 63
+set 1 52 12
+set 1 53 2
+set 1 54 -50
+set 1 55 9
+set 1 56 3
+set 1 57 63
+set 1 58 15
+set 1 59 4
+set 1 60 -50
+set 1 61 1
+set 1 62 5
+set 1 63 63
+set 1 64 12
+set 1 65 6
+set 1 66 -50
+set 1 67 9
+set 1 68 12
+set 1 69 63
+set 1 70 15
+set 1 71 2
+set 1 72 -50
+set 1 33 50
+set 1 96 3
+set 1 97 90
+set 1 98 90
+set 1 99 90
+set 1 100 127
+set 1 8 6
+set 1 88 -6
+set 1 103 6
+set 1 90 6
+set 1 107 60
+set 1 111 1
+set 1 112 16
+set 1 95 127
+set 1 34 127
+set 1 35 127
+set 1 36 127
+morph 1 ROLL 11 100
+morph 1 FADER 64
+set 2 2 90
+set 2 3 110
+set 2 4 90
+set 2 45 52
+set 2 46 96
+set 2 47 40
+set 2 48 2
+set 2 43 5
+set 2 106 40
+set 2 101 0
+set 2 128 1
+set 2 131 40
+set 2 132 50
+set 2 133 -50
+set 2 134 127
+set 2 135 0
+set 2 136 3
+set 2 137 127
+set 2 139 5
+set 2 140 5
+set 2 9 127
+set 2 10 3
+set 2 77 127
+set 2 78 4
+set 2 5 40
+set 2 6 10
+set 2 7 40
+set 2 13 10
+set 2 14 -40
+set 2 15 30
+set 2 49 1
+set 2 50 1
+set 2 51 63
+set 2 52 12
+set 2 53 2
+set 2 54 -50
+set 2 55 9
+set 2 56 3
+set 2 57 63
+set 2 58 15
+set 2 59 4
+set 2 60 -50
+set 2 61 1
+set 2 62 5
+set 2 63 63
+set 2 64 12
+set 2 65 6
+set 2 66 -50
+set 2 67 9
+set 2 68 12
+set 2 69 63
+set 2 70 15
+set 2 71 2
+set 2 72 -50
+set 2 33 50
+set 2 96 3
+set 2 97 90
+set 2 98 90
+set 2 99 90
+set 2 100 127
+set 2 8 6
+set 2 88 -6
+set 2 103 6
+set 2 90 6
+set 2 107 60
+set 2 111 1
+set 2 112 16
+set 2 95 127
+set 2 34 127
+set 2 35 127
+set 2 36 127
+morph 2 ROLL 11 100
+morph 2 FADER 64
+budget OPEN
+tune core1 on
+at 0.0  chord C2 D2 E2 F2 G2 A2 vel 127 ch 1
+at 0.0  chord C3 D3 E3 F3 G3 A3 vel 127 ch 2
+at 4.0  release
+tail 1
+measure 1.0 4.0
+expect report

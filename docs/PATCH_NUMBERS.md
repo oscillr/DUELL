@@ -1,8 +1,8 @@
 # DUELL factory sounds: PATCHES numbers (1.0)
 
-The 128 factory sounds in the order the device lists them in PATCHES (TYPE ALL): by category (BASS, LEAD, PAD, PLUCK, KEYS, PERC, FX, OTHER), then engine, then name. **A number is a patch slot**: slot #NN holds the factory sound of this list at position NN until you save a sound there (RESTORE brings it back); MIDI program change n loads slot n, #n + 1. Generated from `felucca-base/tools/duell_sounds.py` with the sort in `felucca-base/tools/gen_duell_sounds.py` (`gen_duell_sounds.py --check` prints the same list).
+The 128 factory sounds in the order the device lists them in PATCHES (TYPE ALL): by category (BASS, LEAD, PAD, PLUCK, KEYS, PERC, FX, OTHER), then engine, then name. **A number is a patch slot**: slot #NN holds the factory sound of this list at position NN until you save a sound there (RESTORE brings it back); MIDI program change n loads slot n, #n + 1. Generated from `duell/tools/duell_sounds.py` with the sort in `duell/tools/gen_duell_sounds.py` (`gen_duell_sounds.py --check` prints the same list).
 
-**1.0: the factory bank is the owner's bank** (`felucca-base/tools/factory_bank.duell-patches.json`, imported by `tools/import_bank.py`; each patch exactly as exported, only its TRIM balanced, release_drafts/BANK_LEVELS.md). YO YA is new (marked NEW), CARNIVAL is not in the bank, so #108 to #125 moved by one. The Old column is the number in 0.2.31.
+**1.0: the factory bank is the owner's bank** (`duell/tools/factory_bank.duell-patches.json`, imported by `tools/import_bank.py`; each patch exactly as exported, only its TRIM balanced, release_drafts/BANK_LEVELS.md). YO YA is new (marked NEW), CARNIVAL is not in the bank, so #108 to #125 moved by one. The Old column is the number in 0.2.31.
 
 | PATCHES # | Name | Old (0.2.31) |
 |---|---|---|

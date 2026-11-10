@@ -7,7 +7,7 @@ Private. Research and writing only: no code changed, no branch made, no picture 
 Version 1 is MIDI_MAP_DESIGN.md (today's CC list, how MIDI LEARN works, the table design, the unit page). This version 2 replaces its **number choices** and adds the standard-name rule; the table design, the unit page and the editor tab of version 1 stay, and section 5 here lists only what changes.
 
 Marks, as in the other studies: **CONFIRMED** (read today in a source or in the firmware), **est.** (worked out, not measured), **HYPOTHESIS** (my reading, not proven).
-Sources read: the firmware in `felucca-base/firmware/src` (`midi_control.c`, `params.c`, `core.h`, `seq.c`; READ ONLY; EXTENSION_BLOCK_PLAN.md says the newest line is join0234, I read join0233 as told), your Virus file "Virus TI MIDI CC List - Layout.pdf" (one page, read as data), the Virus Editor manual (only the MIDI-page and learn passages), the MIDI list at midi.org and at cmtext.com, the Roland P-6 manual page, the Akai Force release notes 3.1.1 and forum reports, and the DUELL documents named in the ticket.
+Sources read: the firmware in `duell/firmware/src` (`midi_control.c`, `params.c`, `core.h`, `seq.c`; READ ONLY; EXTENSION_BLOCK_PLAN.md says the newest line is join0234, I read join0233 as told), your Virus file "Virus TI MIDI CC List - Layout.pdf" (one page, read as data), the Virus Editor manual (only the MIDI-page and learn passages), the MIDI list at midi.org and at cmtext.com, the Roland P-6 manual page, the Akai Force release notes 3.1.1 and forum reports, and the DUELL documents named in the ticket.
 
 ## Decided by the owner (his words, 2026-10-19 and 2026-10-20)
 
@@ -508,7 +508,7 @@ New risks added by v2:
 | Virus: CC page and SysEx page setup | Access Virus Editor manual, setup steps ("MIDI Control LoPage = Controller Data, HiPage = SysEx"; for the later model "Page A = Controller Data, Page B = SysEx") |
 | Force 3.1.1: edit the CC and string of each control in MIDI Track > Track Edit, saved with the track | https://cdn.inmusicbrands.com/akai/Force/eO8S4/Force3.1.1FirmwareUpdate.pdf (text extracted today) |
 | Force: preset Q-Link names, 16 slots, 128-line list not assignable to knobs | mpc-forums and gearspace threads, as reported in search results; two thread pages returned 403 (HYPOTHESIS) |
-| Firmware: parts' channels, ROUT parts / selected, CC dispatch, the 11 sound CCs, `MIDI_CC_ENG`, globals and their labels | `midi_control.c`, `seq.c` (`midi_pch`), `params.c`, `core.h` (NPART 4, G ids) in `felucca-base/firmware/src` |
+| Firmware: parts' channels, ROUT parts / selected, CC dispatch, the 11 sound CCs, `MIDI_CC_ENG`, globals and their labels | `midi_control.c`, `seq.c` (`midi_pch`), `params.c`, `core.h` (NPART 4, G ids) in `duell/firmware/src` |
 | Engine values E1 to E8 and their labels per engine | the `.edit` tables in `eng_*.c` |
 | The 20 new values, their slots X0 to X14, the ids 25, 26, 42, 106, 113, WAVE STEPS on engine slot E7 | EXTENSION_BLOCK_PLAN.md section 2A; TWIN_FILTER_DESIGN_2.md; FILTER_PAGES_PROPOSAL.md; SUB_AND_CYCLE_DESIGN.md; FEATURE_LIST.md |
 | Today's CC list, learn, the 45 taken numbers, the table and unit page design | MIDI_MAP_DESIGN.md |

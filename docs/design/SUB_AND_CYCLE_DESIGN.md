@@ -3,7 +3,7 @@
 Private. Research and design only: no code was changed, no branch was made, INDEX.md was not touched. I wrote and retuned no sounds. Every page, label and knob below is a proposal for you to approve, not a decision.
 
 Marks (as in the TWIN FILTER studies):
-- **CONFIRMED**: I read it today in the code (`wt/join0233/felucca-base/firmware/src`) or in the named document.
+- **CONFIRMED**: I read it today in the code (`wt/join0233/duell/firmware/src`) or in the named document.
 - **HYPOTHESIS**: my reading, general knowledge about other synths, or a forum source.
 - **est.**: worked out by me, not measured.
 - **measured**: a DUELL number from the computer tests or your unit.

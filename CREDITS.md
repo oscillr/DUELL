@@ -4,7 +4,7 @@
 **MultiMorphing Bitimbral Synthesizer**<br>
 **by OSCILL/R**
 
-Thank you. Each line names the source, the link, the licence and what DUELL uses. The same list, with the exact files, is in [NOTICE.md](NOTICE.md) and [felucca-base/LICENSING.md](felucca-base/LICENSING.md). DUELL itself is GPL-3.0-only.
+Thank you. Each line names the source, the link, the licence and what DUELL uses. The same list, with the exact files, is in [NOTICE.md](NOTICE.md) and [duell/LICENSING.md](duell/LICENSING.md). DUELL itself is GPL-3.0-only.
 
 **The base**
 - **Felucca** by Leo Kuroshita (@kurogedelic), Hügelton Instruments, <https://github.com/hugelton/Felucca>, GPL-3.0. DUELL is a modified version of it.

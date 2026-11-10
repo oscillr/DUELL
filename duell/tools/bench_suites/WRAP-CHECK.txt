@@ -1,0 +1,108 @@
+# WRAP-CHECK (2026-11-07): the output jumps from -0.50 to +0.51 for 3 samples (a number wrapping) with plain ANALOG, part 1 alone, 12 keys, heavy globals (CLICK-CHECK CC_K12_ON).
+# Each test switches ONE stage off; the one whose test is clean holds the wrap. ALL_OFF: every one of them off.
+suite WRAP-CHECK
+
+test WR_WIDTH_OFF  plain ANALOG part 1 alone, 12 keys, heavy globals with WIDTH off
+mode STEREO
+sound 1 ANALOG DEAR
+sound 2 ANALOG DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 100
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+tune core1 on
+budget ON
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 vel 100 ch 1
+at 5.0  release
+tail 1
+measure 1.0 5.0
+expect report
+
+test WR_COMPRESSOR_OFF  plain ANALOG part 1 alone, 12 keys, heavy globals with COMPRESSOR off
+mode STEREO
+sound 1 ANALOG DEAR
+sound 2 ANALOG DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 0
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+tune core1 on
+budget ON
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 vel 100 ch 1
+at 5.0  release
+tail 1
+measure 1.0 5.0
+expect report
+
+test WR_BASSMONO_OFF  plain ANALOG part 1 alone, 12 keys, heavy globals with BASS MONO off
+mode STEREO
+sound 1 ANALOG DEAR
+sound 2 ANALOG DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 0
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+tune core1 on
+budget ON
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 vel 100 ch 1
+at 5.0  release
+tail 1
+measure 1.0 5.0
+expect report
+
+test WR_SENDS_OFF  plain ANALOG part 1 alone, 12 keys, heavy globals with SENDS off
+mode STEREO
+sound 1 ANALOG DEAR
+sound 2 ANALOG DEAR
+mods ALL ON
+mods SENDS OFF
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+tune core1 on
+budget ON
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 vel 100 ch 1
+at 5.0  release
+tail 1
+measure 1.0 5.0
+expect report
+
+test WR_ALL_OFF  plain ANALOG part 1 alone, 12 keys, heavy globals with ALL off
+mode STEREO
+sound 1 ANALOG DEAR
+sound 2 ANALOG DEAR
+mods ALL ON
+mods SENDS OFF
+master COMP 0
+master WIDTH 100
+master BM 0
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+tune core1 on
+budget ON
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 vel 100 ch 1
+at 5.0  release
+tail 1
+measure 1.0 5.0
+expect report

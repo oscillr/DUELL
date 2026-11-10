@@ -1,0 +1,483 @@
+# POOL-OVERFLOW (2026-11-07, second form: no saved patches needed): the owner's ask: the voice numbers must never let the unit play more than it can.
+# Every test presses MORE keys than the pool allows, budget ON, two cores. Pass: 0 very late blocks, 0 silent, 0 missed halves, recording clean.
+#   A  every engine, both parts 16 keys, heavy globals (sends, shimmer, COMPRESSOR, WIDTH, BASS MONO)   B  light globals (sends off, no master stages)
+#   C  one part alone, 16 keys      M  two different engines      D  churn: a new chord every 0.4 s on both parts, no release
+suite POOL-OVERFLOW
+
+test PO_A_ANALOG  plain ANALOG both parts, 16 keys each, heavy globals
+repeat 2
+mode STEREO
+sound 1 ANALOG DEAR
+sound 2 ANALOG DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget ON
+tune core1 on
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 C4 D4 vel 100 ch 1
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 C4 D4 vel 100 ch 2
+at 5.0  release
+tail 1
+measure 1.0 5.0
+expect report
+
+test PO_A_PHASE  plain PHASE both parts, 16 keys each, heavy globals
+repeat 2
+mode STEREO
+sound 1 PHASE DEAR
+sound 2 PHASE DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget ON
+tune core1 on
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 C4 D4 vel 100 ch 1
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 C4 D4 vel 100 ch 2
+at 5.0  release
+tail 1
+measure 1.0 5.0
+expect report
+
+test PO_A_WAVE  plain WAVE both parts, 16 keys each, heavy globals
+repeat 2
+mode STEREO
+sound 1 WAVE DEAR
+sound 2 WAVE DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget ON
+tune core1 on
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 C4 D4 vel 100 ch 1
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 C4 D4 vel 100 ch 2
+at 5.0  release
+tail 1
+measure 1.0 5.0
+expect report
+
+test PO_A_TRIO  plain TRIO both parts, 16 keys each, heavy globals
+repeat 2
+mode STEREO
+sound 1 TRIO DEAR
+sound 2 TRIO DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget ON
+tune core1 on
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 C4 D4 vel 100 ch 1
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 C4 D4 vel 100 ch 2
+at 5.0  release
+tail 1
+measure 1.0 5.0
+expect report
+
+test PO_A_NOISE  plain NOISE both parts, 16 keys each, heavy globals
+repeat 2
+mode STEREO
+sound 1 NOISE DEAR
+sound 2 NOISE DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget ON
+tune core1 on
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 C4 D4 vel 100 ch 1
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 C4 D4 vel 100 ch 2
+at 5.0  release
+tail 1
+measure 1.0 5.0
+expect report
+
+test PO_A_LOFI  plain LOFI both parts, 16 keys each, heavy globals
+repeat 2
+mode STEREO
+sound 1 LOFI DEAR
+sound 2 LOFI DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget ON
+tune core1 on
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 C4 D4 vel 100 ch 1
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 C4 D4 vel 100 ch 2
+at 5.0  release
+tail 1
+measure 1.0 5.0
+expect report
+
+test PO_A_FM6  plain FM6 both parts, 16 keys each, heavy globals
+repeat 2
+mode STEREO
+sound 1 FM6 DEAR
+sound 2 FM6 DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget ON
+tune core1 on
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 C4 D4 vel 100 ch 1
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 C4 D4 vel 100 ch 2
+at 5.0  release
+tail 1
+measure 1.0 5.0
+expect report
+
+test PO_A_WHEEL  plain WHEEL both parts, 16 keys each, heavy globals
+repeat 2
+mode STEREO
+sound 1 WHEEL DEAR
+sound 2 WHEEL DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget ON
+tune core1 on
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 C4 D4 vel 100 ch 1
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 C4 D4 vel 100 ch 2
+at 5.0  release
+tail 1
+measure 1.0 5.0
+expect report
+
+test PO_A_VOICE  plain VOICE both parts, 16 keys each, heavy globals
+repeat 2
+mode STEREO
+sound 1 VOICE DEAR
+sound 2 VOICE DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget ON
+tune core1 on
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 C4 D4 vel 100 ch 1
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 C4 D4 vel 100 ch 2
+at 5.0  release
+tail 1
+measure 1.0 5.0
+expect report
+
+test PO_A_PHYSICAL  plain PHYSICAL both parts, 16 keys each, heavy globals
+repeat 2
+mode STEREO
+sound 1 PHYS DEAR
+sound 2 PHYS DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget ON
+tune core1 on
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 C4 D4 vel 100 ch 1
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 C4 D4 vel 100 ch 2
+at 5.0  release
+tail 1
+measure 1.0 5.0
+expect report
+
+test PO_B_ANALOG  plain ANALOG both parts, 16 keys each, light globals
+repeat 2
+mode STEREO
+sound 1 ANALOG DEAR
+sound 2 ANALOG DEAR
+mods ALL ON
+mods SENDS OFF
+master COMP 0
+master WIDTH 100
+master BM 0
+budget ON
+tune core1 on
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 C4 D4 vel 100 ch 1
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 C4 D4 vel 100 ch 2
+at 5.0  release
+tail 1
+measure 1.0 5.0
+expect report
+
+test PO_B_LOFI  plain LOFI both parts, 16 keys each, light globals
+repeat 2
+mode STEREO
+sound 1 LOFI DEAR
+sound 2 LOFI DEAR
+mods ALL ON
+mods SENDS OFF
+master COMP 0
+master WIDTH 100
+master BM 0
+budget ON
+tune core1 on
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 C4 D4 vel 100 ch 1
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 C4 D4 vel 100 ch 2
+at 5.0  release
+tail 1
+measure 1.0 5.0
+expect report
+
+test PO_B_WHEEL  plain WHEEL both parts, 16 keys each, light globals
+repeat 2
+mode STEREO
+sound 1 WHEEL DEAR
+sound 2 WHEEL DEAR
+mods ALL ON
+mods SENDS OFF
+master COMP 0
+master WIDTH 100
+master BM 0
+budget ON
+tune core1 on
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 C4 D4 vel 100 ch 1
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 C4 D4 vel 100 ch 2
+at 5.0  release
+tail 1
+measure 1.0 5.0
+expect report
+
+test PO_B_FM6  plain FM6 both parts, 16 keys each, light globals
+repeat 2
+mode STEREO
+sound 1 FM6 DEAR
+sound 2 FM6 DEAR
+mods ALL ON
+mods SENDS OFF
+master COMP 0
+master WIDTH 100
+master BM 0
+budget ON
+tune core1 on
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 C4 D4 vel 100 ch 1
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 C4 D4 vel 100 ch 2
+at 5.0  release
+tail 1
+measure 1.0 5.0
+expect report
+
+test PO_C_ANALOG  plain ANALOG on part 1 alone, 16 keys, heavy globals
+repeat 2
+mode STEREO
+sound 1 ANALOG DEAR
+sound 2 ANALOG DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget ON
+tune core1 on
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 C4 D4 vel 100 ch 1
+at 5.0  release
+tail 1
+measure 1.0 5.0
+expect report
+
+test PO_C_WHEEL  plain WHEEL on part 1 alone, 16 keys, heavy globals
+repeat 2
+mode STEREO
+sound 1 WHEEL DEAR
+sound 2 WHEEL DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget ON
+tune core1 on
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 C4 D4 vel 100 ch 1
+at 5.0  release
+tail 1
+measure 1.0 5.0
+expect report
+
+test PO_M_PHYSICAL_LOFI  plain PHYSICAL part 1 + plain LOFI part 2, 16 keys each, heavy globals
+repeat 2
+mode STEREO
+sound 1 PHYS DEAR
+sound 2 LOFI DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget ON
+tune core1 on
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 C4 D4 vel 100 ch 1
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 C4 D4 vel 100 ch 2
+at 5.0  release
+tail 1
+measure 1.0 5.0
+expect report
+
+test PO_M_WHEEL_ANALOG  plain WHEEL part 1 + plain ANALOG part 2, 16 keys each, heavy globals
+repeat 2
+mode STEREO
+sound 1 WHEEL DEAR
+sound 2 ANALOG DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget ON
+tune core1 on
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 C4 D4 vel 100 ch 1
+at 0.0  chord C2 D2 E2 F2 G2 A2 B2 C3 D3 E3 F3 G3 A3 B3 C4 D4 vel 100 ch 2
+at 5.0  release
+tail 1
+measure 1.0 5.0
+expect report
+
+test PO_D_ANALOG  churn: plain ANALOG, a new 4-key chord on each part every 0.4 s, no release, heavy globals
+repeat 2
+mode STEREO
+sound 1 ANALOG DEAR
+sound 2 ANALOG DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget ON
+tune core1 on
+at 0.0  chord C3 E3 G3 B3 vel 100 ch 1
+at 0.2  chord C3 E3 G3 B3 vel 100 ch 2
+at 0.4  chord D3 F3 A3 C4 vel 100 ch 1
+at 0.6  chord D3 F3 A3 C4 vel 100 ch 2
+at 0.8  chord E3 G3 B3 D4 vel 100 ch 1
+at 1.0  chord E3 G3 B3 D4 vel 100 ch 2
+at 1.2  chord F3 A3 C4 E4 vel 100 ch 1
+at 1.4  chord F3 A3 C4 E4 vel 100 ch 2
+at 1.6  chord G3 B3 D4 F4 vel 100 ch 1
+at 1.8  chord G3 B3 D4 F4 vel 100 ch 2
+at 2.0  chord A3 C4 E4 G4 vel 100 ch 1
+at 2.2  chord A3 C4 E4 G4 vel 100 ch 2
+at 2.4  chord B3 D4 F4 A4 vel 100 ch 1
+at 2.6  chord B3 D4 F4 A4 vel 100 ch 2
+at 2.8  chord C4 E4 G4 B4 vel 100 ch 1
+at 3.0  chord C4 E4 G4 B4 vel 100 ch 2
+at 3.2  chord D4 F4 A4 C5 vel 100 ch 1
+at 3.4  chord D4 F4 A4 C5 vel 100 ch 2
+at 3.6  chord E4 G4 B4 D5 vel 100 ch 1
+at 3.8  chord E4 G4 B4 D5 vel 100 ch 2
+at 5.0  release
+tail 1
+measure 1.0 5.0
+expect report
+
+test PO_D_WHEEL  churn: plain WHEEL, a new 4-key chord on each part every 0.4 s, no release, heavy globals
+repeat 2
+mode STEREO
+sound 1 WHEEL DEAR
+sound 2 WHEEL DEAR
+mods ALL ON
+mods SENDS ON
+master COMP 4
+master WIDTH 150
+master BM 3
+set g 15 3
+set g 24 3
+set g 26 1
+set g 17 50
+budget ON
+tune core1 on
+at 0.0  chord C3 E3 G3 B3 vel 100 ch 1
+at 0.2  chord C3 E3 G3 B3 vel 100 ch 2
+at 0.4  chord D3 F3 A3 C4 vel 100 ch 1
+at 0.6  chord D3 F3 A3 C4 vel 100 ch 2
+at 0.8  chord E3 G3 B3 D4 vel 100 ch 1
+at 1.0  chord E3 G3 B3 D4 vel 100 ch 2
+at 1.2  chord F3 A3 C4 E4 vel 100 ch 1
+at 1.4  chord F3 A3 C4 E4 vel 100 ch 2
+at 1.6  chord G3 B3 D4 F4 vel 100 ch 1
+at 1.8  chord G3 B3 D4 F4 vel 100 ch 2
+at 2.0  chord A3 C4 E4 G4 vel 100 ch 1
+at 2.2  chord A3 C4 E4 G4 vel 100 ch 2
+at 2.4  chord B3 D4 F4 A4 vel 100 ch 1
+at 2.6  chord B3 D4 F4 A4 vel 100 ch 2
+at 2.8  chord C4 E4 G4 B4 vel 100 ch 1
+at 3.0  chord C4 E4 G4 B4 vel 100 ch 2
+at 3.2  chord D4 F4 A4 C5 vel 100 ch 1
+at 3.4  chord D4 F4 A4 C5 vel 100 ch 2
+at 3.6  chord E4 G4 B4 D5 vel 100 ch 1
+at 3.8  chord E4 G4 B4 D5 vel 100 ch 2
+at 5.0  release
+tail 1
+measure 1.0 5.0
+expect report
