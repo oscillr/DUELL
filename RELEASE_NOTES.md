@@ -1,29 +1,16 @@
-# DUELL 1.3
+# DUELL 1.3.1
 
 **DUELL**
 **MultiMorphing Bitimbral Synthesizer**
 **by OSCILL/R**
 
-DUELL 1.3 is an update for the M-VAVE FM-1. It plays with Novation Circuit Tracks and Akai MPC / Force out of the box, and adds MACROS and your own PERFORM knobs.
+DUELL 1.3.1 is a small update for the M-VAVE FM-1: DUELL can now speak.
 
 ## What is new
-- **MIDI PRESETS for Novation Circuit Tracks and Akai MPC / Force.** Pick your device at the first start and DUELL is set up for it, with the right mode recommended.
-- **MACROS.** TIMBRE, ENV MACRO, FILTER MACRO, CHARACTER and MOTION: each turns several sound settings at once, and the middle is always the sound as saved. Play them on HOME, with SEL held, or over MIDI CC 56 to 62.
-- **Your own PERFORM knobs.** Choose what KNOBS 2, 3 and 4 do on PERFORM.
-- **MORPH in the mod matrix.** An LFO, an envelope or any other source can move the MORPH fader.
+- **Screen reader support.** Open Charles Vestal's [FM-1 Screen Reader](https://charlesvestal.github.io/fm1-reader/) page in Chrome or Edge with your FM-1 on USB, and DUELL says what is on its screen: the page and its knobs, each knob as you turn it, SETTINGS rows, messages, questions and the first-start guide. Use your own screen reader (VoiceOver, NVDA, JAWS, TalkBack) or the page's own voice. Without the reader page DUELL stays silent. Thanks for the idea, @woodjackmusic-JD ([issue #2](https://github.com/oscillr/DUELL/issues/2)).
+- **The web emulator speaks too.** Its new Screen reader section reads the screen with your screen reader or its own voice.
 
-## Changed
-- SETTINGS in seven sections, with one key rule on every page: SELECT moves, OCT+ opens, OCT- goes back, the knobs change values.
-- VELOCITY > FILTER ENV is set in each patch.
-- ANALOG PULSE WIDTH for the PWM wave. TRIO INTERVAL 2 and 3 reach plus or minus 36 semitones.
-- LOFI shows more AVAILABLE VOICES.
-- The web pages have the DUELL look.
-
-## Fixed
-- MIDI notes follow the part's TRANSPOSE ([issue #4](https://github.com/oscillr/DUELL/issues/4), thanks @thecandybars).
-- The installer's backup works, and the way back to the official firmware takes the V15 or V16 download ([issue #5](https://github.com/oscillr/DUELL/issues/5), thanks @jaggednz).
-- A matrix route to MORPH no longer costs voices.
-- PERFORM BALANCE, ANALOG PULSE WIDTH and MIDI LEARN screen details.
+Everything new in 1.3 is in the [changelog](https://github.com/oscillr/DUELL/blob/main/CHANGELOG.md).
 
 ## Read this before you flash
 - DUELL has run on **two FM-1 units, the author's**, and more than 100 people have installed it through the Firmware Hub. The FM-1 has a single copy of its firmware and no known rollback besides the way back to the official firmware (V15 or V16).
@@ -34,11 +21,11 @@ DUELL 1.3 is an update for the M-VAVE FM-1. It plays with Novation Circuit Track
 ## Assets
 | File | What |
 |---|---|
-| `duell-1.3.fwsc` | the device package (the installer page loads this one) |
+| `duell-1.3.1.fwsc` | the device package (the installer page loads this one) |
 | `SHA256SUMS` | checksums |
 
 ```
-SHA256: a28fcd89ba4622eb8d1d6db5e0bba4c386a287756903523271e1863ff4b9345b  duell-1.3.fwsc
+SHA256: 36184f90ad6a02e69850aedcb13084711b4eed2679eacdaaa2703efc6f810440  duell-1.3.1.fwsc
 ```
 
 ## Links

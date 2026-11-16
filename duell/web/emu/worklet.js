@@ -111,6 +111,11 @@ if (typeof registerProcessor === "function") {
       else if (m.type === "master") ex.web_master(m.value | 0);
       else if (m.type === "midi") ex.web_midi(m.data[0] | 0, m.data[1] | 0, m.data[2] | 0);
       else if (m.type === "visible") this.period = m.on ? 1 / 30 : 1 / 4;
+      else if (m.type === "sysex" && ex.web_sysex) {   // DUELL 1.4: a screen reader's SysEx, the bytes between F0 and F7 (after X0X's worklet)
+        const b = m.bytes.slice(0, 64);
+        new Uint8Array(ex.memory.buffer, ex.web_sysex_in(), b.length).set(b);
+        ex.web_sysex(b.length);
+      }
     }
 
     publish() {
@@ -150,7 +155,13 @@ if (typeof registerProcessor === "function") {
         msg.reboot = true;
         msg.sectors = storeSectors(new Uint8Array(mem, ex.web_nor(), ex.web_nor_size()));
       }
-      if (msg.leds || msg.fb || msg.sectors || msg.reboot || msg.load !== undefined) this.port.postMessage(msg, transfer);
+      const said = ex.web_said_len ? ex.web_said_len() : 0;
+      if (said) {                                     // DUELL 1.4: what the device said for a screen reader, whole F0..F7 frames
+        msg.said = new Uint8Array(mem, ex.web_said_buf(), said).slice();
+        ex.web_said_clear();
+        transfer.push(msg.said.buffer);
+      }
+      if (msg.leds || msg.fb || msg.sectors || msg.reboot || msg.said || msg.load !== undefined) this.port.postMessage(msg, transfer);
     }
 
     // A click's down and up can arrive within one render quantum, but the FM-1's contacts never close for less than

@@ -6,6 +6,13 @@ by OSCILL/R
 
 Each release: a one-line summary, then New, Fixed, Compatibility, Install, Files.
 
+## DUELL 1.3.1
+
+A small update for the M-VAVE FM-1: DUELL can now speak.
+
+- **New:** screen reader support with Charles Vestal's FM-1 Screen Reader page (USB, Chrome or Edge): the page and its knobs, each knob as you turn it, SETTINGS rows, messages, questions and the first-start guide, through your own screen reader or the page's voice; silent without the reader page (issue #2, thanks @woodjackmusic-JD). The web emulator speaks too.
+- **Install:** save a backup, use the installer page, and make a new backup with 1.3.1.
+
 ## DUELL 1.3
 
 An update for the M-VAVE FM-1. It plays with Novation Circuit Tracks and Akai MPC / Force out of the box, and adds MACROS and your own PERFORM knobs.

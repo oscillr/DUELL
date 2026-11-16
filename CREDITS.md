@@ -10,6 +10,7 @@ Thank you. Each line names the source, the link, the licence and what DUELL uses
 - **Felucca** by Leo Kuroshita (@kurogedelic), Hügelton Instruments, <https://github.com/hugelton/Felucca>, GPL-3.0. DUELL is a modified version of it.
 
 **Ideas and code that came into DUELL**
+- **FM-1 Screen Reader** by **Charles Vestal**, <https://github.com/charlesvestal/fm1-reader>: the screen reader protocol and its device code (`announce.c`, `gen_words.py`, MPL-2.0, from fm1-base), and the browser emulator's words and voice loader (MIT), with **eSpeak NG** (GPL-3.0-or-later) as its voice.
 - **Velo** (fm1-velocity) by **Charles Vestal**, <https://github.com/charlesvestal/fm1-velocity>, GPL-3.0-only. The method of key velocity and aftertouch (KEY SENSE). The code is written again for DUELL; none is copied.
 - **JIANT** by juanjiant-bit, <https://github.com/juanjiant-bit/JIANT>, GPL-3.0. The SHIM and RESO reverbs.
 - **CHOMPI Club**, <https://github.com/CHOMPI-Club/CHOMPI>, MIT. The idea of the PLATE reverb (Emilie Gillet's plate reverb, rewritten as integer code) and of the RAND and OCT+ delay modes; no code copied. The name and logo of CHOMPI are not used.

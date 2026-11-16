@@ -15,6 +15,7 @@ cd "$(dirname "$0")/../.."
 [ -f build/gen/felucca_tables.h ] || { echo "emu: run ./build.sh once first (build/gen)"; exit 1; }
 command -v emcc >/dev/null 2>&1 || { echo "emu: no emcc (Emscripten)"; exit 1; }
 python3 tools/gen_version.py build/gen/duell_version.h     # the VERSION file at the DUELL root
+python3 tools/gen_words.py firmware/words.tsv web/words build/gen/ann_words.h   # DUELL 1.4: the screen reader's words file and its link
 VERSION=$(sed -n 's/^#define DUELL_VERSION_STR "\(.*\)"/\1/p' build/gen/duell_version.h)
 mkdir -p build/emu/fonts
 # shellcheck disable=SC2086
@@ -25,6 +26,8 @@ emcc ${EMU_OPT:--O2} -ffp-contract=off -std=gnu99 -w ${EMU_CFLAGS:-} \
 [ "${EMU_PREVIEW:-1}" = 0 ] && PREVIEW='' || PREVIEW=' (preview)'
 sed -e "s/@VERSION@/$VERSION/g" -e "s/@PREVIEW@/$PREVIEW/g" web/emu/index.html > build/emu/index.html
 cp web/emu/worklet.js build/emu/
+cp web/emu/words.js build/emu/                                     # DUELL 1.4: the screen reader's words (fm1-reader's web/words.js, MIT)
+rm -rf build/emu/reader && cp -R web/emu/reader build/emu/reader   # .. and the page's voice (fm1-reader's tts.js, tts_worker.js, eSpeak NG)
 cp web/emu/fonts/DotGothic16-subset.woff web/emu/fonts/OFL.txt build/emu/fonts/
 if [ -d web/emu/img ]; then mkdir -p build/emu/img && cp web/emu/img/*.png build/emu/img/; fi   # the public page's pictures
 echo "emu: build/emu ($(wc -c < build/emu/duell.wasm | tr -d ' ') B wasm, $VERSION)"

@@ -15,4 +15,7 @@ for script, out, *extra in jobs:
     r = subprocess.run([sys.executable, f"tools/{script}", f"build/gen/{out}", *extra], cwd=base, env=env)
     if r.returncode:
         sys.exit(f"FAILED: {script}")
+# DUELL 1.4: the screen reader's words file and its link (its arguments differ from the jobs above)
+if subprocess.run([sys.executable, "tools/gen_words.py", "firmware/words.tsv", "web/words", "build/gen/ann_words.h"], cwd=base, env=env).returncode:
+    sys.exit("FAILED: gen_words.py")
 print("generated:", *sorted(p.name for p in (base / "build/gen").iterdir()))

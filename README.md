@@ -3,7 +3,7 @@
 **MultiMorphing Bitimbral Synthesizer**  
 **by OSCILL/R**
 
-**Two synths in one small box.** DUELL is free, open-source firmware (GPL-3.0) for the M-VAVE FM-1. It turns the FM-1 into a bitimbral instrument: two complete parts, three ways to play them together, and a morph that glides between two versions of every sound. This is **DUELL 1.3**.
+**Two synths in one small box.** DUELL is free, open-source firmware (GPL-3.0) for the M-VAVE FM-1. It turns the FM-1 into a bitimbral instrument: two complete parts, three ways to play them together, and a morph that glides between two versions of every sound. This is **DUELL 1.3.1**.
 
 **Try it in your browser, no FM-1 needed:** <https://oscillr.github.io/DUELL/emu/>
 
@@ -18,7 +18,7 @@
 3. While the new firmware is written, the unit shows the **update screen**: the DUELL word over moving wave lines, WRITING, a percent number, a bar of 20 segments and DO NOT SWITCH OFF. Do not unplug until it is done. If the screen stays dark the write may still be running: wait for the installer to say Done.
 4. Details, the checklist and the way back to the official firmware: [docs/INSTALL.md](docs/INSTALL.md). If something goes wrong: [docs/RECOVERY.md](docs/RECOVERY.md).
 
-The package is `duell-1.3.fwsc` (compare its SHA-256 with `SHA256SUMS` on the release page).
+The package is `duell-1.3.1.fwsc` (compare its SHA-256 with `SHA256SUMS` on the release page).
 
 ## What is in it
 
@@ -69,6 +69,9 @@ A MIDI channel for each part. Clock in (AUTO, INT, USB or TRS), program change, 
 
 ### USB, the editor and the backup
 The unit shows up as **DUELL** (USB-MIDI; USB audio input as set in SETTINGS). The web editor, <https://oscillr.github.io/DUELL/editor/> (Chrome or Edge, unit connected), edits both parts live: all parameters, the ENGINE selector, the patch library for the 128 slots (export, import, drag between slots, DX7 `.syx` import), the MULTIS, a piano roll for the patterns, wavetable files and a Backup page that saves and restores everything (patches, multis, patterns, wavetables, settings). The editor has **no MIDI MAP tab yet**; assignments are made on the unit with MIDI LEARN. The editor's SETTINGS follow the unit's sections. Try the editor without a unit with `?mock=1` on its address.
+
+### Screen reader
+DUELL says what is on its screen with Charles Vestal's [FM-1 Screen Reader](https://charlesvestal.github.io/fm1-reader/) (Chrome or Edge, unit on USB): the page and its knobs, each knob as you turn it, SETTINGS rows, messages, questions and the first-start guide, through your own screen reader or the page's voice. Without the reader page DUELL sends nothing. The [web emulator](https://oscillr.github.io/DUELL/emu/) speaks too.
 
 ## MIDI CC map
 
@@ -165,7 +168,7 @@ One map for the whole unit. A CC on a part's channel moves that part; "both part
 
 **Learn-only parameters** have no CC of their own: the matrix choices and amounts, EQ, ARP and SEQ set-up, DUCK, the LFOs beyond the vibrato rows, the voice set-up, the master settings, UNDO, the four MORPH switches (TARGET, SMART, ARP, PITCH) and the settings that belong to both parts (BALANCE, XFADE, SPLIT, MODE). Teach a CC to one with SETTINGS > MIDI > MIDI LEARN on the unit.
 
-## What is not in 1.3
+## What is not in 1.3.1
 The editor's MIDI MAP tab, switching multis with preset changes, the SUB HARMONICS card (switched off). The full list is in [docs/KNOWN_LIMITS.md](docs/KNOWN_LIMITS.md).
 
 ## Build and test

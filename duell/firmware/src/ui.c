@@ -748,10 +748,24 @@ static uint32_t page_first(uint32_t fam)
     return 0;
 }
 
-/* transient message in the top bar, right of the transport and the BPM: a + b */
+/* DUELL 1.4: the screen reader's protocol (announce.c, MPL-2.0, Charles Vestal's fm1-base; unchanged copy). The firmware build hooks it to USB
+ * (felucca.c, ANN_HOOKED); every other build that has the UI (host tests, the emulator until it hooks it) gets a send that never sends */
+#ifndef ANN_HOOKED
+static int ann_wire_send(const uint8_t *p, uint32_t n) { (void)p; (void)n; return -1; }
+#endif
+#include "announce.c"
+
+/* transient message in the top bar, right of the transport and the BPM: a + b. DUELL 1.4: also said to a listening screen reader (at once,
+ * cutting off what it was saying; a leading icon byte is not text) */
 static void ui_say(const char *a, const char *b)
 {
     uint32_t n;
+    {
+        const char *t = a;
+        while (*t && (uint8_t)*t < 0x20u)
+            t++;
+        ann_say(t, b, ANN_NOW);
+    }
     str_cpy(ui.msg, a, sizeof ui.msg);
     n = str_len(ui.msg);
     str_cpy(ui.msg + n, b, sizeof ui.msg - n);

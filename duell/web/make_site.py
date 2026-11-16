@@ -15,6 +15,7 @@
   cheatsheet/                 the printable one-page cheat sheet (web/cheatsheet/index.html)
   editor/                     the editor (web/editor/: index.html the sound editor, backup.html the Backup page, layout.json from the firmware tables, the modules; ?mock=1 needs mockunit.js); it imports ../fm1backup.js
                               and ../installer_state.js
+  words/                      DUELL 1.4: the screen reader's words files (web/words/<id>.json from tools/gen_words.py; every one kept: a unit points at its own)
   .nojekyll
 
   web/make_site.py [--pkg FILE.fwsc] [--emu DIR] [OUT_DIR]
@@ -94,7 +95,8 @@ def main():
         shutil.copy(HERE / js, out / js)
 
     shutil.copytree(HERE / "editor", out / "editor", ignore=shutil.ignore_patterns(".DS_Store"))
-    shutil.copytree(HERE / "cheatsheet", out / "cheatsheet", ignore=shutil.ignore_patterns(".DS_Store"))
+    if (HERE / "cheatsheet").is_dir():                 # (2026-11-16: not in this tree; a test build's package is the installer and the editor only)
+        shutil.copytree(HERE / "cheatsheet", out / "cheatsheet", ignore=shutil.ignore_patterns(".DS_Store"))
 
     # installer page (+ the package, when there is one)
     html = (HERE / "install" / "index.html").read_text(encoding="utf-8")
@@ -127,6 +129,10 @@ def main():
           '<a href="https://github.com/oscillr/DUELL">Source code</a></p></main>\n', encoding="utf-8")
     for doc, src in (("LICENSE", ROOT / "LICENSE"), ("LICENSING.md", BASE / "LICENSING.md")):
         shutil.copy(src, inst / doc)
+
+    # the screen reader's words files (DUELL 1.4: the link a unit's HELLO gives, https://oscillr.github.io/DUELL/words/<id>.json; the emulator reads ../words/)
+    if (BASE / "web" / "words").is_dir():
+        shutil.copytree(BASE / "web" / "words", out / "words")
 
     # emulator
     if (emu / "index.html").is_file():

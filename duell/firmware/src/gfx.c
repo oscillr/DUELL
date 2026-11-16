@@ -798,8 +798,30 @@ static int32_t cv_text_flags(int32_t x, int32_t y, const aafont_t *f, const char
     (void)flags;
     return x + ((pen + 8) >> 4);
 }
+/* DUELL 1.4: the words a screen draws, for the screen reader (ui_speak.c): while gfx_said is set, cv_text_on and cv_keycap add what they
+ * draw to it (gfx_said_max bytes), each text an item (". " before it; a space after a keycap, a ':' or a ','). Set around one drawing pass only
+ * (ui_guide.c guide_draw); a caller that draws one sentence in pieces adds it whole and clears gfx_said around the pieces */
+static char *gfx_said;
+static uint32_t gfx_said_max;
+static uint8_t gfx_said_glue;                          /* the next item joins with a space (it follows a keycap: "HOME SKIP") */
+static void gfx_said_add(const char *s)
+{
+    uint32_t n = 0;
+    while (gfx_said[n])
+        n++;
+    if (n && !gfx_said_glue && gfx_said[n - 1u] != ':' && gfx_said[n - 1u] != ',' && n + 2u < gfx_said_max)
+        gfx_said[n++] = '.';
+    if (n && n + 1u < gfx_said_max)
+        gfx_said[n++] = ' ';
+    gfx_said_glue = 0;
+    while (*s && n + 1u < gfx_said_max)
+        gfx_said[n++] = *s++;
+    gfx_said[n] = 0;
+}
 static int32_t cv_text_on(int32_t x, int32_t y, const aafont_t *f, const char *s, uint16_t fg, uint16_t bg)
 {
+    if (gfx_said)
+        gfx_said_add(s);
     return cv_text_flags(x, y, f, s, fg, bg, 0);
 }
 /* a text whose pen starts at x16 / 16 px (the header's centred title, the capsules' letters, the footer's words: the design pictures place them on a fraction of a pixel; the glyph
@@ -974,11 +996,20 @@ static int32_t cv_keycap(int32_t x, int32_t y, uint32_t id, uint16_t fill, uint1
 {
     const kc_t *k = &KC[id < KC_COUNT ? id : 0u];
     const uint16_t *rv;
+    char *said = gfx_said;                                                 /* (DUELL 1.4: the screen reader's words: the key's name, then its word joined;
+                                                                            *  nothing drawn inside the cap, the knob's digit, is added) */
+    if (said) {
+        static const char *const KNOB_SAID[4] = {"KNOB 1", "KNOB 2", "KNOB 3", "KNOB 4"};
+        gfx_said_add(KC_IS_KNOB(id) ? KNOB_SAID[id - KC_K1] : k->label);
+        gfx_said_glue = 1;
+        gfx_said = 0;
+    }
     if (KC_IS_KNOB(id)) {                                                  /* the numbered dot: 1 .. 4 */
         char d[2] = {(char)('1' + (id - KC_K1)), 0};
         y += (KC_H - 11) / 2;                                              /* DUELL 1.3 (owner 2026-11-13: the dot sat 1 px above its word): centred on the pill's KC_H rows, as the word is */
         cv_rrect(x, y, 11, 11, 5, T_TEXT, under);
         cv_text_in(x, y + HALF_UP(11 - AF_D_CAP_H) - AF_D_CAP_Y, 11, &AF_DOT, d, T_BG, T_TEXT);
+        gfx_said = said;
         return x + 12;
     }
     rv = kc_ramp(under, fill, ink);
@@ -987,6 +1018,7 @@ static int32_t cv_keycap(int32_t x, int32_t y, uint32_t id, uint16_t fill, uint1
         GFX_HOOK_TEXT(x, y + cv_oy, x + k->w, y + KC_H + cv_oy, k->label, 6u);      /* cut by the canvas */
     else
         GFX_HOOK_TEXT(x, y + cv_oy, x + k->w, y + KC_H + cv_oy, k->label, 4u);
+    gfx_said = said;
     return x + k->w;
 }
 

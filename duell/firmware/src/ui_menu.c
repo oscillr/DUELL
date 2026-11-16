@@ -175,6 +175,10 @@ static const menu_credit_t MENU_CREDITS[] = {
     {"FM VOICE", MC_TITLE},                        /* DUELL 0.2.17: FM BASS 2 (FM6 factory patch F9), a DX7 voice import */
     {"One FM voice: aquanodemusic (Aquanode Soundscapes), CC0 1.0 Universal", MC_TEXT},
     {"https://github.com/aquanodemusic/aquanode-soundscapes", MC_URL},
+    {"", MC_TEXT},
+    {"FM-1 SCREEN READER", MC_TITLE},              /* DUELL 1.4: announce.c and tools/gen_words.py, MPL-2.0 */
+    {"Charles Vestal / MPL-2.0", MC_TEXT},
+    {"https://github.com/charlesvestal/fm1-reader", MC_URL},
 #if DUELL_VELO
     {"", MC_TEXT},
     {"VELO", MC_TITLE},                            /* KEY VELOCITY and aftertouch (sense.c): the method of Velo, built on Felucca; in builds with KEY SENSE, where the method is */

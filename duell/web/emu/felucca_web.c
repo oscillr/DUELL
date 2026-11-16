@@ -169,6 +169,21 @@ static void lcd_init(void) {}
 
 #include "../../firmware/src/gfx.c"
 #include "../../firmware/src/panel.c"
+/* DUELL 1.4: the screen reader (announce.c, included by ui.c), as on the unit but without USB: the page's reader SysEx goes in through
+ * web_sysex, what the device says (whole F0..F7 frames) collects in web_said_buf until the worklet takes it. After X0X's web/emu/x0x_web.c */
+#define ANN_HOOKED 1
+#define ANN_NAME DUELL_VERSION_STR
+#include "ann_words.h"
+static uint8_t said_buf[4096], sx_in[64];
+static uint32_t said_n;
+static int ann_wire_send(const uint8_t *p, uint32_t n)
+{
+    if (said_n + n > sizeof said_buf)
+        return -1;                                     /* (nobody took it: not sent, as a full USB queue) */
+    memcpy(said_buf + said_n, p, n);
+    said_n += n;
+    return 0;
+}
 #include "../../firmware/src/ui.c"
 #include "../../firmware/src/menu_items.c"
 #include "../../firmware/src/icons.c"
@@ -302,6 +317,8 @@ static void web_frame(void)
     autosave_poll();
     ui_leds();
     ui_draw();
+    ui_speak();                                           /* main.c: DUELL 1.4, the screen reader */
+    ann_tick(fm1_ms);
 }
 
 /* output ring, stereo float, filled by web_ms, drained by web_render */
@@ -498,6 +515,12 @@ EXPORT uint32_t web_test_user_preset(uint32_t i) { return (uint32_t)up_used(i); 
 
 EXPORT uint16_t *web_screen(void) { return web_fb; }
 EXPORT uint32_t web_screen_draws(void) { return web_draws; }
+/* DUELL 1.4: the screen reader's SysEx (the bytes between F0 and F7) in; what the device said out */
+EXPORT uint8_t *web_sysex_in(void) { return sx_in; }
+EXPORT void web_sysex(uint32_t n) { ann_frame(sx_in, n > sizeof sx_in ? sizeof sx_in : n, fm1_ms); }
+EXPORT uint8_t *web_said_buf(void) { return said_buf; }
+EXPORT uint32_t web_said_len(void) { return said_n; }
+EXPORT void web_said_clear(void) { said_n = 0; }
 EXPORT uint32_t web_now_ms(void) { return fm1_ms; }
 EXPORT uint32_t web_playing(void) { return song.playing; }
 EXPORT uint32_t web_guide(void) { return ui.guide; }   /* DUELL 0.2.11: the first-start GUIDE's page shown (0: none; emu_test.mjs) */

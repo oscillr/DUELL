@@ -90,6 +90,18 @@ footer small { font-size: 11px; opacity: .8; }
 .head .row{display:flex;align-items:center;justify-content:space-between;margin-top:34px}.head .desc{width:210px}
 .install{display:inline-block;padding:14px 34px;background:#DC38FF;color:#12051a;font:700 20px/1 -apple-system,"Helvetica Neue",Arial,sans-serif;border-radius:10px;text-decoration:none;letter-spacing:.04em}
 .ver{margin:14px 0 0;font-size:12px;color:var(--dim)}
+/* DUELL 1.4: the screen reader section (after X0X's) */
+.reader{margin:34px auto 30px;max-width:640px;color:var(--fg)}
+.reader h2{font:600 16px/1.3 -apple-system,"Helvetica Neue",Arial,sans-serif;margin:0 0 4px;letter-spacing:.04em}
+.reader>p{margin:0 0 10px;color:var(--dim)}
+.reader fieldset{border:0;padding:0;margin:0 0 10px;display:flex;flex-wrap:wrap;gap:6px 20px;align-items:center}
+.reader legend{float:left;font-weight:600;margin-right:6px;padding:0}
+.reader label{display:inline-flex;gap:6px;align-items:center;cursor:pointer}
+.reader button{font:inherit;color:var(--fg);background:none;border:1px solid var(--rule);padding:4px 12px;cursor:pointer}
+.reader button:disabled{opacity:.5;cursor:default}
+.reader .now{margin:10px 0 0;padding:6px 10px;border:1px solid var(--rule);min-height:1.6em;color:var(--fg)}
+.reader .now span{color:var(--dim)}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap}
 </style>
 </head>
 <body>
@@ -97,7 +109,7 @@ footer small { font-size: 11px; opacity: .8; }
 <div class="head"><img class="logo" src="img/duell-logo-white.png" alt="DUELL"><div class="row"><img class="desc" src="img/multimorphing-bitimbral-white.png" alt="MultiMorphing Bitimbral Synthesizer by OSCILL/R"><a class="install" href="../install/">Install DUELL on your FM-1</a></div><p class="ver">@VERSION@ web emulator</p></div>
 <div class="device" id="device">
   <svg id="panel" viewBox="0 0 1000 624" aria-hidden="true"></svg>
-  <canvas id="screen" width="240" height="240" role="img" aria-label="The screen"></canvas>
+  <canvas id="screen" width="240" height="240" role="img" aria-label="The screen. Its words are read out: see Screen reader, below."></canvas>
   <div class="start" id="start"><button id="go" type="button">Switch on</button><p id="status" hidden></p></div>
 </div>
 
@@ -110,17 +122,35 @@ footer small { font-size: 11px; opacity: .8; }
   <span><kbd>Shift</kbd>-click holds a button</span>
 </p>
 
+<section class="reader" aria-labelledby="reader-h">
+  <h2 id="reader-h">Screen reader</h2>
+  <p>DUELL says what is on its screen: the page, each knob as you turn it, MENU rows and messages.
+     On your FM-1 the same works with the <a href="https://charlesvestal.github.io/fm1-reader/">FM-1 Screen Reader</a> page.</p>
+  <fieldset><legend>Read with</legend>
+    <label><input type="radio" name="rmode" value="sr" checked> Your own screen reader</label>
+    <label><input type="radio" name="rmode" value="voice"> This page's voice</label>
+  </fieldset>
+  <div><button id="where" type="button" disabled>Say the screen</button></div>
+  <p class="now" aria-hidden="true"><span>Said last:</span> <span id="now"></span></p>
+  <div id="live-a" class="sr" aria-live="assertive" aria-atomic="true"></div>
+  <div id="live-p" class="sr" aria-live="polite" aria-atomic="true"></div>
+</section>
+
 <footer>
   <small class="version">@VERSION@@PREVIEW@</small><br>
   <b>DUELL</b> · MultiMorphing Bitimbral Synthesizer · by OSCILL/R<br>
   DUELL is a fork of Felucca<br>
   Felucca by Leo Kuroshita, Hügelton Instruments · <a href="https://www.gnu.org/licenses/gpl-3.0.html">GPL-3.0</a> · browser build after charlesvestal's <a href="https://github.com/charlesvestal/fm1-x0x">X0X</a> · DotGothic16 font, <a href="fonts/OFL.txt">SIL OFL 1.1</a><br>
+  Screen reader: the <a href="https://github.com/charlesvestal/fm1-reader">FM-1 Screen Reader</a> by Charles Vestal (MIT) · the page's voice <a href="https://github.com/espeak-ng/espeak-ng">eSpeak NG</a> (GPL-3.0)<br>
   <nav><a href="../install/">Install</a><a href="../cheatsheet/">Cheat sheet</a><a href="https://github.com/oscillr/DUELL">Source</a><a href="https://github.com/hugelton/Felucca">Based on Felucca</a><button type="button" id="dl">Download saved data</button><button type="button" id="ul">Load saved data</button><input type="file" id="ulfile" accept=".bin" hidden></nav>
   <small>M-VAVE and FM-1 are trademarks of their respective owners. DUELL and Felucca are not affiliated with or endorsed by them.</small>
 </footer>
 </main>
 
 <script type="module">
+// DUELL 1.4: the screen reader's words (words.js: fm1-reader's web/words.js, MIT, a copy); the page's voice (reader/tts.js, reader/tts_worker.js and
+// reader/espeak/: fm1-reader's, eSpeak NG) is loaded only when it is chosen. After X0X's web/emu/index.html (charlesvestal/fm1-x0x)
+import { spoken, wordsOf } from "./words.js";
 const NS = "http://www.w3.org/2000/svg";
 // panel.c's labels (bit = label) and encoder roles
 const B = { FX: 0, SCL: 1, ENV: 2, LFO: 3, EDIT: 4, GLO: 5, HOME: 6, SAVE: 7, ARP: 8, SEQ: 9, PLAY: 10, REC: 11, "OCT-": 12, "OCT+": 13 };
@@ -545,6 +575,7 @@ async function switchOn() {
             console.warn("DUELL: this browser does not keep the saves; they last until the page closes.");
           }
           if (m.reboot && !replacing) location.reload();          // MENU > SYSTEM > ERASE DATA: the unit restarts, as new
+          if (m.said) heard(m.said);                              // DUELL 1.4: what the device said for the screen reader
         }
       };
       node.port.postMessage({ type: "load", wasm, sectors: loadFlash(), master: masterValue }, [wasm]);
@@ -557,6 +588,7 @@ async function switchOn() {
     syncKeys();
     send({ type: "visible", on: !document.hidden });
     midiOn();
+    readerOn();                                                   // DUELL 1.4: the screen reader listens from the start
   } catch (err) {
     node = null;
     go.disabled = false;
@@ -565,6 +597,80 @@ async function switchOn() {
   }
 }
 document.getElementById("go").addEventListener("click", switchOn);
+
+// ---------------------------------------------------------------- the screen reader (DUELL 1.4; fm1-reader's PROTOCOL.md)
+// The page is the reader: HELLO every 2 s, and the device's SAY frames in its own words (its words file, from this site's
+// ../words/, else from the link its HELLO gives). "Your own screen reader": live regions; "This page's voice": eSpeak NG.
+const SR = [0x7D, 0x53, 0x52], R_HELLO = 1, R_WHERE = 3, R_SAY = 16, RMODE = "duell-emu-reader";
+const rmode = () => document.querySelector('input[name="rmode"]:checked').value;
+try { const r = document.querySelector(`input[name="rmode"][value="${localStorage.getItem(RMODE)}"]`); if (r) r.checked = true; } catch { /* none kept */ }
+let words = null, wordsReady = null, helloTimer = 0, saidAny = false, liveFlip = false, tts = null, ttsLoad = null;
+const sendReader = (...b) => send({ type: "sysex", bytes: [...SR, ...b] });
+async function loadWords(link) {
+  const name = (link.match(/[^/]+\.json$/) || [""])[0];
+  for (const url of [name && new URL(`../words/${name}`, location.href).href, link].filter(Boolean)) {
+    try {
+      const r = await fetch(url);
+      if (r.ok) return wordsOf(await r.json());
+    } catch { /* the next */ }
+  }
+  return [];                                                      // the screen's text as it is (the common rules only)
+}
+function readerOn() {
+  document.getElementById("where").disabled = !node;
+  clearInterval(helloTimer);
+  if (!node) return;
+  if (rmode() === "voice") useVoice();                            // (a voice kept from the last visit: Switch on is the gesture that lets it play)
+  sendReader(R_HELLO, 1);
+  helloTimer = setInterval(() => sendReader(R_HELLO, 1), 2000);
+}
+function speak(screen, flags) {
+  const now = !!(flags & 1), keep = !!(flags & 2), said = spoken(screen, words || []);
+  document.getElementById("now").textContent = said;
+  if (rmode() === "voice") {
+    if (tts) tts.speak(said, { rate: 260, interrupt: now && !keep });
+  } else {
+    const live = document.getElementById(now || keep ? "live-a" : "live-p");
+    liveFlip = !liveFlip;                                         // the same words twice: some screen readers skip them otherwise
+    live.textContent = said + (liveFlip ? "" : " ");
+  }
+}
+function heard(bytes) {
+  for (let i = 0; i < bytes.length; i++) {
+    if (bytes[i] !== 0xF0) continue;
+    let j = i + 1;
+    while (j < bytes.length && bytes[j] !== 0xF7) j++;
+    const f = bytes.subarray(i, j + 1);
+    i = j;
+    if (f.length < 6 || f[1] !== SR[0] || f[2] !== SR[1] || f[3] !== SR[2]) continue;
+    const body = String.fromCharCode(...f.subarray(6, f.length - 1).filter((c) => c < 128));
+    if (f[4] === R_HELLO && !wordsReady) {
+      wordsReady = loadWords(body.split("\0")[1] || "").then((w) => { words = w; });
+      setTimeout(() => { if (!saidAny) sendReader(R_WHERE); }, 400);
+    } else if (f[4] === R_SAY) {
+      saidAny = true;
+      const flags = f[5], text = body.replace(/\0/g, "");
+      (wordsReady || Promise.resolve()).then(() => speak(text, flags));
+    }
+  }
+}
+async function useVoice() {
+  if (!ttsLoad) ttsLoad = import("./reader/tts.js").then((m) => m.createTTS(new URL("reader/", location.href).href)).then((t) => (tts = t));
+  try {
+    await ttsLoad;
+    tts.unlock();
+  } catch {
+    ttsLoad = null;
+    document.querySelector('input[name="rmode"][value="sr"]').checked = true;
+    document.getElementById("live-a").textContent = "The page's voice could not load. Your own screen reader reads the screen.";
+  }
+}
+document.querySelectorAll('input[name="rmode"]').forEach((r) => r.addEventListener("change", () => {
+  try { localStorage.setItem(RMODE, rmode()); } catch { /* not kept */ }
+  if (rmode() !== "voice" && tts) tts.stop();
+  if (rmode() === "voice") useVoice();
+}));
+document.getElementById("where").addEventListener("click", () => { if (rmode() === "voice") useVoice(); sendReader(R_WHERE); });
 document.addEventListener("visibilitychange", () => send({ type: "visible", on: !document.hidden }));
 </script>
 </body>

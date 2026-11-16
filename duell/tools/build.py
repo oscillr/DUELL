@@ -91,7 +91,7 @@ VERSION = None                      # unused: the version string comes from buil
 def read_version():
     """the single source of truth: DUELL/VERSION (0.MINOR.BUILD)"""
     v = (SRC.parent / "VERSION").read_text().strip()
-    if not re.fullmatch(r"0\.\d+\.\d+|[1-9]\d*\.\d+|[1-9]\d*\.\d+\.\d+-(?:test|velocapture)\d+|[1-9]\d*\.\d+-(?:test|bench)-\d{4}-\d{2}-\d{2}(?:-[b-z])?", v):   # DUELL 1.1: 1.1.0-testN, N counts up with each distinct build
+    if not re.fullmatch(r"0\.\d+\.\d+|[1-9]\d*\.\d+(?:\.\d+)?|[1-9]\d*\.\d+\.\d+-(?:test|velocapture)\d+|[1-9]\d*\.\d+(?:\.\d+)?-(?:test|bench)-\d{4}-\d{2}-\d{2}(?:-[b-z])?", v):   # DUELL 1.1: 1.1.0-testN, N counts up with each distinct build
         raise SystemExit(f"build: {SRC.parent / 'VERSION'} must hold 0.MINOR.BUILD or MAJOR.MINOR (1.0), found {v!r}")
     return v
 
@@ -155,7 +155,8 @@ def generate():
             [tools / "gen_fm6_patches.py", GEN / "felucca_fm6.h"],
             [tools / "gen_duell_sounds.py", GEN / "duell_sounds.h"],   # DUELL factory sounds (tools/duell_sounds.py)
             [tools / "gen_midi_map.py", GEN / "midi_map_defaults.h"],   # the shipped MIDI map (docs/MIDI_MAP_DEFAULTS.csv; cloud job C: gen_only.py had it, this list did not)
-            [tools / "gen_duell_multis.py", GEN / "duell_multis.h"]]  # DUELL factory multis M01..M04 (tools/factory_multis); M13..M16 too with DUELL_TEST_MODE=1 (env, as the -D below)
+            [tools / "gen_duell_multis.py", GEN / "duell_multis.h"],
+            [tools / "gen_words.py", SRC / "firmware" / "words.tsv", SRC / "web" / "words", GEN / "ann_words.h"]]   # DUELL 1.4: the screen reader's words file and its link (fm1-reader)  # DUELL factory multis M01..M04 (tools/factory_multis); M13..M16 too with DUELL_TEST_MODE=1 (env, as the -D below)
     procs = [subprocess.Popen([sys.executable, *map(str, c)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                               text=True) for c in cmds]
     failed = []

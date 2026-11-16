@@ -1057,3 +1057,4 @@ static void draw_layer(void)
 
 #include "ui_perform.c"                                 /* DUELL 0.2.5: the PERFORM mode (FX held; its page, knobs, keys) */
 #include "ui_guide.c"                                   /* DUELL 0.2.11: the first-start GUIDE (after the splash; MENU > SYSTEM > GUIDE) */
+#include "ui_speak.c"                                   /* DUELL 1.4: what the screen shows, to a listening screen reader */

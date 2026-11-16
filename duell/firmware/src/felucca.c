@@ -101,7 +101,25 @@
 #include "budget.c"             /* the NOTES budget (reads the master and bus settings of fx.c)*/
 
 /* ------------------------------------------------- MIDI, sequencer --- */
+#define SXQ 128u                 /* DUELL 1.4: the SysEx send queue holds a whole screen reader SAY ((ANN_MAX + 9) / 3 packets; the loader keeps 64) */
 #include "usb.c"
+/* DUELL 1.4: the screen reader (announce.c, included by ui.c; fm1-reader INTEGRATION.md section 2). The unit sends nothing until a reader page
+ * says HELLO over USB, and stops 5 s after the last one */
+#define ANN_HOOKED 1
+#define ANN_NAME DUELL_VERSION_STR       /* the HELLO answer */
+#include "ann_words.h"                             /* ANN_WORDS_URL: the link to the words file (tools/gen_words.py from firmware/words.tsv) */
+static int ann_wire_send(const uint8_t *p, uint32_t n)   /* one whole message, never waits: no room (nobody reading), not sent */
+{
+#if FELUCCA_OTA
+    if (!usb.config || SXQ - (so_w - so_r) < (n + 2u) / 3u)
+        return -1;
+    return ota_wire_send(p, n);
+#else
+    (void)p;
+    (void)n;
+    return -1;
+#endif
+}
 #if FELUCCA_UART
 #include "midi_uart.c"
 #endif
@@ -138,6 +156,13 @@ _Static_assert(sizeof proj_wire_u.raw >= 0x800u, "the update's staging buffers f
 #include "ota.c"
 #include "ota_hw.c"
 #include "editor.c"              /* web editor SysEx (needs the OTA SysEx plumbing) */
+static void ann_poll(void)       /* DUELL 1.4: a screen reader's SysEx (announce.c), taken before the editor and the updater look */
+{
+    const uint8_t *p;
+    uint32_t n;
+    if (ota_frame_get(&p, &n) && ann_frame(p, n, fm1_ms))
+        ota_frame_done();
+}
 #endif
 #if FELUCCA_CDC
 #include "console.c"

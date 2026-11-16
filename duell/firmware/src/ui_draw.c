@@ -1469,6 +1469,7 @@ static void seg_next(uint32_t n, int i)
     cell_seg_n = (uint8_t)(CARD_SEG_ON ? n : 0u);
     cell_seg_i = (uint8_t)(n ? i : 0);
 }
+static void sp_card_set(uint32_t c, const char *label, const char *val, const char *unit);   /* DUELL 1.4: ui_speak.c (the screen reader) */
 static void draw_column(uint32_t c, const char *label, const char *val, const char *unit, uint16_t vc,
                         int32_t ratio, uint32_t icon)
 {
@@ -1477,6 +1478,7 @@ static void draw_column(uint32_t c, const char *label, const char *val, const ch
         card_mk_next = card_mot_next = card_ctr_next = 0;
         return;
     }
+    sp_card_set(c, card_hide_next ? "" : label, card_hide_next ? "" : val, unit);   /* (DUELL 1.4: what the card says, for the screen reader) */
     char key[64], l1[16];
     const char *l2 = label_split(label, l1);            /* (0.2.25: a label of two lines) */
     char v1[PV_LEN];

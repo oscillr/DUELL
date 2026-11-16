@@ -23,6 +23,8 @@ static uint8_t guide_pick[2];                           /* DUELL 1.3 (owner 2026
 #define GUIDE_KNOB_MSG "HOME CLOSES GUIDE"              /* (owner 2026-11-15: one wording with SETTINGS' "HOME CLOSES SETTINGS"; was HOME ENDS THE GUIDE) */            /* a knob turned while it is up (it does nothing there) */
 static const khint_t *guide_kh;                       /* the key hints drawn last (the host test reads them) */
 static uint32_t guide_sig;                              /* the page drawn last (+ 1; 0: draw it) */
+static char sp_guide[241];                              /* DUELL 1.4: the page's words as drawn last, for the screen reader (ui_speak.c) */
+static char sp_guide_keys[72];                          /* .. and its legend row (said after the words) */
 static uint32_t guide_lo(void) { return ui.guide_menu ? 3u : 1u; }          /* the first and the last page shown (the menu's: the GUIDE pages only) */
 static uint32_t guide_hi(void) { return GUIDE_N; }
 static int guide_ask(uint32_t pg) { return pg == 1u || pg == 2u; }          /* SETUP pages ask (DUELL 1.3: the device, then the mode), GUIDE pages tell */
@@ -160,6 +162,10 @@ static int32_t guide_wrap(int32_t x, int32_t y, int32_t w, const aafont_t *f, co
     char ln[64];
     uint32_t n, last;
     const char *q = s;
+    char *said = gfx_said;                              /* (DUELL 1.4: the screen reader takes the text whole, not its lines) */
+    if (said)
+        gfx_said_add(s);
+    gfx_said = 0;
     while (*q) {
         last = 0;
         for (n = 0; q[n] && n + 1u < sizeof ln; n++) {
@@ -179,6 +185,7 @@ static int32_t guide_wrap(int32_t x, int32_t y, int32_t w, const aafont_t *f, co
         while (*q == ' ')
             q++;
     }
+    gfx_said = said;
     return y;
 }
 #if !DUELL_BENCH                                       /* (the guide's page drawing: not in a DUELL_BENCH developer build, see guide_seen) */
@@ -187,6 +194,10 @@ static int32_t guide_wrap(int32_t x, int32_t y, int32_t w, const aafont_t *f, co
 static int32_t guide_rich(int32_t x, int32_t base, int32_t w, const char *s)
 {
     int32_t cx = x;
+    char *said = gfx_said;                              /* (DUELL 1.4: the screen reader takes the sentence whole, its keycaps' brackets left out by ui_speak.c) */
+    if (said)
+        gfx_said_add(s);
+    gfx_said = 0;
     while (*s) {
         char wd[24];
         uint32_t n = 0, tl = 0;
@@ -215,6 +226,7 @@ static int32_t guide_rich(int32_t x, int32_t base, int32_t w, const char *s)
         cx += 5;
         s += n;
     }
+    gfx_said = said;
     return base;
 }
 /* TEMPLATE 6 (item 118; ui_tokens.h): the rows of one option block */
@@ -282,9 +294,12 @@ static void guide_content(uint32_t pg)
         static const int32_t NY[3] = {72, 108, 142};
         uint32_t i;
         /* (owner 2026-11-06: no title on this page, the header GUIDE is enough) */
+        char *said = gfx_said;                          /* (DUELL 1.4: the capsule's marks are not read; the notes say what they are) */
+        gfx_said = 0;
         cv_oy += 50;                                    /* (head_capsule draws at the header's rows) */
         head_capsule(cx, 0, 1u, 0u, 8, 0u);
         cv_oy -= 50;
+        gfx_said = said;
         for (i = 0; i < 3u; i++) {                      /* each leader starts 3 px after the end of its own text's last line, runs right, then up to its item in the capsule */
             int32_t xc = cx + (int32_t)i * CAP_NUM_W + (i == 0u ? CAP_NUM_W : i == 1u ? CAP_LET_W : CAP_VOI_W) / 2;
             y = guide_wrap(GD_X, NY[i], i == 2u ? tw + 24 : tw, &AF_M, NOTE[i], T_TEXT, UT_T6_G_LINE + 1);
@@ -365,13 +380,21 @@ static void guide_draw(void)
         const khint_t *kh = ui.guide_menu ? (pg == GUIDE_N ? HMF : pg == guide_lo() ? HM1 : HM) : pg == 1u ? H1 : pg == GUIDE_N ? HL : HN;
         guide_sig = sig + 1u;
         guide_kh = kh;
+        sp_guide[0] = sp_guide_keys[0] = 0;             /* DUELL 1.4: the page's words for the screen reader (ui_speak.c), taken from the first pass of each strip */
         for (band = 0; band < 2u; band++) {             /* two strips: the canvas holds 124 rows (the legend row is in the last one) */
             int32_t y0 = EDGE[band];
+            int first = 1;
             CV_BANDS(240, (uint32_t)(EDGE[band + 1] - y0), T_BG) {                 /* (in bands: gfx.c CV_BANDS) */
                 cv_oy = -y0;
+                gfx_said = first && band == 0u && ann_on() ? sp_guide : 0;   /* (the content: once; the legend: once) */
+                gfx_said_max = sizeof sp_guide;
                 guide_content(pg);
+                gfx_said = first && band == 1u && ann_on() ? sp_guide_keys : 0;
+                gfx_said_max = sizeof sp_guide_keys;
                 if (band == 1u)
                     guide_legend(kh, 3u);
+                gfx_said = 0;
+                first = 0;
                 cv_oy = 0;
                 cv_blit(0, (uint32_t)y0 + (uint32_t)cv_by);
             }

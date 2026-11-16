@@ -287,6 +287,7 @@ static void fm1_main(void)
             }
         }
 #if FELUCCA_OTA
+        ann_poll();                                     /* DUELL 1.4: a screen reader's SysEx, before the editor and the updater look */
         ed_service();                                   /* web editor SysEx */
         ota_service();                                  /* M-UPGRADE handshake */
         if (usb.ota_req) {                              /* M-UPGRADE upgrade command */
@@ -335,6 +336,8 @@ static void fm1_main(void)
         felucca_dbg.stage = 2;
         ui_leds();
         ui_draw();
+        ui_speak();                                   /* DUELL 1.4: what changed on the screen, to a listening screen reader (ui_speak.c) */
+        ann_tick(fm1_ms);
         felucca_dbg.stage = 9;
         while (fm1_ms - m < 15u) {                               /* ~60 UI frames/s at most */
             ui_input();
@@ -343,6 +346,7 @@ static void fm1_main(void)
 #endif
             wave_service();                     /* (the table builds use the wait: ~0.3 ms a frame) */
 #if FELUCCA_OTA
+            ann_poll();                         /* (DUELL 1.4: the screen reader's first) */
             ed_service();                       /* editor replies without waiting for the next frame */
 #endif
         }
