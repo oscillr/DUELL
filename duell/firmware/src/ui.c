@@ -92,7 +92,7 @@ static void patch_restore_all_do(void);      /* SAVE > TOOLS: RESTORE ALL */
                                                 * CLICK REC, USB SERIAL OFF where the old default was stored); clear in every older setting and on a new unit */
 #define PREF_GUIDE_SEEN (0x20u << 16)          /* DUELL 0.2.11: the first-start GUIDE was left (ui_guide.c); clear on a new unit and in every older setting (never
                                                 * written before 0.2.11): the guide shows once after the splash. Not a MENU_FLAGS row: MENU > SYSTEM > GUIDE only replays it */
-#define GUIDE_N 5u                             /* .. its pages: SETUP 1/5, GUIDE 2/5 to 4/5, SETUP 5/5 (ui_guide.c; DUELL 1.1) */
+#define GUIDE_N 5u                             /* .. its pages: SETUP 1/5 (device), SETUP 2/5 (mode), GUIDE 3/5 to 5/5 (ui_guide.c; DUELL 1.3) */
 /* DUELL 0.1: MENU > CONTROL > HOME OPENS, the page the HOME button opens from another page, power-on and leaving the menu (go_main):
  * 0 MORPH (the default, every older setting), 1 MODE, 2 MIXER; [15][2], a byte no engine uses, saved with the settings;
  * an unknown code reads as MORPH. HOME tapped on HOME's own pages goes round them from MORPH as ever (home_tap).
@@ -105,7 +105,12 @@ static void patch_restore_all_do(void);      /* SAVE > TOOLS: RESTORE ALL */
  * [15][4] the global root 0..11 (0 = C) */
 #define ui_scale_set (favorites.factory[15][3])
 #define ui_root_set (favorites.factory[15][4])
-enum { HP_MORPH, HP_MODE, HP_COUNT };   /* (0.2.14: 3 was OVERVIEW, retired; 0.2.25 layout round: 2 was MIXER, which is GLO's first page now, not HOME's: both read as MORPH) */
+enum { HP_MORPH, HP_MAC1, HP_MAC2, HP_PERF, HP_COUNT };   /* (owner 2026-11-15: MACROS 1/2 and 2/2 can be the start page too; stored as HP_MAC1_CODE, HP_MAC2_CODE) */   /* (owner 2026-11-15: HP_MODE gone with the MODE page; stored codes: 0 MORPH, HP_PERF_CODE PERFORM, anything else MORPH) */   /* (0.2.14: 3 was OVERVIEW, retired; 0.2.25 layout round: 2 was MIXER, which is GLO's first page now, not HOME's: both read as MORPH) */
+/* DUELL 1.3 (owner 2026-11-13): HOME OPENS PERFORM, the menu's third value, stored as 4 (a stored 2 or 3, the retired MIXER and OVERVIEW, still reads as MORPH) */
+#define HP_PERF_CODE 4u
+#define HP_MAC1_CODE 5u                                /* (owner 2026-11-15; codes 1 .. 3 were MODE, MIXER, OVERVIEW: never reused, they read as MORPH) */
+#define HP_MAC2_CODE 6u
+static uint32_t home_pg(void) { return ui_home_pg == HP_PERF_CODE ? HP_PERF : ui_home_pg == HP_MAC1_CODE ? HP_MAC1 : ui_home_pg == HP_MAC2_CODE ? HP_MAC2 : HP_MORPH; }
 /* DUELL 0.1: the very first start. project.c persist_boot raises it when the flash holds no valid settings (a new unit, stock firmware's
  * data or garbage in the sector, a flash erase) and main.c drops it again when an autosave was restored; ui_input.c first_boot_poll then
  * makes the start state: MODE LAYER and factory multi M01 loaded (VIOLET is the theme of a settings record that is not valid:
@@ -193,11 +198,11 @@ static struct {
     uint8_t cursor;              /* SEQ: step being edited (STEP page KNOB 1 moves it) */
     uint8_t entry_open;          /* SEQ: keys held since the first press of this entry */
     uint8_t hot_col, hot_t;      /* column whose knob was just turned (drawn white) */
-    uint8_t menu;                /* 0 off, 1 list, 2 about + credits, 3 info (1.2) (HOME held) */
+    uint8_t menu;                /* 0 off, 1 a section's rows, 2 about + credits, 3 info (1.2), 4 MIDI LEARN (DUELL 1.3), 5 BENCH, 6 the list of sections (DUELL 1.3: HOME held opens it) */
     uint8_t guide;               /* DUELL 0.2.11: the GUIDE's page shown (1..GUIDE_N), over everything but UPDATE MODE; 0 = none (ui_guide.c) */
     uint8_t guide_menu;          /* .. opened from MENU > SYSTEM > GUIDE (the bit untouched, back to the menu at its end) */
     uint8_t menu_sel;            /* MENU: the row (menu_items.c MI_*; its tab MI_TAB), kept while the device runs */
-    uint8_t menu_row[5];         /* MENU: the row last picked in each tab, from its first (ALGORITHM comes back to it) */
+    uint8_t menu_row[8];         /* MENU: the row last picked in each section, from its first (opening the section comes back to it) */
     uint16_t menu_scroll;        /* continuous ABOUT + CREDITS position, pixels */
     uint32_t menu_sig, home_t0;  /* HOME press time (btn_hold) */
     uint8_t force;               /* full redraw pending */
@@ -262,7 +267,7 @@ static struct {
 
 enum { CF_NONE, CF_CLEAR_SEQ, CF_CLEAR_TRK, CF_OVR_PROJ, CF_OVR_USER, CF_LOAD_PAT,
        CF_INIT_SOUND, CF_CLEAR_MOTION, CF_RESTORE_ALL, CF_OVR_PSLOT,
-       CF_SAVE_OVER, CF_ERASE_ALL, CF_HOLD_PSLOT, CF_HOLD_MULTI };   /* ui.confirm: TOOLS' clears; SAVE over a used slot (CF_OVR_PROJ: a MULTI); a
+       CF_SAVE_OVER, CF_ERASE_ALL, CF_HOLD_PSLOT, CF_HOLD_MULTI, CF_ML_CLEAR };   /* (CF_ML_CLEAR, owner 2026-11-15: SETTINGS > MIDI > MIDI LEARN's CLEAR ALL asks, as TOOLS' RESTORE ALL) */   /* ui.confirm: TOOLS' clears; SAVE over a used slot (CF_OVR_PROJ: a MULTI); a
                           * pattern over the user's steps; SAVE > TOOLS' RESTORE ALL (CF_RESTORE_ALL); PATTERNS: SAVE over a used
                           * one; CF_ERASE_ALL: MENU > SYSTEM > ERASE DATA (opened in the menu, drawn over it; erase_data.c); SAVE held: the sound over a patch slot (CF_SAVE_OVER, confirm_trk the part, 2 both; ui.svs the slot, K1 picks it);
                           * (PATCHES' RESTORE, the pattern slot's ERASE and MULTI's ERASE are removed, with their dialogs);
@@ -317,6 +322,50 @@ static uint32_t keyvel_type(void) { uint32_t t = ui_sense_type & 7u; return t &&
 static uint32_t aftert_type(void) { uint32_t t = (ui_sense_type >> 3) & 7u; return t && t <= SC_TYPE_N ? t - 1u : SC_TYPE_NORMAL; }
 #endif
 static uint32_t perf_keep(void) { return (ui_idle & PERF_KEEP_BIT) != 0u; }
+/* DUELL 1.3 MACROS' device settings (MENU > CONTROL, menu_items.c; the editor's MENU settings): the row favorites.factory[13], the favourites row of engine 13 (SLICE, retired in
+ * 0.2.9: no sound, no favourite since; favorites.c never hands it out for a shown engine). [0] the tag MAC_TAG: without it (a new unit, ERASE DATA, every older record, whatever
+ * SLICE's old stars left there) every pick reads its default; [1..4] PERFORM KNOB 1..4 (MAC_MORPH .. MAC_KILL, MAC_DEPTH), [5..8] QUICK MACRO KNOB 1..4 (MAC_MORPH .. MAC_KILL),
+ * [9] the MIDI PRESET (midi_control.c MPRE_*). A value out of range reads its default. Defaults: PERFORM as it always was, K1 MORPH, K2 SPACE, K3 KILL, K4 DEPTH; QUICK MACRO
+ * TIMBRE, FILTER, CHARACTER, MOTION (owner 2026-11-12); MIDI PRESET STANDARD. A device setting: no patch, multi or project holds it.
+ * NOT BUILT in this round: the MENU rows that would edit each macro's targets (macro.c's const tables are the device's one set) */
+#define ui_mac_set (favorites.factory[13])
+#define MAC_TAG 0xD4u                                   /* (0xD4 since 2026-11-13: PERFORM K1 is DEPTH; a record of the 0xD3 layout reads the defaults) */
+static const uint8_t MAC_PICK_DEF[8] = {MAC_DEPTH, MAC_MORPH, MAC_SPACE, MAC_KILL, MAC_TIMBRE, MAC_FILTER, MAC_CHARACTER, MAC_MOTION};   /* owner 2026-11-13: PERFORM K1 is DEPTH, fixed (the depth of the 16 buttons under it); K2 K3 K4 the three picks */
+static uint32_t mac_pick(uint32_t k)                     /* k 0..3: PERFORM KNOB k + 1; 4..7: QUICK MACRO KNOB k - 3 */
+{
+    uint32_t v = ui_mac_set[0] == MAC_TAG ? ui_mac_set[1u + (k & 7u)] : MAC_PICK_DEF[k & 7u];
+    if ((k & 7u) == 0u)
+        return MAC_DEPTH;                                /* (PERFORM K1: DEPTH, never a pick) */
+    return v <= (uint32_t)MAC_KILL ? v : MAC_PICK_DEF[k & 7u];
+}
+static void mac_tag(void)                                 /* (the first change: the row gets the defaults and its tag) */
+{
+    uint32_t k;
+    if (ui_mac_set[0] == MAC_TAG)
+        return;
+    for (k = 0; k < 8u; k++)
+        ui_mac_set[1u + k] = MAC_PICK_DEF[k];
+    ui_mac_set[9] = MPRE_STANDARD;
+    ui_mac_set[0] = MAC_TAG;
+}
+static void mac_pick_put(uint32_t k, uint32_t v)
+{
+    mac_tag();
+    ui_mac_set[1u + (k & 7u)] = (uint8_t)v;
+}
+static uint32_t mac_preset_get(void) { return ui_mac_set[0] == MAC_TAG && ui_mac_set[9] < MPRE_N ? ui_mac_set[9] : MPRE_STANDARD; }
+static void mac_preset_put(uint32_t v)
+{
+    mac_tag();
+    ui_mac_set[9] = (uint8_t)(v < MPRE_N ? v : MPRE_STANDARD);
+}
+/* every pass (ui_input): the MIDI PRESET to the MIDI side (an import or an editor restore takes effect here too), the macros' sets to the audio side (macro.c) */
+static void mac_settings(void)
+{
+    midi_preset = (uint8_t)mac_preset_get();
+    mac_poll();
+    morph_route_poll();                                 /* (1.3: the MORPH routes' blend in the main loop, morph.c) */
+}
 static uint32_t mods_get(void) { return ((uint32_t)ui_idle >> MODS_SHIFT) & MODS_ALL; }
 /* DUELL 1.1 (owner, ARP_SEQ_RUN_SWITCH_V1.md): the ARP and SEQ cards have OFF, FOLLOWS PATCH (the default) and KEEPS RUNNING. OFF is the MODULES bit above; KEEPS RUNNING is a bit of its own in the byte
  * [15][23] (bit 1 ARP, bit 2 SEQ; bit 0 is NOTES LEFT): set = KEEPS RUNNING while the module is not OFF. The document proposed the bits 6 and 7 of [15][10], but they are KEY VELOCITY and AFTERTOUCH
@@ -602,6 +651,17 @@ static void perf_fade_step(void)
     }
 }
 
+/* DUELL 1.3 MACROS: a sound load of a part (load_begin), a multi load (multi.c, both parts): that part's five per-part macros go back to their middle EVERY time, whatever
+ * PERF LEAVE says, so the sound that loads plays exactly as saved (owner 2026-11-13: "the macros should reset at each time, because those are modifying the actual patch").
+ * At once, not in a glide: the load changes the sound anyway */
+static void mac_neutral(uint32_t mask)
+{
+    uint32_t pi, m;
+    for (pi = 0; pi < NLIVE; pi++)
+        if ((mask >> pi) & 1u)
+            for (m = 0; m < MAC_NPART; m++)
+                mac_v[pi][m] = 0;
+}
 static void perf_off(void)
 {
     if (!ui.perf)
@@ -611,6 +671,7 @@ static void perf_off(void)
     ui.force = 1;
 }
 static void perf_cards(void);                         /* (ui_perform.c: the PERFORM page's parts, drawn by ui_draw.c and ui_graph.c) */
+static void perf_enter(void);                         /* (ui_perform.c: HOME OPENS PERFORM, go_main_to) */
 static void graph_perf(void);
 static void space_turn(uint32_t role, int32_t s);      /* (ui_perform.c: SPACE, PERFORM's K2 and the MIXER's K3) */
 static void space_card(uint32_t col);
@@ -619,6 +680,11 @@ static int perf_foot(char *l, char *r);
 static uint32_t perf_key_leds(uint32_t *mid);
 static void perf_input(uint32_t pressed, uint32_t now, uint32_t lay);   /* (ui_perform.c: ui_input's) */
 static void perf_knob(uint32_t slot, int32_t s);
+static void mac_cc(uint32_t m, uint32_t pi, uint32_t value);   /* (ui_perform.c: DUELL 1.3 MACROS) */
+static void mac_knob(uint32_t m, uint32_t role, int32_t s);
+static void mac_reset(uint32_t m);
+static void mac_card(uint32_t col, uint32_t m);
+static uint32_t mac_sig(void);
 static void perf_presets(int32_t s);
 static void presets_turn(int32_t s);
 
@@ -626,11 +692,13 @@ static void presets_turn(int32_t s);
 /* the quick layers (ui_layer.c): a button held, the keys and KNOB 1..4 are its shortcuts, its map over the page */
 enum { LAYER_NONE, LAYER_RES, LAYER_GLO, LAYER_EDIT, LAYER_SEQ, LAYER_REC,
        LAYER_LFO, LAYER_ENV, LAYER_ARP,               /* DUELL 0.2.9: the QUICK EDIT layers of LFO, ENV, ARP (the keys stay notes) */
+       LAYER_MACRO,                                   /* DUELL 1.3: QUICK MACRO, SEL held (ui_layer.c; the keys stay notes) */
        LAYER_N };
 static uint32_t off_layer(uint32_t l) { return l == LAYER_ARP ? (mods_off & MODS_ARP) : l == LAYER_SEQ ? (mods_off & MODS_SEQ) : 0u; }
 static void draw_layer(void);
 static int glo_pg(void);                              /* (ui_layer.c: GLO's main page shown) */
 static uint32_t midi_ch_get(uint32_t k);              /* (ui_input.c: part k's MIDI channel, 0..15) */
+static void midi_ch_put(uint32_t k, uint32_t ch);
 static const char *layer_head(void);
 static int layer_locked(void);
 static void layer_foot_title(char *nm, char *ct);   /* the footer's page name and number for a layer (ui_layer.c) */
@@ -844,8 +912,8 @@ static void go_main_to(uint32_t want)
 {
     uint32_t i;
     ui.page = (uint8_t)page_first(FAM_TRK);
-    for (i = 0; want == HP_MODE && i < NPAGES; i++)
-        if (PAGES[i].fam == FAM_TRK && page_visible(i) && PAGES[i].scope == SC_MODE) {
+    for (i = 0; (want == HP_MAC1 || want == HP_MAC2) && i < NPAGES; i++)   /* (owner 2026-11-15: HOME OPENS MACROS 1/2 or 2/2) */
+        if (PAGES[i].fam == FAM_TRK && page_visible(i) && PAGES[i].graph == (want == HP_MAC1 ? GR_MAC1 : GR_MAC2)) {
             ui.page = (uint8_t)i;
             break;
         }
@@ -854,8 +922,10 @@ static void go_main_to(uint32_t want)
     ui.hot_t = 0;
     song.seq_mode = 0;
     page_entered();
+    if (want == HP_PERF)                              /* DUELL 1.3: HOME OPENS PERFORM: over MORPH (FX tapped there goes back to MORPH) */
+        perf_enter();
 }
-static void go_main(void) { go_main_to(ui_home_pg < HP_COUNT ? ui_home_pg : HP_MORPH); }
+static void go_main(void) { go_main_to(home_pg()); }
 
 /* The SELECT knob (SPEC 1.2): the previous / next sub-page of the screen shown, wrapping: the family's pages, the order
  * its button's taps go round (open_family). HOME's round: its pages, round (SELECT right from MODE goes to MORPH, left from MORPH to MODE) */
@@ -889,7 +959,7 @@ static void page_select(int32_t dir)
     }
 }
 
-/* HOME tapped: from another page MORPH; then MORPH SET, MODE, MIXER, and MORPH again (0.2.14: no OVERVIEW after MIXER). HOME's
+/* HOME tapped: from another page MORPH; then (DUELL 1.3) MACROS 1/2, MACROS 2/2, then MORPH SET, MODE, MIXER, and MORPH again (0.2.14: no OVERVIEW after MIXER). HOME's
  * pages are FAM_TRK's, in PAGES order, always from the first (none remembered). Held: the menu (ui_input) */
 static void home_tap(void)
 {
@@ -1014,6 +1084,7 @@ static void load_begin(track_t *t, uint32_t what)
     if ((what & UNDO_SOUND) && !(what & UNDO_ENG)) {
         pl_pend_on = 0;                           /* (and no cursor place waits for a load) */
         perf_fade_begin(0);                       /* (0.2.14 PERF LEAVE FADE: a sound load takes PERFORM's SPACE and KILL back to neutral; 0.2.24: not an engine change) */
+        mac_neutral(1u << i);                     /* (DUELL 1.3: and the part's MACROS) */
     }
     what &= (uint32_t)~UNDO_ENG;
     if (undo_depth++)

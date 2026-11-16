@@ -18,10 +18,9 @@
 enum { ED_MENU_DESC = 72, ED_MENU_SET };
 /* DUELL 0.2.14: GLO > MODULES' four switches (core.h MODS_*, ui.c mods_put) are device settings but no MENU rows (they live on the GLO page):
  * here they are the rows ED_MODS + 0..3 (ARP, SEQ, SENDS, PART FX; no MI_ row has such a number), ids 28..31, values 0 OFF / 1 ON (the
- * knob's order: left OFF, right ON; ON the default), their tab index MTAB_COUNT (4) named "MODULES" (no MENU tab: the device shows them
+ * knob's order: left OFF, right ON; ON the default), their tab index MTAB_COUNT (4) named "MODULES" (DUELL 1.3: MTAB_MODULES, MENU > MODULES, whose rows MI_ARP .. MI_PFX are the same switches; before: no MENU tab, the device showed them
  * on GLO > MODULES). A SET switches as the page's knob does and saves the settings record */
 #define ED_MODS 0x60u
-#define ED_MODS_TAB "MODULES"
 /* DUELL 0.2.19 (owner: BASS MONO is a SOUND setting, not a MENU one): id 33, BASS MONO, is the page GLO > MASTER's K1 (core.h G_BM, song.bm: kept with the music, the
  * multis and the autosave). Like TUNE it is described here as a setting, but its row ED_BM is no MI_ row (the MENU has none) and its tab index MTAB_COUNT + 1 is named
  * "MASTER" (no MENU tab): the editor shows it on the GLOBAL tab. A SET changes the value as the knob does; rc 0 (the music holds it, no settings to save). The unit
@@ -34,10 +33,9 @@ enum { ED_MENU_DESC = 72, ED_MENU_SET };
  * draws no card in DUEL; the values are kept and a SET is still applied */
 #define ED_CP 0x68u
 /* DUELL 0.2.22 (owner: the sidechain's MIDI setup is a DEVICE setting, page GLO > SIDECHAIN): ids 38..41, P1 CH, P1 NOTE, P2 CH, P2 NOTE (fx.c sc_midi, the settings bytes [15][14..17]; ui_input.c sc_get / sc_put), rows
- * ED_SC + 0..3 (no MI_ rows), tab MTAB_COUNT + 2 named "SIDECHAIN" (the editor shows them on the GLOBAL tab). All four are numbers (EDM_INT): a channel 1..16, a note 0..127 (0 = ANY; the editor names it as the unit does,
+ * ED_SC + 0..3 (no MI_ rows), tab MTAB_COUNT + 2 named "SIDECHAIN" (DUELL 1.3: MTAB_SCHAIN, MENU > MIDI > SIDECHAIN, rows MI_SC1CH ..; the editor shows them with the MENU settings). All four are numbers (EDM_INT): a channel 1..16, a note 0..127 (0 = ANY; the editor names it as the unit does,
  * F_DKNOTE). A SET changes the value as the knob does and saves the settings record (rc as the MENU's); no patch, multi or project holds them. Editable whatever the parts' DUCK SRC is */
 #define ED_SC 0x6Cu
-#define ED_SC_TAB "SIDECHAIN"
 /* DUELL 0.2.23 (owner: two more master stages, DEVICE settings like COMP): id 42 WIDTH (GLO > WIDTH, 0..200 %, 100 = as it is) (core.h G_WD,
  * song.ms[0]; ui.c ms_sync), row ED_MS (no MI_ row), tab MTAB_COUNT + 1 "MASTER" (as BASS MONO and COMP: the editor's GLOBAL tab). A number (EDM_INT; unit "%"). 0.2.25: id 43, DRIVE, is gone (the saturator is removed).
  * A SET changes the value as the knob does and saves the settings record (rc as the MENU's). The unit draws no card in DUEL; the values are kept and a SET is still applied */
@@ -49,41 +47,34 @@ enum { ED_MENU_DESC = 72, ED_MENU_SET };
 #endif
 enum { EDM_ENUM, EDM_INT, EDM_TENTHS };                /* kind: names follow; or a unit (THRESH); 0.2.22: a number in tenths of its unit (TUNE: 4400 = 440.0 Hz, shown with one decimal) */
 static const uint8_t ED_MENU[][2] = {
-    {MI_COLOR, 0}, {MI_ANIM, 3}, {MI_LEDS, 4}, {MI_HOLD, 5}, {MI_ACCEL, 6},
-                                                       /* (id 7, FX LATCH, retired in DUELL 0.2.2: the FX hold layer is removed; never reused) */
-                                                       /* (id 9, OUTPUT EQ FLAT / LOWCUT / BASS+, retired in DUELL 0.2.19: the low cut and BASS+ are removed; never reused) */
-                                                       /* (id 10, USB LEVEL MASTER / FIXED, retired in DUELL 0.2.25: USB audio is always fixed; never reused) */
-#if FELUCCA_CDC
-    {MI_SERIAL, 11},                                   /* (developer builds only: the product has no console and no USB SERIAL row; the id stays retired there, never reused) */
-#endif
-    {MI_CLICK, 12}, {MI_CLKLVL, 13}, {MI_COUNTIN, 14},
-    {MI_RESTORE, 15},                                  /* 1.2 (Discussion #130), a row of SYSTEM */
-    {MI_SCLLED, 16},                                   /* 1.2 (Discussion #127), a row of CONTROL */
-    {MI_SCROFF, 17},                                   /* 1.1.5, a row of DISPLAY */
-                                                       /* (id 18, SCOPE OUT / MIX, retired in DUELL 0.2.14: the scope always draws OUT; never reused) */
-    {MI_PREVIEW, 19},                                  /* 1.2 (Discussion #169), a row of CONTROL */
-    {MI_CHADD, 20},                                    /* 1.2 (#155), a row of CONTROL */
-                                                       /* (ids 1 STYLE and 2 LARGE, retired in DUELL 0.2.2: the look is FLAT only and LARGE is gone; never reused) */
-                                                       /* (id 21, MIDI IN, retired in DUELL 0.1: it is GLO > MIDI' MIDI IN now; never reused) */
-    {MI_TUNE, 22},                                     /* 1.2: the project's G_TUNE (was GLO > GLOBAL), AUDIO */
-                                                       /* (id 23, 1.3 HOME / DUELL OVERVIEW SCOPE / PARTS, retired in DUELL 0.2.14 with the OVERVIEW page; never reused) */
-                                                       /* (id 24, HELP, retired in DUELL 0.2.2: removed for now; never reused) */
-    {MI_HOMEPG, 25},                                   /* DUELL 0.1: HOME OPENS MORPH / MODE / MIXER (0.2.14: no OVERVIEW, max 2), CONTROL */
-    /* id 26 (CPU METER, DUELL 0.2.9) is retired with the CPU bar in 1.1: no row, the id stays reserved and is never reused */
-    {MI_MODERECALL, 27},                                /* DUELL 0.2.11: MODE RECALL OFF / ON, CONTROL (does a multi load set its saved MODE); 0.2.14: MULTI LOAD KEEPS MODE / SETS MODE */
-    {ED_MODS + 0u, 28}, {ED_MODS + 1u, 29},             /* DUELL 0.2.14: GLO > MODULES ARP, SEQ, SENDS, PART FX (OFF / ON; no MENU row: ED_MODS) */
-    {ED_MODS + 2u, 30}, {ED_MODS + 3u, 31},
+    /* owner 2026-11-15: in the unit's new order (PLAYING RECORDING MORPH PERFORM MODULES MIDI SYSTEM, then the GLOBAL tab's MASTER rows), so the editor lists them as the unit does;
+     * the ids never change (retired: 1 STYLE, 2 LARGE, 7 FX LATCH, 8 BPM LOCK, 9 OUTPUT EQ, 10 USB LEVEL, 18 SCOPE, 21 MIDI IN (old), 23 OVERVIEW, 24 HELP, 26 CPU METER, 43 DRIVE) */
+    {MI_MODE, 58}, {MI_XFADE, 62}, {MI_SPLIT, 63},     /* PLAYING: MODE (2026-11-15, was HOME's MODE page), XFADE 0..100 %, SPLIT 0 OFF else the note + 1 (numbers: EDM_INT; LAYER only), */
+    {MI_MODERECALL, 27},                               /* MULTI LOAD */
 #if DUELL_VELO
-    {MI_AFTERT, 45},                                    /* DUELL 1.0: AFTERTOUCH OFF / SOFTER / SOFT / NORMAL / HARD / HARDER (DUELL 1.1: values 0..5), CONTROL, its own line (the keys' channel pressure; KEY VELOCITY is id 44) */
-    {MI_KEYVEL, 44},                                    /* DUELL (job D): KEY VELOCITY OFF / SOFTER / SOFT / NORMAL / HARD / HARDER (DUELL 1.1: values 0..5), CONTROL (developer builds with KEY SENSE only; the id is free in every other build) */
+    {MI_KEYVEL, 44}, {MI_AFTERT, 45},                  /* KEY VELOCITY, AFTERTOUCH (OFF / SOFTER .. HARDER) */
 #endif
-    {MI_PERFLEAVE, 32},                                 /* DUELL 0.2.14: PERF LEAVE FADE / KEEP, CONTROL (leaving PERFORM / a sound load: SPACE and KILL to neutral, or stay) */
-    {ED_BM, 33},                                        /* DUELL 0.2.19: BASS MONO OFF / 40 .. 400 Hz, the MASTER page (the master mono below the corner; not in DUEL); no MENU row (ED_BM) */
-    {ED_CP + 0u, 34}, {ED_CP + 1u, 35},                 /* DUELL 0.2.21: COMP THRESH, RATIO, ATTACK, RELEASE, the page GLO > COMP (a device setting; not in DUEL); no MENU rows (ED_CP) */
-    {ED_CP + 2u, 36}, {ED_CP + 3u, 37},
-    {ED_SC + 0u, 38}, {ED_SC + 1u, 39},                 /* DUELL 0.2.22: SIDECHAIN P1 CH, P1 NOTE, P2 CH, P2 NOTE, the page GLO > SIDECHAIN (a device setting); no MENU rows (ED_SC) */
+    {MI_TUNE, 22},                                     /* TUNE: the project's G_TUNE */
+    {MI_CLICK, 12}, {MI_CLKLVL, 13}, {MI_COUNTIN, 14}, {MI_CHADD, 20}, {MI_PREVIEW, 19},   /* RECORDING */
+    {MI_RSMART, 59}, {MI_RARP, 60}, {MI_RPITCH, 61},   /* MORPH: MORPH SET's SMART, ARP, PITCH (2026-11-15) */
+    {MI_PERFK2, 47}, {MI_PERFK3, 48}, {MI_PERFK4, 49},   /* PERFORM: PERFORM KNOB 2 .. 4 (K1 is DEPTH: no row), */
+    {MI_QMAC1, 50}, {MI_QMAC2, 51}, {MI_QMAC3, 52}, {MI_QMAC4, 53},   /* QUICK MACRO KNOB 1 .. 4, */
+    {MI_PERFLEAVE, 32},                                /* LEAVING PERFORM */
+    {ED_MODS + 0u, 28}, {ED_MODS + 1u, 29},            /* MODULES: ARP, SEQ, SENDS, PART FX (no MI_ row here: ED_MODS) */
+    {ED_MODS + 2u, 30}, {ED_MODS + 3u, 31},
+    {MI_P1CH, 55}, {MI_P2CH, 56}, {MI_MIDIIN, 57}, {MI_MIDIPRE, 54},   /* MIDI: PART 1 CHANNEL, PART 2 CHANNEL, MIDI IN, MIDI PRESET, */
+    {ED_SC + 0u, 38}, {ED_SC + 1u, 39},                /* its SIDECHAIN: P1 CH, P1 NOTE, P2 CH, P2 NOTE (ED_SC) */
     {ED_SC + 2u, 40}, {ED_SC + 3u, 41},
-    {ED_MS + 0u, 42},                                   /* DUELL 0.2.23: WIDTH (GLO > WIDTH), a device setting; not in DUEL; no MENU row (ED_MS). 0.2.25: id 43 (DRIVE, the saturator) is removed and not reused */
+    {MI_COLOR, 0}, {MI_LEDS, 4}, {MI_SCLLED, 16}, {MI_ANIM, 3}, {MI_SCROFF, 17},   /* SYSTEM: the look, */
+    {MI_ACCEL, 6}, {MI_HOLD, 5},                       /* the feel, */
+    {MI_HOMEPG, 25}, {MI_RESTORE, 15},                 /* HOME OPENS (MORPH, MACROS 1/2, MACROS 2/2, PERFORM), RESTORE LAST */
+#if FELUCCA_CDC
+    {MI_SERIAL, 11},                                   /* (developer builds only) */
+#endif
+    {ED_BM, 33},                                       /* the GLOBAL tab's MASTER rows: BASS MONO, */
+    {ED_CP + 0u, 34}, {ED_CP + 1u, 35},                /* COMP THRESH, RATIO, ATTACK, RELEASE, */
+    {ED_CP + 2u, 36}, {ED_CP + 3u, 37},
+    {ED_MS + 0u, 42},                                  /* WIDTH */
 };
 _Static_assert(MI_COUNT < ED_MODS && ED_MODS + 4u <= ED_BM && ED_BM < ED_CP && ED_CP + 4u <= ED_SC && ED_SC + 4u <= ED_MS, "editor_menu.c: the MODULES rows, BASS MONO, COMP, SIDECHAIN and WIDTH are no MI_ row");
 #define ED_MENU_N NELEM(ED_MENU)
@@ -176,8 +167,8 @@ static int ed_menu_handle(uint32_t cmd, const uint8_t *a, uint32_t n)
             ed_v((k & 1u) ? 127 : 16);
             ed_str(k == 0u ? "P1 CH" : k == 1u ? "P1 NOTE" : k == 2u ? "P2 CH" : "P2 NOTE", PV_LEN);
             ed_str("", PV_LEN);
-            ed_b(MTAB_COUNT + 2u);
-            ed_str(ED_SC_TAB, PV_LEN);
+            ed_b(MTAB_SCHAIN);                         /* (DUELL 1.3: MENU > MIDI > SIDECHAIN, the sub-section's index and name) */
+            ed_str(MTAB_NAME[MTAB_SCHAIN], PV_LEN);
             return 1;
         }
         if (row >= ED_CP) {                            /* (0.2.21: COMP: THRESH as a number, the others as lists; tab MASTER) */
@@ -223,20 +214,22 @@ static int ed_menu_handle(uint32_t cmd, const uint8_t *a, uint32_t n)
             } else {
                 ed_str("ON", PV_LEN);
             }
-            ed_b(MTAB_COUNT);
-            ed_str(ED_MODS_TAB, PV_LEN);
+            ed_b(MTAB_MODULES);                        /* (DUELL 1.3: MENU > MODULES) */
+            ed_str(MTAB_NAME[MTAB_MODULES], PV_LEN);
             return 1;
         }
         k = menu_n(row);
         lo = row == MI_TUNE ? TUNE_MIN : 0;            /* (a number: its values from min) */
         ed_b(ED_MENU[a[0]][1]);
-        ed_b(row == MI_TUNE ? EDM_TENTHS : EDM_ENUM);
+        ed_b(row == MI_TUNE ? EDM_TENTHS : row == MI_XFADE || row == MI_SPLIT ? EDM_INT : EDM_ENUM);   /* (2026-11-15: XFADE and SPLIT as numbers, 101 / 129 names would not fit a reply; the editor names SPLIT's notes itself) */
         ed_v((int32_t)menu_get(row) + lo);
         ed_v(lo);
         ed_v((int32_t)k - 1 + lo);
         ed_str(MI_NAME[row], PV_LEN);
         if (row == MI_TUNE)
             ed_str("Hz", PV_LEN);                          /* (EDM_TENTHS: its unit) */
+        else if (row == MI_XFADE || row == MI_SPLIT)
+            ed_str(row == MI_XFADE ? "%" : "", PV_LEN);    /* (EDM_INT: its unit) */
         else
             for (i = 0; i < k; i++)
                 ed_str(menu_vname(row, i), PV_LEN);

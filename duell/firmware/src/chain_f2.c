@@ -361,7 +361,10 @@ static __attribute__((noinline)) void f2_cut(track_t *t, voice_t *v, const vmod_
 {
     const int16_t *p = t->p;
     const mod_win_t *mod = &MODW(t);
-    int32_t ms = (E2Q(t, v) * DEP_AMT(XV(t, X_ENV2))) >> 7, lf = mulq15(t->lfo_val, t->lfo_fade), c, ac, link = XV(t, X_LINK) != 0;
+    int32_t ed = DEP_AMT(XV(t, X_ENV2)), ms, lf = mulq15(t->lfo_val, t->lfo_fade), c, link = XV(t, X_LINK) != 0;
+    if (mod->on && mod->vfe)                            /* DUELL 1.3: the VELOCITY > FILTER ENV slot scales TWIN's envelope depth too (core.h vel_env_q8) */
+        ed = (ed * vel_env_q8(mod->vfe, v->mvel)) >> 8;
+    ms = (E2Q(t, v) * ed) >> 7;
     if (mod->on && mod->ldep < 32767)
         lf = mulq15(lf, mod->ldep);
     ms += (lf * DEP_AMT(XV(t, X_LFO1))) >> 7;
@@ -374,8 +377,7 @@ static __attribute__((noinline)) void f2_cut(track_t *t, voice_t *v, const vmod_
     if (mod->on)
         ms += mod_f2_voice(t, v, m->envq15);   /* (the voice's own ENV: B1 of the voice share, no part scalar) */
     q->tune = clamp((clamp(p[P_CUT2], -24, 24) << 4) + ((ms * 2711) >> 15), -768, 768);
-    ac = accent_dir(accent_lift(v->vel, m->envq15), accent_dir_type(q->ty));   /* the accent's lift, the way filter 2's TYPE opens (LP up, HP down, BP / NOTCH / COMB none); uc is filter 1's cutoff WITHOUT its own lift (voice_chain.c passes m->ucn) */
-    c = link ? uc + TW_OFF_Q8(clamp(p[P_CUT2], -TW_OFF_MAX, TW_OFF_MAX)) + ac : clamp(p[P_CUT2], 0, UF_STEPS) * 256 + (ACCENT_BOTH(ENGINES[t->engine]) ? ac : 0);   /* LINK off: the lift only on ANALOG, TRIO, NOISE, as before */
+    c = link ? uc + TW_OFF_Q8(clamp(p[P_CUT2], -TW_OFF_MAX, TW_OFF_MAX)) : clamp(p[P_CUT2], 0, UF_STEPS) * 256;   /* (DUELL 1.3: no accent lift) */
     if (XV(t, X_KTRK2))
         c += UF_KT(XV(t, X_KTRK2), v->pitch_cur);
     c = clamp(c + ms, 0, UF_TOP);

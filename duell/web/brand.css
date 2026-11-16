@@ -1,0 +1,27 @@
+/* SPDX-License-Identifier: GPL-3.0-only
+   DUELL's look for the public pages (start page, installer, Backup, licences): the web emulator's header (the DUELL logo left,
+   MultiMorphing Bitimbral Synthesizer under it, black), the editor's font (Barlow Semi Condensed) and violet. Owner 2026-11-16.
+   Served at the site's root; each page links it (./brand.css, ../brand.css ..) after its own styles, so these win. */
+@font-face { font-family: "Barlow Semi Condensed"; font-weight: 400; src: url("editor/fonts/BarlowSemiCondensed-Regular.ttf") format("truetype"); }
+@font-face { font-family: "Barlow Semi Condensed"; font-weight: 600; src: url("editor/fonts/BarlowSemiCondensed-SemiBold.ttf") format("truetype"); }
+@font-face { font-family: "Barlow Semi Condensed"; font-weight: 700; src: url("editor/fonts/BarlowSemiCondensed-Bold.ttf") format("truetype"); }
+:root, :root:not(#brand) { --bg: #000; --fg: #fffbff; --dim: #a09da0; --line: #35343a; --warn: #ff1c8b; --ok: #5fe08a; --acc: #de38ff; --panel: #18181b; color-scheme: dark; }
+html, body { background: var(--bg); }
+body { color: var(--fg); font: 17px/1.55 "Barlow Semi Condensed", -apple-system, "Helvetica Neue", Arial, sans-serif; }
+main { padding-top: 0 !important; }
+.brandhead { max-width: 600px; margin: 0 auto; padding: 40px 16px 32px; }
+.brandhead img { display: block; height: auto; max-width: 100%; }
+.brandhead .logo { width: 300px; }
+.brandhead .desc { width: 210px; margin-top: 34px; }
+h1 { font-weight: 700; letter-spacing: .04em; }
+h2 { font-weight: 700; letter-spacing: .04em; text-transform: uppercase; font-size: 18px; }
+section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px 10px; }
+.n { border-color: var(--acc); color: var(--acc); font-weight: 700; }
+button, a.btn { background: var(--acc); color: #fff; border-radius: 6px; font-weight: 700; letter-spacing: .03em; }
+.box { border-color: var(--warn); border-radius: 10px; background: #1a0a12; }
+.card { border-radius: 8px; }
+.card.install { border-color: var(--acc); }
+ul.links li { background: var(--panel); border-color: var(--line); }
+a { color: var(--acc); }
+ul.links a, a.btn { color: inherit; }
+a.btn { color: #fff; }

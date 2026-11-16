@@ -803,7 +803,6 @@ static void pslot_scene(uint32_t v)
     ui.ppick = (uint8_t)(v == 0u ? 4u : v == 6u ? PS_SLOTS - 1u : 1u);
     ui.act = v == 2u || v == 3u ? 4u : v == 4u ? 3u : v == 5u ? 2u : 0u;
     if (v == 3u) confirm_open(CF_OVR_PSLOT, 1);
-    if (v == 4u) confirm_open(CF_ERASE_PSLOT, 1);
     if (v == 5u) song.playing = 1;
     ui.msg_t = 0;
 }
@@ -840,7 +839,8 @@ enum { S_HOME, S_HOME_IDLE, S_MESSAGE, S_MESSAGE_KEY, S_MESSAGE_NOFILE, S_PRESET
        S_GUIDE1, S_GUIDE2, S_GUIDE3, S_GUIDE4, S_GUIDE5, S_GUIDE6, S_GUIDE_MSG, S_GUIDE_KNOB, S_GUIDE_OCT, S_GUIDE_ROW,
        S_QUICK_FILTER, S_QUICK_GLO, S_MULTIS, S_MULTIS2, S_MODULES, S_MODULES_OFF, S_MODS_FX, S_MODS_ARP, S_MODS_ARP_SEQ,
        S_MODS_MIXER, S_MODS_PERFORM, S_MODS_SCHAIN, S_MODS_AUTO, S_MODS_QUICK_ARP, S_MODS_MSG, S_TOOLS_RESTORE, S_PATCH_SAVE_BOTH, S_CONFIRM_RESTORE_ALL, S_PATCH_SAVE_NAMED, S_NAME_SAVE_PATCH, S_FXSUM, S_FXSUM_DUEL,
-       S_EQ_CURVE, S_EQ_CURVE2, S_COMP_CURVE, S_COMP_OFF, S_SMASTER, S_SMASTER_WIDE, S_FILT_MULTI, S_FILT_MULTI24, S_FILT_VCF, S_ARP_PATTERN, S_ARP_CHORD, S_SIDECHAIN_PARTS, S_VOICE_PATCH, S_OCTAVE, S_SPLASH_FIRST, S_GUIDE_MENU, S_ENGINE_LOFI, S_ENGINE_PHASE, S_ENGINE_VOICE, S_ENGINE_TRIO, S_ENGINE_PHYS, S_ENGINE_NOISE, S_ENGINE_WAVE, S_ENGINE_WHEEL, S_CAPSULES, S_STEREO_HOME, S_ENGINE_LIST, S_MODE_DUEL, S_SUB, S_EDIT_WAVE1, S_EDIT_VOICE1, S_CYCLE, S_TWIN, S_ABOUT_TOP, S_CYCLE2, S_CYCLE2_ALL, S_MIXER4, S_MOD_LONG, S_CONFIRM_ERASE_ALL, S_OFF_ARP, S_OFF_SEQ, S_OFF_SENDS, S_OFF_PFX, S_OFF_QARP, S_OFF_QSEQ, S_COUNT };
+       S_EQ_CURVE, S_EQ_CURVE2, S_COMP_CURVE, S_COMP_OFF, S_SMASTER, S_SMASTER_WIDE, S_FILT_MULTI, S_FILT_MULTI24, S_FILT_VCF, S_ARP_PATTERN, S_ARP_CHORD, S_SIDECHAIN_PARTS, S_VOICE_PATCH, S_OCTAVE, S_SPLASH_FIRST, S_GUIDE_MENU, S_ENGINE_LOFI, S_ENGINE_PHASE, S_ENGINE_VOICE, S_ENGINE_TRIO, S_ENGINE_PHYS, S_ENGINE_NOISE, S_ENGINE_WAVE, S_ENGINE_WHEEL, S_CAPSULES, S_STEREO_HOME, S_ENGINE_LIST, S_MODE_DUEL, S_SUB, S_EDIT_WAVE1, S_EDIT_VOICE1, S_CYCLE, S_TWIN, S_ABOUT_TOP, S_CYCLE2, S_CYCLE2_ALL, S_MIXER4, S_MOD_LONG, S_CONFIRM_ERASE_ALL, S_OFF_ARP, S_OFF_SEQ, S_OFF_SENDS, S_OFF_PFX, S_OFF_QARP, S_OFF_QSEQ,
+       S_MENU_LIST, S_MENU_SEC_DISPLAY, S_MENU_SEC_CONTROL, S_MENU_SEC_PERFORM, S_MENU_SEC_PERFORM2, S_MENU_SEC_MIDI, S_MENU_SEC_MODULES, S_MENU_SEC_AUDIO, S_MENU_SEC_SYSTEM, S_MENU_SEC_SCHAIN, S_MENU_MLEARN, S_MENU_HOME_PERF, S_HOME_PERF, S_COUNT };
 static const char *const S_NAME[S_COUNT] = {"home", "home_idle", "message", "message_key", "message_nofile", "presets",
     "presets_nofav", "user", "phrases", "project", "tools", "pslot_empty", "pslot", "step", "auto_steps", "auto_add_chance",
     "automation", "mixer", "mixer_from_home", "mixer_pan", "env", "env_dest", "lfo", "mod", "fx", "dly", "scl", "chord", "chord_wide",
@@ -871,7 +871,8 @@ static const char *const S_NAME[S_COUNT] = {"home", "home_idle", "message", "mes
     "mod_pan_duel", "mod_retired", "guide_1", "guide_2", "guide_3", "guide_4", "guide_5", "guide_6", "guide_message", "guide_knob",
     "guide_octave", "menu_guide_row", "layer_quick_filter", "quick_glo", "multis", "multis_2", "modules", "modules_off", "mods_fx",
     "mods_arp", "mods_arp_seq", "mods_mixer", "mods_perform", "mods_schain", "mods_auto", "mods_quick_arp", "mods_msg", "tools_restore", "patches_save_both", "confirm_restore_all", "patches_save_named", "name_save_patch", "fxsum", "fxsum_duel",
-    "eq_curve", "eq_curve2", "comp_curve", "comp_off", "stereo_master", "stereo_master_wide", "filt_multi", "filt_multi24", "filt_vcf", "arp_pattern", "arp_chord", "sidechain_parts", "voice_patch", "octave", "splash_first", "guide_menu", "engine_lofi", "engine_phase", "engine_voice", "engine_trio", "engine_phys", "engine_noise", "engine_wave", "engine_wheel", "capsules", "stereo_home", "engine_list", "mode_duel", "sub", "edit_wave1", "edit_voice1", "cycle", "twin", "about_top", "cycle2", "cycle2_all", "mixer4", "mod_long", "confirm_erase_all", "off_arp", "off_seq", "off_sends", "off_pfx", "off_quick_arp", "off_quick_seq"};
+    "eq_curve", "eq_curve2", "comp_curve", "comp_off", "stereo_master", "stereo_master_wide", "filt_multi", "filt_multi24", "filt_vcf", "arp_pattern", "arp_chord", "sidechain_parts", "voice_patch", "octave", "splash_first", "guide_menu", "engine_lofi", "engine_phase", "engine_voice", "engine_trio", "engine_phys", "engine_noise", "engine_wave", "engine_wheel", "capsules", "stereo_home", "engine_list", "mode_duel", "sub", "edit_wave1", "edit_voice1", "cycle", "twin", "about_top", "cycle2", "cycle2_all", "mixer4", "mod_long", "confirm_erase_all", "off_arp", "off_seq", "off_sends", "off_pfx", "off_quick_arp", "off_quick_seq",
+    "menu_list", "menu_display", "menu_control_sec", "menu_perform", "menu_perform_2", "menu_midi", "menu_modules", "menu_audio_sec", "menu_system_sec", "menu_sidechain", "menu_midi_learn", "menu_home_perform", "home_perform"};
 
 /* the STEP page's piano roll (ui_graph.c graph_roll) on track 1, stopped unless said: an empty pattern; ACID in
  * A minor; POLY chords (Am7 F C G, tied); a line with ties, slides and accents in C major; LEN 32 on its second
@@ -1041,7 +1042,7 @@ static void setup(int s)
     case S_HEAD_REC_OTHER: song.rec = 1u << ((song.sel + 1u) % NTRK); go_home(); break;
     case S_HEAD_BPM_TURN: song.rec = 1u << song.sel; song.octave = -8; go_title("PARAMETER LOCKS"); break;   /* (item 138: the page AUTOMATION is PARAMETER LOCKS, the longest title) */
     case S_HEAD_GLO_TURN: go_title("TEMPO"); break;   /* (0.2.21: GLO has no page of its own; GLO's first page is TEMPO) */
-    case S_HEAD_DOWNBEAT: song.rec = 1u << song.sel; song.octave = -8; pat_from[song.sel] = 16; pat_from_h[song.sel] ^= 1u; go_title("MIDI LEARN"); break;
+    case S_HEAD_DOWNBEAT: song.rec = 1u << song.sel; song.octave = -8; pat_from[song.sel] = 16; pat_from_h[song.sel] ^= 1u; go_title("TEMPO"); break;
     case S_HEAD_BEAT_2: song.octave = 2; go_title("MATRIX 5-8"); break;
     case S_SONG_LANES: pslot_scene(2); break;
     case S_SONG_LANES_PLAYING: pslot_scene(5); break;
@@ -1124,7 +1125,7 @@ static void setup(int s)
     case S_FILT_VCF: eng(0); TSEL->p[P_FREEA] = 45; TSEL->p[P_FREEB] = 110; go_title("MULTI FILTER 1/2"); break;   /* (was ANALOG's own VCF page; cloud job J: filter 1 on ANALOG) */
     case S_ARP_PATTERN: TSEL->p[P_AMODE] = 3; TSEL->p[P_AOCT] = 2; TSEL->p[P_AGATE] = 100; TSEL->p[P_ASWING] = 50; go_title("ARP 2/3"); break;
     case S_ARP_CHORD: TSEL->p[P_AMODE] = 14; TSEL->p[P_AOCT] = 3; TSEL->p[P_APROB] = 90; go_title("ARP 1/3"); break;
-    case S_SIDECHAIN_PARTS: go_title("SIDECHAIN"); ui.hot_col = 2; ui.hot_t = 30; break;
+    case S_SIDECHAIN_PARTS: ui.menu = 1; ui.menu_sel = MI_SC2CH; break;   /* (DUELL 1.3: MENU > MIDI > SIDECHAIN) */
     case S_OCTAVE: go_title("ENGINE"); song.octave = 1; oct_show_t0 = fm1_ms ? fm1_ms : 1u; break;
     case S_SPLASH_FIRST: break;
     case S_GUIDE_MENU: go_home(); ui.menu = 1; guide_open(1); break;
@@ -1176,7 +1177,7 @@ static void setup(int s)
     case S_CLOCK_EXT: go_title("TEMPO"); song.g[G_CLOCK] = 1; break;   /* DUELL: external clock, TEMPO shows EXT */          /* (1.2: HOME > MIXER > CLOCK; up to 1.1.5 GLO > GLOBAL) */
     /* 1.2: the old SYSTEM page's items in the MENU: MIDI > MIDI IN (ROUT) on CH5-8; AUDIO > TUNE (438.8 Hz) selected;
      * SYSTEM > INFO (the USB state, the CPU load) */
-    case S_MENU_CONTROL: ui.menu = 1; ui.menu_sel = MI_HOMEPG; ui_home_pg = HP_MODE; break;   /* (DUELL 0.1: HOME OPENS, CONTROL's last row) */
+    case S_MENU_CONTROL: ui.menu = 1; ui.menu_sel = MI_HOMEPG; ui_home_pg = HP_PERF_CODE; break;   /* (DUELL 0.1: HOME OPENS, CONTROL's last row) */
     case S_MENU_TUNE: ui.menu = 1; ui.menu_sel = MI_TUNE; song.g[G_TUNE] = 4388; break;
     /* 1.3: HOME > TRACKS playing (T2 selected), stopped (T1 selected, its cursor's page), K2 just turned; the MENU's DISPLAY
      * tab with HOME TRACKS selected (8 rows) */
@@ -1283,14 +1284,14 @@ static void setup(int s)
         song.playing = 0; project_load(0); song.g[G_SLOT] = s == S_MULTIS ? 1 : 7; go_page(GR_SLOTS); ui.act = 2; ui.msg_t = 0; break;
     case S_QUICK_ENV: go_title("LFO 1"); ui.layer = LAYER_ENV; break;
     /* DUELL 0.2.14 GLO > MODULES: the page (all ON; all OFF, its K2 just turned) and the cards a module OFF fades, with the footer's line */
-    case S_MODULES: go_title("MODULES"); break;
-    case S_MODULES_OFF: mods_put(MODS_ALL, 1u); go_title("MODULES"); ui.hot_col = 1; ui.hot_t = 30; break;
+    case S_MODULES: ui.menu = 1; ui.menu_sel = MI_ARP; break;   /* (DUELL 1.3: MENU > MODULES) */
+    case S_MODULES_OFF: mods_put(MODS_ALL, 1u); ui.menu = 1; ui.menu_sel = MI_SEQ; break;
     case S_MODS_FX: mods_put(MODS_SENDS | MODS_PFX, 1u); TSEL->p[P_DIST] = 30; TSEL->p[P_REV] = 70; go_title("FX"); break;
     case S_MODS_ARP: mods_put(MODS_ARP, 1u); TSEL->p[P_AMODE] = 1; TSEL->p[P_AHOLD] = 1; go_title("ARP 1/3"); break;
     case S_MODS_ARP_SEQ: mods_put(MODS_SEQ, 1u); TSEL->p[P_AMODE] = AM_SEQ; go_title("ARP 1/3"); break;
     case S_MODS_MIXER: mods_put(MODS_SENDS, 1u); perf_space = 40; go_page(GR_GLO); break;
     case S_MODS_PERFORM: mods_put(MODS_SENDS, 1u); go_title("AMP ENV"); perf_enter(); perf_space = -30; break;
-    case S_MODS_SCHAIN: mods_put(MODS_PFX, 1u); go_title("SIDECHAIN"); TSEL->p[P_DKSRC] = 2; break;
+    case S_MODS_SCHAIN: mods_put(MODS_PFX, 1u); ui.menu = 1; ui.menu_sel = MI_MIDIPRE; TSEL->p[P_DKSRC] = 2; break;   /* (DUELL 1.3: PART FX OFF: MENU > MIDI without its SIDECHAIN row) */
     case S_MODS_AUTO: mods_put(MODS_SEQ, 1u); go_page(GR_EVENTS); break;
     case S_MODS_QUICK_ARP: mods_put(MODS_ARP, 1u); go_home(); TSEL->p[P_AMODE] = 1; ui.layer = LAYER_ARP; break;
     case S_MODS_MSG: mods_put(MODS_PFX, 1u); go_title("EQ 1/2"); ui_message(MODS_FULL[3]); break;
@@ -1312,7 +1313,7 @@ static void setup(int s)
 #else
         ui.menu_sel = MI_PANEL; break;
 #endif
-    case S_MENU_SLIDE: ui.menu = 1; ui.menu_sel = MI_ACCEL; ui_prefs |= PREF_ACCEL; break;
+    case S_MENU_SLIDE: ui.menu = 6; ui.menu_sel = MI_ACCEL; ui_prefs |= PREF_ACCEL; break;   /* (DUELL 1.3: no tabs to slide: the list, CONTROL picked) */
     /* the GLO SCL EDIT layers (ui_layer.c): just opened (a peek), and in use: GLO with part 2 muted and KNOB 1 turned; with CLK EXT (TAP dimmed); SCL at D# minor, KNOB 2 turned; EDIT on DIGITAL preset 3,
      * a favourite; a user preset; the hint after a tap */
     case S_GLO_PEEK: go_title("TEMPO"); ui.layer = LAYER_GLO; pat_from[0] = 4; break;   /* (a multi loaded: its number stays out of this page's header) */
@@ -1326,16 +1327,30 @@ static void setup(int s)
      * LAYER: part 2's channel not heard; MIDI IN = SEL), MIDI LEARN off, on, a parameter picked */
     case S_GLO_METERS: go_title("TEMPO"); ui.layer = LAYER_GLO; trk[0].peak = 11000; trk[1].peak = 4000; break;
     case S_GLO_CLIP: go_title("TEMPO"); ui.layer = LAYER_GLO; trk[0].peak = 21000; trk[1].peak = 33000; break;
-    case S_MIDI: go_title("MIDI"); break;
-    case S_MIDI_DUCK: go_title("SIDECHAIN"); song.sel = 1; midi_pch[0] = 0; midi_pch[1] = 4; ui_midi_p2 = 5; TSEL->p[P_DKSRC] = 2; sc_put(0, 15); sc_put(1, 36); sc_put(2, 4); sc_put(3, 0); break;
-    case S_MIDI_LAYER: go_title("MIDI"); duell_mode_req = DM_LAYER; break;
-    case S_MIDI_SEL: go_title("MIDI"); song.g[G_ROUTE] = 1; break;
-    case S_MIDI_LEARN_OFF: go_title("MIDI LEARN"); break;
-    case S_MIDI_LEARN_ON: go_title("MIDI LEARN"); ml_toggle(); ui.msg_t = 0; break;
-    case S_MIDI_LEARN_PICK: go_title("MIDI LEARN"); ml_toggle(); ml_knob(TSEL, P_E5); ui.msg_t = 0; break;
+    /* DUELL 1.3 (owner 2026-11-13): the MENU's list of seven sections and each section (menu-sections-proposal_2026-11-13) */
+    case S_MENU_LIST: ui.menu = 6; ui.menu_sel = MI_MIDIPRE; ui.menu_row[MTAB_MIDI] = MI_MIDIPRE - MI_P1CH; break;   /* (MIDI picked, as the drawing) */
+    case S_MENU_SEC_DISPLAY: ui.menu = 1; ui.menu_sel = MI_COLOR; break;
+    case S_MENU_SEC_CONTROL: ui.menu = 1; ui.menu_sel = MI_HOMEPG; break;
+    case S_MENU_SEC_PERFORM: ui.menu = 1; ui.menu_sel = MI_PERFK2; mac_pick_put(1, 0); mac_pick_put(2, 6); mac_pick_put(3, 7); mac_pick_put(4, 1); mac_pick_put(5, 3); break;   /* (the drawing's: MORPH SPACE KILL, TIMBRE, FILTER MACRO) */
+    case S_MENU_SEC_PERFORM2: ui.menu = 1; ui.menu_sel = MI_QMAC4; break;
+    case S_MENU_SEC_MIDI: ui.menu = 1; ui.menu_sel = MI_MIDIPRE; break;
+    case S_MENU_SEC_MODULES: ui.menu = 1; ui.menu_sel = MI_SEQ; mods_run_put(1, 2); break;   /* (SEQ KEEPS RUNNING: the longest value) */
+    case S_MENU_SEC_AUDIO: ui.menu = 1; ui.menu_sel = MI_TUNE; break;
+    case S_MENU_SEC_SYSTEM: ui.menu = 1; ui.menu_sel = MI_ABOUT; break;
+    case S_MENU_SEC_SCHAIN: ui.menu = 1; ui.menu_sel = MI_SC1NT; break;
+    case S_MENU_MLEARN: ui.menu = 4; ui.menu_sel = MI_MLEARN; break;
+    case S_MENU_HOME_PERF: ui.menu = 1; ui.menu_sel = MI_HOMEPG; menu_put(MI_HOMEPG, HP_PERF); break;   /* (HOME OPENS PERFORM) */
+    case S_HOME_PERF: menu_put(MI_HOMEPG, HP_PERF); go_main(); break;   /* (.. and what HOME then opens: PERFORM over MORPH) */
+    case S_MIDI: ui.menu = 1; ui.menu_sel = MI_MIDIIN; break;   /* (DUELL 1.3: GLO > MIDI is MENU > MIDI) */
+    case S_MIDI_DUCK: ui.menu = 1; ui.menu_sel = MI_SC1NT; song.sel = 1; midi_pch[0] = 0; midi_pch[1] = 4; ui_midi_p2 = 5; TSEL->p[P_DKSRC] = 2; sc_put(0, 15); sc_put(1, 36); sc_put(2, 4); sc_put(3, 0); break;
+    case S_MIDI_LAYER: ui.menu = 1; ui.menu_sel = MI_P2CH; duell_mode_req = DM_LAYER; break;
+    case S_MIDI_SEL: ui.menu = 1; ui.menu_sel = MI_MIDIIN; song.g[G_ROUTE] = 1; break;
+    case S_MIDI_LEARN_OFF: ui.menu = 4; ui.menu_sel = MI_MLEARN; break;   /* (DUELL 1.3: MENU > MIDI > MIDI LEARN) */
+    case S_MIDI_LEARN_ON: ui.menu = 4; ui.menu_sel = MI_MLEARN; ml_toggle(); ui.msg_t = 0; break;
+    case S_MIDI_LEARN_PICK: ui.menu = 4; ui.menu_sel = MI_MLEARN; ml_toggle(); ml_knob(TSEL, P_E5); ui.msg_t = 0; break;
     case S_MIDI_LEARN_CC: {                            /* DUELL 0.1: LEARN off, three CCs learned: KNOB 2 CLEAR says how many, the panel names it */
         uint32_t k;
-        go_title("MIDI LEARN");
+        ui.menu = 4; ui.menu_sel = MI_MLEARN;
         for (k = 0; k < 3u; k++) ml_learn(40u + k, k & 3u, P_ATK + k);
         break;
     }
@@ -1450,7 +1465,6 @@ static void setup(int s)
         motion_set_lock(TSEL, 2, P_REV, 100); motion_set_lock(TSEL, 6, P_E4, 20); motion_set_lock(TSEL, 6, P_ATK, 90);
         motion_set_lock(TSEL, 9, P_E5, 110); motion_set_lock(TSEL, 13, P_REV, 80);
         if (s == S_ROLL_LOCK_HELD) {
-            ui.plk_src = 0;
             ui.entry_open = 1;
             fm1_in.notes = 1u << 10;
             ui.hot_col = 0; ui.hot_t = 30;
@@ -1580,8 +1594,6 @@ static void draw(int s)
         return;
     }
     ui.force = 1;
-    mt.frame = ui.frame + 7u;                         /* (the MENU's tabs settled, as when it opens) */
-    if (s == S_MENU_SLIDE) mt.pos = 0, mt.frame = ui.frame;   /* (one step of the slide from DISPLAY) */
     ui_draw();
 }
 
@@ -1896,7 +1908,7 @@ static void align_sweeps(void)
         cur_name = st ? "sweep LINE: menu rows" : "sweep FLAT: menu rows";
         ui.menu = 1;
         for (i = 0; i < MI_COUNT; i++)
-            for (k = 0; k < 4u; k++) {
+            for (k = 0; k < 4u && menu_shown(i); k++) {   /* (DUELL 1.3: a row without a place, PERFORM KNOB 1, BUTTON MAP, CPU METER, is never picked: SELECT passes it by) */
                 ui.menu_sel = (uint8_t)i; ui_prefs = k & 1u ? 0xFFu : 0u; settings_hold = (uint8_t)k;
                 ui_rec_prefs = (uint8_t)((k % 3u) | (k % 3u) << 2 | ((k + 1u) % 3u) << 4);   /* (CLICK, LEVEL, COUNT-IN: each value) */
                 settings_leds = (uint8_t)(k % LEDS_COUNT); ui.force = 1;   /* (every LEDS name) */
@@ -1932,13 +1944,12 @@ static void align_sweeps(void)
             usb.up = up0; usb.config = cf0; usb.setups = su0; usb.sof_seen = sof0; song.cpu_q8 = 0;
             ui.menu = 1; ui.menu_scroll = 0;
         }
-        cur_name = st ? "sweep LINE: menu tabs sliding" : "sweep FLAT: menu tabs sliding";
-        for (i = 0; i < MI_COUNT; i++)                  /* every tab, from every place of the bar, S and M */
-            for (k = 0; k <= (MTAB_COUNT - 1u) * 16u; k++) {
-                ui.menu_sel = (uint8_t)i; ui_prefs = 0;
-                mt.pos = (int16_t)(k * 4u); mt.frame = ui.frame - 1u; ui.force = 1;
-                draw_menu();
-            }
+        cur_name = st ? "sweep LINE: menu list" : "sweep FLAT: menu list";   /* (DUELL 1.3: the list of the sections, each one picked) */
+        ui.menu = 6;
+        for (i = 0; i < MTAB_LIST; i++) {
+            ui.menu_sel = (uint8_t)mtab_first(i); ui_prefs = 0; ui.force = 1;
+            draw_menu();
+        }
         ui.menu = 0; ui_prefs = 0; ui_rec_prefs = 0; settings_hold = 0; settings_leds = 0;
         cur_name = st ? "sweep LINE: REC layer values" : "sweep FLAT: REC layer values";
         go_home(); ui.layer = LAYER_REC;              /* (the map and the cards: every value of the three, each track) */
@@ -2078,7 +2089,6 @@ static void target_draw(void)
     oct_show_t0 = 0;
     memset(host_screen, 0, sizeof host_screen);
     ui.force = 1;
-    mt.frame = ui.frame + 7u;
     for (i = 0; i < 3u; i++) ui_draw();              /* (animations settle: the morph picture, the bars) */
 }
 static void target_save(const char *dir, const char *name)
@@ -2132,7 +2142,7 @@ static int target_main(const char *out)
         case 7: go_home(); guide_open(0); ui.guide = 1; break;
         case 8: go_title("MIXER"); trk[0].p[P_LEVEL] = trk[1].p[P_LEVEL] = 100; break;   /* (the picture shows -6.0 dB) */
         case 9: go_title("SEQUENCER HELP"); break;                                       /* (item 118: FINAL_V1_07b_sequencer_help, page 2 of the STEP family) */
-        default: mods_put(MODS_ALL, 0u); mods_put(MODS_SEQ, 1u); go_title("MODULES"); break;   /* (item 124: GLO > MODULES, SEQ off, the others on) */
+        default: mods_put(MODS_ALL, 0u); mods_put(MODS_SEQ, 1u); ui.menu = 1; ui.menu_sel = MI_SEQ; break;   /* (item 124; DUELL 1.3: MENU > MODULES, SEQ off, the others on) */
         }
         target_draw();
         target_save(out, NM[t]);
@@ -2196,7 +2206,7 @@ static void round_check(void)
                     }
                 }
                 (void)at;
-                if (found != 1u) { fprintf(stderr, "ui_render: GLO round (%s, SHIM %u, modules off %u): MODULES found %u times in %u pages\n", MN[m], shim, off, found, total); nfind++; }
+                if (found != 0u) { fprintf(stderr, "ui_render: GLO round (%s, SHIM %u, modules off %u): MODULES found %u times in %u pages (DUELL 1.3: it is MENU > MODULES)\n", MN[m], shim, off, found, total); nfind++; }
                 else printf("ui_render: GLO round (%s, SHIM %u, modules %s): MODULES is page %u of %u (counter %s)\n", MN[m], shim, off ? "off" : "on", at, total, mct);
                 if (!m && !shim && !off) printf("ui_render: the GLO round has %u pages; MODULES is page %u (the footer counter reads %u/%u)\n", total, at, at, total);
             }
@@ -2210,7 +2220,7 @@ static void off_check(void)
     static const struct { uint32_t bit; const char *name; const char *pages[12]; } M[4] = {
         {MODS_ARP, "ARP", {"ARP 1/3", "ARP 2/3", "ARP 3/3", 0}},
         {MODS_SEQ, "SEQ", {"STEP", "PARAMETER LOCKS", "PATTERNS", 0}},
-        {MODS_SENDS, "SENDS", {"CHORUS", "DELAY 1/2", "DELAY 2/2", "REVERB", "SEND FX", 0}},
+        {MODS_SENDS, "SENDS", {"CHORUS", "DELAY 1/2", "DELAY 2/2", "REVERB", 0}},   /* (2026-11-15: the SEND FX page is gone) */
         {MODS_PFX, "PART FX", {"FX", "INSERT 1/2", "INSERT 2/2", "EQ 1/2", "EQ 2/2", "DUCK 1/2", "DUCK 2/2", 0}},
     };
     uint32_t m, i, k, on, walks = 0, bad = 0;
@@ -2237,7 +2247,8 @@ static void off_check(void)
                         fm1_ms += 1000u;                    /* (the quiet time of the knob's last jump: kr_on) */
                         turn(EN_K1 + k, 1);
                         { char nm[28], ct[8]; (void)page_parts(nm, ct);
-                          if (cur_page()->scope != SC_MODS || strcmp(nm, "MODULES")) { fprintf(stderr, "ui_render: %s OFF: page %s knob %u did not land on MODULES ('%s')\n", M[m].name, M[m].pages[i], k + 1u, nm); nfind++; bad++; } }
+                          if (ui.menu != 1u || menu_tab() != MTAB_MODULES) { fprintf(stderr, "ui_render: %s OFF: page %s knob %u did not land on MENU > MODULES ('%s')\n", M[m].name, M[m].pages[i], k + 1u, nm); nfind++; bad++; }
+                          ui.menu = 0; }
                     } else if (off_module(cur_page()) || grid_on == 13) { fprintf(stderr, "ui_render: %s ON: page %s shows the notice\n", M[m].name, M[m].pages[i]); nfind++; bad++; }
                 }
     for (m = 0; m < 2u; m++)
@@ -2255,7 +2266,8 @@ static void off_check(void)
             for (f = 0; f < 4u; f++) frame();
             (void)page_parts(nm, ct);
             walks++;
-            if (cur_page()->scope != SC_MODS || ui.layer) { fprintf(stderr, "ui_render: %s layer OFF: knob %u did not land on MODULES ('%s', layer %u)\n", m ? "SEQ" : "ARP", k + 1u, nm, (unsigned)ui.layer); nfind++; bad++; }
+            if (ui.menu != 1u || menu_tab() != MTAB_MODULES || ui.layer) { fprintf(stderr, "ui_render: %s layer OFF: knob %u did not land on MENU > MODULES ('%s', menu %u, layer %u)\n", m ? "SEQ" : "ARP", k + 1u, nm, (unsigned)ui.menu, (unsigned)ui.layer); nfind++; bad++; }
+            ui.menu = 0;
         }
     {   /* the widths of every notice line at the floor size (M 15 / S 15): whole text, and each wrapped line against UT_OFF_W */
         static const struct { const char *t; int m; } L[6] = {{UT_OFF_TXT_ARP, 1}, {UT_OFF_TXT_SEQ, 1}, {UT_OFF_TXT_SENDS, 1}, {UT_OFF_TXT_PFX, 1}, {UT_OFF_NOTE_IT, 0}, {UT_OFF_NOTE_THEM, 0}};
@@ -2341,7 +2353,7 @@ int main(int argc, char **argv)
     }
     if (getenv("UI_RENDER_STALE")) {   /* DUELL 1.1 general rule check: a stored value changed, NO forced redraw: the screen must change (the card or panel shows the new value at once) */
         static const struct { int scene; const char *what; } C[] = {
-            {S_LFO, "LFO page: WAVE"}, {S_FILTER, "MULTI FILTER: CUTOFF"}, {S_MOD, "MATRIX: AMOUNT"}, {S_DLY, "DELAY page (global): TIME"}, {S_MIDI, "MIDI page: MIDI IN"},
+            {S_LFO, "LFO page: WAVE"}, {S_FILTER, "MULTI FILTER: CUTOFF"}, {S_MOD, "MATRIX: AMOUNT"}, {S_DLY, "DELAY page (global): TIME"}, {S_MIDI, "MENU > MIDI: MIDI IN"},
             {S_MODULES, "MODULES: ARP"}, {S_MENU_CONTROL, "MENU: NOTES LEFT"}, {S_MENU_CONTROL, "MENU: KEY VELOCITY (step 3)"}, {S_ENGINE_WAVE, "ENGINE WAVE page: TABLE"},
             {S_CLOCK, "TEMPO page: BPM"}, {S_ENV, "AMP ENV: DECAY"}};
         uint32_t c, bad = 0;
@@ -2475,6 +2487,22 @@ int main(int argc, char **argv)
         }
         if (cf) fclose(cf);
     }
+    if (getenv("UI_RENDER_MAC")) {   /* DUELL 1.3: MACROS 2/2 with MOTION's NO LFO ROUTE (no LFO sent anywhere), then with LFO 1 to PITCH */
+        setup(0);
+        pal(UI_DEFAULT_INDEX);
+        TSEL->p[P_LD_PIT] = 0; TSEL->p[P_LD_FLT] = 0; TSEL->p[P_LD_SHP] = 0; TSEL->p[P_LD_AMP] = 0;
+        TSEL->p[P_L2PIT] = 0; TSEL->p[P_L2FLT] = 0; TSEL->p[P_L2SHP] = 0;
+        { uint32_t k; for (k = 0; k < NMSLOT; k++) TSEL->p[P_M1SRC + 3u * k + 2u] = 0; }
+        XV(TSEL, X_LFO1) = 0; XV(TSEL, X_LFO2) = 0;
+        go_page(GR_MAC2);
+        ui.force = 1;
+        ui_draw();
+        write_ppm(out, "VIOLET", "mac2_nolfo");
+        TSEL->p[P_LD_PIT] = 10;
+        ui.force = 1;
+        ui_draw();
+        write_ppm(out, "VIOLET", "mac2_lfo");
+    }
     if (getenv("UI_RENDER_VELO")) {
         uint32_t v;
         setup(S_MENU_CONTROL);
@@ -2541,7 +2569,8 @@ int main(int argc, char **argv)
             if (!strcmp(UI_PALETTES[p].name, "VIOLET")) {   /* DUELL 0.1: the changed MENU rows and GLO's MIDI pages, for the owner (VIOLET, the default theme) */
                 static const char *const V01[] = {"menu", "menu_home", "menu_control", "menu_audio", "menu_system", "menu_info_row", "menu_about_row",
                                                   "midi", "midi_sel", "midi_layer", "midi_duck", "midi_learn_off", "midi_learn_cc", "midi_learn_on", "clock", "info", "about", "about_scroll", "test", "test_alarm",
-    "scl_chromatic", "scl_chromatic_play", "chord_noscale", "chord_noscale7"};
+    "scl_chromatic", "scl_chromatic_play", "chord_noscale", "chord_noscale7",
+    "menu_list", "menu_display", "menu_control_sec", "menu_perform", "menu_perform_2", "menu_midi", "menu_modules", "menu_audio_sec", "menu_system_sec", "menu_sidechain", "menu_midi_learn", "menu_home_perform", "home_perform", "mods_schain"};
                 for (k = 0; k < sizeof V01 / sizeof V01[0]; k++)
                     if (!strcmp(S_NAME[s], V01[k])) write_ppm(out, "VIOLET", S_NAME[s]);
             }
@@ -2730,7 +2759,7 @@ int main(int argc, char **argv)
     round_check();
     off_check();
     {   /* 0.2.19: the header names the page the way its PAGES entry does: MIXER says MIXER (never the engine: "ENGINE ANALOG") */
-        static const struct { int scene; const char *title; } HT[] = {{S_MIXER, "MIXER"}, {S_MIXER_SPLIT, "MIXER"}, {S_MODE_STEREO, "MODE"}, {S_MODULES, "MODULES"}, {S_MODULES_OFF, "MODULES"}};
+        static const struct { int scene; const char *title; } HT[] = {{S_MIXER, "MIXER"}, {S_MIXER_SPLIT, "MIXER"}, {S_MODE_STEREO, "MODE"}};
         uint32_t k;
         for (k = 0; k < sizeof HT / sizeof HT[0]; k++) {
             char tb[24];

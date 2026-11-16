@@ -44,6 +44,22 @@ static void lcd_blit(uint32_t x, uint32_t y, uint32_t w, uint32_t h, const uint1
 #include "../firmware/src/panel.c"
 #include "../firmware/src/ui.c"
 #include "../firmware/src/menu_items.c"
+/* DUELL 1.3: MENU > MIDI's PART 1 / PART 2 CHANNEL rows call ui_input.c's midi_ch_get / midi_ch_put (not built here): the same two, for the menu's rows */
+static uint32_t midi_ch_get(uint32_t k)
+{
+    uint32_t b = k ? ui_midi_p2 : ui_midi_p1;
+    return b >= 1u && b <= 16u ? b - 1u : k;
+}
+static void midi_ch_put(uint32_t k, uint32_t ch)
+{
+    uint8_t *b = k ? &ui_midi_p2 : &ui_midi_p1;
+    if (ch > 15u || *b == (uint8_t)(ch + 1u))
+        return;
+    *b = (uint8_t)(ch + 1u);
+    midi_pch[k] = (uint8_t)ch;
+    ui.mset_dirty = 1;
+    ui.mset_t = fm1_ms;
+}
 static void panel_setup(void) {}
 #include "../firmware/src/upreset.c"
 #include "../firmware/src/project.c"
@@ -899,13 +915,13 @@ static int menu_protocol(void)
         bad += check("MENU_DESC: the tab comes after every byte of the 1.0.4 reply (older editors ignore it)", ok);
     }
     ok = 1;
-    for (i = 0; i < MDN; i++) {
+    for (i = 0; i < ED_MENU_N; i++) {                   /* (DUELL 1.3: the whole list, ED_MENU_N rows, past the 33 of 0.2.25) */
         menu_desc(i, &it);
         ok &= strcmp(it.name, "CALIBRATION") && strcmp(it.name, "BUTTON MAP") && strcmp(it.name, "ABOUT") && strcmp(it.name, "TEST") &&
               strcmp(it.name, "GUIDE") && strcmp(it.name, "ERASE DATA") && strcmp(it.name, "SCOPE") && strcmp(it.name, "OVERVIEW");
     }
-    n = menu_desc(MDN, &it);
-    ok &= n == 2u && it.index == MDN && it.id == 127;
+    n = menu_desc(ED_MENU_N, &it);
+    ok &= n == 2u && it.index == ED_MENU_N && it.id == 127;
     n = menu_desc(127, &it);
     bad += check("MENU_DESC: no BUTTON MAP / TEST / GUIDE / ABOUT / ERASE DATA, no SCOPE / OVERVIEW; an index past the list answers index, 127 (no item)",
                  ok && n == 2u && it.index == 127 && it.id == 127);
@@ -945,8 +961,8 @@ static int menu_protocol(void)
     ok &= menu_set(21, 1) == 1 && song.g[G_ROUTE] == 0 &&       /* (MIDI IN, id 21: retired, an unknown id) */  menu_set(22, 4387) == 0 && song.g[G_TUNE] == 4387;   /* (1.2: the
                                                          * project's, rc 0: in the music, no settings record) */
     ok &= menu_set(23, 1) == 1 && favorites.factory[15][26] == 0u && ui_prefs2 == 0x86u && ui_scr == 1u;   /* (OVERVIEW, id 23: retired in DUELL 0.2.14, an unknown id: rc 1) */
-    ok &= menu_set(25, 1) == 3 && ui_home_pg == HP_MODE && ui_prefs2 == 0x86u;                       /* (DUELL 0.1: HOME OPENS, its own byte) */
-    ok &= menu_set(26, 1) == 3 && (ui_prefs2 & 0x10u) && ui_prefs2 == 0x96u && ui_home_pg == HP_MODE;   /* (DUELL 0.2.9: CPU METER OFF, bit 4 of its byte; set = OFF, clear = ON) */
+    ok &= menu_set(25, 1) == 3 && ui_home_pg == HP_MAC1_CODE &&   /* (2026-11-15: value 1 is MACROS 1/2) */ ui_prefs2 == 0x86u;                       /* (DUELL 0.1: HOME OPENS, its own byte) */
+    ok &= menu_set(26, 1) == 3 && (ui_prefs2 & 0x10u) && ui_prefs2 == 0x96u && ui_home_pg == HP_MAC1_CODE;   /* (DUELL 0.2.9: CPU METER OFF, bit 4 of its byte; set = OFF, clear = ON) */
     ok &= menu_set(27, 1) == 3 && (ui_prefs2 & 0x40u) && ui_prefs2 == 0xD6u;                     /* (DUELL 0.2.11 MODE RECALL ON, 0.2.14 MULTI LOAD SETS MODE: bit 6 of its byte) */
     ok &= ui_idle == 0u && menu_set(28, 0) == 3 && ed_rv(host_wire + 7) == 0 && ui_idle == 2u && mods_off == MODS_ARP &&   /* (0.2.14 MODULES: ARP OFF, bit 1 of [15][10]; */
           menu_set(29, 0) == 3 && menu_set(30, 0) == 3 && menu_set(31, 0) == 3 && ui_idle == 30u && mods_off == MODS_ALL &&   /* SEQ, SENDS, PART FX bits 2..4; */
@@ -1006,7 +1022,7 @@ static int menu_protocol(void)
     ok &= menu_set(6, 7) == 3 && ed_rv(host_wire + 7) == 1 && (ui_prefs & PREF_ACCEL);
     ok &= menu_set(14, 9) == 3 && ed_rv(host_wire + 7) == 2 && cin_bars == 2u;
     ok &= menu_set(12, -1) == 3 && ed_rv(host_wire + 7) == 0 && click_mode == CLICK_OFF;
-    ok &= menu_set(25, 99) == 3 && ed_rv(host_wire + 7) == 1 && ui_home_pg == HP_MODE;   /* (0.2.25: MODE the last; an old editor's 2, MIXER, or 3, OVERVIEW: MODE) */
+    ok &= menu_set(25, 99) == 3 && ed_rv(host_wire + 7) == 2 && home_pg() == HP_PERF;   /* (0.2.25: MODE the last; DUELL 1.3: PERFORM the last, value 2, stored as HP_PERF_CODE) */
     ok &= menu_set(22, -99) == 0 && ed_rv(host_wire + 7) == 4153 && song.g[G_TUNE] == 4153;
     ok &= menu_set(22, 4663) == 0 && ed_rv(host_wire + 7) == 4662 && song.g[G_TUNE] == 4662;
     ok &= menu_set(22, 8000) == 0 && ed_rv(host_wire + 7) == 4662 && song.g[G_TUNE] == 4662;

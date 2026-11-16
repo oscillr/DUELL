@@ -3,13 +3,13 @@
 **MultiMorphing Bitimbral Synthesizer**  
 **by OSCILL/R**
 
-**Two synths in one small box.** DUELL is free, open-source firmware (GPL-3.0) for the M-VAVE FM-1. It turns the FM-1 into a bitimbral instrument: two complete parts, three ways to play them together, and a morph that glides between two versions of every sound. This is **DUELL 1.2**.
+**Two synths in one small box.** DUELL is free, open-source firmware (GPL-3.0) for the M-VAVE FM-1. It turns the FM-1 into a bitimbral instrument: two complete parts, three ways to play them together, and a morph that glides between two versions of every sound. This is **DUELL 1.3**.
 
 **Try it in your browser, no FM-1 needed:** <https://oscillr.github.io/DUELL/emu/>
 
 <p align="left"><img src="docs/duell-deck.png" alt="DUELL" width="720"></p>
 
-> **Install at your own risk.** DUELL has run on **two FM-1 units, the author's**, and more than 100 people have installed it through the Firmware Hub. The way back to the official firmware (V15) has worked for the author. The FM-1 has a single copy of its firmware and no known rollback. Back up first. Read [docs/RECOVERY.md](docs/RECOVERY.md) and [docs/KNOWN_LIMITS.md](docs/KNOWN_LIMITS.md). No warranty. DUELL is not affiliated with M-VAVE.
+> **Install at your own risk.** DUELL has run on **two FM-1 units, the author's**, and more than 100 people have installed it through the Firmware Hub. The way back to the official firmware (V15 or V16) has worked for the author. The FM-1 has a single copy of its firmware and no known rollback. Back up first. Read [docs/RECOVERY.md](docs/RECOVERY.md) and [docs/KNOWN_LIMITS.md](docs/KNOWN_LIMITS.md). No warranty. DUELL is not affiliated with M-VAVE.
 
 ## Install and update
 
@@ -18,7 +18,7 @@
 3. While the new firmware is written, the unit shows the **update screen**: the DUELL word over moving wave lines, WRITING, a percent number, a bar of 20 segments and DO NOT SWITCH OFF. Do not unplug until it is done. If the screen stays dark the write may still be running: wait for the installer to say Done.
 4. Details, the checklist and the way back to the official firmware: [docs/INSTALL.md](docs/INSTALL.md). If something goes wrong: [docs/RECOVERY.md](docs/RECOVERY.md).
 
-The package is `duell-1.2.fwsc` (compare its SHA-256 with `SHA256SUMS` on the release page).
+The package is `duell-1.3.fwsc` (compare its SHA-256 with `SHA256SUMS` on the release page).
 
 ## What is in it
 
@@ -32,19 +32,25 @@ Part 1 and Part 2 each have their own sound, effects, EQ, ducker and arp.
 | **LAYER** (the default) | Both parts on the keys at once, with velocity crossfade and key split. The heart of DUELL. |
 
 ### MORPH
-Glide between two versions of the same patch with one fader. End A is the sound; End B is rolled by a smart randomizer from your starting point (ROLL, UNDO, AMOUNT). Up to 32 values of End B can be set by hand and stay when it is saved.
+Glide between two versions of the same patch with one fader. End A is the sound; End B is rolled by a smart randomizer from your starting point (ROLL, UNDO, AMOUNT). Up to 32 values of End B can be set by hand and stay when it is saved. An LFO, an envelope or any other matrix source can move the MORPH fader too.
+
+### MACROS
+TIMBRE, ENV MACRO, FILTER MACRO, CHARACTER and MOTION, with MORPH, SPACE and KILL: each turns several sound settings at once. The middle is always the sound as saved, and loading a sound or a multi puts the macros back to the middle. They are on HOME after MORPH (MACROS 1/2 and 2/2), on the four knobs with SEL held (QUICK MACRO) and on MIDI CC 56 to 62.
+
+### PERFORM
+Hold FX for PERFORM. Choose what KNOBS 2, 3 and 4 do in SETTINGS > PERFORM.
 
 ### Ten engines
-ANALOG, PHASE, LOFI, VOICE, TRIO, WHEEL, PHYS, NOISE, FM6 and WAVE (with three user wavetables made from a WAV file in the editor). Every engine has the same filter section:
+ANALOG (with PULSE WIDTH for its PWM wave), PHASE, LOFI, VOICE, TRIO (its second and third voice reach 36 semitones up or down), WHEEL, PHYSICAL, NOISE, FM6 and WAVE (with three user wavetables made from a WAV file in the editor). Every engine has the same filter section:
 - **MULTI FILTER**: the multimode filter (CUT, RES, MODE, SLOPE, key tracking, envelope and LFO depth).
 - **TWIN FILTER**: a second filter with the types OFF, LP, BP, HP, NOTCH, LADDER and COMB, its own cutoff (or an offset in whole semitones from the MULTI FILTER with LINK), resonance, DRIVE, SERIES or PARALLEL routing and a BLEND that reads MULTI, BOTH or TWIN.
 - A **SUB OSC** layer (sine, triangle, square or pulse, an octave or two down), **WAVE STEPS**, and a **CYCLE** envelope that can run as a modulation source.
 
-### Factory content
+### Patches, multis and patterns
 - **128 patches**, sorted by category (24 BASS, 19 LEAD, 21 PAD, 14 PLUCK, 16 KEYS, 7 PERC, 16 FX, 11 OTHER). The bank is levelled with each patch's TRIM. New in 1.0: **#25 DRIVEN SAW**, a driven lead that uses both filters in series. The list of numbers is [docs/PATCH_NUMBERS.md](docs/PATCH_NUMBERS.md).
-- **16 MULTI slots**: 15 factory multis (REESE SWAMP, NIGHT ORGAN, PAD SPLIT, DUB CHORD, WHISPER TIDE, TINE STRINGS, FINAL REEL, HAZY TENSOR, ACID ETHER, WIRED SNAIL, EERIE SIGNAL, DEAD BUFFER, COLD CHAPEL, GARGLE ACID, WOOD & SKIN), their levels balanced and each with its own End B, and M16 STRESS TEST, a CPU test that you can overwrite.
+- **16 MULTI slots**: 15 multis (REESE SWAMP, NIGHT ORGAN, PAD SPLIT, DUB CHORD, WHISPER TIDE, TINE STRINGS, FINAL REEL, HAZY TENSOR, ACID ETHER, WIRED SNAIL, EERIE SIGNAL, DEAD BUFFER, COLD CHAPEL, GARGLE ACID, WOOD & SKIN), their levels balanced and each with its own End B, and M16 STRESS TEST, a CPU test that you can overwrite.
 - **32 patterns**, P01 to P32, all filled with a default and all overwritable.
-- Save any patch into any of the 128 slots; RESTORE brings the slot's factory sound back.
+- Save any patch into any of the 128 slots; RESTORE brings back the patch the slot came with.
 
 ### Level
 A part has two levels, as on a hardware synth. The sound has a **TRIM** (its own loudness, saved with the patch) and the mixer has a **LEVEL** (your volume for the part: loading a sound does not change it, a multi remembers it). The MASTER's top is 0 dB.
@@ -53,20 +59,20 @@ A part has two levels, as on a hardware synth. The sound has a **TRIM** (its own
 Per part: distortion, INSERT (including TAPE, VINYL, FOLD, HARD, CRUSH), EQ, a ducker with sidechain from MIDI. Shared: chorus (stereo), a delay with four modes (DIGI, PING, RAND, OCT+), six reverbs (ROOM, SPRING, HALL, SHIMMER, RESONATOR, PLATE) with a low cut, BASS MONO, a master compressor and a stereo WIDTH on the GLO pages.
 
 ### Keys
-Key velocity and aftertouch (KEY SENSE): the menu has **AFTERTOUCH** (on by default) and **KEY VELOCITY** (on by default; a very hard press can come out quiet, and you can switch it off; the method is Velo's, see [NOTICE.md](NOTICE.md)).
+Key velocity and aftertouch (KEY SENSE): SETTINGS > PLAYING has **AFTERTOUCH** (on by default) and **KEY VELOCITY** (on by default; a very hard press can come out quiet, and you can switch it off; the method is Velo's, see [NOTICE.md](NOTICE.md)). VELOCITY > FILTER ENV sets how much harder notes open the filter envelope.
 
 ### Two cores
-Both parts play from one shared pool of voices, spread over the chip's two cores: every voice goes to the core with more room. It starts at every power-on and needs nothing from you. If the second core does not answer, misreads or stalls, DUELL plays on **one core** for the rest of that session without a break in the music; after a crash or hang that involved the second core, the next start uses one core too and the one after tries two again. Each part's AVAILABLE VOICES in the header shows how many more notes that part can play right now, and that number is what really plays. There is no menu switch or on-screen notice for the second core yet.
+Both parts play from one shared pool of voices, spread over the chip's two cores: every voice goes to the core with more room. It starts at every power-on and needs nothing from you. If the second core does not answer, misreads or stalls, DUELL plays on **one core** for the rest of that session without a break in the music; after a crash or hang that involved the second core, the next start uses one core too and the one after tries two again. Each part's AVAILABLE VOICES in the header shows how many more notes that part can play right now, and that number is what really plays. There is no switch in SETTINGS or on-screen notice for the second core yet.
 
 ### MIDI
-A MIDI channel for each part. Clock in (AUTO, INT, USB or TRS), program change, bank select, pitch bend, mod wheel, sustain pedal and the CC map below. MIDI LEARN teaches a CC to any other parameter. Not tested with a wide range of devices.
+A MIDI channel for each part. Clock in (AUTO, INT, USB or TRS), program change, bank select, pitch bend, mod wheel, sustain pedal and the CC map below. MIDI notes follow the part's TRANSPOSE, as the keys do. MIDI PRESET sets DUELL up for KEYS OR OTHER MIDI, Novation Circuit Tracks or Akai MPC / Force (the first start asks). MIDI LEARN (SETTINGS > MIDI) teaches a CC to any other parameter. Not tested with a wide range of devices.
 
 ### USB, the editor and the backup
-The unit shows up as **DUELL** (USB-MIDI; USB audio input as set in the menu). The web editor, <https://oscillr.github.io/DUELL/editor/> (Chrome or Edge, unit connected), edits both parts live: all parameters, the ENGINE selector, the patch library for the 128 slots (export, import, drag between slots, DX7 `.syx` import), the MULTIS, a piano roll for the patterns, wavetable files and a Backup page that saves and restores everything (patches, multis, patterns, wavetables, settings). The editor has **no MIDI MAP tab yet**; assignments are made on the unit with MIDI LEARN. Try the editor without a unit with `?mock=1` on its address.
+The unit shows up as **DUELL** (USB-MIDI; USB audio input as set in SETTINGS). The web editor, <https://oscillr.github.io/DUELL/editor/> (Chrome or Edge, unit connected), edits both parts live: all parameters, the ENGINE selector, the patch library for the 128 slots (export, import, drag between slots, DX7 `.syx` import), the MULTIS, a piano roll for the patterns, wavetable files and a Backup page that saves and restores everything (patches, multis, patterns, wavetables, settings). The editor has **no MIDI MAP tab yet**; assignments are made on the unit with MIDI LEARN. The editor's SETTINGS follow the unit's sections. Try the editor without a unit with `?mock=1` on its address.
 
 ## MIDI CC map
 
-One map for the whole unit. A CC on a part's channel moves that part; "both parts" rows answer on any channel. Generated from [docs/MIDI_MAP_DEFAULTS.csv](docs/MIDI_MAP_DEFAULTS.csv): **70** direct CCs, **23** locked and input numbers, 35 unused.
+One map for the whole unit. A CC on a part's channel moves that part; "both parts" rows answer on any channel. Generated from [docs/MIDI_MAP_DEFAULTS.csv](docs/MIDI_MAP_DEFAULTS.csv): **77** direct CCs, **23** locked and input numbers, 28 unused.
 
 **Direct CCs**
 
@@ -111,6 +117,13 @@ One map for the whole unit. A CC on a part's channel moves that part; "both part
 | 53 | ENV 2 DECAY | LSB for CC 21 | the part of the channel |
 | 54 | ENV 2 SUSTAIN | LSB for CC 22 | the part of the channel |
 | 55 | ENV 2 RELEASE | LSB for CC 23 | the part of the channel |
+| 56 | TIMBRE (macro, 64 the middle) | LSB for CC 24 | the part of the channel |
+| 57 | ENV MACRO (64 the middle) | LSB for CC 25 | the part of the channel |
+| 58 | FILTER MACRO (64 the middle) | LSB for CC 26 | the part of the channel |
+| 59 | CHARACTER (macro, 64 the middle) | LSB for CC 27 | the part of the channel |
+| 60 | MOTION (macro, 64 the middle) | LSB for CC 28 | the part of the channel |
+| 61 | SPACE (macro, 64 the middle) | LSB for CC 29 | both parts (any channel) |
+| 62 | KILL (macro, 64 the middle) | LSB for CC 30 | both parts (any channel) |
 | 70 | MORPH FADER | Sound Controller 1 (Sound Variation) | the part of the channel |
 | 71 | MULTI FILTER RESONANCE | Sound Controller 2 (Timbre / Harmonic Intensity) | the part of the channel |
 | 72 | AMP RELEASE | Sound Controller 3 (Release Time) | the part of the channel |
@@ -148,11 +161,11 @@ One map for the whole unit. A CC on a part's channel moves that part; "both part
 
 **Locked numbers** (the MIDI standard's own): 0 and 32 bank select, 6 and 38 data entry, 96 to 101 data increment / decrement and NRPN / RPN select, 120 to 127 the channel mode messages (all sound off, reset all controllers, local control, all notes off, omni, mono, poly).
 
-**Unused:** 8, 56 to 63 and the others not listed.
+**Unused:** 8, 63 and the others not listed.
 
-**Learn-only parameters** have no CC of their own: the matrix choices and amounts, EQ, ARP and SEQ set-up, DUCK, the LFOs beyond the vibrato rows, the voice set-up, the master settings, UNDO, the four MORPH switches (TARGET, SMART, ARP, PITCH) and the settings that belong to both parts (BALANCE, XFADE, SPLIT, MODE). Teach a CC to one with MIDI LEARN on the unit.
+**Learn-only parameters** have no CC of their own: the matrix choices and amounts, EQ, ARP and SEQ set-up, DUCK, the LFOs beyond the vibrato rows, the voice set-up, the master settings, UNDO, the four MORPH switches (TARGET, SMART, ARP, PITCH) and the settings that belong to both parts (BALANCE, XFADE, SPLIT, MODE). Teach a CC to one with SETTINGS > MIDI > MIDI LEARN on the unit.
 
-## What is not in 1.2
+## What is not in 1.3
 The editor's MIDI MAP tab, switching multis with preset changes, the SUB HARMONICS card (switched off). The full list is in [docs/KNOWN_LIMITS.md](docs/KNOWN_LIMITS.md).
 
 ## Build and test
@@ -165,6 +178,7 @@ Building a device image is described in [duell/BUILDING.md](duell/BUILDING.md); 
 |---|---|
 | Install or update | [docs/INSTALL.md](docs/INSTALL.md) |
 | Play it | [docs/QUICKSTART.md](docs/QUICKSTART.md) |
+| Keep one page beside the unit | the [cheat sheet](https://oscillr.github.io/DUELL/cheatsheet/) |
 | Fix a problem | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) |
 | Recover from a failed flash | [docs/RECOVERY.md](docs/RECOVERY.md) |
 | Know the limits | [docs/KNOWN_LIMITS.md](docs/KNOWN_LIMITS.md), [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md) |

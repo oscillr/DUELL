@@ -352,7 +352,7 @@ static void head_page_title(char *tb, uint32_t *pi)
     } else if (ui.uboot) {
         str_cpy(tb, "UPDATE MODE", 24);
     } else if (ui.guide) {                              /* DUELL 1.1 (item 118): SETUP on the questions (1, 5), GUIDE on the info pages; the counter is the footer's (draw_foot: 1/5 .. 5/5, the MENU's copy 1/3 .. 3/3), no longer in the title (ui_guide.c) */
-        uint32_t pg = ui.guide, ask = pg == 1u || pg == 5u;
+        uint32_t pg = ui.guide, ask = pg == 1u || pg == 2u;   /* (DUELL 1.3: SETUP 1/5 the device, 2/5 the mode) */
         str_cpy(tb, ask && !ui.guide_menu ? "SETUP" : "GUIDE", 24);
     } else if (seq_counting() && !ui.confirm && !name_on()) {
         str_cpy(tb, "COUNT-IN", 24);
@@ -402,10 +402,10 @@ static uint32_t badge_lit(void)
     uint32_t lit = 1u << song.sel;
     const page_t *pg = cur_page();
     if (ui.layer)                                       /* a quick layer (0.2.11, owner): the selected part alone, as it edits one part (also over a BOTH page); */
-        return ui.layer == LAYER_GLO ? (1u << NSHOWN) - 1u : lit;   /* GLO's cards are per part: both (QUICK SCALE, whose three were global, is removed: change list A.7) */
+        return ui.layer == LAYER_GLO ? (1u << NSHOWN) - 1u : ui.layer == LAYER_MACRO ? lit | morph_mask(song.sel) : lit;   /* (DUELL 1.3 QUICK MACRO: ALGORITHM's part(s), as the MACROS pages) */   /* GLO's cards are per part: both (QUICK SCALE, whose three were global, is removed: change list A.7) */
     if (page_global(pg) || pg->scope == SC_MODE)   /* (a GLOBAL page: the SCALE page's, GLO's; the MODE page counts as global as in screen_global and ui_input.c algo_input, item 138: one rule. A global screen draws no capsules, so nothing on the screen changes) */
         return (1u << NSHOWN) - 1u;
-    if ((pg->graph == GR_MORPH || pg->scope == SC_TEST || pg->scope == SC_PERF))
+    if ((pg->graph == GR_MORPH || pg->scope == SC_TEST || pg->scope == SC_PERF || pg->scope == SC_MACRO))   /* (DUELL 1.3: the MACROS pages act on ALGORITHM's part(s) too) */
         lit |= morph_mask(song.sel);                    /* (ALGORITHM's PART 1 / BOTH / PART 2 there: the morph's target) */
     return lit;
 }
@@ -1027,6 +1027,7 @@ typedef struct { int16_t pad, lbl_base, lbl_dx, lbl_pad_r, val_base, val2_b1, va
 static const card_geo_t CG1 = {UT_CARD_PAD, UT_CARD_LBL_BASE, UT_CARD_LBL_DX, UT_CARD_LBL_PAD_R, UT_CARD_VAL_BASE, UT_CARD_VAL2_BASE1, UT_CARD_VAL2_BASE2, UT_CARD_UNIT_GAP, UT_CARD_BAR_Y, 0, 0, 0, 1, 0, 0};
 /* item 120: the MODE page's K2..K4 (76 x 54): template 1's rows and sizes, a value cut by the card's edge like template 2's, never ellipsised */
 static const card_geo_t CG3 = {UT_CARD_PAD, UT_CARD_LBL_BASE, UT_CARD_LBL_DX, UT_CARD_LBL_PAD_R, UT_CARD_VAL_BASE, UT_CARD_VAL2_BASE1, UT_CARD_VAL2_BASE2, UT_CARD_UNIT_GAP, UT_CARD_BAR_Y, 0, 0, 1, 1, 0, 0};
+static const card_geo_t CG6 = {UT_CARD_PAD, UT_CARD_LBL_BASE, UT_CARD_LBL_DX, UT_CARD_LBL_PAD_R, UT_CARD_VAL_BASE, UT_CARD_VAL2_BASE1, UT_CARD_VAL2_BASE2, UT_CARD_UNIT_GAP, UT_CARD_BAR_Y, UT_CARD_VAL_BASE, 0, 1, 1, 0, 0};   /* owner 2026-11-15: MIDI LEARN (grid 6) as TOOLS: an OCT+ pill on its cards, on the value's baseline */
 /* item 156: TEMPLATE 8's cells (the CELL pages): template 2's rows in 116 / 234 x 92 cells */
 static const card_geo_t CG8 = {UT_T8_PAD, UT_T8_LBL_BASE, UT_T8_LBL_DX, UT_T8_LBL_PAD_R, UT_T8_VAL_BASE, UT_T8_VAL2_BASE1, UT_T8_VAL2_BASE2, UT_T8_UNIT_GAP, UT_T8_BAR_Y, 0, 1, 1, 1, 1, 0};
 /* TEMPLATE 9 (grid_on 16): the area page's card row, the faces of the cells (figures N, else L, else the Bold T) */
@@ -1263,8 +1264,13 @@ static void k1_line(const char *label, const char *value, const char *unit, cons
     if (unit[0])
         x = cv_text_on(x + (unit[0] == '/' ? 0 : text_w(&AF_S, " ")), ty, &AF_S, unit, T_TEXT, T_BG);
     if (after && after[0]) {
-        if (!after_r)
-            cv_text_on(x + UT_A_K1_AFTER_GAP, ty, &AF_S, after, ac, T_BG);
+        if (!after_r) {                                /* (1.3, owner: never past the right margin: pulled left to end at UT_A_K1_R + 1, at least 4 px after the value) */
+            int32_t xs = x + UT_A_K1_AFTER_GAP, w = text_w(&AF_S, after);
+            if (xs + w > UT_A_K1_R + 1)
+                xs = UT_A_K1_R + 1 - w;
+            if (xs >= x + 4)
+                cv_text_on(xs, ty, &AF_S, after, ac, T_BG);
+        }
         else if (x + UT_A_K1_AFTER_GAP <= UT_A_K1_R - text_w(&AF_S, after))
             cv_text_r(UT_A_K1_R, ty, &AF_S, after, ac, T_BG);
     }
@@ -1371,8 +1377,8 @@ static void draw_card_grid(uint32_t c, const char *label, const char *val, const
         cv_blit((uint32_t)gx, (uint32_t)gy);
         return;
     }
-    if (grid_on == 1 || grid_on == 3) {                 /* TEMPLATE 1: the design's card (item 114); item 120: the MODE page's three cards with template 1's rows (CG3) */
-        card_paint(grid_on == 1 ? &CG1 : &CG3, c, gx, gw, gh, label[0] ? lb : "", vb, val, unit, vc, ratio, hot, ctr, big1);
+    if (grid_on == 1 || grid_on == 3 || grid_on == 6) {   /* TEMPLATE 1: the design's card (item 114); item 120: the MODE page's three cards with template 1's rows (CG3); owner 2026-11-15: MIDI LEARN's two (CG6, with the OCT+ pill) */
+        card_paint(grid_on == 1 ? &CG1 : grid_on == 6 ? &CG6 : &CG3, c, gx, gw, gh, label[0] ? lb : "", vb, val, unit, vc, ratio, hot, ctr, big1);
         cv_blit((uint32_t)gx, (uint32_t)gy);
         return;
     }
@@ -1834,6 +1840,8 @@ static int card_hidden_vp(const int16_t *vp)
     if ((vp == &t->p[P_ED_SHP] || vp == &t->p[P_LD_SHP] || vp == &t->p[P_E2SHP] || vp == &t->p[P_L2SHP]) && mod_shp_inert(t))   /* 0.2.25 (owner: the hide rule for modulation): the SHAPE depths
                                                          * of AMP DEST, LFO 1 DEST, ENV 2 DEST, LFO 2 DEST with a wave that has no shape input (mod.c mod_shp_inert: ANALOG not PWM / SYNC, LOFI not PLS, TRIO with no pulse) */
         return 1;
+    if (ENGINES[t->eng_req % NENGINES] == &ENG_ANALOG && vp == &t->p[P_E4] && t->p[P_E0] != 4)   /* DUELL 1.3: ANALOG's PW is WAVE PWM's only; every other WAVE hides it */
+        return 1;
     if (ENGINES[t->eng_req % NENGINES] == &ENG_LOFI && vp == &t->p[P_E2] && t->p[P_E1] != RW_PLS)   /* DUELL 1.1: LOFI's PULSE WIDTH (K4) is the pulse's only; every other WAVE hides it */
         return 1;
     return (vp == &t->p[P_LRATE] && t->p[P_LSYNC]) || (vp == &t->p[P_L2RATE] && t->p[P_L2SYNC]);
@@ -1957,7 +1965,11 @@ static uint32_t foot_names(void)
     const page_t *pg = cur_page();
     if (ui.guide)
         return 0u;                                      /* (owner 2026-11-06: the GUIDE / SETUP pages show no engine or patch name) */
-    if (ui.layer || ui.menu || ui.uboot || name_on())
+    if (ui.uboot || name_on())
+        return 3u;
+    if (screen_global() || badge_lit() == (1u << NSHOWN) - 1u)
+        return 0u;                                      /* (owner 2026-11-15: a GLOBAL page, SETTINGS, or both parts lit (ALGORITHM at BOTH on MORPH, PERFORM, MACROS; QUICK GLO): no one part's engine and patch) */
+    if (ui.layer)
         return 3u;
     return pg->graph == GR_ENGINE ? 2u : pg->graph == GR_BROWSE ? 1u : 3u;
 }
@@ -1989,7 +2001,7 @@ static void draw_foot(void)
         layer_foot_title(ti, ct);
     } else if (ui.guide) {                             /* item 118: the GUIDE / SETUP page's counter, "1/5" (the MENU's copy "1/3"), where every other page has its number */
         ti[0] = 0;
-        fmt_int(ct, ui.guide_menu ? (int32_t)ui.guide - 1 : (int32_t)ui.guide);
+        fmt_int(ct, ui.guide_menu ? (int32_t)ui.guide - 2 : (int32_t)ui.guide);   /* (DUELL 1.3: the MENU's copy is pages 3 .. 5) */
         str_cpy(ct + str_len(ct), "/", (uint32_t)sizeof ct - str_len(ct));
         fmt_int(ct + str_len(ct), ui.guide_menu ? 3 : (int32_t)GUIDE_N);
     } else {
@@ -2006,7 +2018,7 @@ static void draw_foot(void)
         sig += 0x57E9u + ph * 97u + (song.seq_mode && !foot_arp_page() ? ui.cursor : 0xFFu) * 3001u + steps_hash(t) + ui.bank * 7u + (uint32_t)t->p[P_SLEN] * 13u;
     }
     save_hint = !ui.ml.on && !ui.layer && !off_screen() && !ui.guide && (grid_on != 16 || UT_T3_HINT) && (cur_page()->graph == GR_PATS || cur_page()->graph == GR_SLOTS || cur_page()->graph == GR_BROWSE)
-                    ? (cur_page()->graph == GR_PATS ? "HOLD SAVE = SAVE PATTERN" : cur_page()->graph == GR_BROWSE ? "HOLD SAVE = SAVE PATCH" : "HOLD SAVE = SAVE MULTI") : 0;
+                    ? (cur_page()->graph == GR_PATS ? "Hold SAVE = save pattern" : cur_page()->graph == GR_BROWSE ? "Hold SAVE = save patch" : "Hold SAVE = save multi") : 0;
     if (save_hint)
         sig = str_hash(sig + 0x5A7Eu, save_hint);
     if (ui.ml.on) {                                    /* MIDI LEARN (midi_learn.c): what is picked, its CC */
@@ -2029,9 +2041,11 @@ static void draw_foot(void)
         return;
     ui.foot_sig = sig;
     foot_short = (grid_on == 1 || grid_on == 3 || grid_on == 4 || grid_on == 5 || grid_on == 7 || grid_on == 9 || grid_on == 10 || grid_on == 11 || grid_on == 12 || grid_on == 13 || grid_on == 14 || grid_on == 15 || grid_on == 16 || grid_on == 17 || ui.guide) && !ui.ml.on && !pfl[0] && !save_hint && !foot_steps();   /* (DUELL 1.1 grid pages: row 1 is empty, the cards use its rows) */
+    if (ui.ml.on && ui.menu != 4)
+        foot_short = 0;                                /* (1.3, owner: MIDI LEARN's line was cut at its top in a short footer: on the pages it needs the full one; on MIDI LEARN's own screen the screen says it, below) */
     cv_begin(240, foot_short ? H_FOOT - 15 : pfl[0] ? H_FOOT + 15 : H_FOOT, T_BG);   /* (item 120: PERFORM's footer is 15 rows taller, its two hint lines on top) */
     cv_oy = foot_short ? -15 : pfl[0] ? 15 : 0;
-    if (ui.ml.on) {                               /* row 1: MIDI LEARN's line, OCT+ DONE at the right (the one way out) */
+    if (ui.ml.on && ui.menu != 4) {               /* row 1: MIDI LEARN's line, OCT+ DONE at the right (the one way out); not on MIDI LEARN's own screen (1.3: it says it there) */
         khint_t kh = {KC_OCTUP, "DONE"};
         int32_t kw = kh_w(KC_OCTUP, "DONE");
         cv_free_text(8, 2, &AF_S, ln, T_ACCENT, T_BG, 232 - kw - 8 - 8);
@@ -2136,6 +2150,8 @@ static int slot_hidden(const page_t *pg, uint32_t s)
     int16_t *vp;
     if (pg->scope == SC_MODS)
         return 0;
+    if (pg->scope == SC_MACRO)                          /* DUELL 1.3 MACROS 2/2: SPACE with GLO > MODULES SENDS OFF (as its PERFORM card: ui_perform.c space_card) */
+        return pg->graph == GR_MAC2 && s == 2u && (mods_off & MODS_SENDS);
     if (pg->graph == GR_TEMPO && s == TEMPO_TAP_SLOT)
         return clock_src() != 0;
     if (pg->id[s] == P_DKRATE && duck_ctx_id(TSEL) == 0xFFu)
@@ -2149,7 +2165,7 @@ static int slot_blank(const page_t *pg, uint32_t s)
 {
     int16_t *vp;
     const param_desc_t *d;
-    if (pg->scope == SC_MODS)                           /* (GLO's MODULES: all four slots are cells, though no parameter id) */
+    if (pg->scope == SC_MODS || pg->scope == SC_MACRO)  /* (GLO's MODULES, DUELL 1.3 MACROS: all four slots are cells, though no parameter id) */
         return 0;
     if ((pg->graph == GR_TEMPO && s == TEMPO_TAP_SLOT) || (s == 3u && duck_midi_page(pg)))
         return 0;
@@ -2188,7 +2204,7 @@ static uint32_t knob_slot(const page_t *pg, uint32_t k)
 static int cells_page(const page_t *pg)
 {
     uint32_t e = TSEL->eng_req % NENGINES;
-    if (pg->scope == SC_MODS)                           /* GLO's MODULES: four choice cells (draw_columns) */
+    if (pg->scope == SC_MODS || pg->scope == SC_MACRO)  /* GLO's MODULES: four choice cells (draw_columns); DUELL 1.3: HOME's MACROS 1/2, 2/2, four value cells */
         return 1;
     if ((pg->graph != GR_NONE && pg->graph != GR_TEMPO) || (pg->scope != SC_TRACK && pg->scope != SC_ENGINE && pg->scope != SC_GLOBAL))
         return 0;
@@ -2307,16 +2323,6 @@ static void eng_gaps(void)
         if (end > bot)                                  /* (under the card row: the cells of grid 15 reached row end - 1) */
             lcd_fill(0, bot, 240, end - bot, T_BG);
     }
-}
-/* GLO > MIDI (owner 2026-10-25, item 86): the three cards are always there and always adjustable, K1 PART 1 CHANNEL, K2 PART 2 CHANNEL, K3 MIDI IN (PART CHANNEL / ANY CHANNEL); never faded, never
- * hidden, no card jumps to another knob. -> their count (3), the cards (0, 1 the parts' channels, 2 MIDI IN) in vis[] */
-static uint32_t midi_cards(uint8_t vis[4])
-{
-    vis[0] = 0;
-    vis[1] = 1;
-    vis[2] = 2;
-    vis[3] = 0xFFu;
-    return 3;
 }
 /* (the name a card shows: params.c desc_shown, T0227's unit label pass) */
 static void draw_columns(void)
@@ -2496,83 +2502,24 @@ static void draw_columns(void)
         return;
     }
 #endif
-    if (cur_page()->scope == SC_MODS) {                /* GLO's MODULES (owner 2026-10-29, PROPOSAL_MODULES_PAGE.png): TEMPLATE 8, a 2 x 2 of choice cells ARP, SEQ, SENDS, PART FX with the segment line; ARP and SEQ OFF / ON / KEEPS RUNNING (mods_run_get), SENDS and PART FX OFF / ON */
-        static const char *const L[4] = {"ARP", "SEQ", "SENDS", "PART FX"};
-        for (c = 0; c < 4u; c++) {
-            uint32_t rv = c < 2u ? mods_run_get(c) : ((mods_off >> c) & 1u) ? 0u : 1u;
-            cell_seg_n = c < 2u ? 3u : 2u;
-            cell_seg_i = (uint8_t)rv;
-            draw_column(c, L[c], rv == 0u ? "OFF" : rv == 1u ? "ON" : "KEEPS RUNNING", "", VAL(c), -1, ICON_AUTO);
-            cell_seg_n = cell_seg_i = 0;
-        }
+    if (cur_page()->scope == SC_MACRO) {               /* DUELL 1.3: HOME's MACROS 1/2 (MORPH TIMBRE ENVELOPE FILTER), 2/2 (CHARACTER MOTION SPACE KILL): TEMPLATE 8, a cell each (ui_perform.c mac_card) */
+        for (c = 0; c < 4u; c++)
+            mac_card(c, (cur_page()->graph == GR_MAC2 ? 4u : 0u) + c);
         return;
     }
     if (cur_page()->scope == SC_FXSUM)                 /* FX's SEND FX (0.2.22; item 117, TEMPLATE 5): no cards, the page is text on the background drawn by ui_graph.c graph_fxsum (state, delay and reverb info, note,
                                                         * the three knob labels); a twist of K1 / K2 / K3 still jumps to GLO's page of that effect (ui_input.c fxsum_knob) */
         return;
-    if (cur_page()->scope == SC_MIDI) {                /* GLO's MIDI pages: MIDI (P1 CH, P2 CH, MIDI IN; CLK is on TEMPO), SIDECHAIN (SC SRC, SC NOTE), MIDI LEARN (LEARN, CLEAR) */
-        if (cur_page()->graph == GR_MLEARN) {
-            char n[10] = "NONE";
-            seg_next(2u, ui.ml.on != 0);
-            draw_column(0, "LEARN", ui.ml.on ? "ON" : "OFF", "", ui.ml.on ? T_ACCENT : VAL(0u), -1, ICON_MIDI);
-            seg_next(0u, 0u);
-            if (ml_count()) {                          /* CLEAR: right clears every learned CC; the card says how many there are */
-                fmt_int(n, (int32_t)ml_count());
-                str_cpy(n + str_len(n), " CC", 4);
-            }
-            draw_column(1, "CLEAR", n, "", ml_count() ? VAL(1u) : T_DIM, -1, ICON_MIDI);
+    if (cur_page()->scope == SC_MIDI) {                /* MENU > MIDI > MIDI LEARN's screen (DUELL 1.3; was GLO's page; GLO's MIDI and SIDECHAIN pages are MENU rows now): LEARN, CLEAR */
+        {
+            /* owner 2026-11-15 ("Midi learn sounds good"): as TOOLS, a knob picks a card and OCT+ does it (the OCT+ pill on each card, accent when picked);
+             * learning: the first card is DONE and OCT+ ends it; CLEAR ALL asks in a dialog; nothing learned: CLEAR ALL dim */
+            draw_column(0, ui.ml.on ? "DONE" : "LEARN", "[OCT+]", "", ui.ml.on || ml_act == 1u ? T_ACCENT : VAL(0u), -1, ICON_MIDI);
+            draw_column(1, "CLEAR ALL", "[OCT+]", "", !ml_count() ? T_DIM : ml_act == 2u ? T_ACCENT : VAL(1u), -1, ICON_MIDI);
             for (c = 2; c < 4u; c++)
                 draw_column(c, "", "", "", T_THEME, -1, ICON_NONE);
             return;
         }
-        if (cur_page()->graph == GR_SCHAIN) {          /* 0.2.22: the sidechain's MIDI setup, a device setting: K1 P1 CH, K2 P1 NOTE, K3 P2 CH, K4 P2 NOTE (shown whatever the DUCK SRC is) */
-            static const char *const SL[4] = {"PART 1\nCHANNEL", "PART 1\nNOTE", "PART 2\nCHANNEL", "PART 2\nNOTE"};   /* (0.2.25 layout round, owner: PART 1 / PART 2, not P1 CH; two lines: CHANNEL does not fit) */
-            for (c = 0; c < 4u; c++) {
-                uint32_t n = sc_midi[c];
-                if (mods_off & MODS_PFX) {             /* (0.2.14 GLO > MODULES PART FX OFF: the DUCK is skipped; the footer says it in full) */
-                    draw_column_hide(c);
-                    continue;
-                }
-                if (c & 1u) {
-                    param_format(&SC_NOTE_D, (int16_t)n, val, &unit);
-                } else {
-                    fmt_int(val, (int32_t)n + 1);
-                    unit = "";
-                }
-                if (!(c & 1u)) {                       /* (DUELL 1.1: the duck source under the part's channel) */
-                    static char ds[24];
-                    str_cpy(ds, "Duck source: ", sizeof ds);
-                    str_cpy(ds + str_len(ds), val_shown(&TP[P_DKSRC], N_DKSRC[(uint32_t)clamp(trk[c >> 1].p[P_DKSRC], 0, 3)]), (uint32_t)sizeof ds - str_len(ds));
-                    for (n = 13; ds[n]; n++)
-                        ds[n] = (char)(ds[n] >= 'A' && ds[n] <= 'Z' ? ds[n] + 32 : ds[n] == '\n' ? ' ' : ds[n]);
-                    grid_d = ds;
-                    n = sc_midi[c];
-                }
-                draw_column(c, SL[c], val, unit, VAL(c), (int32_t)n * 1000 / ((c & 1u) ? 127 : 15), ICON_MIDI);
-            }
-            return;
-        }
-        {
-            uint32_t sel = song.g[G_ROUTE] == 1, k, n = midi_cards(vis), mm = duell_mode_req < DM_N ? duell_mode_req : DM_SPLIT;
-            static const char *const WH[3][2] = {{"Duel: left output", "Duel: right output"}, {"Stereo output", "Stereo output"}, {"Layer: plays both parts", "Layer: not heard, use P1 CH"}};
-            grid_wide = 1;
-            for (c = 0; c < 4u; c++) {                 /* the parts' channels (not shown when SELECTED listens on one channel; part 2 in LAYER), MIDI IN; T0227: moved left */
-                k = c < n ? vis[c] : 0xFFu;
-                if (k < 2u) {
-                    fmt_int(val, (int32_t)midi_ch_get(k) + 1);
-                    grid_d = WH[mm][k];
-                    draw_column(c, k ? "PART 2\nCHANNEL" : "PART 1\nCHANNEL", val, "", VAL(c), (int32_t)midi_ch_get(k) * 1000 / 15, ICON_MIDI);   /* (item 86: never faded) */
-                } else if (k == 2u) {
-                    grid_d = sel ? "Any channel plays the selected part" : mm == DM_LAYER ? "Layer mode: part 1 channel counts" : "Each part on its own channel";
-                    draw_column(c, "MIDI IN", sel ? "ANY\nCHANNEL" : "PART\nCHANNEL", "", VAL(c), -1, ICON_MIDI);
-                } else if (n < 3u) {
-                    draw_column_hide(c);
-                } else {
-                    draw_column(c, "", "", "", T_THEME, -1, ICON_NONE);   /* (CLK moved to TEMPO) */
-                }
-            }
-        }
-        return;
     }
     if (cur_page()->scope == SC_SCALE) {               /* GLOBAL (core.h): K1 SCALE, K2 ROOT, K3 OFF-SCALE SNAP / PLAY, K4 none */
         const param_desc_t *ds = &SCALE_D, *dr = &ROOT_D;
@@ -2778,8 +2725,8 @@ static void draw_columns(void)
             draw_column_hide(c);
             continue;
         }
-        if (s == 3u && duck_midi_page(cur_page())) {    /* DUCK 1/2, SRC MIDI: the notes come from GLO > SIDECHAIN; K4 jumps there */
-            draw_column(c, "SETUP", "GLO", "", VAL(c), -1, ICON_MIDI);   /* (T0227: the link card says SETUP, its value GLO: the page it jumps to) */
+        if (s == 3u && duck_midi_page(cur_page())) {    /* DUCK 1/2, SRC MIDI: the notes come from MENU > MIDI > SIDECHAIN (DUELL 1.3; was GLO > SIDECHAIN); K4 jumps there */
+            draw_column(c, "SETUP", "SETTINGS", "", VAL(c), -1, ICON_MIDI);   /* (T0227: the link card says SETUP, its value the place it jumps to: SETTINGS, owner 2026-11-15; was MENU) */
             continue;
         }
         if (vp && card_hidden_vp(vp)) {                 /* a card the selection makes inapplicable: not drawn (the knob does nothing); before the blank check: DUCK's retired K2 (SRC MIDI / OFF) hides with the rest */
@@ -2923,7 +2870,7 @@ static void splash_frame(uint32_t st, int32_t hint_y)
             about_keys(hint_y);
         if (!hint_y && splash_guide && band == 2u) {      /* (the last strip, rows 192..239: its text from row 199) */     /* DUELL 1.1: the first start only: a small hint under the DUELL text (LOGO_SCREENS_V1.png), OCT + goes on, HOME skips */
             static const khint_t FIRST[2] = {{KC_OCTUP, "NEXT"}, {KC_HOME, "SKIP"}};
-            cv_text(8, 199, &AF_S, "GUIDE FOR YOUR FIRST START", T_MID);
+            cv_text(8, 199, &AF_S, "Guide for your first start", T_MID);
             cv_key_row(8, 232, 217, FIRST, 2u, 3u, T_BG);
         }
         cv_oy = 0;
@@ -3083,6 +3030,11 @@ static void confirm_text(char *a, char *b)          /* a, b hold 32 */
     case CF_INIT_SOUND:
         str_cpy(a, "INITIALIZE SOUND?", 24);
         break;
+    case CF_ML_CLEAR:                                   /* (owner 2026-11-15: MIDI LEARN's CLEAR ALL, as TOOLS) */
+        str_cpy(a, "CLEAR ALL LEARNED CC?", 24);
+        fmt_int(b, (int32_t)ml_count());
+        str_cpy(b + str_len(b), " CC", 4);
+        break;
     case CF_SAVE_OVER: {                                /* SAVE held: the sound over a slot (ui_input.c patch_save_ask; K1 picks the slot) */
         char n[2][13], l[6], src[13];
         if (k >= 2u) {                                  /* both parts, each over its own slot */
@@ -3116,7 +3068,7 @@ static void confirm_text(char *a, char *b)          /* a, b hold 32 */
         break;
     case CF_RESTORE_ALL:                            /* SAVE > TOOLS: every slot back to its factory sound */
         str_cpy(a, "RESTORE ALL PATCHES?", 32);
-        str_cpy(b, "SAVED SOUNDS ARE LOST", 32);
+        str_cpy(b, "Saved sounds are lost", 32);
         break;
     case CF_LOAD_PAT: {
         char tag[4];
@@ -3140,8 +3092,8 @@ static void confirm_text(char *a, char *b)          /* a, b hold 32 */
 }
 /* MENU > SYSTEM > ERASE DATA's dialog (DUELL 0.2.2): exactly what goes and what stays, then NO / YES as every dialog. Item 119: at the floor (S 15) the same words take five lines of at most 200 px on a card 224 px wide
  * (x 8 .. 231); the card is 188 rows high, the canvas holds 124: two strips (it had been cut at row 143, the NO / YES buttons were not drawn) */
-static const char *const ERASE_LINES[5] = {"SETTINGS, FAVOURITES,", "AUTOSAVE, SAVED PATCHES,", "MULTIS, PATTERNS.",
-                                           "FACTORY SOUNDS COME BACK.", "THIS CANNOT BE UNDONE."};   /* (DUELL 1.1, item 91: the FM6 voice bank is erased too, its line is gone) */
+static const char *const ERASE_LINES[5] = {"SETTINGS, favourites,", "autosave, saved patches,", "multis, patterns.",
+                                           "Factory sounds come back.", "This cannot be undone."};   /* (DUELL 1.1, item 91: the FM6 voice bank is erased too, its line is gone) */
 #define ERASE_X 8
 #define ERASE_W 224
 #define ERASE_H 188
@@ -3304,18 +3256,19 @@ static void ui_draw_page(uint32_t counting)
     }
     {   /* the MIXER (GLO's page, and QUICK GLO over any page) is a grid screen (7): PAGES_V2_glo-a.png; every other layer and screen uses the old layout */
         uint8_t quiet = !(ui.menu || ui.guide || ui.uboot || ui.confirm || name_on() || counting || oct_show_on());
-        uint8_t want = perf_pg ? 16u                    /* TEMPLATE 9: the PERFORM page (kept here too, so that the line below does not drop it every frame) */
+        uint8_t want = ui.menu == 4u && !ui.guide ? 6u   /* DUELL 1.3: MENU > MIDI > MIDI LEARN, the page's template (ui_menu.c draw_page_screen) */
+                     : perf_pg ? 16u                    /* TEMPLATE 9: the PERFORM page (kept here too, so that the line below does not drop it every frame) */
                      : (ui.layer == LAYER_GLO || (!ui.layer && glo_pg())) && quiet ? 7u
                      : off_layer(ui.layer) && quiet ? 13u   /* item 125: QUICK ARP / QUICK SEQ with the module OFF: the notice */
                      : ui.layer == LAYER_SEQ && quiet ? 16u   /* TEMPLATE 9 (QUICK_SEQ_NEW_LAYOUT): knob 1's line, the tools' boxes in the area, three cards */
-                     : ui.layer == LAYER_REC && quiet ? 14u   /* TEMPLATE 8 (QUICK_REC_NEW_LAYOUT, block E): four cells CLICK, COUNT, LEVEL, CLEAR, 2 x 2 */
+                     : (ui.layer == LAYER_REC || ui.layer == LAYER_MACRO) && quiet ? 14u   /* TEMPLATE 8 (QUICK_REC_NEW_LAYOUT, block E): four cells CLICK, COUNT, LEVEL, CLEAR, 2 x 2; DUELL 1.3: QUICK MACRO's four */
                      : (ui.layer == LAYER_EDIT || ui.layer == LAYER_LFO || ui.layer == LAYER_ENV || ui.layer == LAYER_ARP) && quiet ? 1u : 0u;   /* item 120: the four QUICK EDIT layers are template 1 (a group card over four cards) */
         if (want == 16u && (area_cols != 3u || area_two)) {   /* (QUICK SEQ: three one-line cards, DIVISION, SWING, GATE) */
             area_cols = 3u;
             area_two = 0;
             ui.force = 1;
         }
-        if (want == 14u && ui.layer == LAYER_REC && cell_n != 4u) {   /* (QUICK REC: the four cells always show, knob c in cell c) */
+        if (want == 14u && (ui.layer == LAYER_REC || ui.layer == LAYER_MACRO) && cell_n != 4u) {   /* (QUICK REC, QUICK MACRO: the four cells always show, knob c in cell c) */
             uint32_t c;
             cell_n = 4u;
             for (c = 0; c < 4u; c++)
@@ -3344,7 +3297,7 @@ static void ui_draw_page(uint32_t counting)
         draw_oct_page();
         return;
     }
-    if (ui.menu && ui.confirm != CF_ERASE_ALL) {        /* (ERASE DATA's dialog is drawn over the menu's place, below) */
+    if (ui.menu && ui.confirm != CF_ERASE_ALL && ui.confirm != CF_ML_CLEAR) {   /* (ERASE DATA's and MIDI LEARN's CLEAR ALL dialogs are drawn over the menu's place, below) */
         draw_menu();
         ui.force = 0;
         return;
@@ -3401,8 +3354,6 @@ static void ui_draw_page(uint32_t counting)
                 g = 1;
             if (gp->scope == SC_SCALE)
                 g = 1;
-            if (gp->scope == SC_MODS)                   /* MODULES (item 124): no cards, four lines on the background (graph_mods) */
-                g = 12;
             if (gp->scope == SC_FXSUM)                  /* TEMPLATE 5 (item 117): the SENDS page, no cards, all text on the background (graph_fxsum) */
                 g = 9;
             /* owner V13: the working pages keep their own arrangement, only the look is new: PATCHES, PATTERNS, MULTIS, TOOLS (the SAVE family), STEP (the piano roll), PARAMETER LOCKS and ARP are not grid pages */
@@ -3433,8 +3384,6 @@ static void ui_draw_page(uint32_t counting)
             g = 16;
         if (!ui.perf && !page_over && gp->scope == SC_MIDI && gp->graph == GR_MLEARN)
             g = 6;
-        if (!ui.perf && !page_over && (gp->scope == SC_MIDI && (gp->graph == GR_MIDI || gp->graph == GR_SCHAIN)))
-            g = 2;
         if (!ui.perf && !page_over && cells_page(gp))   /* TEMPLATE 8 (item 156): the CELL pages, no picture, the cards that show as big cells */
             g = 14;
         if (!ui.perf && !page_over && off_module(gp))   /* item 125 (last, over every template): the notice of a switched-off module */

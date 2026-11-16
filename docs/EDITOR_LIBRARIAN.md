@@ -6,7 +6,7 @@ by OSCILL/R
 
 The editor's **PATCHES** tab (GLOBAL column) is a library for the 128 patch slots on your unit. You can keep patches in files, move them between units, copy and swap slots, and bring in DX7 voices. It needs DUELL 0.2.19 or newer on the unit (the editor tells you if yours is older). Try it without a unit: open the editor with `?mock=1`.
 
-Every slot is always writable. A slot holds either a patch you saved or the factory sound of that place; saving over a slot replaces what it holds, and **Restore** brings the factory sound back.
+Every slot is always writable. A slot holds either a patch you saved or the patch that place came with; saving over a slot replaces what it holds, and **Restore** brings that patch back.
 
 ## What you can do
 
@@ -26,9 +26,9 @@ The list shows all 128 slots: the number, the name, the engine and the type. Pat
 
 - **Export this patch** (slot selected): one file with the patch whole.
 - **Export selection**: the selected slots in one file.
-- **Export bank...**: every patch you saved, each with its slot number. A tick box adds the factory sounds too (as copies of their values).
+- **Export bank...**: every patch you saved, each with its slot number. A tick box adds the slots you never saved too (as copies of their values).
 
-A patch you saved goes into the file **whole**, with everything the unit stores: End B, the arp, the pattern, the FM6 patch. A factory sound has no saved record, so only its **values** are copied (the arp block and the pattern are not). The file says which is which.
+A patch you saved goes into the file **whole**, with everything the unit stores: End B, the arp, the pattern, the FM6 patch. A slot you never saved has no saved record, so only its **values** are copied (the arp block and the pattern are not). The file says which is which.
 
 The file is plain JSON ("duell-patches"). Each patch has its name, engine, type, the unit's record (base64, with a checksum) and a readable list of what differs from the engine's defaults, so you can compare two patches in any text diff tool. You can edit the readable list, but it is not read back: the record is the patch.
 
@@ -57,7 +57,7 @@ The DX7 import was developed against public CC0 (public domain) DX7 banks. Those
 
 - **Drag** a slot onto another slot in the list to **copy** it (Shift: swap). In the wide view a drag **swaps** the two slots (Alt: copy). Every drag asks first and lists what it replaces.
 - Without the mouse: **Copy to...** and **Move to...** on the selected slot. Copy to... takes several selected slots and copies them one after the other from the slot you type.
-- A swap of a saved patch with a slot that holds a factory sound moves the patch; the place it left shows its own factory sound again. Moving or swapping never makes the unit forget a factory sound.
+- A swap of a saved patch with a slot you never saved moves the patch; the place it left shows the patch it came with again. Moving or swapping never makes the unit forget the patch a slot came with.
 
 ## Load into a part without saving
 
@@ -71,4 +71,4 @@ On the WAVETABLES tab, drop a WAV file (a single-cycle wave or a wavetable like 
 
 - Files from a unit with a newer record form may be refused by an older unit; the unit's own checks decide, and the editor shows the reason.
 - A unit before 0.2.20 cannot take a patch whole; the editor hides the file buttons and says so.
-- Everything here is beta. Keep a backup (the Backup page) before you write many slots.
+- Keep a backup (the Backup page) before you write many slots.

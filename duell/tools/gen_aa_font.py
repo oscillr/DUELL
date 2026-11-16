@@ -48,7 +48,7 @@ PHASES, PHASES_L = 4, 2                # horizontal phases per glyph (aa_raster.
 # faces stored Huffman-coded (--huff): M and L. S, the most drawn and the least compressible (-15 %), stays
 # 2 px per byte, so the labels draw at full speed
 PLAIN = []             # (filled by main(): every face of the barlow preset is PLAIN: as the design pictures set text, no kerning, no OpenType features)
-HUFF = [("M", "L")]   # (gfx.c HC_FONTS: three Huffman tables, M, L and the icons; the other faces stay nibbles)
+HUFF = [("M", "L", "T", "P", "X", "N", "B")]   # DUELL 1.3 (owner 2026-11-12, room for 1.3): T P X N B packed too, 7,822 B less flash (measured with this script). gfx.c HC_FONTS keeps three LUT slots: M, L, and one the other packed faces and the icons share (rebuilt on a switch, main loop only). S and D stay nibbles
 # L draws only "FELUCCA", the UPDATE MODE countdown digit, the calibration's control names (panel.c
 # B_NAME / E_NAME) (until DUELL 0.2.2 also MENU > LARGE's card values and page titles: some glyphs of the set below were only for those, a later size trim): a sparse face of those glyphs, the
 # space as its range and the rest as extras

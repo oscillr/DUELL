@@ -63,8 +63,10 @@ static const layer_t LAYERS[LAYER_N] = {
     {B_LFO, LK_QUICK, FAM_LFO, "QUICK LFO", "LFO", ""},
     {B_ENV, LK_QUICK, FAM_ENV, "QUICK ENV", "ENV", ""},
     {B_ARP, LK_QUICK, FAM_ARP, "QUICK ARP", "ARP", ""},
+    {B_SCL, LK_QUICK, FAM_HOME, "QUICK MACRO", "SEL", ""},   /* DUELL 1.3 (owner 2026-11-12: "QUICK MACRO long press SEL"; SEL's hold was free since QUICK SCALE went): four cells of template 8, KNOB 1..4 the macros
+                                                              * MENU > CONTROL > QUICK MACRO KNOB 1..4 picks (default TIMBRE FILTER CHARACTER MOTION; ui_perform.c mac_knob, mac_card), on ALGORITHM's part(s); the keys stay notes */
 };
-static const uint8_t LY_KC[LAYER_N] = {0, 0, KC_GLO, KC_EDIT, KC_SEQ, KC_REC, KC_LFO, KC_ENV, KC_ARP};
+static const uint8_t LY_KC[LAYER_N] = {0, 0, KC_GLO, KC_EDIT, KC_SEQ, KC_REC, KC_LFO, KC_ENV, KC_ARP, KC_SCL};
 /* SEQ TOOLS' knobs: LEN DIV SWING GATE (the length the tools work in; up to 1.1.5 the PATTERN page's) */
 static const page_t LY_SEQ = {"PATTERN", FAM_SEQ, SC_TRACK, GR_STEPS, {P_SLEN, P_SDIV, P_SSWING, P_SGATE}};
 /* DUELL 0.2.9, the QUICK EDIT layers' knobs, the selected part's (EDIT, LFO, ENV, ARP: LY_Q[q], q = ly_q(l)): the same parameters, cards
@@ -464,6 +466,13 @@ static int layer_quick_reset(uint32_t l, uint32_t k)
         }
         kr_on[k] = 0;
     }
+    if (l == LAYER_MACRO && dn && !up) {                /* DUELL 1.3 QUICK MACRO: OCT- held + a knob, its macro to the middle (MORPH: to A) */
+        mac_reset(mac_pick(4u + (k & 3u)));
+        oct_mod = 1;
+        kr_on[k] = 1;
+        kr_t[k] = fm1_ms;
+        return 1;
+    }
     if (ly_q(l) > 3u || !dn || up)
         return 0;
     ui.page = (uint8_t)page_first(LAYERS[l].fam);
@@ -503,6 +512,8 @@ static void layer_knob(uint32_t k, int32_t s)
             rec_clear_ask();
     } else if (l == LAYER_GLO) {                        /* QUICK GLO: K1 LEVEL 1, K2 LEVEL 2, K3 PAN 1, K4 PAN 2 (the MIXER page's own; item 117) */
         glo_knob(k, s);
+    } else if (l == LAYER_MACRO) {                      /* DUELL 1.3 QUICK MACRO: the four picked macros */
+        mac_knob(mac_pick(4u + (k & 3u)), EN_K1 + (k & 3u), s);
     } else if (l) {                                     /* the page's knobs, wherever the page is */
         uint8_t pg = ui.page;
         ui.page = (uint8_t)page_first(LAYERS[l].fam);
@@ -979,6 +990,9 @@ static void layer_cards(uint32_t l)
         }
         cell_seg_n = cell_seg_i = 0;                    /* CLEAR: a text, no line */
         draw_column(3, "CLEAR", rec_clearable() ? "TURN TO CLEAR" : "NO SEQUENCE", "", rec_clearable() ? VAL(3u) : T_DIM, -1, ICON_NONE);
+    } else if (l == LAYER_MACRO) {                      /* DUELL 1.3 QUICK MACRO: four cells, knob c in cell c (template 8, as QUICK REC) */
+        for (c = 0; c < 4u; c++)
+            mac_card(c, mac_pick(4u + c));
     } else {                                            /* the layer's four (ly_page: SEQ's, the QUICK EDIT layers') */
         uint8_t pg = ui.page;
         ui.page = (uint8_t)page_first(LAYERS[l].fam);
@@ -1007,9 +1021,11 @@ static void draw_layer(void)
         sig += (uint32_t)ui_rec_prefs * 31u + (uint32_t)rec_clearable() * 5u + song.sel * 977u;
     else if (l == LAYER_SEQ)
         sig += song.sel * 977u;
+    else if (l == LAYER_MACRO)
+        sig += mac_sig() + song.sel * 977u + (uint32_t)morph.target * 31u + morph_fader_of(song.sel) * 7u + (uint32_t)(uint8_t)perf_space * 131u + (uint32_t)(uint8_t)perf_filt * 8191u;
     else if (l == LAYER_EDIT)
         sig += (TSEL->eng_req % NENGINES) * 31u + song.sel * 977u + (uint32_t)ly_page(l)->id[2] * 4099u + (uint32_t)ly_page(l)->id[3] * 65537u;   /* (cloud job H: its cards follow filter 2) */
-    if (l == LAYER_REC && grid_on == 14)                /* QUICK REC (template 8): the cells are the whole body, no panel of its own */
+    if ((l == LAYER_REC || l == LAYER_MACRO) && grid_on == 14)   /* QUICK REC, QUICK MACRO (template 8): the cells are the whole body, no panel of its own */
         return;
     if (ui.force || sig != ui.layer_sig) {
         ui.layer_sig = sig;
@@ -1021,8 +1037,8 @@ static void draw_layer(void)
                 layer_glo();
             else if (l == LAYER_SEQ)
                 layer_seq();
-            else if (l == LAYER_REC)
-                ;                                           /* (QUICK REC outside template 8, PERFORM on: an empty panel; its four are the cards) */
+            else if (l == LAYER_REC || l == LAYER_MACRO)
+                ;                                           /* (QUICK REC, QUICK MACRO outside template 8, PERFORM on: an empty panel; its four are the cards) */
             else
                 layer_quick(ly_q(l), 4, 112);              /* (QUICK FILTER, LFO, ENV, ARP) */
             cv_blit(0, Y_GRAPH + (uint32_t)cv_by);

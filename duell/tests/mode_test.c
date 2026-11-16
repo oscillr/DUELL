@@ -991,36 +991,26 @@ static void t_ui(void)
     ui_power_on();
     frame();
     expect("power-on: MODE SPLIT (the settings byte 0)", duell_mode_req == DM_SPLIT && !ui_mode_set);
-    press(B_HOME);                                      /* (the harness starts on MORPH: MORPH SET -> MODE) */
-    frames(64);
-    press(B_HOME);
-    frames(64);
-    page_title(ti);
-    expect("HOME tapped twice from the start (on MORPH): the MODE page (HOME's third sub-page), its footer MODE 3/3 (0.2.25: the MIXER is GLO's)",
-           ui.page == page_of("MODE") && str_eq(ti, "MODE 3/3"));
-    turn(EN_K1, 1);                                     /* (item 118: the list reads LAYER, STEREO, DUEL from the top; KNOB 1 to the right goes DOWN it) */
-    expect("MODE: KNOB 1 right at DUEL (SPLIT, the list's last row) stays DUEL", duell_mode_req == DM_SPLIT);
+    /* (owner 2026-11-15: the MODE page left HOME's round: MODE, XFADE and SPLIT are SETTINGS > PLAYING's rows; a knob turned right still goes DOWN the list LAYER, STEREO, DUEL) */
+    (void)ti;
+    ui.menu = 1; ui.menu_sel = MI_MODE; frames(8);
+    expect("SETTINGS > PLAYING: MODE is its first row", menu_tab() == MTAB_PLAYING && ui.menu_sel == MI_MODE);
+    turn(EN_K1, 1);
+    expect("MODE: KNOB 1 right at DUEL (SPLIT, the list's last value) stays DUEL", duell_mode_req == DM_SPLIT);
     turn(EN_K1, -1);
     expect("  .. left: STEREO", duell_mode_req == DM_STEREO);
     turn(EN_K1, -1);
     turn(EN_K1, -1);
     expect("  .. left, left: LAYER (and no further)", duell_mode_req == DM_LAYER);
-    ui.msg_t = 0;
-    turn(EN_K2, -3);
-    turn(EN_K3, 2);
-    expect("  .. KNOB 2-3 (item 158: the cards line up to the left): XFADE (0 at the left end), SPLIT (OFF + 2: the middle key F#4 + 1, item 155) move; the mode stays",
+    ui.menu_sel = MI_XFADE; turn(EN_K1, -3);
+    ui.menu_sel = MI_SPLIT; turn(EN_K1, 2);
+    expect("  .. XFADE and SPLIT rows (LAYER only): XFADE 0 at the left end, SPLIT OFF + 2 = the middle key F#4 + 1 (item 155); the mode stays",
            duell_mode_req == DM_LAYER && mix_xf == 0 && mix_split == 68);
-    {
-        int16_t lv0 = trk[0].p[P_LEVEL], lv1 = trk[1].p[P_LEVEL];
-        uint8_t x0 = mix_xf, s0 = mix_split;
-        ui.msg_t = 0;
-        turn(EN_K4, 3);
-        expect("  .. KNOB 4 (no card): the knob does nothing and says nothing", trk[0].p[P_LEVEL] == lv0 && trk[1].p[P_LEVEL] == lv1 && mix_xf == x0 && mix_split == s0 && !ui.msg_t);
-    }
     mix_split = 0;
-    turn(EN_K1, 2);
+    ui.menu_sel = MI_MODE; turn(EN_K1, 1); turn(EN_K1, 1);   /* (a SETTINGS row steps once a frame) */
     frame();
-    expect("  .. back to SPLIT", duell_mode_req == DM_SPLIT);
+    expect("  .. back to SPLIT (DUEL): XFADE and SPLIT hidden", duell_mode_req == DM_SPLIT && !menu_shown(MI_XFADE) && !menu_shown(MI_SPLIT));
+    ui.menu = 0; frames(8);
     press(B_GLO);
     frames(64);
     expect("GLO: the MIXER (0.2.25 layout round: GLO's first page)", ui.page == page_of("MIXER"));
@@ -1040,10 +1030,11 @@ static void t_settings(void)
     ui_power_on();
     frames(2500);
     expect("the default (SPLIT) writes nothing: the byte stays 0, no save queued", !ui_mode_set && !ui.mset_dirty);
-    go_title("MODE");
+    ui.menu = 1; ui.menu_sel = MI_MODE;                 /* (2026-11-15: SETTINGS > PLAYING > MODE, was the MODE page) */
     frames(32);
-    turn(EN_K1, -2);
+    turn(EN_K1, -1); turn(EN_K1, -1);                   /* (a SETTINGS row steps once a frame) */
     frame();
+    ui.menu = 0;
     expect("MODE LAYER into the settings byte (2), a save queued", ui_mode_set == DM_LAYER && ui.mset_dirty);
     frames(2200);
     expect("  .. saved ~2 s later", !ui.mset_dirty);
@@ -1285,7 +1276,20 @@ static void t_leakmap(void)
 }
 
 #ifndef MODE_TEST_NO_MAIN
-/* DUELL step 6: the parts' MIDI channels (GLO > MIDI) and the level meters' data (GLO's page) */
+/* DUELL step 6: the parts' MIDI channels (GLO > MIDI; DUELL 1.3: MENU > MIDI, its rows PART 1 CHANNEL and PART 2 CHANNEL, any knob sets the picked row)
+ * and the level meters' data (GLO's page) */
+static void menu_midi(uint32_t row)                     /* DUELL 1.3: MENU > MIDI open, row picked */
+{
+    ui.menu = 1;
+    ui.menu_sel = (uint8_t)row;
+    ui.force = 1;
+    frame();
+}
+static void turn_each(uint32_t k, int32_t n)            /* (a MENU row steps one value per input pass: one detent a turn) */
+{
+    for (; n; n -= n > 0 ? 1 : -1)
+        turn(k, n > 0 ? 1 : -1);
+}
 static void t_midi_ch(void)
 {
     persist_t p;
@@ -1294,7 +1298,7 @@ static void t_midi_ch(void)
     frames(2500);
     dsp_clean(DM_STEREO);
     song.g[G_ROUTE] = 0;
-    go_title("MIDI");
+    menu_midi(MI_P2CH);
     frames(32);
     expect("MIDI: defaults, PART 1 CH 1 and PART 2 CH 2, nothing written to the settings",
            midi_pch[0] == 0u && midi_pch[1] == 1u && !ui_midi_p1 && !ui_midi_p2);
@@ -1303,9 +1307,9 @@ static void t_midi_ch(void)
     expect("  .. channel 2 plays part 2 alone", vgated(&trk[1], 62) == 1u && !gated_any(&trk[0]));
     midi(0x80, 1, 62, 0);
     mblk(1);
-    turn(EN_K2, 3);                                      /* 2 -> 5 */
+    turn_each(EN_K2, 3);                                      /* 2 -> 5 */
     frame();
-    expect("KNOB 2 right x3: PART 2 CH 5 (the settings byte 5, a save queued)", midi_pch[1] == 4u && ui_midi_p2 == 5u && ui.mset_dirty);
+    expect("MENU > MIDI, PART 2 CHANNEL, KNOB 2 right x3: PART 2 CH 5 (the settings byte 5, a save queued)", midi_pch[1] == 4u && ui_midi_p2 == 5u && ui.mset_dirty);
     midi(0x90, 4, 64, 99);
     midi(0x90, 1, 65, 99);
     midi(0x90, 0, 67, 99);
@@ -1313,10 +1317,11 @@ static void t_midi_ch(void)
     expect("  .. channel 5 plays part 2 and part 1 ignores it", vgated(&trk[1], 64) == 1u && !vgated(&trk[0], 64));
     expect("  .. channel 2 (the old one) plays nothing", !vgated(&trk[0], 65) && !vgated(&trk[1], 65));
     expect("  .. channel 1 still plays part 1 alone", vgated(&trk[0], 67) == 1u && !vgated(&trk[1], 67));
-    turn(EN_K1, 9);                                      /* part 1: 1 -> 10 */
+    menu_midi(MI_P1CH);
+    turn_each(EN_K1, 9);                                      /* part 1: 1 -> 10 */
     frame();
     mblk(1);
-    expect("KNOB 1 right x9: PART 1 CH 10; notes held on channels no part hears any more are let go",
+    expect("PART 1 CHANNEL, KNOB 1 right x9: PART 1 CH 10; notes held on channels no part hears any more are let go",
            midi_pch[0] == 9u && ui_midi_p1 == 10u && !vgated(&trk[0], 67));
     midi(0x90, 9, 69, 99);
     midi(0x90, 0, 71, 99);
@@ -1339,14 +1344,15 @@ static void t_midi_ch(void)
     midi(0x80, 9, 69, 0);
     midi(0x80, 4, 64, 0);
     mblk(1);
-    turn(EN_K2, 5);                                      /* part 2 onto part 1's channel: part 1 takes it */
+    menu_midi(MI_P2CH);
+    turn_each(EN_K2, 5);                                      /* part 2 onto part 1's channel: part 1 takes it */
     frame();
     midi(0x90, 9, 72, 99);
     mblk(1);
     expect("both parts on one channel: part 1 plays it, part 2 gets nothing", midi_pch[1] == 9u && vgated(&trk[0], 72) == 1u && !vgated(&trk[1], 72));
     midi(0x80, 9, 72, 0);
     mblk(1);
-    turn(EN_K2, -5);
+    turn_each(EN_K2, -5);
     frame();
     duell_mode_force(DM_LAYER);
     midi(0x90, 9, 74, 99);
@@ -1360,14 +1366,15 @@ static void t_midi_ch(void)
     {   /* (the page is drawn by ui_graph.c graph_midi, not by cards: ui.col holds a hash; the three always-there cards of ui_draw.c midi_cards are the table) */
         uint8_t vis[4];
         expect("LAYER, GLO > MIDI: the PART 2 CH card is shown (K2): the page is GLO > MIDI and its cards are PART 1 CH, PART 2 CH, MIDI IN, never hidden",
-               cur_page()->graph == GR_MIDI && midi_cards(vis) == 3u && vis[0] == 0u && vis[1] == 1u && vis[2] == 2u);
+               ((void)vis, menu_shown(MI_P1CH) && menu_shown(MI_P2CH) && menu_shown(MI_MIDIIN))   /* (DUELL 1.3: GLO > MIDI is MENU > MIDI: its three rows always shown) */);
     }
-    turn(EN_K2, 1);
+    turn_each(EN_K2, 1);
     frame();
     expect("  .. KNOB 2 right: PART 2 CH 6, part 1's channel unchanged", midi_pch[1] == 5u && midi_pch[0] == 9u);
-    turn(EN_K2, -1);
+    turn_each(EN_K2, -1);
     frame();
     expect("  .. KNOB 2 left: PART 2 CH 5 again", midi_pch[1] == 4u);
+    ui.menu = 0;                                         /* (the MENU closed) */
     duell_mode_force(DM_STEREO);
     song.g[G_ROUTE] = 1;
     song.sel = 1;

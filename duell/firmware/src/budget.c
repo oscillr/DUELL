@@ -62,13 +62,19 @@ static const struct { const engine_t *e; uint16_t c; } BD_ENG[] = {   /* (cal) *
 #define BD_ENG_DEF 200u         /* an engine not in the table: above the dearest of the normal ones */
 #define BD_PART_ON 68u          /* the part's own work while it sounds, once whatever the number of notes (cal: the first note's extra over the next ones, 39 .. 64) */
 #define BD_MORPH 16u            /* the MORPH a voice (old: 0.5 %) */
+/* THE ENGINE CORRECTION OF THE POOL (2026-11-16, owner "Full calibration", bench B1116D VOICE-CAL and B1116C ENGINE-BURST, report working docs/reports/voice-calibration_2026-11-16.md):
+ * keys added one at a time with the limits off, every feature on and both MORPH patches sounding, the unit played 6 to 11 voices where the pool gave 4 to 6; the knob test (every knob
+ * swept while chords play, the limits on) then showed which engine really has that room: LOFI none of the overload guards at pool 9000 (16 voices), NOISE and VOICE the guards at 8000
+ * (VOICE a missed half at 9000), WHEEL the guards at 8000, WAVE and PHASE missed halves at 7500 / 8000 (2026-11-15/16). So only LOFI's voice is priced lower in the pool: 73 % keeps
+ * LOFI everything-on at 9 (unit 11) and with the six macros + a MORPH route moving at 11 (unit 11). The other engines stay at the table (their numbers were at or under the unit's) */
+#define BD_VPCT_LOFI 73u
 #define BD_FADE 66u             /* .. an engine choice cross-faded, both shapes made (old: 2 %) */
 /* THE POOL'S REAL ROOM (owner 2026-11-07: "at all times we don't let them play more"; measured, POOL-SWEEP on the unit, bench_runs/pool-sweep_2026-11-07_b1107b, report
  * working docs/reports/voice-numbers-check_2026-11-07.md). Both parts the same plain sound, two cores, the heavy globals: the blocks go very late from core 0 at about 68 % on its meter while
  * core 1 sits at 30 to 50 %, so the two cores do NOT hold 2 x BUDGET_LIMIT. Fitted to every pass and fail of the sweep (ANALOG 16 voices clean / 19 late, LOFI 24 / 28, WHEEL 12 / 16, PHYSICAL 4 / 6):
  * each core counts for BD_POOL_LIM of the budget, and a voice in the pool costs its row + BD_POOL_V (core 0's own work for every voice beyond the table's row). Never the bigger number */
 #ifndef BD_POOL_LIM                                     /* (a host test may set it, to see the numbers move) */
-#define BD_POOL_LIM 7000u       /* 1/100 %: 70.0 % a core in the pool (BUDGET_LIMIT stays the one-core rule's). 2026-11-10 (owner yes, test build 1.2-test-2026-11-10): 7000, after the balance fix (B1109K), the deal rule removed (B1110A) and the event step in RAM (B1110B): the 4 hardest WAVE-SOAK cells and the 5 knob tests 0 missed buffers at 7000. Before: 2026-11-08 (owner: "real and it plays"): refit to the two-phase runner's one-part-alone dropouts on the unit (MAX-VOICES-PART, bench B1108B); was 5320. 2026-11-09: 6200 and 6500 tried (bench B1109D / E): light patches played them clean (#60 11 voices), the heaviest MORPH B patch and the knob test crackled at chord starts, so 5700 stays until the cost table is refit per feature (COST-CAL) */
+#define BD_POOL_LIM 7000u       /* 1/100 %: 70.0 % a core in the pool. 2026-11-16: 7500 tried (bench B1116A): the PHASE knob test 2 missed halves, so 7000 stays (8000 dropped on 2026-11-15) (BUDGET_LIMIT stays the one-core rule's). 2026-11-10 (owner yes, test build 1.2-test-2026-11-10): 7000, after the balance fix (B1109K), the deal rule removed (B1110A) and the event step in RAM (B1110B): the 4 hardest WAVE-SOAK cells and the 5 knob tests 0 missed buffers at 7000. Before: 2026-11-08 (owner: "real and it plays"): refit to the two-phase runner's one-part-alone dropouts on the unit (MAX-VOICES-PART, bench B1108B); was 5320. 2026-11-09: 6200 and 6500 tried (bench B1109D / E): light patches played them clean (#60 11 voices), the heaviest MORPH B patch and the knob test crackled at chord starts, so 5700 stays until the cost table is refit per feature (COST-CAL) */
 #endif
 #if TC_MEAS                     /* (developer bench builds, 2026-11-09: `tune pool N` sets it at run time, so one build reads the numbers at several settings; bench reset puts it back) */
 static uint32_t bd_pool_lim_now = BD_POOL_LIM;
@@ -117,6 +123,7 @@ typedef struct {                /* one part's items, host instructions a sample 
     uint32_t need;              /* the fixed need in its own voices: 0 POLY, 1 MONO / LEGATO, UNISON its stack (= cap) */
     uint32_t comb;              /* a TWIN COMB sounds (live or at a MORPH end) */
     uint32_t on;                /* sounds at all (not muted) */
+    uint32_t vpct;              /* the pool's price of one voice, % of the table's (BD_VPCT: the engine's correction from the unit; 100 = the table) */
 } bd_part_t;
 typedef struct { uint32_t idle, fx; bd_part_t p[2]; } bd_t;   /* the global items too */
 #define BD_N 2u                  /* the parts the budget covers (the two shown ones; a test rig may have more live tracks) */
@@ -226,6 +233,7 @@ static void bd_part(const track_t *t, bd_part_t *r)
     r->misc += ((lf & 1u) + (lf >> 1)) * BD_LFO;
     r->misc += arp_mode(t) ? BD_ARP : 0;                /* (item 125: the arp as it plays now: MODULES' ARP OFF costs nothing; was p[P_AMODE]) */
     r->base = BD_PART_ON;
+    r->vpct = e == &ENG_LOFI ? BD_VPCT_LOFI : 100u;   /* (2026-11-16, owner "Full calibration": only LOFI measured with room to spare) */
     bd_feat(t, r, &w);                                  /* TWIN FILTER (live, and the morph ends' from above), SUB, CYCLE (budget_feat.c) */
 }
 
@@ -318,7 +326,7 @@ static void budget_pool(const bd_t *b, bd_pool_t *o)
     uint32_t c[2], fx[2], need[2], g = BD_U(b->idle + b->fx), lim = BD_POOL_LIM_NOW, p, r0, r1, cm, cl, nc;   /* (the pool's measured room a core, not BUDGET_LIMIT) */
     for (p = 0; p < 2u; p++) {
         const bd_part_t *r = &b->p[p];
-        c[p] = r->on ? BD_U(r->eng + r->filt + r->ext + BD_POOL_V) : 0;   /* (+ core 0's own work a voice, measured: BD_POOL_V) */
+        c[p] = r->on ? (BD_U(r->eng + r->filt + r->ext + BD_POOL_V) * r->vpct + 99u) / 100u : 0;   /* (+ core 0's own work a voice, measured: BD_POOL_V; the engine's correction BD_VPCT, rounded up) */
         fx[p] = r->on ? BD_U(r->ins + r->sat + r->eq + r->misc + r->base) : 0;
         need[p] = r->on ? r->need : 0;
     }

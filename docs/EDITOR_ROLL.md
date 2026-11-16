@@ -4,7 +4,7 @@
 MultiMorphing Bitimbral Synthesizer
 by OSCILL/R
 
-The web editor has a piano roll for the step pattern of each part. It is new in 0.2.20 beta and has been used on the real unit. The firmware did not change.
+The web editor has a piano roll for the step pattern of each part. It has been used on the real unit.
 
 ## Where it is
 - Each part column has a **PIANO ROLL** tab, after ARP / SEQ.
@@ -51,7 +51,7 @@ The roll shows the unit's step model as it is, so a few things are not what a no
 - Parameter locks and automation are not edited here.
 
 ## When a control does not apply
-- **GLO > MODULES > SEQ OFF:** the unit plays no step. A line says so; editing still works and still writes to the unit.
+- **SETTINGS > MODULES > SEQ OFF:** the unit plays no step. A line says so; editing still works and still writes to the unit.
 - **ARP MODE = SEQ:** the steps are not played by the pattern. They are offsets for the keys you hold (note 60, C4, is no offset), timed by the arp's RATE and GATE. The roll shows one note per step, hides the length, slide, velocity, chance and ratchet, and hides DIV, SWG and GATE (the ARP / SEQ tab keeps them). With **MODULES > ARP OFF** it says that this pattern plays nothing.
 - The unit's ARP and SEQ switches are read when the roll opens and again every few seconds.
 

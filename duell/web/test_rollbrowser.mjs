@@ -213,12 +213,13 @@ for (const [W, H] of [[1920, 1080], [1280, 720]]) {
        `ENGINE tab, part ${p + 1}: the engine's one card, SUB OSC, VOICE (CYCLE ENV is on the ENV tab); no filter cards any more (${eng0.map((x) => x.t).join(" > ")})`);
     ok(!mod.some((x) => x.labs.includes("FILTER DEPTH")) && mod.map((x) => x.t).filter((t) => t !== "MULTI CUTOFF MOD" && t !== "TWIN CUTOFF MOD").join() === "AMP ENV,FILTER ENV,CYCLE ENV,LFO 1,LFO 2", `ENV and LFO tabs, part ${p + 1}: AMP ENV, FILTER ENV, CYCLE ENV, LFO 1, LFO 2, no FILTER DEPTH (the cutoff depths are MULTI CUTOFF MOD's)`);
   }
-  {   // 0.2.22: the SIDECHAIN card (the ducker's MIDI setup, MENU settings 38..41) is on the MIDI tab of the GLOBAL column: P1 CH, P1 NOTE, P2 CH, P2 NOTE with the unit's values
-    await E("window.__app.setGlobalTab('midi'); true"); await c.sleep(600);
+  {   // 0.2.22: the SIDECHAIN card (the ducker's MIDI setup, MENU settings 38..41): P1 CH, P1 NOTE, P2 CH, P2 NOTE with the unit's values. DUELL 1.3: the MIDI tab is gone,
+      // the card is in SETTINGS after the MIDI section (as the unit's MENU > MIDI > SIDECHAIN)
+    await E("window.__app.setGlobalTab('settings'); true"); await c.sleep(1500);
     const sc = JSON.parse(await E(`JSON.stringify([...document.querySelectorAll('.col.glob section.card')].filter((x) => x.querySelector('h3').firstChild.textContent.trim() === 'SIDECHAIN').map((x) => [...x.querySelectorAll('.scgrid > b, .lab')].map((l) => l.textContent)))`));
-    ok(sc.length === 1 && sc[0].join() === "PART 1,CHANNEL,NOTE,PART 2,CHANNEL,NOTE", `MIDI tab: one SIDECHAIN card, rows PART 1 / PART 2, columns CHANNEL / NOTE (${sc[0]?.join(" ")})`);
+    ok(sc.length === 1 && sc[0].join() === "PART 1,CHANNEL,NOTE,PART 2,CHANNEL,NOTE", `SETTINGS: one SIDECHAIN card, rows PART 1 / PART 2, columns CHANNEL / NOTE (${sc[0]?.join(" ")})`);
     const clip = JSON.parse(await E(`JSON.stringify([...document.querySelectorAll('.col.glob section.card')].filter((x) => x.querySelector('h3').firstChild.textContent.trim() === 'SIDECHAIN').map((x) => [...x.querySelectorAll('.val, input, select')].map((e) => e.scrollWidth > e.clientWidth + 1).some(Boolean)))`));
-    ok(clip.length === 1 && !clip[0], "MIDI tab: the SIDECHAIN card's values are not clipped");
+    ok(clip.length === 1 && !clip[0], "SETTINGS: the SIDECHAIN card's values are not clipped");
   }
   const errs = c.errors().filter((e) => !/favicon/.test(e));
   ok(errs.length === 0, `page: no script errors (${errs.length}) ${errs[0] || ""}`);

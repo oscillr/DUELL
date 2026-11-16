@@ -1329,7 +1329,7 @@ static __attribute__((noinline)) void voice_render(const vrctx_t *c, voice_t *v,
         int32_t kt = p[P_KTRK] ? UF_KT(p[P_KTRK], v->pitch_cur) : 0;   /* KEY TRK (0.2.21): the note's pitch around C3, an octave of cutoff per octave at +100 %; 0: nothing added, nothing computed */
         int32_t uc = clamp(ucut0 + m->cutoff + kt, 0, UF_TOP);   /* the effective cut: the dial plus every route (and the key) */
         int32_t ucn = clamp(ucut0 + m->cutoff - m->acc1 + kt, 0, UF_TOP);   /* the same without the accent (filter 2 LINK, NOISE's make-up) */
-        m->cutoff = accent_lift(v->vel, m->envq15);     /* the routes are the filter's, whatever CUT is; the accent's lift stays the engine's own (its tone control, as ever) */
+        m->cutoff = 0;                                  /* the routes are the filter's, whatever CUT is (DUELL 1.3: no accent lift left for the engine) */
         m->ucut = uc;
         m->ucn = ucn;
         if ((uc < UF_TOP || p[P_FREEC] > 0) && !BYP(t, BY_MULTI)) {   /* (the bypass: MODE LP, the effective cut at the open end; DUELL 1.1: or the BYPASS switch) */
@@ -1547,18 +1547,17 @@ static inline __attribute__((always_inline)) uint32_t track_pass(track_t *t, int
         m.fine = v->fine + tune_fine + bend_fine;
         if (v->fine + tune_fine + bend_fine)             /* residual below 1/16 semitone */
             m.inc += (uint32_t)((int32_t)(m.inc >> 12) * (v->fine + tune_fine + bend_fine));
-        m.cutoff = ((lfo * DEP_AMT(p[P_LD_FLT])) >> 7) +
-                   (((E2Q(t, v)) * DEP_AMT(p[P_E2FLT])) >> 7); /* (DUELL 1.1: AMP ENV's and LFO 2's cutoff depths no longer act; FILTER ENV's MULTI CUTOFF and LFO 1's stay) */
+        {
+            int32_t ed = DEP_AMT(p[P_E2FLT]);           /* DUELL 1.3: a VELOCITY > FILTER ENV MULTI CUTOFF slot scales this note's depth around velocity 100 (core.h vel_env_q8) */
+            if (mod->on && mod->vfe)
+                ed = (ed * vel_env_q8(mod->vfe, v->mvel)) >> 8;
+            m.cutoff = ((lfo * DEP_AMT(p[P_LD_FLT])) >> 7) +
+                       (((E2Q(t, v)) * ed) >> 7);       /* (DUELL 1.1: AMP ENV's and LFO 2's cutoff depths no longer act; FILTER ENV's MULTI CUTOFF and LFO 1's stay) */
+        } /* (DUELL 1.1: AMP ENV's and LFO 2's cutoff depths no longer act; FILTER ENV's MULTI CUTOFF and LFO 1's stay) */
         if (e == &ENG_NOISE)                            /* NOISE's DRFT wander of the cutoff, worked out by the block before (eng_noise.c): filter 1's, one block late */
             m.cutoff += v->s[0];
         m.acc1 = 0;
-        if (v->vel > 110 && (uf != 1u || ACCENT_BOTH(e)))   /* accent opens the filter with the env: filter 1 on the three engines whose own filter went (ACCENT_BOTH), the engine's own tone control on the others (below) */
-        {
-            int32_t al = accent_lift(v->vel, m.envq15);
-            if (ACCENT_BOTH(e))
-                al = m.acc1 = accent_dir(al, accent_dir_mode(p[P_FREEC]));   /* filter 1 opens the way its MODE opens (LP up, HP down, BP none) */
-            m.cutoff += al;
-        }
+        /* (DUELL 1.3: the hidden ACCENT LIFT is gone; velocity reaches the filter only through the matrix, above) */
         m.shape = (64 << 8) + ((lfo * DEP_AMT(p[P_LD_SHP])) >> 7) + ((m.envq15 * DEP_AMT(p[P_ED_SHP])) >> 7);   /* (DUELL 1.1: FILTER ENV's and LFO 2's TIMBRE depths no longer act) */
         m.amask = abits;                                /* ARP TARGET (SPEC 2.3): 0, every unit on the root */
         if (abits)

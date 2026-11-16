@@ -747,9 +747,9 @@ static void test_control(void)
     cp = comp_page();
     expect("a fresh unit: THRESH -17 dB, RATIO 1:1, ATTACK 10 ms, RELEASE 200 ms; the audio side's gate is shut", song.cp[0] == 23 && song.cp[1] == 0 && song.cp[2] == 80 && song.cp[3] == 40 && cmp_cfg == CFG(23, 0, 80, 40) && !(cmp_cfg & 0xF00u));
     expect("a fresh unit writes nothing for it: the settings word is 0 until a card is touched", cmp_set == 0u);
-    expect("the page COMPRESSOR exists (0.2.25 layout round): GLO family, right after STEREO MASTER and before MODULES, SC_GLOBAL, K1 RATIO K2 THRESH K3 ATTACK K4 RELEASE, the curve picture (GR_COMP)", cp < NPAGES && PAGES[cp].fam == FAM_GLO && PAGES[cp].scope == SC_GLOBAL &&
+    expect("the page COMPRESSOR exists (0.2.25 layout round): GLO family, right after STEREO MASTER, GLO's last (1.3: MODULES is MENU's), SC_GLOBAL, K1 RATIO K2 THRESH K3 ATTACK K4 RELEASE, the curve picture (GR_COMP)", cp < NPAGES && PAGES[cp].fam == FAM_GLO && PAGES[cp].scope == SC_GLOBAL &&
            PAGES[cp].graph == GR_COMP && PAGES[cp].id[0] == G_CR && PAGES[cp].id[1] == G_CT && PAGES[cp].id[2] == G_CA && PAGES[cp].id[3] == G_CL &&
-           str_eq(PAGES[cp - 1u].title, MASTER_PAGE_TITLE) && str_eq(PAGES[cp + 1u].title, "MODULES") && page_global(&PAGES[cp]) && G_CL == G_CT + 3);
+           str_eq(PAGES[cp - 1u].title, MASTER_PAGE_TITLE) && PAGES[cp + 1u].fam != FAM_GLO && page_global(&PAGES[cp]) && G_CL == G_CT + 3);   /* (DUELL 1.3: GLO > MODULES is MENU > MODULES: COMPRESSOR is GLO's last page) */
     {
         static const char *const LAB[4] = {"THRESH", "RATIO", "ATTACK", "RELEASE"};
         static const uint8_t FMT[4] = {F_CTHR, F_CRAT, F_CATK, F_CREL};
@@ -803,7 +803,7 @@ static void test_control(void)
     ok = 1;
     for (r = 0; r < MI_COUNT; r++)
         ok &= strcmp(MI_NAME[r], "COMP") != 0 && strcmp(MI_NAME[r], "COMPRESSOR") != 0;
-    expect("no MENU row is called COMP: the tab AUDIO is as it was (4 rows, one page; 0.2.25: USB LEVEL removed)", ok && mtab_rows(MTAB_AUDIO) == 4u && mtab_pages(MTAB_AUDIO) == 1u);
+    expect("no MENU row is called COMP: the tab AUDIO is as it was (4 rows, one page; 0.2.25: USB LEVEL removed)", ok && mtab_end(MTAB_AUDIO) - mtab_first(MTAB_AUDIO) == 4u && mtab_pages(MTAB_AUDIO) == 1u);
 
     /* the knobs, the hide rule */
     go_title("COMPRESSOR");
@@ -850,15 +850,15 @@ static void test_control(void)
     duell_mode_force(DM_LAYER);
     expect("LAYER: the cards are there again", !card_hidden_vp(&song.cp[0]) && !card_hidden_vp(&song.cp[1]));
     duell_mode_force(DM_STEREO);
-    {   /* SELECT in the GLO round: REVERB (SHIMMER only with TYPE SHIM), BASS MONO, COMP, MODULES */
+    {   /* SELECT in the GLO round: REVERB (SHIMMER only with TYPE SHIM), BASS MONO, COMP, then round to MIXER (DUELL 1.3: MODULES is MENU's) */
         go_title("REVERB");
         turn(EN_SELECT, 1);
         ok = str_eq(cur_page()->title, MASTER_PAGE_TITLE);
         turn(EN_SELECT, 1);
         ok &= ui.page == cp;
         turn(EN_SELECT, 1);
-        ok &= str_eq(cur_page()->title, "MODULES");
-        expect("the GLO round (SELECT) goes REVERB, STEREO MASTER, COMPRESSOR, MODULES (0.2.25 layout round)", ok);
+        ok &= str_eq(cur_page()->title, "MIXER");
+        expect("the GLO round (SELECT) goes REVERB, STEREO MASTER, COMPRESSOR, MIXER (0.2.25 layout round; 1.3: MODULES left GLO)", ok);
     }
     {   /* OCT- held + a knob: the card's default */
         song.cp[3] = 2;

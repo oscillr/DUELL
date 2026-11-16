@@ -34,8 +34,8 @@
 #include <stdint.h>
 #include "ui_test.c"
 
-#define DL_REF 0x313d30e7676c922bull                                 /* the items, the deal, the deadline and the wait limit (2026-11-05, the voice split's one-block order) */
-#define DL_REF2 0xa882020c92f83bedull                                 /* the posted deadlines at 16 post moments (2026-11-05) */
+#define DL_REF 0x0f24afc8591df827ull                                 /* the items, the deal, the deadline and the wait limit (2026-11-05, the voice split's one-block order; re-based for DUELL 1.3: changed first by 1d0f602 (VELOCITY > FILTER ENV in the matrix preselection), then by later 1.3 sound commits; every logic check green; 1.2: 0x313d30e7676c922b) */
+#define DL_REF2 0x8f4e449e1b7b7159ull                                 /* the posted deadlines at 16 post moments (2026-11-05; re-based for DUELL 1.3, as DL_REF; 1.2: 0xa882020c92f83bed) */
 #define T_TRUE(x) (((x) * 100u + BUDGET_DL_MARGIN - 1u) / BUDGET_DL_MARGIN)
 
 static uint64_t h = 1469598103934665603ull, h2 = 1469598103934665603ull;

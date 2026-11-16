@@ -1,19 +1,19 @@
-# Known limits: DUELL 1.1
+# Known limits: DUELL 1.3
 
 **DUELL**
 MultiMorphing Bitimbral Synthesizer
 by OSCILL/R
 
-What you can meet in 1.1, in plain words. More detail in [KNOWN_ISSUES.md](KNOWN_ISSUES.md).
+What you can meet in 1.3, in plain words. More detail in [KNOWN_ISSUES.md](KNOWN_ISSUES.md).
 
 - **Units tested.** DUELL has run on two FM-1 units, the author's, and more than 100 people have installed it through the Firmware Hub. Cables and hubs are untested.
-- **The way back (V15)** has worked for the author. There is no known rollback beyond it. See [RECOVERY.md](RECOVERY.md).
+- **The way back (V15 or V16)** has worked for the author. There is no known rollback beyond it. See [RECOVERY.md](RECOVERY.md).
 - **Pattern slots share storage.** The 32 patterns are stored in groups: one storage object holds 11 slots in 3,584 bytes, so the 11 slots of a group share that room.
-- **Hidden destinations.** LFO DEPTH and DEPTH 2 do not show as matrix destinations (the depth cards of the pages move them). Two factory patches, #28 TORCH SONG and #108 YO YA, still carry an aftertouch route to the hidden DEPTH 2, so their LFO 2 does nothing without aftertouch.
-- **KEY VELOCITY is on by default.** A very hard press can come out quiet; the feel has not been measured. You can switch it off in MENU > CONTROL. AFTERTOUCH is on by default too.
-- **The editor has no MIDI MAP tab.** Assign CCs with MIDI LEARN on the unit.
+- **Hidden destinations.** LFO DEPTH and DEPTH 2 do not show as matrix destinations (the depth cards of the pages move them). Two patches, #28 TORCH SONG and #108 YO YA, still carry an aftertouch route to the hidden DEPTH 2, so their LFO 2 does nothing without aftertouch.
+- **KEY VELOCITY is on by default.** A very hard press can come out quiet; the feel has not been measured. You can switch it off in SETTINGS > PLAYING. AFTERTOUCH is on by default too.
+- **The editor has no MIDI MAP tab.** Assign CCs with SETTINGS > MIDI > MIDI LEARN on the unit.
 - **SUB HARMONICS is switched off.** The HARM card is not on the SUB OSC page; CC17 has no effect.
-- **No menu switch and no notice for the second core.** The fallback to one core is automatic and silent.
+- **No switch in SETTINGS and no notice for the second core.** The fallback to one core is automatic and silent.
 - **No error screen in the update loader.** The update screen shows progress only; if a write fails the installer page tells you.
 - **MIDI** is not tested with many devices.
 - **Heavy multis** can miss an audio block very rarely (a short click). The NOTES budget limits the notes per part to avoid it; the CPU figures in the documents are a computer model, the unit can read higher.

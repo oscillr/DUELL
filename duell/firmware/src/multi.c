@@ -632,5 +632,6 @@ static void project_load(uint32_t slot)
     pat_from_set(k + 1u);
     perf_fade_begin(1);                                /* 0.2.14: PERF LEAVE FADE glides SPACE and KILL to neutral, KEEP leaves them (was: both set to 0 at once, 0.2.11: a new multi starts the performance macros neutral (not saved with it; SPACE glides: fx.c sv.spc; */
                                                        /* a patch / sound load now does the same (ui.c load_begin); DEPTH and MORPH are left as they are) */
+    mac_neutral(3u);                                   /* (DUELL 1.3: both parts' MACROS too, ui.c) */
     mu_say(pc_multi ? MSG_TITLE "LOADED " : "LOADED ", k);   /* (item 157: a MIDI program change's load in the title's face; the MULTI page's LOAD as before) */
 }

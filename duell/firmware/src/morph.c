@@ -1304,6 +1304,18 @@ typedef struct {
     mxf_t cxf;
 } morph_part_t;
 static morph_part_t mph[NSHOWN];
+#ifndef MORPH_RT_N
+#define MORPH_RT_N 16u                                   /* 1.3 (2026-11-15): a fader moved only by the matrix's MORPH routes is blended by the main loop (morph_route_poll);
+                                                         * the hook keeps the last blend meanwhile, and blends itself only after this many blocks without a new one (1 = every block, as before) */
+#endif
+static uint8_t mph_ck[NSHOWN], mph_rb[NSHOWN];           /* .. the knob's fader the cache was made at, and the blocks it has served since */
+/* DUELL 1.3: the fader as heard: the stored fader plus the part's MORPH routes of the matrix (mod.c mod_morph_o, MD_MORPH), 0..127. The stored fader and the matrix's MORPH source (t->mf) stay the knob's */
+static inline uint32_t morph_fx(const morph_part_t *mp)
+{
+    uint32_t pi = (uint32_t)(mp - mph);
+    int32_t f = (int32_t)mp->fader + (pi < NLIVE ? mod_morph_o[pi] : 0);
+    return (uint32_t)(f < 0 ? 0 : f > 127 ? 127 : f);
+}
 static struct {
     uint8_t cfg;                                         /* v2 (SPEC 3.5): MC_WILD (SMART off), MC_ARP, MC_PIT: the settings */
     uint8_t target;                                      /* MT_SELECTED / MT_BOTH */
@@ -1542,10 +1554,10 @@ static uint32_t morph_fm6(uint32_t tr, uint8_t *p)
     int32_t w;
     if (!mp || !mp->fnid || !morph_isfm(mp) || morph_stale(&trk[tr], mp))
         return 0;
-    key = 0x80000000u | (uint32_t)mp->fser << 16 | (mp->sm_r < 32768u ? (uint32_t)(mp->sm_r >> 7) + 1u : 0u) << 7 | mp->fader;
+    key = 0x80000000u | (uint32_t)mp->fser << 16 | (mp->sm_r < 32768u ? (uint32_t)(mp->sm_r >> 7) + 1u : 0u) << 7 | morph_fx(mp);
     if (!p)
         return key;
-    w = morph_wb(mp->fader);
+    w = morph_wb(morph_fx(mp));
     for (i = 0; i < NFM; i++) {
         uint32_t b = fm_byte(i);
         p[b] = (uint8_t)clamp((int32_t)p[b] + morph_fm_v(mp, i, w, 1) - (int32_t)mp->fb[i], 0, 99);
@@ -1581,7 +1593,11 @@ static int morph_begin(track_t *t, int adv)
         return 0;
     t->mwon = 1;
     t->mwpi = (uint8_t)pi;
-    if (!mp->cbusy && mp->cvalid && mp->cfader == mp->fader && mp->cst == duell_stereo) {   /* as the block before: write the values */
+    if (!mp->cbusy && mp->cvalid && mp->cst == duell_stereo &&
+        (mp->cfader == morph_fx(mp) || (mph_ck[pi] == mp->fader && mph_rb[pi] + 1u < MORPH_RT_N))) {   /* as the block before: write the values. 1.3 (2026-11-15): a fader moved
+                                                         * only by the matrix's MORPH routes keeps the last blend until the main loop makes the next (morph_route_poll); after MORPH_RT_N blocks without one it blends here */
+        if (mp->cfader != morph_fx(mp))
+            mph_rb[pi]++;
         n = mp->cn;
         for (j = 0; j < n; j++) {
             uint32_t id = mp->cid[j];
@@ -1610,7 +1626,7 @@ static int morph_begin(track_t *t, int adv)
                 tlive[m++] = v;
             }
         }
-        morph_apply(mp, t->p, morph_wb(mp->fader), 1, mxp);
+        morph_apply(mp, t->p, morph_wb(morph_fx(mp)), 1, mxp);
         if (mp->cbusy)                                  /* (the main loop is writing the cache: this block's blend is written, the cache is the main loop's) */
             return 1;
         /* the cache keeps what was written, and what depends on its live value without a write now: a faded choice or
@@ -1623,7 +1639,9 @@ static int morph_begin(track_t *t, int adv)
             }
         mp->cn = (uint8_t)n;
         mp->cxf = *mxp;
-        mp->cfader = mp->fader;
+        mp->cfader = morph_fx(mp);
+        mph_ck[pi] = mp->fader;
+        mph_rb[pi] = 0;
         mp->cst = duell_stereo;
         mp->cvalid = mp->sm_r >= 32768u;                /* (a ramp: every block anew) */
     }
@@ -1657,7 +1675,7 @@ static void morph_prep(uint32_t pi)
     morph_part_t *mp = &mph[pi];
     int16_t q[EXT_P_LEN];
     mxf_t xf;
-    uint32_t j, k, n = 0, f = mp->fader;
+    uint32_t j, k, n = 0, f = morph_fx(mp), ck = mp->fader;   /* (1.3: the fader as heard, the matrix's MORPH routes included) */
     if (pi >= NSHOWN || !mp->nid || mp->sm_r < 32768u || morph_stale(t, mp))
         return;
     mp->cbusy = 1;
@@ -1681,10 +1699,24 @@ static void morph_prep(uint32_t pi)
     mp->cn = (uint8_t)n;
     mp->cxf = xf;
     mp->cfader = (uint8_t)f;
+    mph_ck[pi] = (uint8_t)ck;
+    mph_rb[pi] = 0;
     mp->cst = duell_stereo;
     mp->cvalid = 1;
     __asm__ volatile("" ::: "memory");
     mp->cbusy = 0;
+}
+
+/* 1.3 (2026-11-15): every pass of the main loop (ui.c mac_settings): a fader the matrix's MORPH routes moved since the last blend is blended here, not in the audio ISR
+ * (bench 2026-11-15: a route-moved fader blended in the hook every block cost 1 to 3 voices) */
+static void morph_route_poll(void)
+{
+    uint32_t pi;
+    for (pi = 0; pi < NSHOWN && pi < NLIVE; pi++) {
+        const morph_part_t *mp = &mph[pi];
+        if (mp->nid && mp->cvalid && !mp->cbusy && mp->sm_r >= 32768u && mp->cfader != morph_fx(mp))
+            morph_prep(pi);
+    }
 }
 
 /* ------------------------------------------------------------- the display (main loop) --- */
@@ -1708,7 +1740,7 @@ static void morph_view_all(uint32_t pi, int16_t *v)
     if (!morph_view_on(pi))
         return;
     memset(&xf, 0, sizeof xf);
-    morph_apply(&mph[pi], v, morph_wb(mph[pi].fader), 1, &xf);
+    morph_apply(&mph[pi], v, morph_wb(morph_fx(&mph[pi])), 1, &xf);
     for (j = 0; j < mph[pi].nid; j++) {                  /* a faded choice: the dominant end (the audio path crossfades) */
         const ment_t *en = &mph[pi].ent[j];
         if ((en->kind & 0x3Fu) == MK_FADE && en->id < EXT_P_LEN && xf.on && xf.w[en->mx] >= 16384u)
@@ -1740,7 +1772,7 @@ static int32_t morph_view_fm(uint32_t pi, uint32_t b)
         return s;
     for (i = 0; i < NFM; i++)
         if (fm_byte(i) == b)
-            return clamp(s + morph_fm_v(mp, i, morph_wb(mp->fader), 1) - (int32_t)mp->fb[i], 0, 99);
+            return clamp(s + morph_fm_v(mp, i, morph_wb(morph_fx(mp)), 1) - (int32_t)mp->fb[i], 0, 99);
     return s;
 }
 
@@ -1924,7 +1956,7 @@ static void morph_fold(uint32_t pi)
 /* before end x of mp is replaced: a ramp when it is heard */
 static void morph_ramp(morph_part_t *mp, uint32_t x)
 {
-    int32_t w = morph_wb(mp->fader), wx = x ? w : 32768 - w;
+    int32_t w = morph_wb(morph_fx(mp)), wx = x ? w : 32768 - w;
     if (wx <= 0) {
         mp->sm_r = 32768;
         return;
@@ -2587,7 +2619,8 @@ static void morph_set_cfg(uint32_t bit, uint32_t on)      /* v2: SMART (on = bit
  * part from MIDI), BOTH every shown part (morph_mask). MIDI arrives in the audio ISR (events_block): a roll is too
  * heavy for it and the actions take the lock, so the ISR only queues (morph_push) and the main loop runs the queue in
  * order (morph_pop, ui_input.c morph_poll). */
-enum { MQ_FADER, MQ_AMOUNT, MQ_TARGET, MQ_ROLL, MQ_UNDO, MQ_SMART, MQ_ARP, MQ_PITCH };   /* (v2: no KEEP) */
+enum { MQ_FADER, MQ_AMOUNT, MQ_TARGET, MQ_ROLL, MQ_UNDO, MQ_SMART, MQ_ARP, MQ_PITCH,   /* (v2: no KEEP) */
+       MQ_MAC0 };                                        /* DUELL 1.3: MQ_MAC0 + m - MAC_TIMBRE, a MACRO's CC (TIMBRE .. KILL, value 0..127; ui_input.c morph_poll: macro.c) */
 #define MQ_N 16u
 static uint32_t mq_buf[MQ_N];                            /* kind | part << 8 | value << 16 */
 static volatile uint8_t mq_w, mq_r;                      /* (the ISR writes mq_w, the main loop mq_r) */
@@ -2656,7 +2689,7 @@ static uint32_t morph_do(uint32_t kind, uint32_t mask, uint32_t v)
 static void morph_push(uint32_t kind, uint32_t pi, uint32_t v)
 {
     uint32_t w = mq_w, e = kind | pi << 8 | v << 16;
-    if (w != mq_r && (kind == MQ_FADER || kind == MQ_AMOUNT) && (mq_buf[(w - 1u) % MQ_N] & 0xFFFFu) == (kind | pi << 8)) {
+    if (w != mq_r && (kind == MQ_FADER || kind == MQ_AMOUNT || kind >= MQ_MAC0) && (mq_buf[(w - 1u) % MQ_N] & 0xFFFFu) == (kind | pi << 8)) {   /* (DUELL 1.3: a macro's CC stream too) */
         mq_buf[(w - 1u) % MQ_N] = e;                     /* (the main loop takes the queue with the ISR off) */
         return;
     }

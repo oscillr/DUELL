@@ -144,25 +144,129 @@ static void space_card(uint32_t col)
         draw_column(col, "SPACE", val, "", VAL(col), (perf_space + 100) * 5, ICON_REVERB);
 }
 
-/* KNOB 1..4 on the PERFORM page */
-static void perf_knob(uint32_t slot, int32_t s)
+/* ----------------------------------------------------------- MACROS --- */
+/* DUELL 1.3 MACROS on the unit (macro.c; owner 2026-11-12): ONE knob's action, card and reset for each of the eight (and PERFORM's DEPTH), shared by PERFORM (its four knobs, each
+ * set in MENU > CONTROL > PERFORM KNOB 1..4; the defaults MORPH SPACE KILL DEPTH are PERFORM as it always was), HOME's MACROS 1/2 and 2/2 and QUICK MACRO (SEL held).
+ *   MORPH       the MORPH page's KNOB 1 (the fader, morph_act MQ_FADER) on the part(s) ALGORITHM chose
+ *   SPACE KILL  PERFORM's two global values (perform.c perf_space, perf_filt), as PERFORM's K2 and K3 always were
+ *   DEPTH       PERFORM's own K4 (0 .. 100 %), a PERFORM pick only
+ *   TIMBRE ENVELOPE FILTER CHARACTER MOTION   the part's transient value (macro.c mac_v) -100 .. +100, on the part(s) ALGORITHM chose (PART 1 / BOTH / PART 2, as MORPH:
+ *               morph_mask; BOTH: both parts take the selected part's value); its card is a true bipolar one (the bar from the middle, rule A23); OCT- held + the knob: the middle */
+static void mac_part_put(uint32_t m, uint32_t mask, int32_t v)
 {
-    switch (slot) {
-    case 0:                                             /* MORPH: the MORPH page's KNOB 1 */
-        morph_act(MQ_FADER, morph_mask(song.sel), (uint32_t)clamp((int32_t)morph_fader_of(song.sel) + accel(EN_K1, s, 127), 0, 127),
-                  song.sel);
+    uint32_t pi;
+    for (pi = 0; pi < NLIVE; pi++)
+        if ((mask >> pi) & 1u)
+            mac_v[pi][(m - MAC_TIMBRE) % MAC_NPART] = (int8_t)clamp(v, -100, 100);
+}
+static void mac_knob(uint32_t m, uint32_t role, int32_t s)
+{
+    switch (m) {
+    case MAC_MORPH:
+        morph_act(MQ_FADER, morph_mask(song.sel), (uint32_t)clamp((int32_t)morph_fader_of(song.sel) + accel(role, s, 127), 0, 127), song.sel);
         break;
-    case 1:
-        space_turn(EN_K2, s);
+    case MAC_SPACE:
+        space_turn(role, s);
         break;
-    case 2:
+    case MAC_KILL:
         perf_fading = 0;
-        perf_filt = (int8_t)clamp(perf_filt + accel(EN_K3, s, 200), -100, 100);
+        perf_filt = (int8_t)clamp(perf_filt + accel(role, s, 200), -100, 100);
+        break;
+    case MAC_DEPTH:
+        perf_depth = (int8_t)clamp(perf_depth + accel(role, s, 100), 0, 100);
         break;
     default:
-        perf_depth = (int8_t)clamp(perf_depth + accel(EN_K4, s, 100), 0, 100);
+        if (m >= MAC_TIMBRE && m <= MAC_MOTION)
+            mac_part_put(m, morph_mask(song.sel), mac_v[song.sel % NLIVE][m - MAC_TIMBRE] + accel(role, s, 200));
         break;
     }
+}
+static void mac_reset(uint32_t m)                       /* (OCT- held + the knob) */
+{
+    if (m == MAC_MORPH)
+        morph_act(MQ_FADER, morph_mask(song.sel), 0u, song.sel);
+    else if (m == MAC_SPACE)
+        perf_space = 0;
+    else if (m == MAC_KILL)
+        perf_filt = 0;
+    else if (m == MAC_DEPTH)
+        perf_depth = 100;
+    else if (m >= MAC_TIMBRE && m <= MAC_MOTION)
+        mac_part_put(m, morph_mask(song.sel), 0);
+}
+/* MIDI (midi_control.c, queued: ui_input.c morph_poll): macro m's CC on part pi (MQ_PART_ALL: every part), 0..127 -> -100 .. +100, 64 the middle. SPACE with GLO > MODULES SENDS OFF:
+ * nothing, as its knob */
+static void mac_cc(uint32_t m, uint32_t pi, uint32_t value)
+{
+    int32_t v = mac_from_cc(value);
+    if (m == MAC_SPACE) {
+        if (!(mods_off & MODS_SENDS))
+            perf_space = (int8_t)v;
+    } else if (m == MAC_KILL) {
+        perf_fading = 0;
+        perf_filt = (int8_t)v;
+    } else if (m >= MAC_TIMBRE && m <= MAC_MOTION) {
+        mac_part_put(m, pi == MQ_PART_ALL ? (1u << NLIVE) - 1u : morph_mask(pi), v);
+    }
+}
+static void perf_signed(char *v, int32_t x);
+/* macro m's card in column col (its name, its value, the selected part's) */
+/* DUELL 1.3: does part t's sound send an LFO anywhere (LFO 1 / LFO 2 DEST depths, TWIN's LFO amounts, a matrix slot from LFO 1 or LFO 2)? MOTION moves the LFO depths: without a route it moves nothing */
+static int mac_lfo_routed(const track_t *t)
+{
+    const int16_t *p = t->p;
+    uint32_t k;
+    if (p[P_LD_PIT] || p[P_LD_FLT] || p[P_LD_SHP] || p[P_LD_AMP] || p[P_L2PIT] || p[P_L2FLT] || p[P_L2SHP] || XV(t, X_LFO1) || XV(t, X_LFO2))
+        return 1;
+    for (k = 0; k < NMSLOT; k++)
+        if ((p[MSLOT_ID(k)] == MS_LFO || p[MSLOT_ID(k)] == MS_LFO2) && p[MSLOT_ID(k) + 1u] && p[MSLOT_ID(k) + 2u])
+            return 1;
+    return 0;
+}
+static void mac_card(uint32_t col, uint32_t m)
+{
+    static const uint8_t ICON[MAC_N + 1u] = {ICON_MIX, ICON_SHAPE, ICON_ENV, ICON_CUTOFF, ICON_DRIVE, ICON_LFO_WAVE, ICON_REVERB, ICON_CUTOFF, ICON_LEVEL};
+    char val[12];
+    int32_t x;
+    if (m == MAC_MORPH) {                               /* (the MORPH page's card: the ends by their letters) */
+        uint32_t f = morph_fader_of(song.sel);
+        if (f == 0u || f == 127u)
+            str_cpy(val, f ? "B" : "A", sizeof val);
+        else
+            fmt_int(val, (int32_t)f);
+        draw_column(col, "MORPH", val, "", VAL(col), (int32_t)f * 1000 / 127, ICON_MIX);
+    } else if (m == MAC_SPACE) {
+        space_card(col);
+    } else if (m == MAC_KILL) {                         /* KILL (the DJ filter): OFF in the middle, a low-pass left, a high-pass right */
+        x = perf_filt;
+        if (x)
+            fmt_int(val, x < 0 ? -x : x);
+        draw_column(col, "KILL", x ? val : "OFF", x < 0 ? "LP" : x > 0 ? "HP" : "", VAL(col), (x + 100) * 5, ICON_CUTOFF);
+    } else if (m == MAC_DEPTH) {
+        fmt_int(val, perf_depth);
+        draw_column(col, "DEPTH", val, "%", VAL(col), perf_depth * 10, ICON_LEVEL);
+    } else if (m == MAC_MOTION && !mac_lfo_routed(&trk[song.sel % NLIVE])) {   /* DUELL 1.3 (owner 2026-11-13): nothing for MOTION to move: said, not silently ignored */
+        draw_column(col, MAC_NAME[m], "NO LFO ROUTE", "", T_DIM, -1, ICON[m]);
+    } else {
+        x = mac_v[song.sel % NLIVE][(m - MAC_TIMBRE) % MAC_NPART];
+        perf_signed(val, x);
+        card_ctr_next = 1;                              /* (a true bipolar value: the bar from the middle) */
+        draw_column(col, MAC_NAME[m % (MAC_N + 1u)], val, "", VAL(col), (x + 100) * 5, ICON[m % (MAC_N + 1u)]);
+    }
+}
+static uint32_t mac_sig(void)                           /* (what the macro cards show: a change redraws PERFORM) */
+{
+    uint32_t pi, m, h = 0;
+    for (pi = 0; pi < NLIVE; pi++)
+        for (m = 0; m < MAC_NPART; m++)
+            h = (h ^ (uint8_t)mac_v[pi][m]) * 16777619u;
+    return h;
+}
+
+/* KNOB 1..4 on the PERFORM page: each the macro MENU > CONTROL > PERFORM KNOB 1..4 picks (DUELL 1.3; the defaults: K1 MORPH, K2 SPACE, K3 KILL, K4 DEPTH, as before) */
+static void perf_knob(uint32_t slot, int32_t s)
+{
+    mac_knob(mac_pick(slot & 3u), EN_K1 + (slot & 3u), s);
 }
 /* PRESETS in PERFORM: as on every page, the selected part's sound (preset_step: the list, the name message). With ALGORITHM on BOTH each
  * part moves the same step from ITS OWN sound (the two stay different; the selected part's name is the one said last) */
@@ -186,23 +290,11 @@ static void perf_signed(char *v, int32_t x)              /* "+40", "-40", "0" */
     v[0] = x < 0 ? '-' : '+';
     fmt_int(v + (x != 0), x < 0 ? -x : x);
 }
-static void perf_cards(void)
+static void perf_cards(void)                            /* (DUELL 1.3: each knob's card is its picked macro's, mac_card; the defaults draw what PERFORM always drew) */
 {
-    char val[12];
-    uint32_t f = morph_fader_of(song.sel);
-    int32_t x;
-    if (f == 0u || f == 127u)                           /* (the MORPH page's card: the ends by their letters) */
-        str_cpy(val, f ? "B" : "A", sizeof val);
-    else
-        fmt_int(val, (int32_t)f);
-    draw_column(0, "MORPH", val, "", VAL(0u), (int32_t)f * 1000 / 127, ICON_MIX);
-    space_card(1u);
-    x = perf_filt;                                      /* KILL (the DJ filter): OFF in the middle, a low-pass left, a high-pass right */
-    if (x)
-        fmt_int(val, x < 0 ? -x : x);
-    draw_column(2, "KILL", x ? val : "OFF", x < 0 ? "LP" : x > 0 ? "HP" : "", VAL(2u), (x + 100) * 5, ICON_CUTOFF);
-    fmt_int(val, perf_depth);
-    draw_column(3, "DEPTH", val, "%", VAL(3u), perf_depth * 10, ICON_LEVEL);
+    uint32_t c;
+    for (c = 0; c < 4u; c++)
+        mac_card(c, mac_pick(c));
 }
 /* the footer's first row in PERFORM: what SELECT and ALGORITHM do here (l, r hold 24); 0 = not PERFORM. (DUELL 1.0: not drawn on the area page, grid_on 16;
  * ui_draw.c draw_foot asks only on the other layouts; the host tests read it) */
@@ -220,7 +312,7 @@ static uint32_t perf_sig(void)
     uint32_t h = perf_places() * 2654435761u ^ perf_act * 40503u, k;
     for (k = 0; k < PF_KEYS; k++)
         h = (h ^ (uint32_t)perf_can(k)) * 16777619u;
-    return h ^ ((uint32_t)(uint8_t)perf_space | (uint32_t)(uint8_t)perf_filt << 8 | (uint32_t)(uint8_t)perf_depth << 16) * 0x9E3779B1u;
+    return (h ^ ((uint32_t)(uint8_t)perf_space | (uint32_t)(uint8_t)perf_filt << 8 | (uint32_t)(uint8_t)perf_depth << 16) * 0x9E3779B1u) + mac_sig() * 31u + mac_pick(0) + mac_pick(1) * 9u + mac_pick(2) * 81u + mac_pick(3) * 729u;
 }
 /* the 4 x 4 box grid in the big area (ui_boxes.c box_grid; rows UT_BOX_PF_*): a box per white key, four a row (the keyboard's groups), a held key in
  * the accent, one waiting for the next 1/16 (REPEAT, REVERSE) in the theme fill, one that cannot run now dimmed */

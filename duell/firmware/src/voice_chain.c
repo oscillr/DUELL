@@ -101,7 +101,7 @@ static int32_t chain_uc(const engine_t *e, track_t *t, voice_t *v, vmod_t *m, in
     kt = p[P_KTRK] ? UF_KT(p[P_KTRK], v->pitch_cur) : 0;
     uc = clamp(ucut0 + m->cutoff + kt, 0, UF_TOP);
     m->ucn = clamp(ucut0 + m->cutoff - m->acc1 + kt, 0, UF_TOP);
-    m->cutoff = accent_lift(v->vel, m->envq15);
+    m->cutoff = 0;                                      /* (DUELL 1.3: no accent lift) */
     m->ucut = uc;                                       /* (NOISE's loudness make-up reads it) */
     return uc;
 }

@@ -1595,6 +1595,25 @@ static BENCH_FN void bench_result(void)
     uint32_t n = btl.n1 - btl.n0, sum = btl.s1 - btl.s0, rp = bench_rp_now(), p;
     uint32_t avg = n ? (uint32_t)bench_clamp((int32_t)((uint64_t)sum * 1000u / ((uint64_t)n * CPU_BUDGET_US)), 0, 9999) : 0u;
     uint32_t pk = (uint32_t)bench_clamp((int32_t)((uint64_t)btl.pk1 * 1000u / CPU_BUDGET_US), 0, 9999);
+    {                                                  /* (2026-11-16, owner "Full calibration": the budget's items of this scene, host instructions a sample:
+                                                        * BDI,idle,fx, then each part on,eng,filt,ext,ins,sat,eq,misc,base,need,cap; tools read it from console.log) */
+        bd_t q;
+        bd_build(&q);
+        d = bench_put(b, "BDI,");
+        d = bench_num(d, (int32_t)q.idle);
+        d = bench_put(d, ",");
+        d = bench_num(d, (int32_t)q.fx);
+        for (p = 0; p < 2u; p++) {
+            const uint32_t v[11] = {q.p[p].on, q.p[p].eng, q.p[p].filt, q.p[p].ext, q.p[p].ins, q.p[p].sat, q.p[p].eq, q.p[p].misc, q.p[p].base, q.p[p].need, q.p[p].cap};
+            uint32_t k;
+            for (k = 0; k < 11u; k++) {
+                d = bench_put(d, ",");
+                d = bench_num(d, (int32_t)v[k]);
+            }
+        }
+        d = bench_put(d, "\r\n");
+        BENCH_OUT(b);
+    }
     d = bench_put(b, "BTH,name,status,avg,peak,miss,shed,lfx,vox,halves,notes1,notes2,why1,why2,budget,ramcode,boots,lost,flashes,uac_hz,uac_under,uac_over,uac_missed,uac_stalls,erase_max_us,c1,c1pk,c1late,c1over,c1units,c1holds,tc,tcwhy,tcblocks,tcintime,tclate,tcvlate,tcsilent,tcwait,tcown,tcrefused,tcnoans,tcpauses,tcresumes,tctrims,tcparks,tcvlok,tcpfault,tcprun,tcpwin,tcplate,c1stack,tmjobs,tmposted,tmowndown,tmownpark,tmownpause,tmowndl,tmbadclk,tmsdmax,tmsdmean,tmrtmax,tmrtmean,tmmgmin,tmmgmean,tmvn,tmvrtmax,tmvrtmean,tmvsdmax,tmvblk0,tmvblk1,tmvblk2,tmvblk3,hsd0,hsd1,hsd2,hsd3,hsd4,hsd5,hsd6,hsd7,hrt0,hrt1,hrt2,hrt3,hrt4,hrt5,hrt6,hrt7,hmg0,hmg1,hmg2,hmg3,hmg4,hmg5,hmg6,hmg7,tmstmax,tmst0,tmst1,tmst2,tmst3,tmdl0,tmdl1,tmdl2,tmdl3,tmslack,tmcalm,tmlrun,tmvrun,tmownfl,tmvwink,tmvwinms,tmfloor,sh_posts,sh_done,sh_late,sh_freeze,sh_drop,sh_skip,sh_none,sh_fault,sh_hold,vm_ctl_max,vm_own_max,vm_wait_max,vm_ctl_mean,vm_own_mean,vm_wait_mean,lm_min,ld_last\r\n");
     (void)d;
     BENCH_OUT(b);

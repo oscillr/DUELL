@@ -22,7 +22,7 @@ int main(void)
             ok &= it.id != 11u && strcmp(it.name, "USB SERIAL") != 0;
         }
     }
-    bad += check("product: the editor's MENU list has no USB SERIAL (id 11 not offered)", ok && rows == ED_MENU_N && rows == 31u && FELUCCA_CDC == 0);   /* (item 138: 31 rows: the retired CPU METER row is not offered, item 128) */
+    bad += check("product: the editor's MENU list has no USB SERIAL (id 11 not offered)", ok && rows == ED_MENU_N && rows == 48u && FELUCCA_CDC == 0);   /* (item 138: 31 rows: the retired CPU METER row is not offered, item 128; DUELL 1.3: 42, + PERFORM K2..K4 47..49, QUICK K1..K4 50..53, MIDI PRESET 54, PART 1 / PART 2 CHANNEL and MIDI IN 55..57) */
     n = request(ED_MENU_SET, a, 3);
     bad += check("product: MENU_SET of id 11 is refused (no such setting)", n == 7u || (n >= 7u && host_wire[5] == 1u));
     printf("%s\n", bad ? "MENU PRODUCT TEST FAILED" : "menu product test passed");

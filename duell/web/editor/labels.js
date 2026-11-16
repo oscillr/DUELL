@@ -167,7 +167,7 @@ export const GLOBAL = {
   11: ["DEPTH", "Depth of the chorus."],
   12: ["MOD RATE", "Speed of the delay's own MOD."],
   13: ["MOD DEPTH", "Depth of the delay's own MOD. In RANDOM and OCTAVE UP this control is CHANCE: the chance of an event."],
-  14: ["MIDI IN", "PART CHANNEL: each part listens on its own channel (PART 1 CHANNEL, PART 2 CHANNEL: set on the unit, GLO > MIDI). ANY CHANNEL: every channel plays the selected part."],
+  14: ["MIDI IN", "PART CHANNEL: each part listens on its own channel (PART 1 CHANNEL, PART 2 CHANNEL: SETTINGS > MIDI, on the unit too). ANY CHANNEL: every channel plays the selected part."],
   15: ["MODE", "DIGITAL, PING-PONG, RANDOM or OCTAVE UP repeats."],
   17: ["DRIFT", "Slow drift of the shimmer's pitch."],
   21: ["LOW CUT", "Removes the low end from the reverb's input."],
@@ -267,7 +267,7 @@ VALUE_NAMES[86] = { OP1: "OPERATOR 1", OP2: "OPERATOR 2", OP3: "OPERATOR 3", OP4
 export const ENGINE_VALUES = { SIN: "SINE", TRI: "TRIANGLE", SQR: "SQUARE", PLS: "PULSE", NOIS: "NOISE", ANLG: "ANALOG", MEMB: "DRUM", SYMP: "SITAR", "DOUBLE\nSINE": "DOUBLE SINE", "SAW\nSYNC": "SAW SYNC", "PULSE\nSYNC": "PULSE SYNC", "SAW+TRI\nSYNC": "SAW+TRI SYNC", "TRI\nRING": "TRI RING", "TRI+SAW\nRING SYNC": "TRI+SAW RING SYNC", "TRI+PULSE\nRING SYNC": "TRI+PULSE RING SYNC", "2ND": "SECOND", "3RD": "THIRD", "2SOFT": "SECOND SOFT", "3SOFT": "THIRD SOFT", "2SLOW": "SECOND SLOW", "3SLOW": "THIRD SLOW",
   CLARI: "CLARINET", CHAPL: "CHAPEL", BRITE: "BRIGHT", MODAL: "BELL" };   // (owner 2026-10-25: WHEEL's BARS and PERCUSSION lists, PHYSICAL's MODEL; the unit says the same: params.c VAL_SHOWN)
 // the unit's MENU names (SETTINGS tab), where the unit abbreviates
-export const MENU_LONG = { "KNOB ACCEL": "KNOB ACCELERATION", "COUNT-IN": "COUNT-IN", "PERF LEAVE": "LEAVING PERFORM", "ARP": "ARPEGGIATOR", "SEQ": "SEQUENCER", "PART FX": "PART EFFECTS", "SCALE LEDS": "SCALE LIGHTS", "LEDS": "LIGHTS" };
+export const MENU_LONG = { "MORPH SMART": "SMART", "MORPH ARP": "ARP", "MORPH PITCH": "PITCH", "KNOB ACCEL": "KNOB ACCELERATION", "COUNT-IN": "COUNT-IN", "PERF LEAVE": "LEAVING PERFORM", "PERFORM K1": "PERFORM KNOB 1", "PERFORM K2": "PERFORM KNOB 2", "PERFORM K3": "PERFORM KNOB 3", "PERFORM K4": "PERFORM KNOB 4", "QUICK K1": "QUICK MACRO KNOB 1", "QUICK K2": "QUICK MACRO KNOB 2", "QUICK K3": "QUICK MACRO KNOB 3", "QUICK K4": "QUICK MACRO KNOB 4", "ARP": "ARPEGGIATOR", "SEQ": "SEQUENCER", "PART FX": "PART EFFECTS", "SCALE LEDS": "SCALE LIGHTS", "LEDS": "LIGHTS" };
 const SRC_IDS = new Set([49, 52, 55, 58, 61, 64, 67, 70]), DST_IDS = new Set([50, 53, 56, 59, 62, 65, 68, 71]);
 export const valueMapOf = (key) => (typeof key === "number" && SRC_IDS.has(key) ? VALUE_NAMES.src : typeof key === "number" && DST_IDS.has(key) ? VALUE_NAMES.dst : VALUE_NAMES[key]);
 export const longValue = (key, short) => valueMapOf(key)?.[short] ?? short;
@@ -338,7 +338,7 @@ export const ENGINE_TITLES = { OSC: "OSC", FLT: "FILTER", PHS: "PHASE", LINE: "L
 export const ENGINE_CARD = { ANALOG: "OSC AND FILTER", PHASE: "PHASE DISTORTION", LOFI: "LOFI", VOICE: "SPEECH", TRIO: "OSC AND FILTER", WHEEL: "DRAWBARS AND TONE",
   PHYS: "BODY AND EXCITER", PHYSICAL: "BODY AND EXCITER", NOISE: "NOISE SOURCE", FM6: "MACROS", WAVE: "WAVETABLE" };
 export const TAB = { engine: "ENGINE", filter: "FILTER", envelope: "ENV", lfo: "LFO", matrix: "MATRIX", fx: "FX", arpseq: "ARP", roll: "SEQ", global: "GLOBAL",
-  midimap: "MIDI MAP", patches: "PATCHES", multis: "MULTIS", patterns: "PATTERNS", midi: "MIDI", tables: "WAVETABLES", settings: "SETTINGS" };
+  midimap: "MIDI MAP", patches: "PATCHES", multis: "MULTIS", patterns: "PATTERNS", tables: "WAVETABLES", settings: "SETTINGS" };
 // the matrix drop-downs' groups (owner, T0229: MATRIX_LIST_PREVIEW.md): [heading, [stored values]] in the list's order; "" is no heading (OFF). The stored numbers stay;
 // a value that is not offered (layout.js dstOffered) is left out of its group, except the one a slot holds (a stored route keeps its name)
 export const MATRIX_GROUPS = {
@@ -346,7 +346,7 @@ export const MATRIX_GROUPS = {
   // change list 2026-10-28 section D (owner): the unit's categories in the unit's knob order (params.c MDST_ORDER, ui_graph.c MDST_GRP); SHARED FX and SENDS are gone
   dst: [["", [0]], ["PITCH", [1, 11]], ["FILTER", [2, 38, 46, 51, 52, 53, 54]], ["AMP", [4, 23, 5]], ["ENGINE", [3, 55, 12, 13, 14, 15, 16, 17, 18, 19]],
     ["AMP ENV", [47, 48, 49, 50]], ["FILTER ENV", [32, 33, 34, 35, 36, 37]], ["LFO", [10, 20, 21, 22]], ["INSERT", [24, 25, 26, 27]], ["DUCK", [31]],
-    ["PART FX", [6, 28, 29, 30]], ["CHORUS", [7, 39, 40]], ["DELAY", [8, 41, 42, 43]], ["REVERB", [9, 45, 44]], ["SPACE", [56]]],
+    ["PART FX", [6, 28, 29, 30]], ["CHORUS", [7, 39, 40]], ["DELAY", [8, 41, 42, 43]], ["REVERB", [9, 45, 44]], ["SPACE", [56]], ["MORPH", [57]]],
 };
 // inside the AMP ENV, FILTER ENV, INSERT, DUCK, CHORUS, DELAY and REVERB groups the names go without the group word (rule B1, as the unit's rows: ATTACK, MULTI CUTOFF, MIX, FEEDBACK, DEPTH, SEND, MOD DEPTH, CHANCE,
 // DAMPING); PITCH, FILTER, AMP, ENGINE, LFO, PART FX and SPACE keep their items' own names (owner, change list section H). The stored numbers are unchanged

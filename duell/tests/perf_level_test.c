@@ -214,19 +214,20 @@ static void t_rule(void)
         ok &= lv_is(BASE[n][0], BASE[n][1]);
     }
     expect("p = 0 (after a step and back, and after long walks to both ends and back): exactly the base levels, 11 base pairs (OFF, boost, 0 dB, equal levels)", ok);
-    /* the ends */
+    /* the ends. 1.3 (2026-11-13): this block had left and right the wrong way round (it turned left and expected part 2 to be the loud one). A turn to the
+     * RIGHT is a positive step here and moves toward part 2 (ui_input.c perf_balance: pos = perf_bal_pos - s), as select_test's BALANCE check has it */
     ok = 1;
     for (n = 0; n < sizeof BASE / sizeof BASE[0]; n++) {
         lv_set(BASE[n][0], BASE[n][1]);
-        turn(EN_SELECT, -32);                             /* to the right end: part 2 only */
+        turn(EN_SELECT, 32);                              /* to the right end: part 2 only */
         ok &= lv_is(0, 112);
-        turn(EN_SELECT, -5);
-        ok &= lv_is(0, 112);                              /* (no further) */
-        turn(EN_SELECT, 64);                              /* to the left end: part 1 only */
-        ok &= lv_is(112, 0);
         turn(EN_SELECT, 5);
+        ok &= lv_is(0, 112);                              /* (no further) */
+        turn(EN_SELECT, -64);                             /* to the left end: part 1 only */
         ok &= lv_is(112, 0);
-        turn(EN_SELECT, -32);
+        turn(EN_SELECT, -5);
+        ok &= lv_is(112, 0);
+        turn(EN_SELECT, 32);
         ok &= lv_is(BASE[n][0], BASE[n][1]);
     }
     expect("the ends: p = +1 (32 detents left): LEVEL 1 at 0 dB (112), LEVEL 2 OFF; p = -1 (32 right): the mirror; more turning stays; back to the middle = the base levels", ok);

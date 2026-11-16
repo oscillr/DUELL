@@ -52,28 +52,14 @@ _Static_assert(NSHOWN <= NPART, "core.h: NSHOWN parts are shown, NPART parts exi
 #define NENG_SHOWN (NENGINES - NENG_RETIRED)   /* the engines one can pick: PRESETS, the EDIT layer, the editor, in the display order of engines.c ENGINE_ORDER */
 #define UP_SLOTS 128u            /* stored patches (upreset.c): shadows of factory sounds and user patches, 128 in all */
 #define NELEM(a) (sizeof(a) / sizeof((a)[0]))
-/* The velocity ACCENT LIFT (DUELL 1.1, release_drafts/VELOCITY_AFTERTOUCH_V1.md): above velocity ACCENT_V0 the envelope opens the filter / the engine's tone
- * (cutoff += envq15 x ACCENT_MAX >> 7). It was one step at 111 (full lift), and it made 24 of 127 sounds QUIETER at a harder key (up to 5 dB). Now it grows
- * linearly from 0 at ACCENT_V0 to ACCENT_MAX (24, as before) at ACCENT_V1 (Q8 weight, 256 at 127): no step. All sites (voice.c twice,
- * voice_chain.c, chain_f2.c) call accent_lift(); the VOICE and PHYS engines read the engine's lift through m->cutoff.
- * The falls had these causes (all found by switching one site off in the 127-sound scan, tests/velaccent_test.c):
- *   - the lift always moved a filter's cutoff UP, but only a low-pass opens that way: a high-pass opens DOWN, a band-pass / notch has no opening (the band only
- *     moves). Filter 1 follows its MODE (accent_dir_mode), filter 2 its TYPE (accent_dir_type): LP up, HP down, BP / NOTCH / COMB none.
- *   - NOISE's make-up gain (eng_noise.c) followed the lifted cutoff (it took gain away as the filter opened): it now follows the cutoff without the lift (vmod_t.ucn).
- *   - VOICE moved the VOWEL with the lift (eng_formant.c: another vowel, another level): now the presence of the voice opens; PHYS raised the exciter's
- *     brightness with it (a lower strike level, the modes ripple): now the accent of the model (ACC) takes it. */
-#ifndef ACCENT_MAX
-#define ACCENT_MAX 24
-#endif
-#define ACCENT_V0 110
-#define ACCENT_V1 127
-static inline int32_t accent_lift(uint32_t vel, int32_t envq15)
+/* DUELL 1.3 (owner 2026-11-12, design velocity-to-filter_2026-11-12.md): the hidden ACCENT LIFT of 1.1 (above velocity 110 the envelope opened the filter
+ * by a fixed 24 steps, no control) is GONE. Velocity now reaches the filter only through the matrix: a slot VELOCITY > FILTER ENV MULTI CUTOFF scales each
+ * note's FILTER ENV depth (MULTI's P_E2FLT and TWIN's ENV amount) around velocity 100: at 100 the patch sounds as saved, AMT a gives
+ * depth x (1 + a/64 x (vel - 100) / 100). So velocity never sweeps further than the patch's own envelope does. Q8 factor, 256 = as saved. */
+static inline int32_t vel_env_q8(int32_t vfe, uint32_t vel)
 {
-    if (vel <= ACCENT_V0)
-        return 0;
-    if (vel > ACCENT_V1)
-        vel = ACCENT_V1;
-    return (envq15 * ACCENT_MAX * (int32_t)(((vel - ACCENT_V0) * 256u + 8u) / (ACCENT_V1 - ACCENT_V0))) >> 15;   /* weight Q8: 256 at 127, so the top is the old lift exactly (envq15 <= 32768: below 2^31) */
+    int32_t f = 256 + (vfe * ((int32_t)vel - 100)) / 25;
+    return f < 0 ? 0 : f;
 }
 /* which way a filter opens, Q7 of the lift: MODE 0 (LP) +127 .. 64 (BP) 0 .. 127 (HP) -127; filter 2's TYPE (params.c TT_*: OFF 0, LP 1, BP 2, HP 3, NOTCH 4, LADDER 5, COMB 6): LP, LADDER +127, HP -127, rest 0 */
 static inline int32_t accent_dir_mode(int32_t mode) { return 127 - 2 * (mode < 0 ? 0 : mode > 127 ? 127 : mode); }
@@ -542,7 +528,8 @@ _Static_assert(sizeof(motion_store_t) == 388u, "motion disk layout (FUN10)");
 #define MU_SLOTS 16u             /* DUELL: the multis M01..M16 (project.c multi.c, SAVE > MULTI) */
 
 #define NMSLOT 8u
-#define MOD_NK 16u               /* DUELL 1.1: per-block parameters a part's block can hold modulated at once: the 8 slots' destinations plus the DEST cards' virtual routes (mod.c VR, at most 7 distinct destinations) */
+#define MOD_NK 32u               /* DUELL 1.1: per-block parameters a part's block can hold modulated at once: the 8 slots' destinations plus the DEST cards' virtual routes (mod.c VR, at most 7 distinct destinations);
+                                  * DUELL 1.3: 16 -> 32 for the MACROS' targets (macro.c, at most 20 distinct with all five per-part macros off their middle); +48 B a track, sizeof(track_t) stays a multiple of 16 */
 typedef struct {                 /* the part in mix_part, its window: one per part (MIXSPLIT job 2; the parts' stages share none): a field of track_t, so a reader has it at a fixed offset from t */
     uint8_t on;                  /* a slot is active: track_render calls mod_voice */
     uint8_t e2;                  /* DUELL: an active slot reads ENV 2: track_render ticks it (voice.c env2_tick) */
@@ -552,6 +539,7 @@ typedef struct {                 /* the part in mix_part, its window: one per pa
     int32_t ldep2;               /* DUELL: DEPTH2, LFO 2's gain (Q15, 32767 = none) */
     uint8_t amp;                 /* an AMP slot: the voice gain applies */
     uint8_t nv, nk;              /* voice terms, per-block parameters held */
+    int8_t vfe;                  /* DUELL 1.3: the sum of the VELOCITY > FILTER ENV MULTI CUTOFF slots' AMT (MX_AMT, -64..64): velocity scales each note's FILTER ENV depth (MULTI and TWIN) around velocity 100 (vel_env_q8); in the pad byte after nk, the size stays */
     int32_t pit, cut, shp, gain; /* per voice, from the per-track sources (gain Q15) */
     int32_t ldep;                /* DEPTH: the track LFO's gain (Q15; 32767 = none, track_render leaves it alone) */
     uint8_t vsrc[NMSLOT], vdst[NMSLOT];

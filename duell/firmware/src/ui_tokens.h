@@ -249,8 +249,8 @@
 #define UT_OFF_TXT_SEQ "THE SEQUENCER IS SWITCHED OFF"
 #define UT_OFF_TXT_SENDS "THE EFFECT SENDS ARE SWITCHED OFF"
 #define UT_OFF_TXT_PFX "THE PART EFFECTS ARE SWITCHED OFF"
-#define UT_OFF_NOTE_IT "TURN A KNOB TO SWITCH IT ON IN MODULES"      /* ARP, SEQ */
-#define UT_OFF_NOTE_THEM "TURN A KNOB TO SWITCH THEM ON IN MODULES"  /* SENDS, PART FX */
+#define UT_OFF_NOTE_IT "Turn a knob to switch it on in SETTINGS > MODULES"      /* ARP, SEQ */
+#define UT_OFF_NOTE_THEM "Turn a knob to switch them on in SETTINGS > MODULES"  /* SENDS, PART FX */
 #define UT_T5_X 9               /* state text, row labels and note */
 #define UT_T5_STATE_BASE 48
 #define UT_T5_ROW1_BASE 92
@@ -262,8 +262,8 @@
 #define UT_T5_NOTE_BASE2 177
 #define UT_T5_KNOB_BASE 206
 #define UT_T5_KNOB_X0 9         /* the dots of K1 .. K3 */
-#define UT_T5_KNOB_DX 79
-#define UT_T5_KNOB_LBL_DX 16
+#define UT_T5_KNOB_DX 76         /* (owner 2026-11-15: room for each name's shortcut chevron; was 79) */
+#define UT_T5_KNOB_LBL_DX 14     /* (was 16) */
 /* the grey of the small labels, units and notes of templates 4 and 5: BG (or the card) -> TEXT, % (VIOLET on the card 139,134,143 / on BG 139,132,139, against the pictures' 138,135,145 / 139,133,148) */
 #define UT_GREY_PCT 53
 
@@ -276,7 +276,7 @@
 #define UT_T6_Q_BASE 39
 #define UT_T6_BOX_X 3
 #define UT_T6_BOX_W 234
-#define UT_T6_SEL_PCT 27        /* BG -> the selected part's colour, % (the capsule's dim half: VIOLET 66,15,75) */
+#define UT_T6_SEL_PCT 45        /* BG -> the selected part's colour, % (owner 2026-11-15: "too desaturated", was 27, the capsule's dim half) */
 #define UT_T6_DESC_SEL_PCT 65   /* the picked box's explanation: its fill -> TEXT, % (VIOLET 190,165,200 in the picture) */
 #define UT_T6_LINE 15           /* explanation line pitch */
 #define UT_T6_PILL_GAP 10       /* name -> its pill */
@@ -286,6 +286,7 @@
 #define UT_T6_LEG_BASE 208      /* the legend words' capitals' last row */
 #define UT_T6_LEG_X1 9          /* the first legend item's left edge */
 #define UT_T6_LEG_X2 118        /* the second item's, when there are two (as the picture); three: shared evenly, the last flush right at x 231 */
+#define UT_T6_LEG_LINE 16       /* the second legend line (SETUP's KNOB 2 CHOOSE) this far above the first (owner 2026-11-16) */
 #define UT_T6_LEG_GAP 5         /* keycap -> its word */
 #define UT_T6_LEG_R 231
 #define UT_T6_LEG_MIN 6         /* the least room between two legend items of a three-item row */

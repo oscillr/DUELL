@@ -1,18 +1,18 @@
-# Installing DUELL 1.0
+# Installing DUELL 1.3
 
 **DUELL**
 MultiMorphing Bitimbral Synthesizer
 by OSCILL/R
 
-> **Install DUELL 1.0 at your own risk.** It has been flashed to and run on **one** real FM-1, the author's (it works). The way back to the official firmware (V15) has worked on that unit and has not been tried on others. The FM-1 has a single-bank layout and there is no known rollback. No warranty. DUELL is not affiliated with M-VAVE, and M-VAVE's firmware is not distributed here. Read [RECOVERY.md](RECOVERY.md), [KNOWN_LIMITS.md](KNOWN_LIMITS.md) and [KNOWN_ISSUES.md](KNOWN_ISSUES.md) first.
+> **Install DUELL 1.3 at your own risk.** DUELL has run on **two FM-1 units, the author's**, and more than 100 people have installed it through the Firmware Hub. The way back to the official firmware (V15 or V16) has worked for the author. The FM-1 has a single-bank layout and there is no known rollback. No warranty. DUELL is not affiliated with M-VAVE, and M-VAVE's firmware is not distributed here. Read [RECOVERY.md](RECOVERY.md), [KNOWN_LIMITS.md](KNOWN_LIMITS.md) and [KNOWN_ISSUES.md](KNOWN_ISSUES.md) first.
 >
-> The installer page is <https://oscillr.github.io/DUELL/install/>; the package `duell-1.0.fwsc` is attached to the [release](https://github.com/oscillr/DUELL/releases) (compare its SHA-256 with the `SHA256SUMS` file there). If the page ever shows "DUELL firmware is not yet released", no package was found and the install flow stays hidden.
+> The installer page is <https://oscillr.github.io/DUELL/install/>; the package `duell-1.3.fwsc` is attached to the [release](https://github.com/oscillr/DUELL/releases) (compare its SHA-256 with the `SHA256SUMS` file there). If the page ever shows "DUELL firmware is not yet released", no package was found and the install flow stays hidden.
 
 ## What you need
 - An M-VAVE FM-1.
 - A computer with **Chrome or Edge** (the installer uses WebMIDI with SysEx; Safari and Firefox will not work).
 - A **data** USB cable. Some cables only charge.
-- Nothing to download for DUELL: the installer page loads the package itself (see "The file" below). Only for the way back you need M-VAVE's official V15 file.
+- Nothing to download for DUELL: the installer page loads the package itself (see "The file" below). Only for the way back you need M-VAVE's official file (V15 or V16).
 
 ## Flash checklist
 1. Data USB cable, plugged **straight into the computer**. No hub, no dock.
@@ -26,12 +26,12 @@ The installer page is `duell/web/install/index.html`. It keeps Felucca's install
 
 | Command | File written to `duell/build/` |
 |---|---|
-| `tools/build.py --release` (recommended) | `duell-<VERSION>.fwsc` (e.g. `duell-1.0.fwsc`; the version is the `VERSION` file; a 0.x.y test version is named `duell-<VERSION>-beta.fwsc`), plus a folder `release-<VERSION>/` with the package, the app, `SHA256SUMS`, licences |
+| `tools/build.py --release` (recommended) | `duell-<VERSION>.fwsc` (e.g. `duell-1.3.fwsc`; the version is the `VERSION` file; a 0.x.y test version is named `duell-<VERSION>-beta.fwsc`), plus a folder `release-<VERSION>/` with the package, the app, `SHA256SUMS`, licences |
 | `tools/build.py` (no flag) | the same package, without the release folder |
 
 Every build also writes `duell-latest.fwsc` (the same file) and `duell-version.json` next to it.
 
-(The package is named `duell-...`; the older name `felucca-0.1-beta.fwsc` is still found by the installer page. The device shows the version as "DUELL 1.0" (the `VERSION` file). Build steps: [duell/BUILDING.md](../duell/BUILDING.md).)
+(The package is named `duell-...`; the older name `felucca-0.1-beta.fwsc` is still found by the installer page. The device shows the version as "DUELL 1.3" (the `VERSION` file). Build steps: [duell/BUILDING.md](../duell/BUILDING.md).)
 
 The page reads the version from `duell-version.json` and looks for **`duell-latest.fwsc` next to itself** (then `duell-<VERSION>.fwsc`, then the older names `duell-0.1-beta.fwsc`, `felucca-0.1-beta.fwsc`) (in `duell/web/install/`). If it is not there, the page shows the notice **"DUELL firmware is not yet released"** and keeps the install flow hidden; the flow appears when the file exists. It accepts only a Felucca-loader package (identity `FM-1_9xx`, which `tools/build.py` makes `FM-1_901`), and it shows the SHA-256 so you can compare it with `SHA256SUMS`.
 
@@ -51,21 +51,21 @@ While one of them runs, a coloured banner at the top says which ("BACKING UP", "
 3. **The file.** The page loads the DUELL package that sits next to it; you do not choose it. (Only the official M-VAVE file for the way back is chosen by hand.)
 4. **Connect** the FM-1 and allow MIDI/SysEx in the browser.
 5. **Install.** Wait for "Done".
-6. **Switch the unit off and on**, then hold HOME and open ABOUT to see the version (DUELL 1.0). While the firmware is written the unit shows the update screen (DUELL, WRITING, the percent, a bar and DO NOT SWITCH OFF); a dark screen does not mean the write has stopped.
+6. **Switch the unit off and on**, then hold HOME and open SYSTEM > ABOUT to see the version (DUELL 1.3). While the firmware is written the unit shows the update screen (DUELL, WRITING, the percent, a bar and DO NOT SWITCH OFF); a dark screen does not mean the write has stopped.
 
 If anything stops: replug the cable and press Install again. The device stays in update mode until the write is finished. See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) and [RECOVERY.md](RECOVERY.md).
 
 ## Keep or erase your data
 - **A reinstall keeps your data.** Installing DUELL again, even after going back to the official firmware, does not touch the area where the unit keeps its saved data, so it comes back as you left it: your settings, patches, multis and patterns.
-- **To start from scratch while installing:** the INSTALL DUELL card has the box **"Erase my saved data after installing (start from scratch)"**. The page checks what the FM-1 runs: if it runs DUELL, the box is unticked (an update keeps your patches and settings); otherwise it is ticked (clean install). The line "Detected: ..." says which case it found; if the page has not talked to the unit yet it says so (press "Check the unit"). You can tick or untick the box yourself at any time, and your choice always wins. If it is ticked, after the install has finished and the unit has restarted into DUELL, the page connects to it, shows "Erasing your data ..." (the card stays locked: do not unplug) and then "Done. Your saved data was erased. The unit starts as new." If the unit cannot be reached or refuses (for example while it is playing), the card says that the install itself succeeded, that your data was **not** erased, and to use the menu item below.
+- **To start from scratch while installing:** the INSTALL DUELL card has the box **"Erase my saved data after installing (start from scratch)"**. The page checks what the FM-1 runs: if it runs DUELL, the box is unticked (an update keeps your patches and settings); otherwise it is ticked (clean install). The line "Detected: ..." says which case it found; if the page has not talked to the unit yet it says so (press "Check the unit"). You can tick or untick the box yourself at any time, and your choice always wins. If it is ticked, after the install has finished and the unit has restarted into DUELL, the page connects to it, shows "Erasing your data ..." (the card stays locked: do not unplug) and then "Done. Your saved data was erased. The unit starts as new." If the unit cannot be reached or refuses (for example while it is playing), the card says that the install itself succeeded, that your data was **not** erased, and to use SETTINGS > SYSTEM > ERASE DATA.
 - **To start from scratch any time:** on the unit, hold HOME, go to SYSTEM > ERASE DATA, press OCT+ and confirm with OCT+ (OCT- or any page button cancels).
-- **What is erased:** the settings (theme, scale, MIDI channels, favourites, preferences), the autosave, all your saved patches (every slot holds its factory sound again), your multis and your pattern slots. The factory sounds, the factory multis M01 to M16 and the factory patterns come back, and the unit starts as new (VIOLET, LAYER, M01). **Not erased:** the FM6 voice bank and the firmware itself.
+- **What is erased:** the settings (theme, scale, MIDI channels, favourites, preferences), the autosave, all your saved patches (every slot holds the patch it came with again), your multis and your pattern slots. DUELL's own patches, multis M01 to M16 and patterns come back, and the unit starts as new (VIOLET, LAYER, M01). **Not erased:** the FM6 voice bank and the firmware itself.
 - **It cannot be undone: back up first** (step 2). The backup holds your multis and patterns too.
 
 ## Return to the official firmware
-1. Download the official FM-1 firmware (`FM-1.fwsc`, **V15**) yourself from M-VAVE: <https://www.m-vave.com/download>. This project does not host M-VAVE's files.
-2. On the installer page, choose that file under "Return to the official firmware". It is checked in your browser (size and SHA-256 must match the unmodified V15; nothing is uploaded).
-3. Press "Back up and return to official V15" in the amber RETURN card. The page saves a backup first (if the unit runs DUELL), then writes V15. All progress shows in that card only, under an amber banner. Keep the cable connected until the card says "Done. The official firmware is back. Switch the unit off and on." Then switch the unit off and on.
+1. Download the official FM-1 firmware (`FM-1.fwsc`, **V16** today, or V15) yourself from M-VAVE: <https://www.m-vave.com/download>. This project does not host M-VAVE's files.
+2. On the installer page, choose that file under "Return to the official firmware". It is checked in your browser (size and SHA-256 must match the unmodified V15 or V16; nothing is uploaded). If the FM-1 shows Failed -5, that version does not fit your unit: nothing was written, DUELL is still there; choose the other version.
+3. Press "Back up and return to the official firmware" in the amber RETURN card. The page saves a backup first (if the unit runs DUELL), then writes the official firmware. All progress shows in that card only, under an amber banner. Keep the cable connected until the card says "Done. The official firmware is back. Switch the unit off and on." Then switch the unit off and on.
 
 Your DUELL data cannot be opened by the official firmware. This path is the same method as for installing. It has worked on the author's unit about three times; it is untested on other units.
 

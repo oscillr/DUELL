@@ -147,10 +147,10 @@ int main(void)
         project_t q;
         memset(blk, 0, sizeof blk);
         project_capture(&q);
-        len = mu_pack(rec, &q, blk, &cut);
+        len = mu_pack(rec, &q, &cut);
         sc_put(0, 15); sc_put(1, 7); sc_put(2, 9); sc_put(3, 99);
         project_capture(&q);
-        len2 = mu_pack(rec2, &q, blk, &cut);
+        len2 = mu_pack(rec2, &q, &cut);
         expect("a multi record is bit for bit the same whatever the setup is (nothing of it is stored in it)", len == len2 && !memcmp(rec, rec2, len));
         ok = 1;
         for (k = 0; k < 16u; k++) {
@@ -190,12 +190,15 @@ int main(void)
     expect("a stored SRC past OFF (a record of the old CH1..CH16 form) is clamped on load: OFF (0.2.24; it read MIDI up to 0.2.23)", ok);
     for (k = 0; k < 3u; k++) {
         trk[0].p[P_DKSRC] = (int16_t)k;
-        go_title("SIDECHAIN");
+        ui.menu = 1;                                    /* (DUELL 1.3: MENU > MIDI > SIDECHAIN, its PART 1 CHANNEL row; was GLO > SIDECHAIN's K1) */
+        ui.menu_sel = MI_SC1CH;
         frame();
         sc_put(0, 8);
-        turn(EN_K1, 2);
+        turn(EN_K1, 1);
+        turn(EN_K1, 1);                                 /* (a MENU row: one step a turn) */
         ok = sc_midi[0] == 10u;
-        expect("  .. the setup is editable whatever the SRC is (K1 with SRC PUMP / PART / MIDI)", ok);
+        ui.menu = 0;
+        expect("  .. the setup is editable whatever the SRC is (MENU > MIDI > SIDECHAIN's PART 1 CHANNEL with SRC PUMP / PART / MIDI)", ok);
         sc_put(0, 9);
     }
     printf("sidechain: %d checks, %d failed\n", ncheck, bad);

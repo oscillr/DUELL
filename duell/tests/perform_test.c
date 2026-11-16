@@ -216,34 +216,35 @@ static void t_keys(void)
 }
 
 /* ---------------------------------------------------------------- KNOBS --- */
+/* (DUELL 1.3: K1 DEPTH, fixed; K2 K3 K4 the picks, by default MORPH SPACE KILL: ui.c MAC_PICK_DEF) */
 static void t_knobs(void)
 {
     int16_t pre;
     fresh();
     go_title("AMP ENV");
     perform_on();
-    turn(EN_K1, 5);
+    turn(EN_K2, 5);
     frame();
-    expect("K1 MORPH: part 1's fader (the MORPH page's), the card MORPH", morph_fader_of(0) == 5u && morph_fader_of(1) == 0u &&
-                                                                           card_is(0, "MORPH", "5"));
-    turn(EN_K2, 3);
-    turn(EN_K3, -2);
-    turn(EN_K4, -10);
+    expect("K2 MORPH: part 1's fader (the MORPH page's), the card MORPH", morph_fader_of(0) == 5u && morph_fader_of(1) == 0u &&
+                                                                           card_is(1, "MORPH", "5"));
+    turn(EN_K3, 3);
+    turn(EN_K4, -2);
+    turn(EN_K1, -10);
     frame();
-    expect("K2 SPACE +3, K3 FILTER 2 LP, K4 DEPTH 90 %: on their cards",
-           perf_space == 3 && perf_filt == -2 && perf_depth == 90 && card_is(1, "SPACE", "+3") && card_is(2, "KILL", "2") &&
-           card_is(3, "DEPTH", "90"));
+    expect("K3 SPACE +3, K4 KILL 2 LP, K1 DEPTH 90 %: on their cards",
+           perf_space == 3 && perf_filt == -2 && perf_depth == 90 && card_is(2, "SPACE", "+3") && card_is(3, "KILL", "2") &&
+           card_is(0, "DEPTH", "90"));
     expect("  DUEL (the power-on MODE): SPACE turned says DUEL: NO WIDTH once (its width cannot work there; the rest of SPACE does)",
            duell_mode == DM_SPLIT && msg_is("DUEL: NO WIDTH") && perf_nw_said);
     {
         uint8_t dm = duell_mode;
         ui.msg_t = 0;
-        turn(EN_K2, 1);
+        turn(EN_K3, 1);
         frame();
         expect("  .. turned again: not said again", !msg_is("DUEL: NO WIDTH") && perf_space == 4);
         duell_mode_force(DM_STEREO);
         perf_nw_said = 0;
-        turn(EN_K2, -1);
+        turn(EN_K3, -1);
         frame();
         expect("  STEREO: SPACE turned, no message (the width works there)", !msg_is("DUEL: NO WIDTH") && perf_space == 3);
         duell_mode_force(dm);
@@ -290,8 +291,8 @@ static void t_knobs(void)
         char l[24], r[24];
         expect("  the footer: ALGO: BOTH", perf_foot(l, r) && str_eq(r, "ALGO: BOTH"));
     }
-    turn(EN_K1, 7);
-    expect("  K1 MORPH with BOTH: both parts' faders (part 2's + 7 on both)", morph_fader_of(0) == 7u && morph_fader_of(1) == 7u);
+    turn(EN_K2, 7);
+    expect("  K2 MORPH with BOTH: both parts' faders (part 2's + 7 on both)", morph_fader_of(0) == 7u && morph_fader_of(1) == 7u);
     {   /* BOTH: PRESETS moves each part one step from its own sound (they stay different) */
         uint32_t e0 = trk[0].eng_req, p0 = trk[0].preset, e1 = trk[1].eng_req, q1 = trk[1].preset;
         turn(EN_PRESET, 1);
@@ -2338,8 +2339,8 @@ static void t_leave_ui(void)
     perform_on();
     frame();
     perf_space = 0; perf_filt = 0;
-    turn(EN_K2, 100);
-    turn(EN_K3, -100);
+    turn(EN_K3, 100);
+    turn(EN_K4, -100);
     frame();
     expect("setup: SPACE and KILL turned to the ends in PERFORM", perf_space >= 90 && perf_filt <= -90);
     press(B_FX);                                         /* leave: FADE (the default) */
@@ -2366,7 +2367,7 @@ static void t_leave_ui(void)
     /* KEEP: nothing moves */
     ui_idle |= PERF_KEEP_BIT;
     perform_on(); frame();
-    turn(EN_K2, 100); turn(EN_K3, -100); frame();
+    turn(EN_K3, 100); turn(EN_K4, -100); frame();
     {
         int8_t s = perf_space, f = perf_filt;
         press(B_FX);
@@ -2376,7 +2377,7 @@ static void t_leave_ui(void)
         perform_on(); frame();
         char want[12];
         snprintf(want, sizeof want, "+%d", s);
-        expect("  .. back in PERFORM the cards show them, KILL not greyed", card_is(1, "SPACE", want) && !strncmp(ui.col[2], "KILL|", 5));
+        expect("  .. back in PERFORM the cards show them, KILL not greyed", card_is(2, "SPACE", want) && !strncmp(ui.col[3], "KILL|", 5));
         perf_space = 0; perf_filt = 0;
         press(B_FX);
     }
@@ -2384,7 +2385,7 @@ static void t_leave_ui(void)
     /* re-enter during the fade: it stops where it is */
     fresh();
     perform_on(); frame();
-    turn(EN_K2, 100); turn(EN_K3, -100); frame();
+    turn(EN_K3, 100); turn(EN_K4, -100); frame();
     press(B_FX);
     frames(96);
     {
@@ -2409,7 +2410,7 @@ static void t_leave_ui(void)
     expect("a SPACE set on the MIXER alone (+40) stays when PERFORM is opened and left", perf_space == 40);
     fresh();
     perform_on(); frame();
-    turn(EN_K2, 30);
+    turn(EN_K3, 30);
     press(B_FX);
     frames(800);
     expect("  .. PERFORM's own SPACE (moved there) is 0 after leaving, and a patch loaded afterwards starts from the patch's own sends", perf_space == 0 && sv.spc <= 256 * 30);

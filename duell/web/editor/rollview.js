@@ -182,8 +182,8 @@ export function createRollView(app, p, opts) {
     bUndo.disabled = !st.canUndo; bRedo.disabled = !st.canRedo; bPaste.disabled = !R.clipboard.steps;
     bZoomOut.disabled = zoom <= 0.4; bZoomIn.disabled = zoom >= 4;
     const msgs = [];
-    if (s.seqOff) msgs.push("SEQ is OFF in GLO > MODULES: the unit plays none of these steps. Editing still works.");
-    if (sq) msgs.push(s.arpOff ? "ARP MODE is SEQ but ARP is OFF in GLO > MODULES: this pattern plays nothing now." : "ARP MODE is SEQ: the steps are offsets for the keys you hold (C4 = no offset), timed by the arp's RATE and GATE. One note per step; length, slide, velocity, chance and ratchet are not used.");
+    if (s.seqOff) msgs.push("SEQ is OFF in SETTINGS > MODULES: the unit plays none of these steps. Editing still works.");
+    if (sq) msgs.push(s.arpOff ? "ARP MODE is SEQ but ARP is OFF in SETTINGS > MODULES: this pattern plays nothing now." : "ARP MODE is SEQ: the steps are offsets for the keys you hold (C4 = no offset), timed by the arp's RATE and GATE. One note per step; length, slide, velocity, chance and ratchet are not used.");
     note.textContent = ""; note.hidden = true; rootEl.title = msgs.join("\n");   // (T0229: no notes on the page: the roll's and the PIANO ROLL tab's tooltip say it)
     loadEl.hidden = st.loaded;
     const g = `${len()}|${sq}|${st.loaded}|${hi}|${lo}`; if (g !== sig) { sig = g; layout(); } else { renderLane(); }

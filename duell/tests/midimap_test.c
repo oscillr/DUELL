@@ -335,8 +335,8 @@ static int rules_and_learn(void)
             direct += !MAP_IS_LOCKED(l) && !MAP_IS_EMPTY(l);
             ok &= MAP_LOCKED_CC(cc) == (uint32_t)MAP_IS_LOCKED(l);
         }
-        ok &= direct == 70u && locked == 23u && empty == 35u;
-        bad += check("the shipped map: 70 direct lines, the 23 locked numbers (18 standard + the inputs 1 2 4 11 64), 35 numbers unused (MIDI_MAP_FINAL 3.4)", ok);
+        ok &= direct == 77u && locked == 23u && empty == 28u;   /* (DUELL 1.3: + the 7 MACROS lines 56..62) */
+        bad += check("the shipped map: 77 direct lines (1.3: the MACROS on 56..62), the 23 locked numbers (18 standard + the inputs 1 2 4 11 64), 28 numbers unused (MIDI_MAP_FINAL 3.4)", ok);
     }
     /* a taken number is refused with the owner's name; force takes it */
     ok = map_set(74, P_ATK, MAP_R_CHANNEL, MAP_W_TYPED, 0, who) == MAP_E_CONFLICT && !strcmp(who, "CUTOFF") && midi_map[74] == MIDI_MAP_SHIPPED[74];
@@ -370,9 +370,9 @@ static int rules_and_learn(void)
     load_table(MIDI_MAP_SHIPPED);
     for (ok = 1, cc = 0; cc < MAP_N; cc++)
         free_n += MAP_IS_EMPTY(midi_map[cc]);
-    ok = free_n == 35u;
+    ok = free_n == 28u;
     {
-        static const uint8_t FREE[] = {3, 8, 9, 33, 37, 39, 40, 42, 43, 56, 57, 58, 59, 60, 61, 62, 63, 65, 66, 67, 68, 69, 84, 88, 119};
+        static const uint8_t FREE[] = {3, 8, 9, 33, 37, 39, 40, 42, 43, 63, 65, 66, 67, 68, 69, 84, 88, 119};   /* (1.3: 56..62 are the MACROS' now) */
         for (i = 0; i < 16u; i++)
             ok &= ml_learn(FREE[i], i & 1u, P_ATK + i) == 1u && midi_map[FREE[i]] == MAP_LINE(P_ATK + i, i & 1u, MAP_W_LEARNED);
         ok &= ml_count() == ML_N && ml_learn(FREE[16], 0, P_LEVEL) == 0u && MAP_IS_EMPTY(midi_map[FREE[16]]);

@@ -976,6 +976,7 @@ static int32_t cv_keycap(int32_t x, int32_t y, uint32_t id, uint16_t fill, uint1
     const uint16_t *rv;
     if (KC_IS_KNOB(id)) {                                                  /* the numbered dot: 1 .. 4 */
         char d[2] = {(char)('1' + (id - KC_K1)), 0};
+        y += (KC_H - 11) / 2;                                              /* DUELL 1.3 (owner 2026-11-13: the dot sat 1 px above its word): centred on the pill's KC_H rows, as the word is */
         cv_rrect(x, y, 11, 11, 5, T_TEXT, under);
         cv_text_in(x, y + HALF_UP(11 - AF_D_CAP_H) - AF_D_CAP_Y, 11, &AF_DOT, d, T_BG, T_TEXT);
         return x + 12;

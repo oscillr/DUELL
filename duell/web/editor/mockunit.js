@@ -63,27 +63,33 @@ export function buildPatternObject(o, over = {}) {      // object o (0..2): the 
 }
 const filler = (n, seed, magic) => { const b = Uint8Array.from({ length: n }, (_, i) => (i * 31 + seed * 7 + (i >> 4)) & 255); b.set(magic, 0); return b; };
 
-const MENU = [   // MENU_DESC items, DUELL 0.2.14 (EDITOR_PROTOCOL.md "MENU settings"): [id, name, kind, names|unit, min, max, value, tab]
-  [0, "COLOR", 0, L.PALETTES.LIST.map((p) => p.name), 0, L.PALETTES.LIST.length - 1, L.PALETTES.DEFAULT, 0],   // the firmware's palettes (layout.json)
-  [3, "ANIMATION", 0, ["ON", "OFF", "IDLE"], 0, 2, 0, 0], [4, "LEDS", 0, ["OFF", "LOW", "MEDIUM", "MAX"], 0, 3, 2, 0],
-  [5, "BUTTON HOLD", 0, ["0.3 s", "0.4 s", "0.5 s", "0.6 s"], 0, 3, 1, 1], [6, "KNOB ACCEL", 0, ["OFF", "ON"], 0, 1, 1, 1],
-  [11, "USB SERIAL", 0, ["ON", "OFF"], 0, 1, 1, 3], [12, "CLICK", 0, ["OFF", "REC", "ON"], 0, 2, 1, 2],
-  [13, "CLICK LEVEL", 0, ["LOW", "MID", "HIGH"], 0, 2, 1, 2], [14, "COUNT-IN", 0, ["OFF", "1 BAR", "2 BARS"], 0, 2, 0, 2],
-  [15, "RESTORE LAST", 0, ["ON", "OFF"], 0, 1, 0, 3], [16, "SCALE LEDS", 0, ["AUTO", "OFF"], 0, 1, 0, 0],
-  [17, "SCREEN OFF", 0, ["NEVER", "5 MIN", "15 MIN", "30 MIN", "60 MIN"], 0, 4, 0, 0], [19, "STEP PREVIEW", 0, ["OFF", "ON"], 0, 1, 0, 1],
-  [20, "STEP KEYS", 0, ["WRITE", "ADD"], 0, 1, 0, 1], [22, "TUNE", 2, "Hz", 4153, 4662, 4400, 2],   // 0.2.22: kind 2, A4 in 0.1 Hz (415.3 .. 466.2 Hz)
-  [25, "HOME OPENS", 0, ["MORPH", "MODE"], 0, 1, 0, 1],
-  [27, "MULTI LOAD", 0, ["KEEPS MODE", "SETS MODE"], 0, 1, 0, 1],
-  [28, "ARP", 0, ["OFF", "FOLLOWS PATCH", "KEEPS RUNNING"], 0, 2, 1, 4], [29, "SEQ", 0, ["OFF", "FOLLOWS PATCH", "KEEPS RUNNING"], 0, 2, 1, 4],   // DEMO ONLY: the three values OFF / FOLLOWS PATCH / KEEPS RUNNING (owner, 2026-10-25) on the ids 28 and 29 until the firmware names its two menu ids; FOLLOWS PATCH is the old ON      // GLO > MODULES (ids 28..31, tab 4 "MODULES": no MENU tab on the unit)
+const MENU = [   // MENU_DESC items (EDITOR_PROTOCOL.md "MENU settings"): [id, name, kind, names|unit, min, max, value, tab]. Owner 2026-11-15: the unit's order and sections,
+  // tabs 0 PLAYING, 1 RECORDING, 2 MORPH, 3 PERFORM, 4 MODULES, 5 MIDI, 6 SYSTEM, 7 SIDECHAIN, 9 MASTER (editor_menu.c ED_MENU)
+  [58, "MODE", 0, ["LAYER", "STEREO", "DUEL"], 0, 2, 2, 0], [62, "XFADE", 1, "%", 0, 100, 50, 0], [63, "SPLIT", 1, "", 0, 128, 0, 0],   [27, "MULTI LOAD", 0, ["KEEPS MODE", "SETS MODE"], 0, 1, 0, 0],   // PLAYING (MODE: was HOME's MODE page)
+  [44, "KEY VELOCITY", 0, ["OFF", "SOFTER", "SOFT", "NORMAL", "HARD", "HARDER"], 0, 5, 3, 0], [45, "AFTERTOUCH", 0, ["OFF", "SOFTER", "SOFT", "NORMAL", "HARD", "HARDER"], 0, 5, 3, 0],
+  [22, "TUNE", 2, "Hz", 4153, 4662, 4400, 0],   // 0.2.22: kind 2, A4 in 0.1 Hz (415.3 .. 466.2 Hz)
+  [12, "CLICK", 0, ["OFF", "REC", "ON"], 0, 2, 1, 1], [13, "CLICK LEVEL", 0, ["LOW", "MID", "HIGH"], 0, 2, 1, 1],   // RECORDING
+  [14, "COUNT-IN", 0, ["OFF", "1 BAR", "2 BARS"], 0, 2, 0, 1], [20, "STEP KEYS", 0, ["WRITE", "ADD"], 0, 1, 0, 1], [19, "STEP PREVIEW", 0, ["OFF", "ON"], 0, 1, 0, 1],
+  [59, "MORPH SMART", 0, ["OFF", "ON"], 0, 1, 1, 2], [60, "MORPH ARP", 0, ["OFF", "ON"], 0, 1, 0, 2], [61, "MORPH PITCH", 0, ["OFF", "ON"], 0, 1, 0, 2],   // MORPH (was MORPH SET)
+  [47, "PERFORM K2", 0, ["MORPH", "TIMBRE", "ENV MACRO", "FILTER MACRO", "CHARACTER", "MOTION", "SPACE", "KILL"], 0, 7, 0, 3], [48, "PERFORM K3", 0, ["MORPH", "TIMBRE", "ENV MACRO", "FILTER MACRO", "CHARACTER", "MOTION", "SPACE", "KILL"], 0, 7, 6, 3], [49, "PERFORM K4", 0, ["MORPH", "TIMBRE", "ENV MACRO", "FILTER MACRO", "CHARACTER", "MOTION", "SPACE", "KILL"], 0, 7, 7, 3],   // PERFORM
+  [50, "QUICK K1", 0, ["MORPH", "TIMBRE", "ENV MACRO", "FILTER MACRO", "CHARACTER", "MOTION", "SPACE", "KILL"], 0, 7, 1, 3], [51, "QUICK K2", 0, ["MORPH", "TIMBRE", "ENV MACRO", "FILTER MACRO", "CHARACTER", "MOTION", "SPACE", "KILL"], 0, 7, 3, 3], [52, "QUICK K3", 0, ["MORPH", "TIMBRE", "ENV MACRO", "FILTER MACRO", "CHARACTER", "MOTION", "SPACE", "KILL"], 0, 7, 4, 3], [53, "QUICK K4", 0, ["MORPH", "TIMBRE", "ENV MACRO", "FILTER MACRO", "CHARACTER", "MOTION", "SPACE", "KILL"], 0, 7, 5, 3],
+  [32, "PERF LEAVE", 0, ["FADE", "KEEP"], 0, 1, 0, 3],
+  [28, "ARP", 0, ["OFF", "FOLLOWS PATCH", "KEEPS RUNNING"], 0, 2, 1, 4], [29, "SEQ", 0, ["OFF", "FOLLOWS PATCH", "KEEPS RUNNING"], 0, 2, 1, 4],   // MODULES (DEMO ONLY: FOLLOWS PATCH is the unit's ON)
   [30, "SENDS", 0, ["OFF", "ON"], 0, 1, 1, 4], [31, "PART FX", 0, ["OFF", "ON"], 0, 1, 1, 4],
-  [32, "PERF LEAVE", 0, ["FADE", "KEEP"], 0, 1, 0, 1],                                       // CONTROL: PERFORM's SPACE and KILL on leaving / a sound load
-  [33, "BASS MONO", 0, ["OFF", "40Hz", "50Hz", "63Hz", "80Hz", "100Hz", "125Hz", "160Hz", "200Hz", "250Hz", "315Hz", "400Hz"], 0, 11, 0, 5],   // MASTER (DUELL 0.2.19, tab 5 "MASTER": the unit's GLO > BASS MONO (MASTER) page, no MENU tab): the master mono below the corner; the unit does not run it in DUEL
-  [34, "THRESH", 1, "dB", -40, 0, -17, 5], [35, "RATIO", 0, ["OFF", "1.5:1", "2:1", "3:1", "4:1", "6:1", "8:1", "12:1", "INF"], 0, 8, 0, 5],   // COMP (DUELL 0.2.21, ids 34..37, tab 5 "MASTER": GLO > COMP): the master compressor, a device setting
-  [36, "ATTACK", 1, "", 0, 120, 80, 5], [37, "RELEASE", 1, "", 0, 80, 40, 5],   // 0.2.24: ATTACK and RELEASE are numbers, the index of 40 steps a decade (editor_menu.c: the editor formats them from layout.json's COMP)
-  [38, "P1 CH", 1, "", 1, 16, 10, 6], [39, "P1 NOTE", 1, "", 0, 127, 36, 6], [40, "P2 CH", 1, "", 1, 16, 10, 6], [41, "P2 NOTE", 1, "", 0, 127, 36, 6],   // SIDECHAIN (DUELL 0.2.22, ids 38..41, tab 6 "SIDECHAIN": GLO > SIDECHAIN): the ducker's MIDI channel and note per part, a device setting (no patch, multi or project holds it)
-  [42, "WIDTH", 1, "%", 0, 200, 100, 5],   // WIDTH (DUELL 0.2.23, id 42, tab 5 "MASTER": GLO > WIDTH): a device setting (0.2.25: id 43, DRIVE, the saturator, is removed); the unit does not run them in DUEL
+  [55, "PART 1 CHANNEL", 0, Array.from({ length: 16 }, (_, i) => String(i + 1)), 0, 15, 0, 5], [56, "PART 2 CHANNEL", 0, Array.from({ length: 16 }, (_, i) => String(i + 1)), 0, 15, 1, 5],   // MIDI
+  [57, "MIDI IN", 0, ["PART CHANNEL", "ANY CHANNEL"], 0, 1, 0, 5], [54, "MIDI PRESET", 0, ["STANDARD", "CIRCUIT TRACKS", "MPC/FORCE"], 0, 2, 0, 5],
+  [38, "P1 CH", 1, "", 1, 16, 10, 7], [39, "P1 NOTE", 1, "", 0, 127, 36, 7], [40, "P2 CH", 1, "", 1, 16, 10, 7], [41, "P2 NOTE", 1, "", 0, 127, 36, 7],   // MIDI's SIDECHAIN
+  [0, "COLOR", 0, L.PALETTES.LIST.map((p) => p.name), 0, L.PALETTES.LIST.length - 1, L.PALETTES.DEFAULT, 6],   // SYSTEM: the firmware's palettes (layout.json)
+  [4, "LEDS", 0, ["OFF", "LOW", "MEDIUM", "MAX"], 0, 3, 2, 6], [16, "SCALE LEDS", 0, ["AUTO", "OFF"], 0, 1, 0, 6], [3, "ANIMATION", 0, ["ON", "OFF", "IDLE"], 0, 2, 0, 6],
+  [17, "SCREEN OFF", 0, ["NEVER", "5 MIN", "15 MIN", "30 MIN", "60 MIN"], 0, 4, 0, 6], [6, "KNOB ACCEL", 0, ["OFF", "ON"], 0, 1, 1, 6], [5, "BUTTON HOLD", 0, ["0.3 s", "0.4 s", "0.5 s", "0.6 s"], 0, 3, 1, 6],
+  [25, "HOME OPENS", 0, ["MORPH", "MACROS 1/2", "MACROS 2/2", "PERFORM"], 0, 3, 0, 6], [15, "RESTORE LAST", 0, ["ON", "OFF"], 0, 1, 0, 6], [11, "USB SERIAL", 0, ["ON", "OFF"], 0, 1, 1, 6],
+  [33, "BASS MONO", 0, ["OFF", "40Hz", "50Hz", "63Hz", "80Hz", "100Hz", "125Hz", "160Hz", "200Hz", "250Hz", "315Hz", "400Hz"], 0, 11, 0, 9],   // MASTER (the GLOBAL tab's cards): BASS MONO, COMP, WIDTH
+  [34, "THRESH", 1, "dB", -40, 0, -17, 9], [35, "RATIO", 0, ["OFF", "1.5:1", "2:1", "3:1", "4:1", "6:1", "8:1", "12:1", "INF"], 0, 8, 0, 9],
+  [36, "ATTACK", 1, "", 0, 120, 80, 9], [37, "RELEASE", 1, "", 0, 80, 40, 9],
+  [42, "WIDTH", 1, "%", 0, 200, 100, 9],
 ];
-const TABS = ["DISPLAY", "CONTROL", "AUDIO", "SYSTEM", "MODULES", "MASTER", "SIDECHAIN"];
+
+const TABS = ["PLAYING", "RECORDING", "MORPH", "PERFORM", "MODULES", "MIDI", "SYSTEM", "SIDECHAIN", "", "MASTER"];   // DUELL 1.3: the unit's MENU sections (editor_menu.c: MTAB_*; SIDECHAIN MIDI's sub-section; MASTER MTAB_COUNT + 1)
 const KEEP = new Set([0, 39, 40]);                       // a sound load keeps the MIXER LEVEL (0.2.19: the sound's loudness is P_TRIM, which it sets), PAN, MUTE (and the arp / sequencer ids 17..32)
 const keepsOnLoad = (id) => KEEP.has(id) || (id >= 17 && id <= 32);
 

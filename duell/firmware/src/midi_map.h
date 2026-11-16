@@ -40,6 +40,8 @@ enum {
     MAP_T_SPLIT,                        /* 0 OFF, 1..127 the note (global) */
     MAP_T_CUTOFF_SMART,                 /* CC74: the engine's own cutoff, or the multimode filter's (MIDI_CC_ENG) */
     MAP_T_RES_SMART,                    /* CC71: the same for the resonance */
+    MAP_T_TIMBRE, MAP_T_ENVELOPE, MAP_T_FILTER, MAP_T_CHARACTER, MAP_T_MOTION,   /* DUELL 1.3 MACROS (macro.c): the part's macro, 0..127 -> -100 .. +100, 64 = the middle (part rule P) */
+    MAP_T_SPACE, MAP_T_KILL,            /* .. and PERFORM's two global ones (rule G) */
     MAP_T_ACT_END,
     MAP_T_G0 = 320,                     /* 320 + G_* id: a global value (the effects block); up to 351 */
     MAP_T_G_END = 352,

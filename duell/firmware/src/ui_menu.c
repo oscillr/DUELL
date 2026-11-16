@@ -372,109 +372,86 @@ static int32_t about_section(int32_t cur, int32_t s)
     return cur;
 }
 
-/* the menu's header (0..24): the page title, the same function as every page's (ui_draw.c head_title_draw: Bold 15, white, centred, no colour, no line; item 119) */
+/* the menu's header (0..24): the page title, the same face as every page's (ui_draw.c head_title_draw: Bold 15, white, centred, no colour, no line; item 119).
+ * DUELL 1.3 (owner 2026-11-13): inside a section "MENU > MIDI", the arrow the rows' chevron (the title's face has no such sign), white as the words */
+#define MENU_WORD "SETTINGS"                            /* DUELL 1.3 (owner 2026-11-15: "Yes, SETTINGS"; was MENU, the editor's word already): the title, "SETTINGS > MIDI" */
+static uint32_t menu_tab(void) { return MI_TAB[ui.menu_sel % MI_COUNT]; }
+static uint32_t menu_page(void);
 static void menu_head(void)
 {
+    const char *w[3] = {MENU_WORD, 0, 0};              /* owner 2026-11-15 (one rule): every page titled with its whole path, SETTINGS > MIDI > SIDECHAIN, SETTINGS > SYSTEM > ABOUT */
     cv_begin(240, H_HEAD, T_BG);
-    head_title_draw(ui.menu == 2 ? "ABOUT" : "MENU", 1);
+    if (ui.guide && ui.guide_menu) {                    /* (SETTINGS > SYSTEM > GUIDE, its pages drawn by ui_guide.c; the list under it is still open) */
+        w[1] = MTAB_NAME[MTAB_SYSTEM];
+        w[2] = "GUIDE";
+    } else if (ui.menu == 1 && menu_tab() < MTAB_COUNT) {
+        w[1] = menu_tab() == MTAB_SCHAIN ? MTAB_NAME[MTAB_MIDI] : MTAB_NAME[menu_tab()];
+        w[2] = menu_tab() == MTAB_SCHAIN ? MTAB_NAME[MTAB_SCHAIN] : 0;
+    } else if (ui.menu == 2) {
+        w[1] = MTAB_NAME[MTAB_SYSTEM];
+        w[2] = "ABOUT";
+    } else if (ui.menu == 4) {
+        w[1] = MTAB_NAME[MTAB_MIDI];
+        w[2] = "MIDI LEARN";
+    }
+    if (ui.msg_t && ui.msg[0]) {                       /* a message (PRESETS / ALGORITHM turned: HOME CLOSES SETTINGS) where the title stands */
+        head_title_draw(ui.msg, 1);
+    } else if (w[1]) {
+        uint32_t i, n = w[2] ? 3u : 2u;
+        int32_t tw = 0, x, y = UT_TITLE_BASE - AF_T_CAP_Y - AF_T_CAP_H + 1 - Y_HEAD;
+        for (i = 0; i < n; i++)
+            tw += text_w(&AF_T, w[i]) + (i ? 22 : 0);
+        x = HALF_UP(240 - tw);
+        GFX_HOOK_ALIGN(0, 0, 0, H_HEAD, AL_V, "header text on its middle");
+        for (i = 0; i < n; i++) {
+            if (i) {
+                cv_icon_in(x + 6, y + AF_T_CAP_Y, 0, AF_T_CAP_H, 12, ICON_X_RIGHT, T_TEXT, T_BG);   /* (its ink 9 px from each word) */
+                x += 22;
+            }
+            x = cv_text_on(x, y, &AF_T, w[i], T_TEXT, T_BG);
+        }
+        if (ui.menu == 1 && !ui.guide && mtab_pages(menu_tab()) > 1u) {                /* (1.3: the page counter on the title row, right; the footer holds SELECT, KNOB 1 and OCT- BACK) */
+            char pc[8] = "1/2";
+            pc[0] = (char)('0' + menu_page() + 1u);
+            pc[2] = (char)('0' + mtab_pages(menu_tab()));
+            cv_text_r(232, y + AF_T_CAP_Y + AF_T_CAP_H - AF_S_CAP_Y - AF_S_CAP_H, &AF_S, pc, T_MID, T_BG);   /* (its capitals on the title's baseline) */
+        }
+    } else
+        head_title_draw(MENU_WORD, 1);
     cv_blit(0, Y_HEAD);
 }
 
-/* The page (1.0.5): the tabs across the top, the rows of the one shown below, the key hints at the bottom.
- *   header   0..24  the cog and MENU, the REC mark, the tabs as dots at the right (the one shown a THEME
- *                   pill)
- *   tabs    29..53  a 24 px cushion per tab: its icon alone (SURF, MID); the one shown wider, with its name (ACCENT,
- *                   INK; S), MT_GAP between any two. With ANIM ON the cushions grow and shrink into place
- *                   (mt_follow), the gaps kept
- *   rows    59..    one SURF panel, a row a label and its value, 1 px rules
- *                   between them; the selected row THEME with INK, as the browser's. A value THEME (M) at the right,
- *                   ON / OFF as a switch, COLOR its palette's five colours, BUTTON MAP, TEST, GUIDE, ABOUT and ERASE DATA a
- *                   chevron (OCT+ opens them); the labels in M too (a list's rows). 0.2.14: rows of one or two units
- *                   (a two-line label), at most MPAGE_UNITS a page; a tab with more has pages ("CONTROL 1/2" in its pill)
- *   keys   224      SELECT ROW and, on a row with a value, KNOB 1 VALUE (SPEC 1.1a: no OCT / HOME keycap; OCT+ still opens
- *                   BUTTON MAP / TEST / ABOUT, OCT- goes back, HOME closes, unadvertised)
- * Drawn in two bands (the canvas holds 124 rows) split in a gap between two rows; while the tabs slide only their
- * strip (24..58) is drawn again */
-#define MT_Y 29                                        /* the tab bar */
-#define MT_H 24
-#define MT_IW 26                                       /* a cushion with its icon alone (the icon centred in it; 1.2, five
-                                                        * tabs: 26, up to 1.1.5 32) */
-#define MT_NX 24                                       /* the name's pen in the one shown; 10 px after it */
-#define MT_X0 4                                        /* the tab bar: the panel's own width (x 4 .. 235) */
-#define MT_X1 236
-#define MT_PAD 4                                       /* a tab's air each side of its name (S 15: the four names are 196 px, with 8 px of air each 228 of the 232) */
-#define MT_GAP 5                                       /* between two tabs, always (the bar centred in MT_X0..MT_X1; 1.2, five
-                                                        * tabs: 5, up to 1.1.5 8) */
-#define MT_ONE 64                                      /* mt.pos per tab */
-#define MP_Y 59                                        /* the rows' panel */
+/* The page (1.0.5; DUELL 1.3 sections, owner 2026-11-13): the list of the seven sections (ui.menu 6) or one section's rows (ui.menu 1) under the title, the key hints at the bottom.
+ *   header   0..24  MENU, or MENU > <SECTION>
+ *   rows    32..    a row a label and its value (the list: the section's name and a chevron), no rules; the selected row the background mixed 27 % toward
+ *                   part 1's colour with a 2 px edge of that colour at its left (M_SEL, menu_hl). A value (M) at the right,
+ *                   ON / OFF as a switch, COLOR its palette's five colours, the rows that open something (SIDECHAIN, MIDI LEARN, TEST, GUIDE,
+ *                   ABOUT, ERASE DATA) a chevron in part 1's colour. Rows of one or two units (a two-line label), at most MPAGE_UNITS a page; a
+ *                   section with more has pages ("1/2" at the footer's right)
+ *   keys   224      the list: SELECT SECTION, OCT+ OPEN; a section: SELECT ROW and, on a row with a value, KNOB 1 VALUE (OCT- goes back
+ *                   to the list, HOME closes, unadvertised as before)
+ * Drawn in two bands (the canvas holds 124 rows) split in a gap between two rows */
+#define MP_Y 29                                        /* the rows' panel (DUELL 1.3: right under the title, the tab bar is gone) */
 #define MP_PAD 3
 #define MR_X 8                                         /* a row */
 #define MR_W 224
 #define MR_LX 16                                       /* its label */
 #define MR_VR 224                                      /* its value's right edge */
 #define MK_Y 224                                       /* the key hints: the footer's row 2 band (its keycaps centred on its names) */
-static uint32_t menu_tab(void) { return MI_TAB[ui.menu_sel % MI_COUNT]; }
-/* DUELL 0.2.14: the rows in units (menu_items.c menu_units, menu_place): a unit is 21 px and a 1 px rule (1.2's 7-row look), a two-line
- * row two units (43 px); MPAGE_UNITS (7) units a page, the panel then ends 4 px lower than a 6-row tab did and 6 px above the key
- * hints. The page shown is the selected row's (SELECT walks every row, so it turns the pages too) */
+/* DUELL 0.2.14: the rows in units (menu_items.c menu_units, menu_place): a unit is 21 px and a 1 px gap, a two-line
+ * row two units (43 px); MPAGE_UNITS units a page. The page shown is the selected row's (SELECT walks every row, so it turns the pages too) */
 #define MU_H 21                                        /* a unit's height */
 #define MU_P 22                                        /* .. and its pitch (the rule between two rows is the gap row) */
 static int32_t mu_y(uint32_t u) { return MP_Y + MP_PAD + (int32_t)u * MU_P; }
 static uint32_t menu_page(void) { return menu_place(ui.menu_sel % MI_COUNT, 0); }   /* the page shown (0 ..) */
-static void mtab_label(uint32_t t, char *b)            /* the tab's name (b: 16; its page "1/2" is in the footer) */
+static uint32_t menu_sec(void) { return menu_tab() == MTAB_SCHAIN ? MTAB_MIDI : menu_tab(); }   /* the section of the list the selected row is in */
+#define M_SEL ux_mix(T_BG, T_PTHEME(0), 27)            /* DUELL 1.3 (owner 2026-11-13): the picked row, the background 27 % toward part 1's colour */
+static void menu_hl(int32_t y, int32_t h)              /* the picked row's fill (square at its left) and its 2 px edge in part 1's colour */
 {
-    str_cpy(b, MTAB_NAME[t % MTAB_COUNT], 16);
-}
-
-/* the tab bar's place: the tab shown at pos tab * MT_ONE; with ANIM ON it follows in halving steps, a frame each
- * (a frame missed, as when the menu opens: it snaps, as ui_graph.c pr_follow) */
-static struct { int16_t pos; uint32_t frame; } mt;
-static void mt_follow(void)
-{
-    int32_t want = (int32_t)menu_tab() * MT_ONE, d = want - mt.pos;
-    if (ui.frame != mt.frame + 1u || (ui_prefs & PREF_ANIM_OFF) || (d < 3 && d > -3))
-        mt.pos = (int16_t)want;
-    else
-        mt.pos = (int16_t)(mt.pos + d / 2);
-    mt.frame = ui.frame;
-}
-#define M_SEL ux_mix(T_BASE, T_TEXT, 22)                /* the picked row / tab: a neutral lift of the card */
-/* DUELL 1.1 (PAGES_V2_menu.png): four text tabs, no icons, the shown one lifted; x, width of each (a[k]: always whole) */
-static void mt_layout(int32_t *a, int32_t *x, int32_t *w)
-{
-    uint32_t k;
-    int32_t tot = 0, cum, gap;
-    for (k = 0; k < MTAB_COUNT; k++) {
-        char b[16];
-        a[k] = MT_ONE;
-        mtab_label(k, b);
-        w[k] = text_w(&AF_S, b) + 2 * MT_PAD;
-        tot += w[k];
-    }
-    gap = (MT_X1 - MT_X0 - tot) / (int32_t)(MTAB_COUNT - 1u);
-    if (gap > 8) gap = 8;
-    if (gap < 0) gap = 0;
-    cum = MT_X0 + HALF_UP(MT_X1 - MT_X0 - tot - (int32_t)(MTAB_COUNT - 1u) * gap);
-    for (k = 0; k < MTAB_COUNT; k++) {
-        x[k] = cum;
-        cum += w[k] + gap;
-    }
-}
-static void menu_tabs(void)                            /* (in screen rows: cv_oy set by the caller) */
-{
-    int32_t a[MTAB_COUNT], x[MTAB_COUNT], w[MTAB_COUNT];
-    uint32_t k;
-    mt_layout(a, x, w);
-    for (k = 0; k < MTAB_COUNT; k++) {
-        int on = k == menu_tab();
-        uint16_t bg = on ? M_SEL : T_BG;
-        char b[16];
-        if (on)
-            cv_rrect(x[k], MT_Y, w[k], MT_H, -8, bg, T_BG);
-        mtab_label(k, b);
-        GFX_HOOK_ALIGN(0, MT_Y, 0, MT_Y + MT_H, AL_V, "menu tab name centred up/down");
-        cv_text_on(x[k] + MT_PAD, MT_Y + CAP_IN(S, MT_H), &AF_S, b, on ? T_TEXT : T_MID, bg);
-    }
+    CV_HL(MR_X, y, MR_W, h);
+    cv_rrect(MR_X, y, MR_W, h, 6, M_SEL, T_BG);
+    cv_rect(MR_X, y, 8, h, M_SEL);
+    cv_rect(MR_X, y, 2, h, T_PTHEME(0));
 }
 /* a two-valued row whose values are ON and OFF: a switch (a 26 x 14 cushion, its knob at the right when ON) */
 static void menu_switch(int32_t xr, int32_t y, int32_t h, int on, int sel)
@@ -488,6 +465,16 @@ static void menu_switch(int32_t xr, int32_t y, int32_t h, int on, int sel)
 }
 /* a row (menu_items.c row `row`) of the page shown: its units' place, the label at the left (a two-line label: its first line in M,
  * the second small (S, MID), the pair centred in the row), the value at the right centred on the whole row */
+/* DUELL 1.3 (owner 2026-11-13): the line under a row that says what its chosen value does (rows whose MI_LABEL ends in a bare '\n') */
+static const char *menu_help(uint32_t row)
+{
+    uint32_t v = menu_get(row);
+    if (row == MI_MODERECALL)
+        return v ? "Load a multi: its mode is set" : "Load a multi: your mode stays";
+    if (row == MI_RESTORE)
+        return v ? "Power-on: a fresh start" : "Power-on: your last music";
+    return "";
+}
 static void menu_row(uint32_t row)
 {
     uint32_t u;
@@ -502,7 +489,7 @@ static void menu_row(uint32_t row)
     h = (int32_t)menu_units(row) * MU_P - 1;
     vy = y + CAP_IN(M, h);                             /* the label and its value: M (a list's rows) */
     if (sel)
-        { CV_HL(MR_X, y, MR_W, h); cv_rrect(MR_X, y, MR_W, h, 6, M_SEL, T_BG); }
+        menu_hl(y, h);
     while (l[n] && l[n] != '\n' && n + 1u < sizeof l1) {
         l1[n] = l[n];
         n++;
@@ -512,16 +499,17 @@ static void menu_row(uint32_t row)
         int32_t top = y + HALF_UP(h - (AF_M_CAP_H + 6 + AF_S_CAP_H));
         GFX_HOOK_ALIGN(0, top, 0, top + AF_M_CAP_H, AL_V, "menu row name's first line");
         cv_text_on(MR_LX, top - AF_M_CAP_Y, &AF_M, l1, fg, bg);
+        vy = top - AF_M_CAP_Y;                         /* DUELL 1.3 (the approved drawing): a text value on the first line's baseline */
         top += AF_M_CAP_H + 6;
         GFX_HOOK_ALIGN(0, top, 0, top + AF_S_CAP_H, AL_V, "menu row name's second line");
-        cv_text_on(MR_LX, top - AF_S_CAP_Y, &AF_S, l + n + 1, T_MID, bg);
+        cv_text_on(MR_LX, top - AF_S_CAP_Y, &AF_S, l[n + 1] ? l + n + 1 : menu_help(row), T_MID, bg);
     } else {
         GFX_HOOK_ALIGN(0, y, 0, y + h, AL_V, "menu row name centred up/down");
         cv_text_on(MR_LX, vy, &AF_M, l1, fg, bg);
     }
-    if (!menu_valued(row)) {                           /* BUTTON MAP, TEST, GUIDE, ABOUT, ERASE DATA: OCT+ opens them */
+    if (!menu_valued(row)) {                           /* SIDECHAIN, MIDI LEARN, TEST, GUIDE, ABOUT, ERASE DATA: OCT+ opens them (DUELL 1.3: the chevron in part 1's colour) */
         GFX_HOOK_ALIGN(0, y, 0, y + h, AL_V, "menu row chevron centred up/down");
-        cv_icon_in(MR_VR - 12, y, 0, h, 12, ICON_X_RIGHT, T_MID, bg);
+        cv_icon_in(MR_VR - 12, y, 0, h, 12, ICON_X_RIGHT, T_PTHEME(0), bg);
         return;
     }
     if (row == MI_HOLD || row == MI_TUNE) {            /* "0.4" s, "440.0" Hz: the value and its unit */
@@ -537,7 +525,7 @@ static void menu_row(uint32_t row)
         menu_switch(MR_VR, y, h, str_eq(v, "ON"), sel);
         return;
     }
-    GFX_HOOK_ALIGN(0, y, 0, y + h, AL_V, "menu row value centred up/down");
+    GFX_HOOK_ALIGN(0, vy + AF_M_CAP_Y, 0, vy + AF_M_CAP_Y + AF_M_CAP_H, AL_V, "menu row value on its line");
     if (row != MI_COLOR) {
         cv_text_r(MR_VR, vy, &AF_M, v, val, bg);
         return;
@@ -678,13 +666,15 @@ static void graph_test(void)
         str_cpy(v, "--", 3);
     cv_text_on(x + 6, 107, &AF_S, v, T_TEXT, T_BG);
 }                                                /* (voice pool, 2026-11-06: the VOICE CAP line is gone; no note-on reads that table any more) */
-/* The TEST screen (ui.menu 3): the page TEST_PAGE drawn by the page code (header with its name TEST in the top middle, the K1..K4 cards, the
- * panel graph_test, the footer), page_over making it the current page; the LAYER state is put aside while it draws */
-static void draw_test_screen(void)
+#endif                                                 /* (TEST screen) */
+static void edit_param(uint32_t slot, int32_t steps);   /* ui_input.c: the TEST and MIDI LEARN screens' knobs */
+/* A page shown as a MENU screen (ui.menu 3 TEST, 4 MIDI LEARN): the page p drawn by the page code (header with its name in the top middle, the K1..K4 cards, the
+ * panel, the footer), page_over making it the current page; the LAYER state is put aside while it draws */
+static void draw_page_screen(const page_t *p)
 {
     uint8_t layer = ui.layer;
     ui.layer = 0;
-    page_over = &TEST_PAGE;
+    page_over = p;
     if (ui.force)
         draw_frame();
     draw_head();
@@ -701,16 +691,14 @@ static void draw_test_screen(void)
     page_over = 0;
     ui.layer = layer;
 }
-static void edit_param(uint32_t slot, int32_t steps);   /* ui_input.c: the TEST screen's knobs */
-#endif                                                 /* (TEST screen) */
 
 /* the rows' two bands meet at `split`: in the gap above a row of the page (or below its last, at unit `end`), each band at most 124 rows */
-static uint32_t menu_split(uint32_t first, uint32_t n, uint32_t pg, uint32_t end)
+static uint32_t menu_split(uint32_t first, uint32_t last, uint32_t pg, uint32_t end)
 {
     int32_t s = mu_y(end) - 1, y;
     uint32_t k, u;
-    for (k = 0; k < n; k++)                            /* (the lowest row top that keeps the upper band within 124) */
-        if (menu_place(first + k, &u) == pg && (y = mu_y(u) - 1) <= H_HEAD + 124 && (s > H_HEAD + 124 || y > s))
+    for (k = first; k < last; k++)                     /* (the lowest row top that keeps the upper band within 124) */
+        if (menu_shown(k) && menu_place(k, &u) == pg && (y = mu_y(u) - 1) <= H_HEAD + 124 && (s > H_HEAD + 124 || y > s))
             s = y;
     return (uint32_t)(s < 240 - 124 ? 240 - 124 : s);
 }
@@ -719,27 +707,42 @@ static uint32_t menu_split(uint32_t first, uint32_t n, uint32_t pg, uint32_t end
 #else
 #define SENSE_SIG 0u
 #endif
+/* DUELL 1.3: the list's row k (a section): its name and the chevron in part 1's colour */
+static void menu_sec_row(uint32_t k)
+{
+    int32_t y = mu_y(k);
+    uint16_t bg = k == menu_sec() ? M_SEL : T_BG;
+    if (k == menu_sec())
+        menu_hl(y, MU_H);
+    GFX_HOOK_ALIGN(0, y, 0, y + MU_H, AL_V, "menu row name centred up/down");
+    cv_text_on(MR_LX, y + CAP_IN(M, MU_H), &AF_M, MTAB_NAME[k], T_TEXT, bg);
+    cv_icon_in(MR_VR - 12, y, 0, MU_H, 12, ICON_X_RIGHT, T_PTHEME(0), bg);
+}
 static void draw_menu(void)
 {
-    /* SPEC 1.1a: SELECT picks the row (across the tabs), KNOB 1 the value (an action row has none: SELECT alone;
-     * no OCT+ OPEN / CLEAR hint) */
-    static const khint_t KEYS[3] = {{KC_SELECT, "ROW"}, {KC_K1, "VALUE"}, {KC_K1, "OPEN"}};
-    uint32_t pass, k, first, n, split, sig, pg, end, u;
-    int32_t pos0 = mt.pos;
+    /* SPEC 1.1a: SELECT picks the row, KNOB 1 the value (an action row has none: SELECT alone; no OCT+ OPEN / CLEAR hint);
+     * DUELL 1.3: the list SELECT SECTION, OCT+ OPEN */
+    static const khint_t KEYS[6] = {{KC_SELECT, "ROW"}, {KC_K1, "VALUE"}, {KC_OCTUP, "OPEN"}, {KC_SELECT, "SECTION"}, {KC_OCTDN, "BACK"}, {KC_OCTDN, "BACK"}};   /* (1.3, owner: inside a section OCT- BACK is shown;
+                                                         * owner 2026-11-15, one rule: every row the same three places, SELECT left, the knob in the middle, OCT- right; the list: KNOB 1 OPEN, OCT- CLOSE) */
+    uint32_t pass, k, first, last, split, sig, pg, end, u, list = ui.menu == 6;
 #if DUELL_TEST_MODE
     if (ui.menu == 3) {                                /* TEST: the page code draws it, whole each frame (it checks its own signatures) */
-        draw_test_screen();
+        draw_page_screen(&TEST_PAGE);
         return;
     }
 #endif
+    if (ui.menu == 4) {                                /* MIDI LEARN (DUELL 1.3: was GLO's page): the same */
+        draw_page_screen(&MLEARN_PAGE);
+        if (!ui.msg_t)                                  /* (owner 2026-11-15: titled SETTINGS > MIDI > MIDI LEARN, over the page's own title; a message stays the page header's) */
+            menu_head();
+        return;
+    }
 #if DUELL_BENCH
     if (ui.menu == 5) {                                /* BENCH (bench builds): src/bench.c draws it */
         bench_draw();
         return;
     }
 #endif
-    if (ui.menu == 1)
-        mt_follow();
     {   /* DUELL 1.1 general rule: every row's value, whatever variable it lives in */
         uint32_t r;
         sig = 2166136261u;
@@ -753,16 +756,14 @@ static void draw_menu(void)
           SENSE_SIG + (uint32_t)ui_notes_off * 40503u +   /* (DUELL 1.1: KEY VELOCITY and AFTERTOUCH keep their curve here, NOTES LEFT its bit: the card was stale until the page was left, test3) */
           (uint32_t)(song.g[G_TUNE] + 64) * 8191u + ui_home_pg * 27449u +   /* (1.2: the project's row; DUELL: HOME OPENS) */
           (ui.menu == 2 ? ui.menu_scroll * 48611u + about_sig() * 40507u + about_step() * 6007u : 0u);
-    if (!ui.force && sig == ui.menu_sig) {
-        if (ui.menu == 1 && mt.pos != pos0) {          /* only the tabs slid: their strip */
-            cv_begin(240, MP_Y - H_HEAD, T_BG);
-            cv_oy = -H_HEAD;
-            menu_tabs();
-            cv_oy = 0;
-            cv_blit(0, H_HEAD);
-        }
-        return;
+    if (ui.msg_t && !--ui.msg_t && ui.msg2[0]) {       /* (owner 2026-11-15: a message shows in the title row here too, as on every page) */
+        str_cpy(ui.msg, ui.msg2, sizeof ui.msg);
+        ui.msg2[0] = 0;
+        ui.msg_t = 60;
     }
+    sig += ui.msg_t ? 0x9E3779B9u + (uint32_t)ui.msg[0] * 977u : 0u;
+    if (!ui.force && sig == ui.menu_sig)
+        return;
     ui.menu_sig = sig;
     if (ui.menu == 2 && !ui.menu_scroll) {             /* ABOUT's first view: the splash drawing, endless (the footer hint on it) */
         splash_frame(about_step(), ABOUT_KY);
@@ -792,35 +793,34 @@ static void draw_menu(void)
         return;
     }
     first = mtab_first(menu_tab());
-    n = mtab_rows(menu_tab());
+    last = mtab_end(menu_tab());
     pg = menu_page();
-    for (k = 0, end = 0; k < n; k++)                   /* (the page's last unit: the panel's end) */
-        if (menu_place(first + k, &u) == pg && u + menu_units(first + k) > end)
-            end = u + menu_units(first + k);
-    split = menu_split(first, n, pg, end);
+    end = list ? MTAB_LIST : 0u;
+    for (k = first; !list && k < last; k++)            /* (the page's last unit: the panel's end) */
+        if (menu_shown(k) && menu_place(k, &u) == pg && u + menu_units(k) > end)
+            end = u + menu_units(k);
+    split = list ? (uint32_t)mu_y(4) - 1u : menu_split(first, last, pg, end);
     for (pass = 0; pass < 2u; pass++) {
         int32_t top_y = pass ? (int32_t)split : H_HEAD;
         CV_BANDS(240, pass ? 240u - split : split - H_HEAD, T_BG) {                 /* (in bands: gfx.c CV_BANDS) */
             cv_oy = -top_y;                               /* drawn in screen rows */
-            if (!pass)
-                menu_tabs();
-            for (k = 0; k < n; k++)
-                if (menu_place(first + k, &u) == pg && mu_y(u) + (int32_t)menu_units(first + k) * MU_P - 1 > top_y && mu_y(u) - 1 < top_y + (int32_t)CV_FULL_H)
-                    menu_row(first + k);
-            if (pass) {
-                {
-                    int32_t xe = mtab_pages(menu_tab()) > 1u ? 196 : 232;
-                    if (MI_READONLY(ui.menu_sel))                 /* TEST, ABOUT: SELECT picks the row, KNOB 1 right opens it */
-                        cv_key_row(8, xe, MK_Y, (const khint_t[2]){KEYS[0], KEYS[2]}, 2u, 3u, T_BG);
-                    else
-                        cv_key_row(8, xe, MK_Y, KEYS, menu_valued(ui.menu_sel) ? 2u : 1u, 3u, T_BG);
-                    if (xe < 232) {                               /* the page, as every page's counter: "1/2" */
-                        char pc[8] = "1/2";
-                        pc[0] = (char)('0' + menu_page() + 1u);
-                        pc[2] = (char)('0' + mtab_pages(menu_tab()));
-                        cv_text_r(232, MK_Y - 3, &AF_S, pc, T_MID, T_BG);   /* item 138: on the hint words' line (gfx.c cv_key_hint: y - 3); MK_Y + 3 put its capitals on rows 231 .. 242, past the screen's last row */
-                    }
-                }
+            if (list) {
+                for (k = pass ? 4u : 0u; k < (pass ? MTAB_LIST : 4u); k++)
+                    menu_sec_row(k);
+            } else
+                for (k = first; k < last; k++)
+                    if (menu_shown(k) && menu_place(k, &u) == pg && mu_y(u) + (int32_t)menu_units(k) * MU_P - 1 > top_y && mu_y(u) - 1 < top_y + (int32_t)CV_FULL_H)
+                        menu_row(k);
+            if (pass && list)
+                cv_key_row(8, 232, MK_Y, (const khint_t[3]){KEYS[4], KEYS[0], KEYS[2]}, 3u, 7u, T_BG);   /* (owner 2026-11-15: SELECT ROW on the list too, so OPEN fits; was SELECT SECTION) */   /* (owner 2026-11-15: OCT- BACK at the left, the way back; forward to the right) */
+            else if (pass) {
+                int32_t xe = 232;                             /* (1.3: the page counter is in the title row now, menu_head: the footer has room for OCT- BACK) */
+                if (MI_READONLY(ui.menu_sel) || MI_OPENS(ui.menu_sel) || ui.menu_sel == MI_ERASE)   /* TEST, ABOUT, SIDECHAIN, MIDI LEARN, ERASE DATA: SELECT picks the row, OCT+ opens it (owner 2026-11-15: OCT+ is the open, as everywhere; was KNOB 1 OPEN) */
+                    cv_key_row(8, xe, MK_Y, (const khint_t[3]){KEYS[5], KEYS[0], KEYS[2]}, 3u, 7u, T_BG);
+                else if (menu_valued(ui.menu_sel))
+                    cv_key_row(8, xe, MK_Y, (const khint_t[3]){KEYS[5], KEYS[0], KEYS[1]}, 3u, 7u, T_BG);
+                else
+                    cv_key_row(8, xe, MK_Y, (const khint_t[2]){KEYS[5], KEYS[0]}, 2u, 3u, T_BG);
             }
             cv_oy = 0;
             cv_blit(0, (uint32_t)top_y + (uint32_t)cv_by);
@@ -843,47 +843,95 @@ static void menu_close(void)
     ui.force = 1;
     go_main();
 }
-
-/* menu (SPEC 1.1a): SELECT is the one way round it: it walks the rows continuously across the tabs (a tab's last row,
- * then the next tab's first; stopping at the first and the last row of the whole menu, no wrap), in ABOUT it jumps between sections
- * (KNOB 1 scrolls there);
- * KNOB 1..4 (any of them) change the selected row's value (menu_items.c menu_step), OCT+ / OCT- step it too (and OCT+
- * opens CALIBRATION / TEST / ABOUT, OCT- nothing there; OCT- in TEST and ABOUT goes back to the tabs) but no hint
- * names them. ALGORITHM and PRESETS do nothing here. HOME closes it, from them too (ui_input.c) */
-static void menu_move(int32_t s)                       /* SELECT: the next / previous row, across the tabs, clamped; a row without a tab (the retired CPU METER) is passed by */
+/* DUELL 1.3: open section t of the list (or MIDI's SIDECHAIN) at the row last picked there */
+static void menu_open_sec(uint32_t t)
 {
-    int32_t dir = s < 0 ? -1 : 1;
-    int32_t r = (int32_t)ui.menu_sel + clamp(s, -(int32_t)MI_COUNT, (int32_t)MI_COUNT);
-    int32_t last = (int32_t)ui.menu_sel;                /* (the row the walk started on: always a row with a tab) */
-    uint32_t t;
-    r = clamp(r, 0, (int32_t)MI_COUNT - 1);
-    while (r >= 0 && r < (int32_t)MI_COUNT && MI_TAB[r] >= MTAB_COUNT)   /* a row without a tab: on in the same direction ... */
-        r += dir;
-    if (r < 0 || r >= (int32_t)MI_COUNT)                /* ... and none left that way: stay */
-        r = last;
+    uint32_t r = mtab_first(t) + ui.menu_row[t];
+    if (r >= mtab_end(t) || !menu_shown(r))
+        for (r = mtab_first(t); r + 1u < mtab_end(t) && !menu_shown(r); r++)
+            ;
     ui.menu_sel = (uint8_t)r;
-    t = menu_tab();
-    if (t < MTAB_COUNT)                                 /* (bounds-safe: menu_row[] has MTAB_COUNT places) */
-        ui.menu_row[t] = (uint8_t)(ui.menu_sel - mtab_first(t));
+    ui.menu = 1;
+    ui.force = 1;
+}
+
+/* menu (SPEC 1.1a; DUELL 1.3 sections): in the list SELECT picks a section and OCT+ opens it; in a section SELECT walks its rows (stopping at its first and
+ * last row, no wrap), in ABOUT it jumps between sections (KNOB 1 scrolls there); KNOB 1..4 (any of them) change the selected row's value (menu_items.c menu_step), OCT+
+ * opens the rows that open something (a knob right too: TEST, GUIDE, ABOUT, SIDECHAIN, MIDI LEARN); OCT- goes back: from a section to the list, from SIDECHAIN to MIDI,
+ * from TEST, ABOUT and MIDI LEARN to their section. ALGORITHM and PRESETS do nothing here. HOME closes it, from them too (ui_input.c) */
+static void menu_move(int32_t s)                       /* SELECT: the next / previous row of the section, clamped; a row without a place is passed by */
+{
+    int32_t dir = s < 0 ? -1 : 1, r = (int32_t)ui.menu_sel, n = s < 0 ? -s : s;
+    uint32_t t = menu_tab(), f = mtab_first(t), e = mtab_end(t);
+    for (; n > 0; n--) {
+        int32_t q = r + dir;
+        while (q >= (int32_t)f && q < (int32_t)e && !menu_shown((uint32_t)q))
+            q += dir;
+        if (q < (int32_t)f || q >= (int32_t)e)
+            break;
+        r = q;
+    }
+    ui.menu_sel = (uint8_t)r;
+    ui.menu_row[t] = (uint8_t)(ui.menu_sel - f);
 }
 static int32_t accel(uint32_t role, int32_t s, int32_t range);   /* (ui_input.c, KNOB ACCEL) */
+static int32_t kr_pass(uint32_t k, int32_t s);         /* (ui_input.c: a jump's twist swallowed) */
 static void menu_input(uint32_t oct)                  /* oct: ui_input.c oct_taps */
 {
     int32_t s;
     uint32_t k, up = (oct >> 1) & 1u, dn = oct & 1u;
-    panel_enc(EN_PRESET);                              /* PRESETS, ALGORITHM: nothing in the menu (SPEC 1.1a) */
-    panel_enc(EN_ALGO);
-#if DUELL_TEST_MODE
-    if (ui.menu == 3) {                                /* TEST: KNOB 1..4 are its own (K1 MORPH both ways: not a way back); OCT- goes back to the
-                                                        * tabs, HOME and a page button close the menu; SELECT and OCT+ do nothing here */
+    if (panel_enc(EN_PRESET) | panel_enc(EN_ALGO))     /* PRESETS, ALGORITHM: nothing here (SPEC 1.1a); owner 2026-11-15 (one rule for SETTINGS): the title says why, as the GUIDE does */
+        ui_message("HOME CLOSES SETTINGS");
+    if (ui.menu == 6) {                                /* DUELL 1.3: the list of the sections */
+        if ((s = panel_enc(EN_SELECT)) != 0) {
+            k = (uint32_t)clamp((int32_t)menu_sec() + clamp(s, -8, 8), 0, MTAB_LIST - 1);
+            ui.menu_sel = (uint8_t)(mtab_first(k) + ui.menu_row[k]);
+        }
+        for (k = 0; k < 4u; k++)                        /* (owner 2026-11-16: the knobs only change values, never open or turn pages: nothing here) */
+            kr_pass(k, panel_enc(EN_K1 + k));
+        if (up)
+            menu_open_sec(menu_sec());
+        else if (dn)                                    /* (one rule: OCT- one level back; from the list that is out of SETTINGS) */
+            menu_close();
+        enc_drop();
+        return;
+    }
+    if (ui.menu == 3 || ui.menu == 4) {                /* TEST, MIDI LEARN: KNOB 1..4 are its own (TEST: K1 MORPH both ways: not a way back); OCT- goes back to the
+                                                        * section, HOME and a page button close the menu; SELECT and OCT+ do nothing here */
         uint8_t layer = ui.layer;
-        if (dn) {
-            ui.menu = 1, ui.force = 1;
+        if (ui.menu == 4 && up) {                       /* owner 2026-11-15 (as TOOLS): OCT+ does the picked card: LEARN starts, learning: DONE ends it; CLEAR ALL asks */
+            if (ui.ml.on)
+                ml_oct(2u);
+            else if (ml_act == 1u)
+                ml_toggle();
+            else if (ml_act == 2u) {
+                if (ml_count()) {
+                    ui.confirm = CF_ML_CLEAR;
+                    ui.confirm_trk = 0;
+                } else
+                    ui_message("NOTHING LEARNED");
+            }
+            if (ui.confirm != CF_ML_CLEAR)
+                ml_act = 0;
+            ui.force = 1;
+            enc_drop();
+            return;
+        }
+        if (dn) {                                       /* OCT- back: a picked card dropped first (as TOOLS), else back to the section */
+            if (ui.menu == 4 && ml_act)
+                ml_act = 0;
+            else
+                ui.menu = 1;
+            ui.force = 1;
             enc_drop();
             return;
         }
         ui.layer = 0;
-        page_over = &TEST_PAGE;
+#if DUELL_TEST_MODE
+        page_over = ui.menu == 3 ? &TEST_PAGE : &MLEARN_PAGE;
+#else
+        page_over = &MLEARN_PAGE;
+#endif
         for (k = 0; k < 4u; k++)
             if ((s = panel_enc(EN_K1 + k)) != 0) {
                 ui.hot_col = (uint8_t)k;
@@ -895,9 +943,8 @@ static void menu_input(uint32_t oct)                  /* oct: ui_input.c oct_tap
         enc_drop();
         return;
     }
-#endif
     if (ui.menu == 2) {                                /* ABOUT (0.2.9, the owner): KNOB 1 scrolls (right down, left up; bounded), SELECT
-                                                        * jumps to the next / previous section (about_section); OCT- back to the tabs,
+                                                        * jumps to the next / previous section (about_section); OCT- back to SYSTEM,
                                                         * HOME closes; KNOB 2..4, PRESETS, ALGORITHM nothing */
         if (dn) {
             ui.menu = 1, ui.force = 1;
@@ -911,16 +958,25 @@ static void menu_input(uint32_t oct)                  /* oct: ui_input.c oct_tap
         enc_drop();
         return;
     }
+    if (dn) {                                          /* DUELL 1.3: OCT- back: SIDECHAIN to MIDI's row, a section to the list */
+        if (menu_tab() == MTAB_SCHAIN)
+            ui.menu_sel = MI_SCHAIN;
+        else
+            ui.menu = 6;
+        ui.force = 1;
+        enc_drop();
+        return;
+    }
     if ((s = panel_enc(EN_SELECT)) != 0)
         menu_move(s);
     for (s = 0, k = 0; k < 4u; k++) {                  /* KNOB 1..4, any of them */
-        int32_t e = panel_enc(EN_K1 + k);
-        s += ui.menu_sel == MI_TUNE ? accel(EN_K1 + k, e, (int32_t)TUNE_N) : e;   /* (0.2.22: TUNE has 510 steps: with KNOB ACCEL ON a fast turn goes x2 .. x8, ui_input.c accel; the other rows as ever) */
+        int32_t e = kr_pass(k, panel_enc(EN_K1 + k));
+        s += ui.menu_sel == MI_TUNE ? accel(EN_K1 + k, e, (int32_t)TUNE_N) :   /* (0.2.22: TUNE has 510 steps: with KNOB ACCEL ON a fast turn goes x2 .. x8, ui_input.c accel; the other rows as ever) */
+             ui.menu_sel == MI_SC1NT || ui.menu_sel == MI_SC2NT || ui.menu_sel == MI_SPLIT ? accel(EN_K1 + k, e, 127) :   /* (SIDECHAIN's notes: as GLO > SIDECHAIN's knob; SPLIT as the MODE page's) */
+             ui.menu_sel == MI_XFADE ? accel(EN_K1 + k, e, 100) : e;
     }
     if (menu_valued(ui.menu_sel)) {
-        /* a step (OCT+ the next value, OCT- the previous); COLOR previews the palette */
-        s += (int32_t)up - (int32_t)dn;
-        if (s) {
+        if (s) {                                       /* a step; COLOR previews the palette */
             uint32_t was = menu_get(ui.menu_sel);
             menu_put(ui.menu_sel, menu_step(ui.menu_sel, s));
             if (menu_get(ui.menu_sel) != was && !MI_PROJECT(ui.menu_sel)) {   /* DUELL 0.2.2: a changed setting is saved now, not when the */
@@ -932,10 +988,12 @@ static void menu_input(uint32_t oct)                  /* oct: ui_input.c oct_tap
                 }
             }
         }
-    } else if (up || (s > 0 && MI_READONLY(ui.menu_sel))) {   /* OCT+ opens BUTTON MAP, ERASE DATA and the three; a knob right too TEST, GUIDE and ABOUT */
-        if (ui.menu_sel == MI_PANEL) {
-            panel_setup();
-            scrn.idle = fm1_ms;                         /* (SCREEN OFF: its own loop had the input) */
+    } else if (up) {                                   /* OCT+ opens ERASE DATA (its dialog asks), TEST, GUIDE, ABOUT, SIDECHAIN, MIDI LEARN; owner 2026-11-16: the knobs only change values, never open */
+        if (ui.menu_sel == MI_SCHAIN) {                 /* DUELL 1.3: its four values */
+            menu_open_sec(MTAB_SCHAIN);
+        } else if (ui.menu_sel == MI_MLEARN) {          /* DUELL 1.3: the MIDI LEARN screen, as GLO's page was */
+            ui.menu = 4;
+            ml_act = 0;                                 /* (nothing picked on opening) */
             ui.force = 1;
         } else if (ui.menu_sel == MI_ERASE) {           /* DUELL 0.2.2: the dialog over the menu (ui_input.c: OCT+ YES, OCT- NO) */
             ui.confirm = CF_ERASE_ALL;
@@ -949,7 +1007,7 @@ static void menu_input(uint32_t oct)                  /* oct: ui_input.c oct_tap
 #endif
         } else if (ui.menu_sel == MI_GUIDE) {           /* DUELL 0.2.11: the first-start GUIDE's pages, over the menu (ui_guide.c); the bit untouched */
             guide_open(1);
-        } else {                                       /* MI_ABOUT */
+        } else if (ui.menu_sel == MI_ABOUT) {
             ui.menu = 2;
             about_t0 = fm1_ms;
             cpu_meter_open();

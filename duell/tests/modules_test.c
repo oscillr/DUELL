@@ -93,15 +93,14 @@ static int card_hid(uint32_t c)                         /* the card is not drawn
 {
     return ui.col[c][0] == 0x7f;
 }
-static int title_modules(void)                          /* item 125 A: the header keeps the page's title MODULES (no message over it) */
+static int title_modules(void)                          /* item 125 A: no message over the title; DUELL 1.3: MENU > MODULES still open */
 {
-    char tb[40];
-    uint32_t pi;
-    head_page_title(tb, &pi);
-    return !ui.msg_t && !strcmp(tb, "MODULES");
+    return !ui.msg_t && ui.menu == 1u && menu_tab() == MTAB_MODULES;
 }
 static void kturn(uint32_t k, int n) { ui.msg_t = 0; turn(k, n); }   /* (a knob turn with the header clear: any message after it is the knob's) */
 static void show(const char *title) { go_title(title); ui.force = 1; frame(); }
+static void mods_row(uint32_t row) { ui.menu = 1; ui.menu_sel = (uint8_t)row; ui.force = 1; frame(); }   /* DUELL 1.3: MENU > MODULES open, row picked (GLO > MODULES' knobs are its rows) */
+static void row_turn(uint32_t row, int32_t n) { mods_row(row); for (; n; n -= n > 0 ? 1 : -1) turn(EN_K1, n > 0 ? 1 : -1); }   /* (a MENU row steps one value per turn) */
 static void set(uint32_t bit, uint32_t off) { mods_put(bit, off); }
 
 /* ---- the sound ---- */
@@ -173,28 +172,29 @@ static void test_settings(void)
     memset(nor, 0xFF, sizeof nor);
     boot();
     expect("a fresh unit: all four ON (the settings byte's bits 1..4 clear; the audio side too)", mods_get() == 0u && mods_off == 0u && !(ui_idle & 0x1Eu));
-    show("MODULES");
+    mods_row(MI_ARP);
     ui.msg_t = 0;                                       /* (the boot's "LOADED M01" toast gone: from here any message over the title is the knob's) */
-    expect("GLO > MODULES: K1 ARP, K2 SEQ (ON = FOLLOWS PATCH), K3 SENDS, K4 PART FX, each ON; the title MODULES (item 125 A: the state is the value of the line, graph_mods)",
-           cur_page()->scope == SC_MODS && mods_run_get(0) == 1u && mods_run_get(1) == 1u && !(mods_get() & (MODS_SENDS | MODS_PFX)) && title_modules());
-    expect("  .. a global page (both badges), the footer's first row empty", page_global(cur_page()));
+    expect("MENU > MODULES (DUELL 1.3; was GLO > MODULES): rows ARP, SEQ (ON = FOLLOWS PATCH), SENDS, PART FX, each ON, no message over the title",
+           mods_run_get(0) == 1u && mods_run_get(1) == 1u && !(mods_get() & (MODS_SENDS | MODS_PFX)) && title_modules());
+    expect("  .. the section's rows are ARP, SEQ, SENDS, PART FX, in that order", mtab_first(MTAB_MODULES) == MI_ARP && mtab_end(MTAB_MODULES) == MI_PFX + 1u &&
+           MI_SEQ == MI_ARP + 1u && MI_SENDS == MI_ARP + 2u && MI_PFX == MI_ARP + 3u && str_eq(MTAB_NAME[MTAB_MODULES], "MODULES"));
     turn(EN_K1, -1);
-    expect("K1 left: ARP OFF (the line says OFF), the header keeps MODULES, no message", mods_get() == MODS_ARP && mods_off == MODS_ARP &&
+    expect("ARP, a knob left: ARP OFF (the row says OFF), MODULES still open, no message", mods_get() == MODS_ARP && mods_off == MODS_ARP &&
            mods_run_get(0) == 0u && title_modules());
     turn(EN_K1, -1);
     expect("  .. left again: stays OFF", mods_get() == MODS_ARP && mods_run_get(0) == 0u);
     turn(EN_K1, 1);
-    expect("  .. right: FOLLOWS PATCH (the module on, keeps nothing), title MODULES", mods_get() == 0u && mods_off == 0u && mods_run_get(0) == 1u && mods_keep == 0u && title_modules());
+    expect("  .. right: FOLLOWS PATCH (the module on, keeps nothing), MODULES open", mods_get() == 0u && mods_off == 0u && mods_run_get(0) == 1u && mods_keep == 0u && title_modules());
     turn(EN_K1, 1);
-    expect("  .. right again: KEEPS RUNNING (mods_keep bit 0), the module still on, title MODULES", mods_get() == 0u && mods_run_get(0) == 2u && mods_keep == 1u && title_modules());
+    expect("  .. right again: KEEPS RUNNING (mods_keep bit 0), the module still on, MODULES open", mods_get() == 0u && mods_run_get(0) == 2u && mods_keep == 1u && title_modules());
     turn(EN_K1, 1);
     expect("  .. right once more: stays KEEPS RUNNING", mods_run_get(0) == 2u);
     turn(EN_K1, -1); turn(EN_K1, -1);
     expect("  .. back left twice: OFF again (OFF wins: mods_keep clear)", mods_get() == MODS_ARP && mods_off == MODS_ARP && mods_keep == 0u && title_modules());
-    turn(EN_K2, -1); turn(EN_K3, -1);
-    expect("K3 left: SENDS OFF, no message over the title", mods_get() == (MODS_ARP | MODS_SEQ | MODS_SENDS) && title_modules());
-    turn(EN_K4, -2);
-    expect("K4 left: PART FX OFF, no message over the title; the byte's bits 1..4 set, bit 0 (ANIM IDLE) untouched", mods_get() == MODS_ALL &&
+    row_turn(MI_SEQ, -1); row_turn(MI_SENDS, -1);
+    expect("SENDS, a knob left: SENDS OFF, no message over the title", mods_get() == (MODS_ARP | MODS_SEQ | MODS_SENDS) && title_modules());
+    row_turn(MI_PFX, -2);
+    expect("PART FX, a knob left: PART FX OFF, no message over the title; the byte's bits 1..4 set, bit 0 (ANIM IDLE) untouched", mods_get() == MODS_ALL &&
            title_modules() && (ui_idle & 0x1Fu) == 0x1Eu);
     frames(2200);
     expect("  .. saved about 2 s later (the settings record holds them)", stored_mods() == (int)MODS_ALL);
@@ -203,27 +203,24 @@ static void test_settings(void)
     project_load(0);
     frame();
     expect("a multi load (M01) never changes them", mods_get() == MODS_ALL);
-    show("MODULES");
+    mods_row(MI_SENDS);
     kturn(EN_K3, 1);
-    expect("K3 right: SENDS ON, no message over the title", !(mods_get() & MODS_SENDS) && title_modules());
+    expect("SENDS, a knob right (any of the four): SENDS ON, no message over the title", !(mods_get() & MODS_SENDS) && title_modules());
     frames(2200);
     boot();
     expect("power-on: ARP, SEQ, PART FX OFF, SENDS ON, as saved", mods_get() == (MODS_ARP | MODS_SEQ | MODS_PFX));
-    show("MODULES");
-    btn_down(B_OCTDN); frame();
-    turn(EN_K4, -3);
-    expect("OCT- + K4: PART FX to its default, ON (item 125: no \"RESET ..\" message over the title)", !(mods_get() & MODS_PFX) && title_modules());
+    row_turn(MI_PFX, 1);                                /* (DUELL 1.3: the MENU has no OCT- reset: OCT- goes back to the list; a knob sets the value) */
+    expect("PART FX, a knob right: ON again, no message over the title", !(mods_get() & MODS_PFX) && title_modules());
     mods_run_put(0, 2u);
     frame();
-    turn(EN_K1, -3);
-    expect("  .. OCT- + K1: ARP to its default, FOLLOWS PATCH (from KEEPS RUNNING), title MODULES", mods_run_get(0) == 1u && mods_keep == 0u && title_modules());
-    btn_up(B_OCTDN); frame(); frame();
-    expect("  .. no octave moved", song.octave == 0);
+    row_turn(MI_ARP, -1);
+    expect("  .. ARP from KEEPS RUNNING, a knob left: FOLLOWS PATCH, MODULES open", mods_run_get(0) == 1u && mods_keep == 0u && title_modules());
+    btn_down(B_OCTDN); frame(); btn_up(B_OCTDN); frame(); frame();
+    expect("  .. OCT-: back to the MENU's list, nothing changed, no octave moved", ui.menu == 6u && mods_run_get(0) == 1u && !(mods_get() & MODS_PFX) && song.octave == 0);
     ml_toggle();
     ui.msg_t = 0;
-    turn(EN_K2, 1);
-    expect("MIDI LEARN on: K2 still switches SEQ ON, but nothing is picked (\"SEQ: NO LEARN\")", !(mods_get() & MODS_SEQ) && !ui.ml.pick &&
-           msg_is("SEQ: NO LEARN"));
+    row_turn(MI_SEQ, 1);
+    expect("MIDI LEARN on: the SEQ row still switches SEQ ON, nothing is picked (a MENU row is never learned)", !(mods_get() & MODS_SEQ) && !ui.ml.pick);
     ml_off();
     ui.msg_t = 0;
     set(MODS_ALL, 1u);
@@ -742,8 +739,8 @@ static void test_ui(void)
     expect("  .. DUCK 1/2", off_module(cur_page()) == MODS_PFX);
     show("DUCK 2/2");
     expect("  .. DUCK 2/2", off_module(cur_page()) == MODS_PFX);
-    show("SIDECHAIN");
-    expect("  .. GLO > SIDECHAIN (the DUCK's SRC and NOTE), not a notice page, its cards not drawn", !off_module(cur_page()) && card_hid(0) && card_hid(1));
+    expect("  .. MENU > MIDI > SIDECHAIN (DUELL 1.3; was GLO > SIDECHAIN): its row and its four values not shown", !menu_shown(MI_SCHAIN) && !menu_shown(MI_SC1CH) &&
+           !menu_shown(MI_SC1NT) && !menu_shown(MI_SC2CH) && !menu_shown(MI_SC2NT) && menu_shown(MI_MLEARN));
     set(MODS_PFX, 0u);
     show("FX");
     expect("all ON: no notice page, every card drawn", !off_module(cur_page()) && !card_hid(0) && !card_hid(1));
@@ -796,7 +793,7 @@ static void test_ui(void)
     set(MODS_SENDS, 1u);
     perf_enter();
     ui.force = 1; frame();
-    expect("PERFORM with SENDS OFF: K2 SPACE not drawn ", card_hid(1) && !card_hid(0) && !card_hid(2));
+    expect("PERFORM with SENDS OFF: K3 SPACE not drawn (DUELL 1.3: K1 DEPTH, K2 MORPH, K3 SPACE, K4 KILL)", card_hid(2) && !card_hid(0) && !card_hid(1) && !card_hid(3));
     set(MODS_SENDS, 0u);
 }
 

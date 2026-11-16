@@ -344,6 +344,7 @@ static void sim_power_on(void)
     sim_us = next_half_us = 0;
 }
 static void sim_knob(uint32_t role, int32_t s) { host_enc[panel.enc[role]] += s * panel.dir[role]; }
+static void press_oct(uint32_t up);
 static uint32_t host_text_w(const char *s) { return (uint32_t)text_w(&AF_S, s); }
 static bench_res_t main_res[BENCH_NSCN];              /* (the whole run's rows: the model header is written from them) */
 
@@ -352,11 +353,9 @@ static void open_bench(void)
 {
     ui.menu = 1;
     ui.menu_sel = MI_GUIDE;
-    sim_knob(EN_K1, 1);                                    /* (a knob right on the BENCH row opens it) */
-    sim_frame();
+    press_oct(1);                                          /* (OCT+ on the BENCH row opens it; owner 2026-11-16: the knobs never open) */
 }
-static void press_oct(uint32_t up);
-static int open_row(int oct)                           /* from the menu's tabs, the BENCH row (the GUIDE's place) opened as the owner does: K1 right or OCT+ */
+static int open_row(int oct)                           /* from the menu's tabs, the BENCH row (the GUIDE's place) opened with OCT+ (oct 1), or K1 turned right, which opens nothing (oct 0) */
 {
     uint32_t i;
     ui.menu = 1;
@@ -373,7 +372,7 @@ static int open_row(int oct)                           /* from the menu's tabs, 
     }
     for (i = 0; i < 3u; i++)
         sim_frame();
-    return ui.menu == 5u && !ui.guide;
+    return oct ? ui.menu == 5u && !ui.guide : ui.menu == 1u && !ui.guide;
 }
 static void press_oct(uint32_t up)
 {
@@ -945,7 +944,7 @@ int main(int argc, char **argv)
         for (i = 0; i < 20u; i++)
             sim_frame();
         project_capture(&before);
-        bad += check("the BENCH row (the GUIDE's place) opened with K1 right: the BENCH screen, not the GUIDE", open_row(0));
+        bad += check("the BENCH row (the GUIDE's place), K1 right: nothing opens (the knobs never open)", open_row(0));
         press_oct(0);
         bad += check("..and with OCT+: the BENCH screen, not the GUIDE", open_row(1) && !bench.on);
         ui.menu = 0;

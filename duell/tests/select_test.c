@@ -66,6 +66,13 @@ static uint32_t home_round(uint8_t *r)
     return m;
 }
 static uint32_t where(void) { return ui.page; }
+static void row_turn(uint32_t row, int32_t n)          /* DUELL 1.3: a MENU row picked (the section open) and turned n detents, one a turn (a MENU row steps one value per pass) */
+{
+    ui.menu = 1;
+    ui.menu_sel = (uint8_t)row;
+    for (; n; n -= n > 0 ? 1 : -1)
+        turn(EN_K1, n > 0 ? 1 : -1);
+}
 static void enter(uint32_t i)
 {
     ui.menu = 0; ui.confirm = 0; ui.layer = 0;
@@ -170,7 +177,7 @@ static void sweep_buttons(void)
  * longer on it); SELECT right and HOME's taps go round it the same way, SELECT left backwards */
 static void sweep_home(void)
 {
-    static const char *const ORDER[3] = {"MORPH", "MORPH SET", "MODE"};   /* (0.2.25 layout round: the MIXER is GLO's first page) */
+    static const char *const ORDER[3] = {"MORPH", "MACROS 1/2", "MACROS 2/2"};   /* (2026-11-15: MORPH SET and MODE are SETTINGS rows now) */   /* (0.2.25 layout round: the MIXER is GLO's first page; DUELL 1.3: MACROS 1/2 and 2/2 after MORPH) */
     uint8_t r[8];
     uint32_t m, k, ok, c;
     ui_power_on();
@@ -180,29 +187,26 @@ static void sweep_home(void)
     ok = m == 3u;
     for (k = 0; ok && k < m; k++)
         ok &= str_eq(PAGES[r[k]].title, ORDER[k]);
-    expect("HOME's round: MORPH, MORPH SET, MODE (0.2.14: no OVERVIEW; 0.2.25: no MIXER)", ok);
-    {   /* item 155: MODE SPLIT in LAYER (item 158: on K3, the cards line up to the left): OFF, the first turn either way starts at the middle key F#4 (stored 67), then goes on; the bottom is OFF again */
-        uint8_t m0 = duell_mode_req, s0 = mix_split;
+    expect("HOME's round: MORPH, MACROS 1/2, MACROS 2/2 (0.2.14: no OVERVIEW; 0.2.25: no MIXER; 1.3: the MACROS; 2026-11-15: no MORPH SET, no MODE)", ok);
+    {   /* item 155: SPLIT in LAYER (2026-11-15: SETTINGS > PLAYING > SPLIT, was the MODE page's K3): OFF, the first turn either way starts at the middle key F#4 (stored 67), then goes on; the bottom is OFF again */
+        uint8_t s0 = mix_split;
         int ok2;
-        uint8_t p0 = ui.page;
-        enter(r[2]);
-        duell_mode_force(DM_LAYER); ui_mode_set = ui.mode_seen = DM_LAYER;
-        mix_split = 0;  turn(EN_K3, 1);
+#define SPL(d) menu_put(MI_SPLIT, menu_step(MI_SPLIT, (d)))
+        mix_split = 0;  SPL(1);
         ok2 = mix_split == 67u;
-        turn(EN_K3, 1);   ok2 &= mix_split == 68u;
-        turn(EN_K3, -2);  ok2 &= mix_split == 66u;
-        mix_split = 0;  turn(EN_K3, -1);
+        SPL(1);   ok2 &= mix_split == 68u;
+        SPL(-2);  ok2 &= mix_split == 66u;
+        mix_split = 0;  SPL(-1);
         ok2 &= mix_split == 67u;
-        mix_split = 0;  turn(EN_K3, 3);
+        mix_split = 0;  SPL(3);
         ok2 &= mix_split == 69u;
-        mix_split = 1;  turn(EN_K3, -1);
+        mix_split = 1;  SPL(-1);
         ok2 &= mix_split == 0u;
-        turn(EN_K3, 0);   ok2 &= mix_split == 0u;
-        expect("MODE K3 SPLIT (item 158): OFF + a turn either way = F#4 (middle of F3..G5), then +-1; C-1 - 1 = OFF; a stored split is read as it was", ok2);
-        mix_split = 128;  turn(EN_K3, 5);
+        expect("SETTINGS > PLAYING > SPLIT (item 158): OFF + a turn either way = F#4 (middle of F3..G5), then +-1; C-1 - 1 = OFF", ok2);
+        mix_split = 128;  SPL(5);
         expect("  .. SPLIT stays at G9 at the top", mix_split == 128u);
-        duell_mode_force(m0); ui_mode_set = ui.mode_seen = m0; mix_split = s0;
-        enter(p0);
+#undef SPL
+        mix_split = s0;
     }
     {   /* ENV's last two pages are the matrix pages again (MOD 1 / MOD 2): the same slots and graph as LFO's */
         uint32_t e = 0, l = 0, n = 0, i, j;
@@ -299,58 +303,64 @@ static void sweep_other(void)
     expect("NAME: SELECT does nothing (it stays, tempo untouched)", name_on() && song.g[G_BPM] == 117);
 }
 
-/* SPEC 1.1a, the MENU: SELECT is the one way round it, continuously across the tabs, clamped at both ends; ALGORITHM and
- * PRESETS do nothing there; KNOB 1 changes the selected row's value */
+/* SPEC 1.1a, the MENU: ALGORITHM and PRESETS do nothing there; KNOB 1 changes the selected row's value. DUELL 1.3 (owner 2026-11-13): the MENU opens on
+ * the list of its seven sections; there SELECT picks a section (clamped at both ends) and OCT+ opens it; in a section SELECT walks its rows, stopping
+ * at its first and last row (no wrap, a row without a place passed by), OCT- goes back to the list (MIDI's SIDECHAIN: back to its row) */
 static void sweep_menu(void)
 {
     uint32_t r, t, i, ok;
     static const uint8_t VR[] = {MI_ANIM, MI_HOLD, MI_ACCEL, MI_TUNE, MI_CLICK};
     ui_power_on();
     song.g[G_BPM] = 117;
-    ui.menu = 1; ui.menu_sel = 0; frames(48);
-    expect("menu: opened at the very first row", ui.menu_sel == 0u && menu_tab() == 0u);
-    {   /* DUELL 1.1: a retired row has no tab (MI_TAB 255: CPU METER) and SELECT passes it by; the visible rows in order are the walk */
+    ui.menu = 6; ui.menu_sel = 0; frames(48);
+    expect("menu: opened on the list at its first section, PLAYING", ui.menu == 6u && ui.menu_sel == 0u && menu_tab() == MTAB_PLAYING);   /* (2026-11-15: the new order) */
+    ok = MTAB_LIST == 7u && str_eq(MTAB_NAME[0], "PLAYING") && str_eq(MTAB_NAME[1], "RECORDING") && str_eq(MTAB_NAME[2], "MORPH") && str_eq(MTAB_NAME[3], "PERFORM") &&
+         str_eq(MTAB_NAME[4], "MODULES") && str_eq(MTAB_NAME[5], "MIDI") && str_eq(MTAB_NAME[6], "SYSTEM") && str_eq(MTAB_NAME[MTAB_SCHAIN], "SIDECHAIN");   /* (2026-11-15: the owner's order) */
+    for (t = 0; t + 1u < MTAB_LIST; t++) {                     /* the list: SELECT right, a section a detent */
+        turn(EN_SELECT, 1);
+        ok &= ui.menu == 6u && menu_tab() == t + 1u;
+    }
+    turn(EN_SELECT, 1); turn(EN_SELECT, 5);
+    ok &= ui.menu == 6u && menu_tab() == MTAB_LIST - 1u;
+    turn(EN_SELECT, -20);
+    ok &= ui.menu == 6u && menu_tab() == 0u;
+    expect("menu: the list holds PLAYING RECORDING MORPH PERFORM MODULES MIDI SYSTEM; SELECT walks it, clamped at both ends (SIDECHAIN is no section of the list)", ok);
+    for (t = 0; t < MTAB_LIST; t++) {                          /* each section: OCT+ opens it, SELECT walks every row with a place, clamped; OCT- back to the list */
         uint8_t vis[MI_COUNT];
         uint32_t nv = 0, k;
-        for (r = 0; r < MI_COUNT; r++)
-            if (MI_TAB[r] < MTAB_COUNT)
+        for (r = mtab_first(t); r < mtab_end(t); r++)
+            if (menu_shown(r))
                 vis[nv++] = (uint8_t)r;
-        for (ok = 1, k = 0; k + 1u < nv; k++) {            /* forward, a detent at a time, every visible row and every tab */
-            t = menu_tab();
+        ui.menu = 6; ui.menu_sel = (uint8_t)mtab_first(t); ui.menu_row[t] = 0; frames(4);
+        press(B_OCTUP);
+        ok = nv > 0u && ui.menu == 1u && menu_tab() == t && ui.menu_sel == vis[0];
+        for (k = 0; k + 1u < nv; k++) {
             turn(EN_SELECT, 1);
-            ok &= ui.menu_sel == vis[k + 1u] && ui.menu == 1u;
-            if (menu_tab() != t)                               /* the tab's end: on to the next tab's first row */
-                ok &= menu_tab() == t + 1u && ui.menu_sel == mtab_first(t + 1u) && vis[k] + 1u == mtab_first(t) + mtab_rows(t);
-            else                                               /* never back to the first row of the same tab */
-                ok &= ui.menu_sel != mtab_first(t);
+            ok &= ui.menu == 1u && ui.menu_sel == vis[k + 1u];
         }
-        expect("menu: SELECT right visits every row of every tab in order (a retired row without a tab passed by), on across the tab ends", ok && ui.menu_sel == MI_COUNT - 1u && menu_tab() == MTAB_COUNT - 1u);
-        turn(EN_SELECT, 1); turn(EN_SELECT, 5);
-        expect("menu: SELECT right at the last row stays there (no wrap)", ui.menu_sel == MI_COUNT - 1u && menu_tab() == MTAB_COUNT - 1u);
-        for (ok = 1, k = nv - 1u; k > 0; k--) {            /* and back */
-            t = menu_tab();
+        turn(EN_SELECT, 1); turn(EN_SELECT, 4);
+        ok &= ui.menu_sel == vis[nv - 1u] && menu_tab() == t;
+        for (k = nv - 1u; k > 0; k--) {
             turn(EN_SELECT, -1);
-            ok &= ui.menu_sel == vis[k - 1u] && ui.menu == 1u;
-            if (menu_tab() != t)
-                ok &= menu_tab() + 1u == t && vis[k] == mtab_first(t) && ui.menu_sel == mtab_first(t - 1u) + mtab_rows(t - 1u) - 1u;   /* the last row of the tab before */
-            else
-                ok &= ui.menu_sel != mtab_first(t) + mtab_rows(t) - 1u;
+            ok &= ui.menu == 1u && ui.menu_sel == vis[k - 1u];
         }
-        expect("menu: SELECT left visits every row backwards, on across the tab ends", ok && ui.menu_sel == 0u && menu_tab() == 0u);
+        turn(EN_SELECT, -1); turn(EN_SELECT, -6);
+        ok &= ui.menu_sel == vis[0] && menu_tab() == t;
+        press(B_OCTDN);
+        ok &= ui.menu == 6u && menu_tab() == t;
+        expect("menu: OCT+ opens a section at its first row; SELECT walks its rows in order (a row without a place passed by), stops at its last and first row; OCT- back to the list", ok);
     }
-    turn(EN_SELECT, -1); turn(EN_SELECT, -7);
-    expect("menu: SELECT left at the first row stays there (no jump to the last)", ui.menu_sel == 0u && menu_tab() == 0u);
+    ui.menu = 1; ui.menu_sel = MI_SCHAIN; frames(4);
+    press(B_OCTUP);
+    ok = ui.menu == 1u && menu_tab() == MTAB_SCHAIN && ui.menu_sel == MI_SC1CH;
+    press(B_OCTDN);
+    expect("menu: MIDI's SIDECHAIN row opens its four values (OCT+), OCT- goes back to the row", ok && ui.menu == 1u && ui.menu_sel == MI_SCHAIN);
+    ui.menu = 1; ui.menu_sel = (uint8_t)mtab_first(MTAB_RECORDING); frames(4);   /* (a section with five rows; 2026-11-15: CONTROL is gone) */
     turn(EN_SELECT, 3);
-    expect("menu: 3 detents in a frame move 3 rows", ui.menu_sel == 3u);
-    for (t = 0; t < MTAB_COUNT; t++) {                         /* a tab's last row, one more: the next tab, not this one's top */
-        ui.menu_sel = (uint8_t)(mtab_first(t) + mtab_rows(t) - 1u);
-        turn(EN_SELECT, 1);
-        expect("menu: after a tab's last row SELECT goes to the next tab's first row",
-               t + 1u == MTAB_COUNT ? ui.menu_sel == MI_COUNT - 1u : (ui.menu_sel == mtab_first(t + 1u) && menu_tab() == t + 1u));
-    }
+    expect("menu: 3 detents in a frame move 3 rows", ui.menu_sel == mtab_first(MTAB_RECORDING) + 3u);
     /* ALGORITHM and PRESETS: nothing in the menu, wherever the selection is */
     for (i = 0; i < 4u; i++) {
-        static const uint8_t AT[4] = {0, MI_HOLD, MI_TEST, MI_COUNT - 1u};
+        static const uint8_t AT[4] = {0, MI_HOLD, MI_TEST, MI_ERASE};
         uint32_t sel = AT[i], prefs = ui_prefs, sk = song.sel;
         ui.menu_sel = (uint8_t)sel; frames(4);
         turn(EN_ALGO, 1); turn(EN_ALGO, -1); turn(EN_ALGO, 3);
@@ -410,16 +420,13 @@ static void test_tempo(void)
     ui_power_on();
     for (i = 0; i < NPAGES; i++)
         ck = PAGES[i].fam == FAM_GLO && str_eq(PAGES[i].title, "TEMPO") ? i : ck;
-    expect("GLO's pages in order (0.2.25 layout round): MIXER (graph GR_GLO, scope SC_GMIX), TEMPO, CHORUS, DELAY 1/2, DELAY 2/2, REVERB, SHIMMER, STEREO MASTER (K1 BASS MONO, K2 WIDTH), COMPRESSOR (K1 RATIO, K2 THRESH, K3 ATTACK, K4 RELEASE), MODULES, SIDECHAIN, MIDI, MIDI LEARN; no TEST page (it is MENU > SYSTEM > TEST); TEMPO: KNOB 1 is G_CLOCK, KNOB 2 G_BPM, KNOB 3 TAP, KNOB 4 G_SWING",
+    expect("GLO's pages in order (0.2.25 layout round): MIXER (graph GR_GLO, scope SC_GMIX), TEMPO, CHORUS, DELAY 1/2, DELAY 2/2, REVERB, SHIMMER, STEREO MASTER (K1 BASS MONO, K2 WIDTH), COMPRESSOR (K1 RATIO, K2 THRESH, K3 ATTACK, K4 RELEASE), the last (1.3: MODULES, SIDECHAIN, MIDI, MIDI LEARN are MENU's); no TEST page (it is MENU > SYSTEM > TEST); TEMPO: KNOB 1 is G_CLOCK, KNOB 2 G_BPM, KNOB 3 TAP, KNOB 4 G_SWING",
            str_eq(PAGES[glo1].title, "MIXER") && PAGES[glo1].graph == GR_GLO && PAGES[glo1].scope == SC_GMIX &&
            str_eq(PAGES[glo1 + 1u].title, "TEMPO") && str_eq(PAGES[glo1 + 2u].title, "CHORUS") && str_eq(PAGES[glo1 + 3u].title, "DELAY 1/2") &&
            str_eq(PAGES[glo1 + 4u].title, "DELAY 2/2") && str_eq(PAGES[glo1 + 5u].title, "REVERB") && str_eq(PAGES[glo1 + 6u].title, "SHIMMER") &&
            str_eq(PAGES[glo1 + 7u].title, MASTER_PAGE_TITLE) && str_eq(MASTER_PAGE_TITLE, "STEREO MASTER") && PAGES[glo1 + 7u].scope == SC_GLOBAL && PAGES[glo1 + 7u].id[0] == G_BM && PAGES[glo1 + 7u].id[1] == G_WD && PAGES[glo1 + 7u].id[2] == 0xFFu &&
            str_eq(PAGES[glo1 + 8u].title, "COMPRESSOR") && PAGES[glo1 + 8u].scope == SC_GLOBAL && PAGES[glo1 + 8u].id[0] == G_CR && PAGES[glo1 + 8u].id[1] == G_CT &&
-           str_eq(PAGES[glo1 + 9u].title, "MODULES") && PAGES[glo1 + 9u].scope == SC_MODS && PAGES[glo1 + 9u].graph == GR_MODS &&
-           str_eq(PAGES[glo1 + 10u].title, "SIDECHAIN") && PAGES[glo1 + 10u].graph == GR_SCHAIN &&
-           str_eq(PAGES[glo1 + 11u].title, "MIDI") && PAGES[glo1 + 11u].graph == GR_MIDI &&
-           str_eq(PAGES[glo1 + 12u].title, "MIDI LEARN") && PAGES[glo1 + 13u].fam != FAM_GLO &&
+           PAGES[glo1 + 9u].fam != FAM_GLO &&           /* (DUELL 1.3: MODULES, SIDECHAIN, MIDI, MIDI LEARN are MENU's: COMPRESSOR is GLO's last page) */
            ck == glo1 + 1u && PAGES[ck].id[0] == G_CLOCK && PAGES[ck].id[1] == G_BPM && PAGES[ck].id[TEMPO_TAP_SLOT] == 0xFFu && TEMPO_TAP_SLOT == 2u &&
            PAGES[ck].id[3] == G_SWING &&
            PAGES[ck].scope == SC_GLOBAL && PAGES[ck].graph == GR_TEMPO);
@@ -613,7 +620,7 @@ static void test_glo_page(void)
     ui.page = (uint8_t)(glo1 + 1u); page_entered();
     {   /* the round: TEMPO, CHORUS, DELAY 1/2, DELAY 2/2, REVERB, (SHIMMER only with TYPE SHIM), MODULES, SIDECHAIN, MIDI, MIDI LEARN, MIXER. Item 158 (owner, nothing to adjust = no page): in DUEL, where
          * ui_power_on leaves the mode, STEREO MASTER and COMPRESSOR hide every card, so they are not in the round (STEREO / LAYER: ui_test.c test_item158_pages) */
-        static const char *const R[] = {"CHORUS", "DELAY 1/2", "DELAY 2/2", "REVERB", "MODULES", "SIDECHAIN", "MIDI", "MIDI LEARN", "MIXER", "TEMPO"};
+        static const char *const R[] = {"CHORUS", "DELAY 1/2", "DELAY 2/2", "REVERB", "MIXER", "TEMPO"};   /* (DUELL 1.3: MODULES, SIDECHAIN, MIDI, MIDI LEARN left GLO for the MENU) */
         uint32_t i, ok = 1, glob = 1;
         for (i = 0; i < sizeof R / sizeof R[0]; i++) {
             turn(EN_SELECT, 1);
@@ -622,7 +629,7 @@ static void test_glo_page(void)
             if (i < 4u)
                 glob &= (uint32_t)(cur_page()->scope == SC_GLOBAL && badge_lit() == 3u);
         }
-        expect("SELECT right x10: CHORUS, DELAY 1/2, DELAY 2/2, REVERB (SHIMMER skipped: TYPE is not SHIM; DUEL: STEREO MASTER and COMPRESSOR skipped, nothing to adjust), MODULES, SIDECHAIN, MIDI, MIDI LEARN, MIXER, round to TEMPO; the keys play notes", ok);
+        expect("SELECT right x6: CHORUS, DELAY 1/2, DELAY 2/2, REVERB (SHIMMER skipped: TYPE is not SHIM; DUEL: STEREO MASTER and COMPRESSOR skipped, nothing to adjust), MIXER, round to TEMPO; the keys play notes", ok);
         expect("  .. the global effect pages light both parts' badges", glob);
         enter(glo1 + 1u);
         song.g[G_RTYPE] = 3;
@@ -641,35 +648,36 @@ static void test_glo_page(void)
             turn(EN_SELECT, 1);
     }
     frames(48);
-    expect("  .. four more detents: MODULES (DUEL: STEREO MASTER and COMPRESSOR, every card hidden, are not in the round; item 158)", str_eq(cur_page()->title, "MODULES") && song.bm == BM_DEF && song.ms[0] == 100 && song.g[G_BPM] == 117);
-    expect("  .. MODULES (0.2.14): the keys play notes, all four ON", str_eq(cur_page()->title, "MODULES") && kb_lock == 0u && mods_get() == 0u);
-    turn(EN_SELECT, 1);
-    frames(48);
-    expect("  .. SELECT right: SIDECHAIN", str_eq(cur_page()->title, "SIDECHAIN"));
-    {
+    expect("  .. four more detents: MIXER, GLO's first page again (DUEL: STEREO MASTER and COMPRESSOR, every card hidden, are not in the round; item 158; 1.3: MODULES is MENU's)", str_eq(cur_page()->title, "MIXER") && song.bm == BM_DEF && song.ms[0] == 100 && song.g[G_BPM] == 117);
+    expect("  .. MIXER: the keys play notes; MODULES all four ON", kb_lock == 0u && mods_get() == 0u);
+    {   /* DUELL 1.3 (owner 2026-11-13): GLO > SIDECHAIN (0.2.22) is MENU > MIDI > SIDECHAIN, four rows (any knob sets the picked row, one step a turn) */
         int16_t src0 = TSEL->p[P_DKSRC], note0 = TSEL->p[P_CUT2];
         uint8_t b1[4];
-        expect("SIDECHAIN (0.2.22): the sidechain's MIDI setup, both badges (a device setting, not the selected part's)", badge_lit() == 3u && cur_page()->graph == GR_SCHAIN);
-        expect("  .. its defaults: P1 CH 10, P1 NOTE 36 (C2), P2 CH 10, P2 NOTE 36", sc_midi[0] == 9u && sc_midi[1] == 36u && sc_midi[2] == 9u && sc_midi[3] == 36u && card_is(0, "PART 1 CHANNEL|10|") && card_is(1, "PART 1 NOTE|C2|"));
-        expect("  .. all four cards while the part's DUCK SRC is OFF (0.2.24's default; the setup is editable whatever the SRC is)", TSEL->p[P_DKSRC] == 3 && card_is(2, "PART 2 CHANNEL|10|") && card_is(3, "PART 2 NOTE|C2|"));
-        turn(EN_K1, 3); turn(EN_K2, 2); turn(EN_K3, -2); turn(EN_K4, 5);
-        expect("  .. K1 P1 CH 13, K2 P1 NOTE up, K3 P2 CH 8, K4 P2 NOTE up (settings bytes, a save queued)", sc_midi[0] == 12u && sc_midi[1] > 36u && sc_midi[2] == 7u && sc_midi[3] > 36u && ui_sc_set[0] == 13u &&
+        expect("SIDECHAIN (0.2.22; 1.3: MENU > MIDI > SIDECHAIN): the sidechain's MIDI setup, four rows PART 1 CHANNEL, PART 1 NOTE, PART 2 CHANNEL, PART 2 NOTE (a device setting)",
+               mtab_first(MTAB_SCHAIN) == MI_SC1CH && mtab_end(MTAB_SCHAIN) == MI_SC2NT + 1u && str_eq(MI_NAME[MI_SC1CH], "PART 1 CHANNEL") && str_eq(MI_NAME[MI_SC1NT], "PART 1 NOTE") &&
+               str_eq(MI_NAME[MI_SC2CH], "PART 2 CHANNEL") && str_eq(MI_NAME[MI_SC2NT], "PART 2 NOTE") && MI_TAB[MI_SCHAIN] == MTAB_MIDI);
+        expect("  .. its defaults: P1 CH 10, P1 NOTE 36 (C2), P2 CH 10, P2 NOTE 36", sc_midi[0] == 9u && sc_midi[1] == 36u && sc_midi[2] == 9u && sc_midi[3] == 36u);
+        expect("  .. all four rows while the part's DUCK SRC is OFF (0.2.24's default; the setup is editable whatever the SRC is)", TSEL->p[P_DKSRC] == 3 && menu_shown(MI_SCHAIN) &&
+               menu_shown(MI_SC1CH) && menu_shown(MI_SC1NT) && menu_shown(MI_SC2CH) && menu_shown(MI_SC2NT));
+        row_turn(MI_SC1CH, 3); row_turn(MI_SC1NT, 2); row_turn(MI_SC2CH, -2); row_turn(MI_SC2NT, 5);
+        expect("  .. P1 CH 13, P1 NOTE up, P2 CH 8, P2 NOTE up (settings bytes, a save queued)", sc_midi[0] == 12u && sc_midi[1] > 36u && sc_midi[2] == 7u && sc_midi[3] > 36u && ui_sc_set[0] == 13u &&
                ui_sc_set[2] == 8u && ui_sc_set[1] == sc_midi[1] + 1u && ui_sc_set[3] == sc_midi[3] + 1u && ui.mset_dirty);
         expect("  .. no DUCK parameter of either part moved", TSEL->p[P_DKSRC] == src0 && TSEL->p[P_CUT2] == note0 && trk[0].p[P_DKSRC] == 3 && trk[1].p[P_DKSRC] == 3 && song.g[G_ROUTE] == 0 && song.g[G_BPM] == 117);
         memcpy(b1, ui_sc_set, 4);
-        turn(EN_K1, -40); turn(EN_K2, -300);
+        row_turn(MI_SC1CH, -20); row_turn(MI_SC1NT, -60);
         expect("  .. the channel stops at 1, the note at ANY", sc_midi[0] == 0u && sc_midi[1] == 0u && ui_sc_set[0] == 1u && ui_sc_set[1] == 1u);
-        turn(EN_K1, 40); turn(EN_K2, 300);
+        row_turn(MI_SC1CH, 20); row_turn(MI_SC1NT, 140);
         expect("  .. and at 16 and 127", sc_midi[0] == 15u && sc_midi[1] == 127u);
         song.sel = 1;
         frames(48);
-        expect("  .. the page shows the same four whichever part is selected", card_is(0, "PART 1 CHANNEL|16|") && card_is(1, "PART 1 NOTE|") && badge_lit() == 3u);
+        expect("  .. the rows read the same four whichever part is selected", menu_get(MI_SC1CH) == sc_get(0) && sc_midi[0] == 15u && sc_midi[1] == 127u);
         song.sel = 0;
         memcpy(ui_sc_set, b1, 4);
         mods_put(MODS_PFX, 1u);
         frames(48);
-        expect("  .. PART FX OFF: the ducker is skipped, no cards, the knobs do nothing", str_eq(ui.col[0], "\x7f") && str_eq(ui.col[3], "\x7f") && (turn(EN_K1, 1), ui_sc_set[0] == b1[0]));
+        expect("  .. PART FX OFF: the ducker is skipped, the SIDECHAIN row and its four values not shown", !menu_shown(MI_SCHAIN) && !menu_shown(MI_SC1CH) && !menu_shown(MI_SC2NT));
         mods_put(MODS_PFX, 0u);
+        ui.menu = 0;
         frames(48);
         sc_put(0, SC_CH_DEF); sc_put(1, SC_NOTE_DEF); sc_put(2, SC_CH_DEF); sc_put(3, SC_NOTE_DEF);
         {
@@ -692,60 +700,73 @@ static void test_glo_page(void)
             ok = card_is(0, "SOURCE|TEMPO PUMP|") && card_is(1, "RATE|") && card_is(2, "DEPTH|") && card_hidden(3);   /* (PUMP: SOURCE, RATE, DEPTH; no SETUP card, nothing on K4) */
             TSEL->p[P_DKSRC] = 2;
             frames(48);
-            ok &= card_is(2, "SETUP|GLO|") && card_is(1, "DEPTH|") && card_is(0, "SOURCE|MIDI NOTE|") && card_hidden(3);   /* (T0227: K2 RATE has no card, the rest move left; the source reads MIDI NOTE) */
+            ok &= card_is(2, "SETUP|SETTINGS|") && card_is(1, "DEPTH|") && card_is(0, "SOURCE|MIDI NOTE|") && card_hidden(3);   /* (T0227: K2 RATE has no card, the rest move left; the source reads MIDI NOTE) */
             {
                 int16_t sv = TSEL->p[P_DKSRC];
                 uint8_t c0 = sc_midi[0];
                 turn(EN_K3, 1);
                 frames(8);
                 fm1_ms += 400; frames(2);               /* (the jump swallows the rest of that knob's twist for KR_QUIET_MS) */
-                ok &= str_eq(cur_page()->title, "SIDECHAIN") && cur_page()->fam == FAM_GLO && TSEL->p[P_DKSRC] == sv && sc_midi[0] == c0;
+                ok &= ui.menu == 1u && menu_tab() == MTAB_SCHAIN && TSEL->p[P_DKSRC] == sv && sc_midi[0] == c0;   /* (DUELL 1.3: MENU > MIDI > SIDECHAIN) */
+                ui.menu = 0;
             }
             TSEL->p[P_DKSRC] = 0;
-            expect("  .. DUCK 1/2 (0.2.22; T0227: moved left): with SOURCE MIDI a SETUP / GLO card on K3, a twist jumps to GLO > SIDECHAIN (nothing edited); with PUMP / PART no such card", ok);
+            expect("  .. DUCK 1/2 (0.2.22; T0227: moved left): with SOURCE MIDI a SETUP / GLO card on K3, a twist jumps to MENU > MIDI > SIDECHAIN (nothing edited); with PUMP / PART no such card", ok);
         }
     }
-    turn(EN_SELECT, 1);
-    frames(48);
-    expect("  .. SELECT right: the MIDI page, the keys play notes", str_eq(cur_page()->title, "MIDI") && kb_lock == 0u && song.g[G_BPM] == 117);
-    turn(EN_K1, 4);
-    turn(EN_K2, 5);
-    expect("MIDI KNOB 1, 2: P1 CH 5, P2 CH 7 (MIDI IN untouched: OWN CH)", midi_pch[0] == 4u && midi_pch[1] == 6u && song.g[G_ROUTE] == 0);
-    turn(EN_K3, 1);
-    expect("  .. KNOB 3 right: MIDI IN SELECTED", song.g[G_ROUTE] == 1);
+    {
+        uint32_t pg = ui.page;
+        row_turn(MI_P1CH, 0);                            /* DUELL 1.3: GLO > MIDI is MENU > MIDI, rows PART 1 CHANNEL, PART 2 CHANNEL, MIDI IN */
+        frames(48);
+        expect("  .. MENU > MIDI open over the page, the keys play notes", ui.menu == 1u && menu_tab() == MTAB_MIDI && ui.page == pg && kb_lock == 0u && song.g[G_BPM] == 117);
+    }
+    row_turn(MI_P1CH, 4);
+    row_turn(MI_P2CH, 5);
+    expect("MIDI PART 1 CHANNEL, PART 2 CHANNEL: P1 CH 5, P2 CH 7 (MIDI IN untouched: OWN CH)", midi_pch[0] == 4u && midi_pch[1] == 6u && song.g[G_ROUTE] == 0);
+    row_turn(MI_MIDIIN, 1);
+    expect("  .. MIDI IN, a knob right: SELECTED", song.g[G_ROUTE] == 1);
     frames(48);
     {   /* GLO > MIDI (item 86, owner 2026-10-25): the three cards are always there and always adjustable, whatever MIDI IN says; K3 sets MIDI IN, a detent either way */
         uint8_t vis[4];
         expect("  .. SELECTED: the three cards stay (PART 1 CHANNEL, PART 2 CHANNEL, MIDI IN), none hidden or moved (item 86; was: the channel cards gone, MIDI IN on K1)",
-               cur_page()->graph == GR_MIDI && midi_cards(vis) == 3u && vis[0] == 0u && vis[1] == 1u && vis[2] == 2u);
+               ((void)vis, menu_shown(MI_P1CH) && menu_shown(MI_P2CH) && menu_shown(MI_MIDIIN))   /* (DUELL 1.3: GLO > MIDI is MENU > MIDI: its three rows always shown) */);
     }
     fm1_ms += 400;
-    turn(EN_K3, -1);
-    expect("  .. KNOB 3 left: MIDI IN PART CHANNEL again (item 86: a detent either way sets it)", song.g[G_ROUTE] == 0);
-    turn(EN_K1, -1);
-    expect("  .. KNOB 1 left: PART 1 CHANNEL one down, MIDI IN untouched", midi_pch[0] == 3u && song.g[G_ROUTE] == 0 && song.g[G_BPM] == 117);
+    row_turn(MI_MIDIIN, -1);
+    expect("  .. MIDI IN, a knob left: PART CHANNEL again (item 86: a detent either way sets it)", song.g[G_ROUTE] == 0);
+    row_turn(MI_P1CH, -1);
+    expect("  .. PART 1 CHANNEL, a knob left: one down, MIDI IN untouched", midi_pch[0] == 3u && song.g[G_ROUTE] == 0 && song.g[G_BPM] == 117);
     frames(48);
     song.g[G_CLOCK] = 0;
-    turn(EN_K4, 3);
-    expect("  .. KNOB 4: nothing (CLK is on TEMPO)", song.g[G_CLOCK] == 0 && midi_pch[0] == 3u && song.g[G_ROUTE] == 0 && song.g[G_BPM] == 117);
-    turn(EN_SELECT, 1);
+    expect("  .. the clock untouched (CLK is on TEMPO)", song.g[G_CLOCK] == 0 && midi_pch[0] == 3u && song.g[G_ROUTE] == 0 && song.g[G_BPM] == 117);
+    ui.menu_sel = MI_MLEARN;
+    frames(4);
+    press(B_OCTUP);
     frames(48);
-    expect("  .. SELECT right: MIDI LEARN", str_eq(cur_page()->title, "MIDI LEARN"));
+    expect("  .. MIDI LEARN's row, OCT+: its screen (1.3: MENU > MIDI > MIDI LEARN, was GLO's page)", ui.menu == 4u && ui.menu_sel == MI_MLEARN);
+    /* (owner 2026-11-15: as TOOLS, a knob picks a card, OCT+ does it; CLEAR ALL asks; OCT- drops the pick, else back) */
     turn(EN_K1, 1);
-    expect("MIDI LEARN KNOB 1 right: ON", ui.ml.on == 1u);
-    turn(EN_K1, 1);
-    expect("  .. right again: stays ON", ui.ml.on == 1u);
-    turn(EN_K1, -1);
-    expect("  .. left: OFF", ui.ml.on == 0u);
+    expect("MIDI LEARN KNOB 1: LEARN picked, nothing started yet", ml_act == 1u && !ui.ml.on);
+    press(B_OCTUP);
+    expect("  .. OCT+: learning ON", ui.ml.on == 1u);
+    press(B_OCTUP);
+    expect("  .. OCT+ again (the card says DONE): learning OFF", ui.ml.on == 0u && ui.menu == 4u);
     ml_learn(26, 0, P_LEVEL);                            /* one CC learned (a line of the MIDI MAP) */
     expect("  .. a CC is learned", ml_count() == 1u);
-    turn(EN_K2, -1);
-    expect("  .. KNOB 2 left: nothing", ml_count() == 1u);
     turn(EN_K2, 1);
-    expect("  .. KNOB 2 right: CLEAR, every learned CC gone", ml_count() == 0u && msg_is("LEARN CLEARED"));
-    turn(EN_SELECT, 1);
+    expect("  .. KNOB 2: CLEAR ALL picked, nothing cleared", ml_act == 2u && ml_count() == 1u);
+    press(B_OCTUP);
+    expect("  .. OCT+: the CLEAR ALL dialog, nothing cleared yet", ui.confirm == CF_ML_CLEAR && ml_count() == 1u);
+    press(B_OCTDN);
+    expect("  .. OCT- in the dialog: NO, nothing cleared", !ui.confirm && ml_count() == 1u && msg_is("NOTHING CLEARED"));
+    turn(EN_K2, 1); press(B_OCTUP); press(B_OCTUP);
+    expect("  .. KNOB 2, OCT+, OCT+ (YES): every learned CC gone", !ui.confirm && ml_count() == 0u && msg_is("LEARN CLEARED"));
+    turn(EN_K1, 1);
+    press(B_OCTDN);
+    expect("  .. OCT- with a card picked: the pick dropped, the screen stays", ml_act == 0u && ui.menu == 4u);
+    press(B_OCTDN);
     frames(48);
-    expect("  .. SELECT right: round to the first GLO page, TEMPO; the keys still play notes", ui.page == glo1 && kb_lock == 0u && song.g[G_BPM] == 117);
+    expect("  .. OCT-: back to SETTINGS > MIDI at MIDI LEARN's row; the keys still play notes", ui.menu == 1u && ui.menu_sel == MI_MLEARN && kb_lock == 0u && song.g[G_BPM] == 117);
     ui.menu = 1;
     frames(48);
     expect("  .. the menu over it: the keys play", kb_lock == 0u);
@@ -761,7 +782,9 @@ static void sweep_readonly(void)
     ui.menu = 1; ui.menu_sel = MI_TEST; frames(8);
     expect("the item is called TEST", str_eq(MI_NAME[MI_TEST], "TEST") && MI_TAB[MI_TEST] == MTAB_SYSTEM);
     turn(EN_K1, 1);
-    expect("TEST: KNOB 1 right opens it", ui.menu == 3u);
+    expect("TEST: KNOB 1 right does not open it (owner 2026-11-16: the knobs never open)", ui.menu == 1u);
+    press(B_OCTUP);
+    expect("TEST: OCT+ opens it", ui.menu == 3u);
     turn(EN_K1, 2);
     expect("  .. KNOB 1 right again: stays (it is MORPH there)", ui.menu == 3u);
     turn(EN_K1, -1);
@@ -774,7 +797,9 @@ static void sweep_readonly(void)
     expect("  .. OCT- closes it", ui.menu == 1u);
     ui.menu_sel = MI_ABOUT; frames(4);
     turn(EN_K1, 1);
-    expect("ABOUT: KNOB 1 right opens it", ui.menu == 2u && ui.menu_scroll == 0u);
+    expect("ABOUT: KNOB 1 right does not open it (the knobs never open)", ui.menu == 1u);
+    press(B_OCTUP);
+    expect("ABOUT: OCT+ opens it", ui.menu == 2u && ui.menu_scroll == 0u);
     {   /* 0.2.9 (the owner): KNOB 1 scrolls down and up, SELECT right / left the next / previous section, PRESETS and KNOB 2..4 nothing */
         uint32_t s1, s2, s3, s4, max = (uint32_t)menu_scroll_max(), ok = 1;
         turn(EN_K1, 2);
@@ -817,21 +842,23 @@ static void sweep_readonly(void)
  * 0.2.14: MORPH, MODE, MIXER (OVERVIEW is gone with its page; a stored 3, OVERVIEW up to 0.2.13, reads as MORPH) */
 static void sweep_homepg(void)
 {
-    static const char *const T[3] = {"MORPH", "MODE", "MIXER"};
+    static const char *const T[4] = {"MORPH", "MACROS 1/2", "MACROS 2/2", "PERFORM"};   /* (DUELL 1.3: PERFORM, opened over MORPH; 2026-11-15: the MACROS pages, no MODE) */
     uint32_t v, ok;
-    expect("HOME OPENS: two values, MORPH MODE (0.2.25 layout round: the MIXER is GLO's)", HP_COUNT == 2 && menu_n(MI_HOMEPG) == 2u && str_eq(menu_vname(MI_HOMEPG, 1), "MODE"));
+    expect("HOME OPENS: four values, MORPH, MACROS 1/2, MACROS 2/2, PERFORM (2026-11-15: the MACROS pages; MODE left HOME)", HP_COUNT == 4 && menu_n(MI_HOMEPG) == 4u &&
+           str_eq(menu_vname(MI_HOMEPG, 1), "MACROS 1/2") && str_eq(menu_vname(MI_HOMEPG, 2), "MACROS 2/2") && str_eq(menu_vname(MI_HOMEPG, 3), "PERFORM"));
     for (v = 0; v < HP_COUNT; v++) {
         ui_power_on();
         menu_put(MI_HOMEPG, v);
         go_main(); frames(32);
-        ok = str_eq(cur_page()->title, T[v]);
+        ok = str_eq(cur_page()->title, T[v]) && ui.perf == (v == HP_PERF);
         go_title("AMP ENV"); frames(16);
         press(B_HOME); frames(32);
-        ok &= str_eq(cur_page()->title, T[v]);
+        ok &= str_eq(cur_page()->title, T[v]) && ui.perf == (v == HP_PERF);
         hold(B_HOME); frames(16);                         /* the menu, then HOME closes it: the same page */
         press(B_HOME); frames(32);
-        ok &= !ui.menu && str_eq(cur_page()->title, T[v]);
+        ok &= !ui.menu && str_eq(cur_page()->title, T[v]) && ui.perf == (v == HP_PERF);
         expect(T[v], ok);
+        ui.perf = 0;
     }
     ui_power_on();
     ui_home_pg = 3;                                       /* OVERVIEW stored by 0.2.13: MORPH, never the old page */
@@ -1034,7 +1061,9 @@ static void sweep_rec_hold(void)
         ui.perf = 1;
         trk[0].p[P_LEVEL] = 112, trk[1].p[P_LEVEL] = 112;
         turn(EN_SELECT, 3);
-        expect("PERFORM: SELECT turns BALANCE (3 right: LEVEL 1 -1.5 dB, LEVEL 2 stays 0 dB: capped), the page stays", trk[0].p[P_LEVEL] == 109 && trk[1].p[P_LEVEL] == 112 && ui.page == pg && ui.perf);
+        /* 1.3 (2026-11-13): the numbers were the old half-a-dB-a-step balance. BALANCE is a position (item 160): 3 detents of 32 toward part 2 scale part 1's
+         * gain to 29/32 of 0 dB = 3712 Q12, whose nearest level index is 110 (-1.0 dB). Part 2 is already at 0 dB and cannot be raised */
+        expect("PERFORM: SELECT turns BALANCE (3 right: LEVEL 1 -1.0 dB, LEVEL 2 stays 0 dB: capped), the page stays", trk[0].p[P_LEVEL] == 110 && trk[1].p[P_LEVEL] == 112 && ui.page == pg && ui.perf);
         ui.perf = 0;
         trk[0].p[P_LEVEL] = l0, trk[1].p[P_LEVEL] = l1;
     }
@@ -1046,7 +1075,7 @@ static void sweep_rec_hold(void)
             mute += PAGES[p].fam == FAM_EDIT && (PAGES[p].id[0] == P_MUTE || PAGES[p].id[1] == P_MUTE || PAGES[p].id[2] == P_MUTE || PAGES[p].id[3] == P_MUTE);
             if (str_eq(PAGES[p].title, "VOICE 2/2")) {
                 go_title("VOICE 2/2");
-                ok = PAGES[p].id[3] == P_TRIM && lock_page_ok(p) && ui.plk_src == p + 1u && lock_id(2) == 0xFFu && lock_id(3) == P_TRIM;   /* (DUELL 1.1 ui.c lock_id: a step lock only for what the matrix offers: PATCH LEVEL is MD_LEVEL, SPREAD is no destination) */
+                ok = PAGES[p].id[3] == P_TRIM && mod_lock_ok(TSEL, P_TRIM);   /* (the matrix offers PATCH LEVEL: step-lockable. DUELL 1.0 B.8: the page-remembering hold-a-step gesture, lock_page_ok / ui.plk_src, is gone; lock_id is HOME's knobs now) */
             }
         }
         for (p = 0; p < NPAGES; p++)
@@ -1333,7 +1362,7 @@ static void sweep_algo(void)
 {
     uint32_t i, ok = 1, ok2 = 1, mp = NPAGES;
     for (i = 0; i < NPAGES; i++) {
-        if (!page_visible(i) || PAGES[i].graph == GR_PERF)
+        if (!page_visible(i) || PAGES[i].graph == GR_PERF || PAGES[i].scope == SC_MACRO)   /* (DUELL 1.3: the MACROS pages act on ALGORITHM's part(s), BOTH too, as PERFORM: ui_draw.c badge) */
             continue;
         if (PAGES[i].graph == GR_MORPH) {
             mp = i;
@@ -1491,139 +1520,29 @@ static void test_page_order(void)
 /* DUELL 0.2.22: FX's pages are the part's own; its second page, SEND FX, shows the SELECTED part's three send levels (K1 CHORUS, K2 DELAY, K3 REVERB: the FX page's P_CHOR, P_DLY, P_REV) with the effect beside them
  * (the delay's mode and time, the reverb's type and size); a twist of K1 / K2 / K3 only jumps to GLO's CHORUS / DELAY 1/2 / REVERB. Part-scoped: only the selected part's badge */
 #define SETMODE(m) do { duell_mode_force(m); ui_mode_set = ui.mode_seen = (m); } while (0)
-static void test_fxsum(void)
+static void test_fxsum(void)                           /* (owner 2026-11-15: the SEND FX page is removed; the FX page says where the global effects are edited) */
 {
-    static const char *const R[] = {"FX", "SEND FX", "INSERT 1/2", "INSERT 2/2", "EQ 1/2", "EQ 2/2", "DUCK 1/2", "DUCK 2/2"};
-    uint32_t i, n = 0, ok = 1, fx1 = page_first(FAM_FX), glob = 0, last = 0;
-    int16_t g[G_COUNT], bpm0, p0[P_COUNT], p1[P_COUNT];
-    char k0[40], k1[40], k2[40];
+    static const char *const R[] = {"FX", "INSERT 1/2", "INSERT 2/2", "EQ 1/2", "EQ 2/2", "DUCK 1/2", "DUCK 2/2"};
+    uint32_t i, n = 0, ok = 1, fx1 = page_first(FAM_FX), glob = 0, sum = 0;
+    int16_t bpm0;
     for (i = 0; i < NPAGES; i++) {
-        if (PAGES[i].fam == FAM_FX && n < 8u)
+        if (PAGES[i].fam == FAM_FX && n < 7u)
             ok &= (uint32_t)str_eq(PAGES[i].title, R[n]);
         n += PAGES[i].fam == FAM_FX;
         glob += PAGES[i].fam == FAM_FX && PAGES[i].scope == SC_GLOBAL;
+        sum += PAGES[i].scope == SC_FXSUM;
     }
-    expect("FX's pages: FX, SEND FX, INSERT 1/2, 2/2, EQ 1/2, 2/2, DUCK 1/2, 2/2 (8 in all, none of the global effects' own)", n == 8u && ok && glob == 0u && PAGES[fx1 + 1u].scope == SC_FXSUM);
+    expect("FX's pages: FX, INSERT 1/2, 2/2, EQ 1/2, 2/2, DUCK 1/2, 2/2 (7 in all, no SEND FX, none of the global effects' own)", n == 7u && ok && glob == 0u && sum == 0u);
     ui_power_on();
     SETMODE(DM_STEREO);
     bpm0 = song.g[G_BPM];
-    song.g[G_DMODE] = DMD_RAND; song.g[G_DTIME] = 1; song.g[G_RTYPE] = 5; song.g[G_RSIZE] = 90;
-    song.sel = 0;
-    trk[0].p[P_CHOR] = 20; trk[0].p[P_DLY] = 40; trk[0].p[P_REV] = 60;
-    trk[1].p[P_CHOR] = 21; trk[1].p[P_DLY] = 41; trk[1].p[P_REV] = 61;
-    enter(fx1 + 1u);
-    frames(48);
-#define FXS_STATE 30, 62                                /* ui_graph.c graph_fxsum: the state line, the DELAY row, the REVERB row and the knob labels (rows of the body, screen y) */
-#define FXS_DELAY 76, 100
-#define FXS_REVERB 108, 132
-#define FXS_LABELS 190, 214
-    /* DUELL 1.1 item 117 (TEMPLATE 5, FINAL_V1_04): SEND FX has no cards: the state line top left, DELAY (mode, TIME) and REVERB (type, SIZE) rows, a grey note, the three knob labels CHORUS DELAY REVERB under them; read from the texts drawn */
-    expect("SEND FX (STEREO, part 1; TEMPLATE 5): the state ALL THREE ACTIVE, DELAY RANDOM TIME 1/8, REVERB PLATE SIZE 71%, the knob labels CHORUS DELAY REVERB, the note that a twist jumps",
-           rows_has(FXS_STATE, "ALL THREE ACTIVE") && rows_has(FXS_DELAY, "DELAY") && rows_has(FXS_DELAY, "RANDOM") && rows_has(FXS_DELAY, "TIME") && rows_has(FXS_DELAY, "1/8") &&
-           rows_has(FXS_REVERB, "REVERB") && rows_has(FXS_REVERB, "PLATE") && rows_has(FXS_REVERB, "SIZE") && rows_has(FXS_REVERB, "71") &&
-           rows_has(FXS_LABELS, "CHORUS") && rows_has(FXS_LABELS, "DELAY") && rows_has(FXS_LABELS, "REVERB") && rows_has(140, 190, "TURN A KNOB: JUMP TO GLOBAL"));
-    k0[0] = 0;
-    expect("  .. only the selected part's badge", badge_lit() == 1u);
-    song.sel = 1;
-    frames(48);
-    expect("  .. part 2 selected: its badge alone (the page shows no levels)", badge_lit() == 2u);
-    song.sel = 0;
-    frames(48);
-    {
-        uint32_t s0 = rows_sig(FXS_STATE), s1 = rows_sig(FXS_DELAY), s2 = rows_sig(FXS_REVERB);
-        trk[0].p[P_DLY] = 0;
-        frames(48);
-        expect("  .. part 1's delay send 0: the state line says DELAY INACTIVE (the DELAY row stays, drawn dim); the DELAY and REVERB rows keep their words",
-               rows_sig(FXS_STATE) != s0 && rows_has(FXS_STATE, "DELAY INACTIVE") && rows_sig(FXS_DELAY) == s1 && rows_sig(FXS_REVERB) == s2);
-        trk[0].p[P_DLY] = 40;
-        frames(48);
-        s0 = rows_sig(FXS_STATE);
-        song.g[G_DMODE] = DMD_DIGITAL; song.g[G_DTIME] = 0; song.g[G_RTYPE] = 2; song.g[G_RSIZE] = 90;
-        frames(48);
-        s1 = rows_sig(FXS_DELAY); s2 = rows_sig(FXS_REVERB);
-        song.g[G_DTIME] = 1; song.g[G_RSIZE] = 100;
-        frames(48);
-        expect("  .. the delay time and the reverb size change their rows: the DELAY and REVERB rows are redrawn, the state line is not changed",
-               rows_sig(FXS_DELAY) != s1 && rows_sig(FXS_REVERB) != s2 && rows_sig(FXS_STATE) == s0);
-        song.g[G_DMODE] = DMD_RAND; song.g[G_RTYPE] = 5; song.g[G_DTIME] = 1; song.g[G_RSIZE] = 90;
-        frames(48);
-        s1 = rows_sig(FXS_DELAY);
-        song.g[G_DTIME] = 2;
-        frames(48);
-        expect("  .. the time is on the DELAY row in RAND too: the row changes with it", rows_sig(FXS_DELAY) != s1);
-        song.g[G_DTIME] = 1;
-        frames(48);
-        s0 = rows_sig(FXS_STATE); s1 = rows_sig(FXS_DELAY); s2 = rows_sig(FXS_REVERB);
-        trk[0].p[P_CHOR] = 22;
-        frames(48);
-        expect("  .. a send level changed on the FX page does not show here (no levels on this page)", rows_sig(FXS_STATE) == s0 && rows_sig(FXS_DELAY) == s1 && rows_sig(FXS_REVERB) == s2);
-        trk[0].p[P_CHOR] = 0;
-        frames(48);
-        expect("  .. a chorus send of 0: the state line says CHORUS INACTIVE", rows_sig(FXS_STATE) != s0 && rows_has(FXS_STATE, "CHORUS INACTIVE"));
-        trk[0].p[P_CHOR] = 20;
-        s1 = rows_sig(FXS_DELAY); s2 = rows_sig(FXS_REVERB);
-        song.g[G_DMODE] = DMD_DIGITAL; song.g[G_RTYPE] = 1;
-        frames(48);
-        expect("  .. the rows follow the mode and the type", rows_sig(FXS_DELAY) != s1 && rows_sig(FXS_REVERB) != s2);
-        s1 = rows_sig(FXS_DELAY);
-        SETMODE(DM_SPLIT);
-        song.g[G_DMODE] = DMD_RAND;
-        frames(48);
-        expect("  .. DUEL (0.2.22: every mode works there, mono): the DELAY row carries the mode (RANDOM); the part's sends are real (no INACTIVE)", rows_sig(FXS_DELAY) != s1 && rows_has(FXS_DELAY, "RANDOM") && rows_has(FXS_STATE, "ALL THREE ACTIVE"));
-        s1 = rows_sig(FXS_DELAY);
-        song.g[G_DMODE] = DMD_PING;
-        frames(48);
-        expect("  .. DUEL, PING (the plain delay in mono): the row says PING-PONG, not RANDOM", rows_sig(FXS_DELAY) != s1 && !rows_has(FXS_DELAY, "RANDOM"));
-    }
-    SETMODE(DM_STEREO);
-    song.g[G_DMODE] = DMD_RAND; song.g[G_RTYPE] = 2;
-    frames(48);
-    memcpy(g, song.g, sizeof g);
-    memcpy(p0, trk[0].p, sizeof p0); memcpy(p1, trk[1].p, sizeof p1);
-    turn(EN_K4, -3);
-    expect("  .. K4: nothing (no page change, no value changes)", ui.page == fx1 + 1u && !memcmp(g, song.g, sizeof g));
-    for (i = 0; i < 6u; i++) {
-        static const int8_t KN[6] = {1, -1, 1, -1, 1, -1};
-        static const char *const T[3] = {"CHORUS", "DELAY 1/2", "REVERB"};
-        uint32_t k = i / 2u;
-        char msg[96];
-        enter(fx1 + 1u);
-        frames(48);
-        turn(EN_K1 + k, KN[i]);
-        frames(8);
-        snprintf(msg, sizeof msg, "K%u %s: the %s page of GLO, an explicit jump; no value changed", k + 1u, KN[i] > 0 ? "right" : "left", T[k]);
-        expect(msg, str_eq(cur_page()->title, T[k]) && cur_page()->fam == FAM_GLO && !memcmp(g, song.g, sizeof g) && !memcmp(p0, trk[0].p, sizeof p0) && !memcmp(p1, trk[1].p, sizeof p1));
-        if (!(i & 1u)) {
-            turn(EN_K1 + k, 1); turn(EN_K1 + k, 1);
-            expect("  .. the rest of that twist does not move the new page's first card", !memcmp(g, song.g, sizeof g) && !memcmp(p0, trk[0].p, sizeof p0));
-        }
-        if (i == 2u)
-            expect("  .. GLO remembers it (a tap of FX then GLO comes back to it)", ui.fam_last[FAM_GLO] == ui.page);
-        frames(600);
-        last = ui.page;
-    }
-    (void)last;
-    press(B_FX);
-    frames(48);
-    expect("  .. a tap of FX: back to the FX family's last page", cur_page()->fam == FAM_FX);
-    /* SENDS OFF (item 125): the page is the SENDS notice, a knob jumps to MODULES */
-    enter(fx1 + 1u);
-    mods_put(MODS_SENDS, 1u);
-    frames(48);
-    expect("SENDS OFF (item 125): SEND FX is a SENDS notice page, no rows (the notice itself and the jump are ui_render.c off_check's)", off_module(cur_page()) == MODS_SENDS && !rows_has(FXS_DELAY, "RANDOM") && !rows_has(FXS_LABELS, "CHORUS"));
-    turn(EN_K2, 1);
-    frames(8);
-    expect("  .. a twist of K2 jumps to GLO > MODULES (item 125: was DELAY 1/2)", str_eq(cur_page()->title, "MODULES"));
-    mods_put(MODS_SENDS, 0u);
-    /* the GLO family's pages keep both badges */
-    enter(page_first(FAM_GLO) + 1u);
+    enter(page_first(FAM_GLO) + 1u);                   /* the GLO family's pages keep both badges */
     frames(8);
     expect("GLO's CHORUS page: both badges (global scope)", badge_lit() == 3u);
-    /* SELECT: round the FX family and onwards to the first page */
-    enter(fx1 + 1u);
+    enter(fx1);                                        /* SELECT: round the FX family */
     turn(EN_SELECT, 1);
     frames(48);
-    expect("SELECT right from SEND FX: on to INSERT 1/2", ui.page == fx1 + 2u && song.g[G_BPM] == bpm0);
+    expect("SELECT right from FX: on to INSERT 1/2", ui.page == fx1 + 1u && song.g[G_BPM] == bpm0);
 }
 
 /* T0227 (owner): CONTROLS MOVE LEFT. A page with a hidden card in the middle: the cards that show take K1, K2, .. in the page's order, the columns after

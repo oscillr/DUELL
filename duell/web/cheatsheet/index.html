@@ -39,7 +39,11 @@ li::marker{color:var(--pink)}
 .dg .keys{border-style:dashed}
 footer{margin-top:10px;font-size:12px;color:var(--mute)}
 @media (max-width:560px){.row{grid-template-columns:1fr;gap:2px}section{padding:4px 12px 10px}}
+header .logo{display:block;width:300px;max-width:100%;height:auto}
+header .desc{display:block;width:210px;max-width:100%;height:auto;margin:22px 0 6px}
 @media print{
+ header .logo,header .desc{filter:invert(1)}
+ header .logo{width:200px} header .desc{width:150px;margin:10px 0 4px}
  @page{size:A4;margin:8mm}
  :root{--bg:#fff;--panel:#fff;--fg:#000;--mute:#333;--line:#bbb;--acc:#b0206a;--pink:#d6247f;--vio:#6a2c9a;--vio2:#6a2c9a;--chip:#fff;--chipfg:#000}
  body{font-size:9pt;line-height:1.15;background:#fff;color:#000}
@@ -64,11 +68,11 @@ footer{margin-top:10px;font-size:12px;color:var(--mute)}
 <body>
 <main>
 <header>
- <h1>DUELL</h1>
- <p class="tag"><i>Multi</i><b>Morphing</b> Bitimbral Synthesizer</p>
+ <h1><img class="logo" src="../editor/img/duell-logo-white.png" alt="DUELL"></h1>
+ <p class="tag"><img class="desc" src="../editor/img/multimorphing-bitimbral-white.png" alt="MultiMorphing Bitimbral Synthesizer"></p>
  <p class="by">by OSCILL/R</p>
  <p class="sub">cheat sheet for the M-VAVE FM-1</p>
- <p class="stamp">checked against DUELL 1.2 &middot; community-style quick reference; full details in SPEC.md and docs/QUICKSTART.md</p>
+ <p class="stamp">checked against DUELL 1.3 &middot; community-style quick reference; full details in SPEC.md and docs/QUICKSTART.md</p>
  <p class="bar"><button type="button" onclick="window.print()">Print</button></p>
 </header>
 
@@ -79,8 +83,7 @@ footer{margin-top:10px;font-size:12px;color:var(--mute)}
 <svg viewBox="0 0 440 150" width="100%" role="img" aria-label="The part marker at the top of a page: part number, morph end letter, voices" style="display:block;max-width:440px;color:var(--fg);font:12px/1.2 sans-serif">
 <g fill="none" stroke="var(--mute)" stroke-width="1"><path d="M160 46V70H205"/><path d="M100 46V96H205"/><path d="M40 46V122H205"/></g>
 <rect x="10" y="10" width="180" height="36" rx="18" fill="var(--pink)"/>
-<rect x="70" y="11" width="119" height="34" rx="17" fill="var(--chip)" stroke="var(--pink)"/>
-<rect x="70" y="11" width="10" height="34" fill="var(--chip)"/>
+<path d="M70 11H172A17 17 0 0 1 172 45H70Z" fill="var(--chip)"/>
 <g text-anchor="middle" font-size="18" font-weight="700"><text x="40" y="35" fill="#fff">1</text><text x="100" y="35" fill="currentColor">A</text><text x="160" y="35" fill="currentColor">8</text></g>
 <g fill="currentColor"><text x="212" y="50">In POLY: the notes this part can still play.</text><text x="212" y="66">It drops while the other part plays.</text><text x="212" y="82">M, L, U in MONO, LEGATO, UNISON.</text>
 <text x="212" y="100">The letter shows which morph end you edit, A or B.</text>
@@ -90,14 +93,15 @@ footer{margin-top:10px;font-size:12px;color:var(--mute)}
 
 <section>
 <h2>Getting around</h2>
-<div class="row"><div class="g">Turn <b>SELECT</b></div><div class="e">Switches between the pages of a module; in lists and the menu it moves the row.</div></div>
+<div class="row"><div class="g">Turn <b>SELECT</b></div><div class="e">Switches between the pages of a module; in lists and SETTINGS it moves the row.</div></div>
 <div class="row"><div class="g">Tap <b>FX</b> / <b>SEL</b> / <b>ENV</b> / <b>LFO</b> / <b>EDIT</b> / <b>GLO</b> / <b>ARP</b> / <b>SEQ</b></div><div class="e">Switches between the modules.</div></div>
-<div class="row"><div class="g">Tap <b>HOME</b></div><div class="e">MORPH page; turn <b>SELECT</b> for MORPH SET and MODE.</div></div>
-<div class="row"><div class="g">Hold <b>HOME</b></div><div class="e">Opens the menu. <b>HOME</b> closes it.</div></div>
+<div class="row"><div class="g">Tap <b>HOME</b></div><div class="e">MORPH page; turn <b>SELECT</b> for MACROS 1/2 and 2/2.</div></div>
+<div class="row"><div class="g">Hold <b>HOME</b></div><div class="e">Opens SETTINGS: <b>SELECT</b> moves, <b>OCT+</b> opens, <b>OCT-</b> goes back, <b>HOME</b> closes.</div></div>
 <div class="row"><div class="g">Press <b>ALGORITHM</b></div><div class="e">Selects the part you edit. On the MORPH page and on PERFORM: PART 1, BOTH, PART 2.</div></div>
 <div class="row"><div class="g">Hold <b>EDIT</b> / <b>LFO</b> / <b>ENV</b> / <b>ARP</b> / <b>GLO</b> / <b>SEQ</b> / <b>REC</b></div><div class="e">Quick page: the four knobs become performance controls. Let go to go back.</div></div>
-<div class="row"><div class="g">Hold <b>FX</b></div><div class="e">PERFORM page. Tap <b>FX</b> to leave.</div></div>
-<div class="row"><div class="g">Hold <b>OCT-</b> + turn a knob</div><div class="e">Resets that knob's card to its default. In a dialog or menu <b>OCT-</b> means back / no, <b>OCT+</b> do it / yes.</div></div>
+<div class="row"><div class="g">Hold <b>FX</b></div><div class="e">PERFORM page: knob 1 is DEPTH, knobs 2, 3 and 4 are your picks (SETTINGS &gt; PERFORM). Tap <b>FX</b> to leave.</div></div>
+<div class="row"><div class="g">Hold <b>SEL</b></div><div class="e">QUICK MACRO: the four knobs play four macros, picked in SETTINGS &gt; PERFORM. Let go to go back.</div></div>
+<div class="row"><div class="g">Hold <b>OCT-</b> + turn a knob</div><div class="e">Resets that knob's card to its default. In a dialog or SETTINGS <b>OCT-</b> means back / no, <b>OCT+</b> do it / yes.</div></div>
 </section>
 
 <section>
@@ -113,6 +117,7 @@ footer{margin-top:10px;font-size:12px;color:var(--mute)}
 <section>
 <h2>Sound</h2>
 <div class="row"><div class="g">MORPH page</div><div class="e">Knob 1 glides from End A to End B. Knob 2 ROLL: turn left to roll End A, right to roll End B. Knob 3 UNDO goes back up to 2 rolls. End B is saved exactly as it sounds, with the patch.</div></div>
+<div class="row"><div class="g">MACROS</div><div class="e">TIMBRE, ENV MACRO, FILTER MACRO, CHARACTER and MOTION, with MORPH, SPACE and KILL. The middle is the sound as saved; loading a sound puts them back. MIDI CC 56 to 62.</div></div>
 </section>
 
 <section>
@@ -133,13 +138,14 @@ footer{margin-top:10px;font-size:12px;color:var(--mute)}
 <h2>Good to know</h2>
 <ul>
 <li>The <b>PATCH LEVEL</b> is saved with the patch; the <b>PART LEVEL</b> on the mixer is yours.</li>
-<li><b>KEY VELOCITY</b> and <b>AFTERTOUCH</b> are on by default; switch them off in MENU &gt; CONTROL.</li>
-<li>Teach a CC with MIDI LEARN on the unit. CC1 mod wheel, CC11 expression, CC64 sustain pedal are inputs.</li>
+<li><b>KEY VELOCITY</b> and <b>AFTERTOUCH</b> are on by default; switch them off in SETTINGS &gt; PLAYING.</li>
+<li><b>MIDI PRESET</b> (SETTINGS &gt; MIDI) sets DUELL up for Novation Circuit Tracks or Akai MPC / Force; the first start asks.</li>
+<li>Teach a CC with SETTINGS &gt; MIDI &gt; MIDI LEARN. CC1 mod wheel, CC11 expression, CC64 sustain pedal are inputs.</li>
 </ul>
 </section>
 
 </div>
-<footer>DUELL &middot; MultiMorphing Bitimbral Synthesizer &middot; by OSCILL/R &middot; checked against DUELL 1.2.</footer>
+<footer>DUELL &middot; MultiMorphing Bitimbral Synthesizer &middot; by OSCILL/R &middot; checked against DUELL 1.3.</footer>
 </main>
 </body>
 </html>

@@ -47,20 +47,20 @@ int main(void)
         test_rows += str_eq(MI_NAME[k], "TEST");
         sys_rows += MI_TAB[k] == MTAB_SYSTEM;
     }
-    ck("MENU has no TEST row and no USB SERIAL row (SYSTEM: RESTORE LAST, BUTTON MAP, GUIDE, ABOUT, ERASE DATA)", test_rows == 0u && sys_rows == 5u && MI_TAB[MI_ABOUT] == MTAB_SYSTEM &&
+    ck("MENU has no TEST row and no USB SERIAL row (SYSTEM: RESTORE LAST, GUIDE, ABOUT, ERASE DATA; 1.3: BUTTON MAP has no row, ERASE DATA SYSTEM's last)", test_rows == 0u && sys_rows == 4u && MI_TAB[MI_ABOUT] == MTAB_SYSTEM &&
        MI_TAB[MI_GUIDE] == MTAB_SYSTEM && MI_READONLY(MI_GUIDE) &&
-       MI_READONLY(MI_ABOUT) && !MI_READONLY(MI_PANEL) && !menu_valued(MI_PANEL) && str_eq(MI_NAME[MI_PANEL], "BUTTON MAP") &&
-       MI_PANEL == MI_RESTORE + 1u && MI_GUIDE == MI_PANEL + 1u && MI_ERASE == MI_COUNT - 1u);
+       MI_READONLY(MI_ABOUT) && !MI_READONLY(MI_PANEL) && !menu_valued(MI_PANEL) && str_eq(MI_NAME[MI_PANEL], "BUTTON MAP") && !menu_shown(MI_PANEL) &&
+       MI_PANEL == MI_RESTORE + 1u && MI_GUIDE == MI_PANEL + 1u && MI_TAB[MI_ERASE] == MTAB_SYSTEM && mtab_end(MTAB_SYSTEM) == MI_ERASE + 1u);
     for (k = 0, ok = 1; k < MI_COUNT; k++)
         ok &= !str_eq(MI_NAME[k], "USB SERIAL");
     ck("memory trim 1: the product has no serial console: FELUCCA_CDC 0, no USB SERIAL row (the editor's list: tests/menu_product_test.c)", ok && FELUCCA_CDC == 0);
-    for (k = 0, ok = 1; k < MTAB_COUNT; k++)            /* (the release's tabs fit one page each: SYSTEM 5 units) */
-        ok &= mtab_pages(k) == 1u;
+    for (k = 0, ok = 1; k < MTAB_COUNT; k++)            /* (the release's sections fit one page each: SYSTEM 5 units; DUELL 1.3: PERFORM has two, its QUICK MACRO rows on the second) */
+        ok &= mtab_pages(k) == (k == MTAB_PERFORM ? 2u : 1u);
     {
         uint32_t u;
         ok &= menu_place(MI_ERASE, &u) == 0u && u == 4u;
     }
-    ck("MENU: every tab one page in the release (SYSTEM: 5 units, ERASE DATA the last)", ok);
+    ck("MENU: every section one page in the release but PERFORM (two: 1.3 MACROS) (SYSTEM: 5 units, ERASE DATA the last)", ok);
     for (k = 0, ok = 1; k < NPAGES; k++)
         ok &= !str_eq(PAGES[k].title, "TEST");
     ck("no page is called TEST (the GLO round is untouched)", ok);

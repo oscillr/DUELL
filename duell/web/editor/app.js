@@ -11,7 +11,7 @@ import { Unit } from "./unit.js";
 import { Link } from "./link.js";
 import { themeVars, look11Vars, isDark, paletteName } from "./theme.js";
 import { CMD, parseMenu } from "./proto.js";
-import { buildPatches, buildMultis, buildPatterns, buildSettings, buildMidi, buildMidiMap, buildWavetables } from "./panels.js";
+import { buildPatches, buildMultis, buildPatterns, buildSettings, buildMidiMap, buildWavetables } from "./panels.js";
 import { handleFile } from "./patches_ui.js";
 import { dropZone, guardPage, hasFiles, hasSlot, slotOf, filesOf } from "./dropzone.js";
 import { PatternStore } from "./roll.js";
@@ -526,7 +526,7 @@ function matrixList(p) {
 
 // ---- the global column
 function sidechainCard() {
-  // SIDECHAIN (0.2.22), GLO > SIDECHAIN: the ducker's MIDI setup, MENU settings 38..41 (a device setting: no patch, multi or project holds it): each part's channel and note that start
+  // SIDECHAIN (0.2.22), the unit's MENU > MIDI > SIDECHAIN (DUELL 1.3; was GLO > SIDECHAIN): the ducker's MIDI setup, MENU settings 38..41 (a device setting: no patch, multi or project holds it): each part's channel and note that start
   // its DUCK when the part's DUCK SOURCE is MIDI NOTE. T0229 (the list (?) 4.11, option A): a small grid, rows PART 1 / PART 2, columns CHANNEL / NOTE: no word twice
   if (!app.unit.menu && app.unit.info.menuCount != null) app.unit.readMenu().then(() => app.refresh()).catch(() => {});
   const cells = [38, 39, 40, 41].map((id, k) => menuCell(id, L.SIDECH[k & 1], `m:${(k & 1) ? "NOTE" : "CH"}`, { label: (k & 1) ? "NOTE" : "CHANNEL" }));
@@ -557,13 +557,12 @@ function buildGlobalTab(wrap) {
       gcard("DELAY", [...pgs("DELAY 1/2"), ...pgs("DELAY 2/2")], { bypass: "bus:delay", tip: "Shared by both parts. In RANDOM and OCTAVE UP the MOD depth is the CHANCE of an event and MOD RATE is not used." }),
       gcard("REVERB", [...pgs("REVERB"), ...pgs("SHIMMER")], { bypass: "bus:reverb", tip: "Shared by both parts. PITCH and DRIFT belong to TYPE SHIMMER." }),
       stereo, comp));
-  } else if (tab === "midi") buildMidi(app, wrap, globalCell, card, sidechainCard());
-  else if (tab === "midimap") buildMidiMap(app, wrap, card);
+  } else if (tab === "midimap") buildMidiMap(app, wrap, card);
   else if (tab === "patches") buildPatches(app, wrap);
   else if (tab === "multis") buildMultis(app, wrap);
   else if (tab === "patterns") buildPatterns(app, wrap);
   else if (tab === "tables") buildWavetables(app, wrap);
-  else if (tab === "settings") buildSettings(app, wrap, card);
+  else if (tab === "settings") buildSettings(app, wrap, sidechainCard());   // DUELL 1.3: the unit's MENU sections; MIDI holds the channels, MIDI IN and the SIDECHAIN card (the MIDI tab is gone)
 }
 
 // ---- a column (0.2.25 layout round, owner; T0229): PART n and Undo; the MIXER block (LEVEL, PAN, MUTE, SOLO: the player's, not the patch's); the PATCH block
@@ -1013,7 +1012,7 @@ if (MOCK) {
     say(`Simulated knob turn on the unit: PART ${part + 1} CUT = ${v}.`);
   });
   $("mockselect").addEventListener("click", () => { const m = app.mock; if (m) m.deviceSelect(1 - m.selected); });
-  $("mockcolor").addEventListener("click", () => { const m = app.mock; if (!m) return; const n = L.PALETTES.LIST.length, i = ((app.pal ?? 0) + 1) % n; m.devicePalette(i); say(`Simulated MENU > COLOR on the unit: ${paletteName(i)} (the page follows within 2 s).`); });
+  $("mockcolor").addEventListener("click", () => { const m = app.mock; if (!m) return; const n = L.PALETTES.LIST.length, i = ((app.pal ?? 0) + 1) % n; m.devicePalette(i); say(`Simulated SETTINGS > SYSTEM > COLOR on the unit: ${paletteName(i)} (the page follows within 2 s).`); });
 } else if (!navigator.requestMIDIAccess) { setStatus("This browser cannot talk to the FM-1. Open this page in Chrome or Edge on a computer.", "warn"); $("connect").disabled = true; }
 if (!MOCK && navigator.requestMIDIAccess) sysexGranted().then((ok) => { if (ok) connect(); else setStatus(HINT); });   // MIDI already allowed: connect by itself
 if ($("backuplink")) $("backuplink").href = "./backup.html" + location.search;

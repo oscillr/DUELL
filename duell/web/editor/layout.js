@@ -267,10 +267,9 @@ export const GLOBAL_TABS = [
   { key: "patches", label: "PATCHES", pages: ["PATCHES"] },
   { key: "multis", label: "MULTIS", pages: ["MULTIS"] },
   { key: "patterns", label: "PATTERNS", pages: ["PATTERNS"] },   // 0.2.25: the pattern slots P01..P16 through the backup objects 21..23 (stored.js)
-  { key: "midi", label: "MIDI", pages: ["SIDECHAIN"] },
-  { key: "midimap", label: "MIDI MAP", pages: ["MIDI LEARN"] },   // DUELL 1.1 (owner item 15): the assignments shown and changed on the computer (the unit has no MIDI MAP page)
+  { key: "midimap", label: "MIDI MAP", pages: [] },   // (DUELL 1.3: the unit's MIDI LEARN screen is MENU > MIDI > MIDI LEARN, no page; the MIDI tab is gone: its MIDI IN and SIDECHAIN are SETTINGS > MIDI)   // DUELL 1.1 (owner item 15): the assignments shown and changed on the computer (the unit has no MIDI MAP page)
   { key: "tables", label: "WAVETABLES", pages: [] },
-  { key: "settings", label: "SETTINGS", pages: ["MODULES"] },
+  { key: "settings", label: "SETTINGS", pages: [] },   // the unit's MENU settings by its sections (DUELL 1.3: MIDI and MODULES are MENU sections, no GLO pages)
 ];
 // pages whose ids are shown on another card (the same parameters)
 export const DUPLICATE = {
@@ -285,17 +284,15 @@ export const DUPLICATE = {
   "CYCLE ENV 1/2": "the ENV tab's CYCLE ENV card (MODE, SYNC, RISE, FALL, CURVE)",
   "CYCLE ENV 2/2": "the ENV tab's CYCLE ENV card",
   MIXER: "the unit's GLO > MIXER page (0.2.25 layout round: GLO's first page; item 117 order: K1 LEVEL 1, K2 LEVEL 2, K3 PAN 1, K4 PAN 2, the MUTE cells): each part column's MIXER block (LEVEL, PAN, MUTE)",
-  "SEND FX": "the unit's SEND FX page (FX's second page) shows the selected part's three sends (the FX tab's CHO DLY REV cards) beside the effects they feed (the GLOBAL tab's cards); its twists only jump to those pages (item 117: the page says so, TURN A KNOB: JUMP TO GLOBAL EFFECT SETTINGS, and names the effects that are inactive for the part)",
 };
-export const NOT_EDITABLE = [
+export const NOT_EDITABLE = [   // (owner 2026-11-15: MORPH SET and MODE are SETTINGS rows now, ids 58..61, the SETTINGS tab; the SEND FX page is gone)
   ["SCALE", "SCALE, ROOT and OFF-SCALE are the instrument's, not parameters: the editor protocol has no command for them"],
-  ["MIDI", "the parts' MIDI channels (PART 1 CHANNEL, PART 2 CHANNEL) are not reachable by the protocol; MIDI IN is on the MIDI tab"],
   ["TOOLS", "CLEAR SEQ is the SEQ tab's Clear; INITIALIZE SOUND is the Init patch... button of each part; RESTORE ALL is on the PATCHES tab"],
   ["SEQUENCER HELP", "the legend of the STEP page's symbols on the unit (page 2 of the STEP family, item 118): no controls, nothing to edit"],
   ["PARAMETER LOCKS", "recorded motion and locks: not in this version (the protocol has MOTION; 1.1.0-test2: a lock can name every matrix destination, see lockTarget)"],
+  ["MACROS 1/2", "the eight macros are live controls (the knobs, MIDI CC 56 to 62): nothing is stored, so there is nothing to edit; which macro each PERFORM and QUICK MACRO knob is: the SETTINGS tab, PERFORM"],
+  ["MACROS 2/2", "the same as MACROS 1/2"],
   ["MORPH", "the MORPH fader, ROLL and UNDO have no protocol command; a saved patch or multi keeps End B as exact values, and PATCH_RAW and the backup carry it (see below)"],
-  ["MORPH SET", "SMART, ARP and PITCH of the morph have no protocol command"],
-  ["MODE", "the output MODE (DUEL, STEREO, LAYER), XFADE and SPLIT have no protocol command"],
 ];
 export function uncoveredPages() {
   const used = new Set([...PART_TABS, ...GLOBAL_TABS].flatMap((t) => t.pages));
@@ -315,7 +312,7 @@ export function pageControls(pg, part) {
   for (const id of pg.ids) {
     if (id < 0) continue;
     let rid = id;
-    if (id === ID.P_DKRATE) {   // DUCK's second knob follows SRC: RATE for PUMP, THR for PART, none for MIDI (0.2.22: the channel and the note are the device's SIDECHAIN setup, GLO > SIDECHAIN)
+    if (id === ID.P_DKRATE) {   // DUCK's second knob follows SRC: RATE for PUMP, THR for PART, none for MIDI (0.2.22: the channel and the note are the device's SIDECHAIN setup, MENU > MIDI > SIDECHAIN)
       if (part.p[ID.P_DKSRC] >= 2) continue;
       rid = part.p[ID.P_DKSRC] === 1 ? ID.P_DKTHR : ID.P_DKRATE;
     }

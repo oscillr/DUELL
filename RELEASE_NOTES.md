@@ -1,49 +1,44 @@
-# DUELL 1.2
+# DUELL 1.3
 
 **DUELL**
 **MultiMorphing Bitimbral Synthesizer**
 **by OSCILL/R**
 
-DUELL 1.2 is an update for the M-VAVE FM-1. Up to 16 voices a part from one shared voice pool over both cores, and it works with newer FM-1 units.
+DUELL 1.3 is an update for the M-VAVE FM-1. It plays with Novation Circuit Tracks and Akai MPC / Force out of the box, and adds MACROS and your own PERFORM knobs.
 
 ## What is new
+- **MIDI PRESETS for Novation Circuit Tracks and Akai MPC / Force.** Pick your device at the first start and DUELL is set up for it, with the right mode recommended.
+- **MACROS.** TIMBRE, ENV MACRO, FILTER MACRO, CHARACTER and MOTION: each turns several sound settings at once, and the middle is always the sound as saved. Play them on HOME, with SEL held, or over MIDI CC 56 to 62.
+- **Your own PERFORM knobs.** Choose what KNOBS 2, 3 and 4 do on PERFORM.
+- **MORPH in the mod matrix.** An LFO, an envelope or any other source can move the MORPH fader.
 
-**More voices**
-- Both parts play from one shared pool of voices, spread over both cores. The old limit of 8 voices a part is gone: a part plays as many voices as the pool holds, up to 16.
-- FM6 plays up to 12 voices (6 while the TWIN FILTER is COMB). VOICE is no longer held to 4.
-- The number on the screen is what really plays.
-
-**Fair sharing between the parts**
-- Each part's AVAILABLE VOICES shows how many more notes that part can play right now. It drops when the other part plays.
-- A key on a part that shows 0 takes the oldest note of the part that holds more.
+## Changed
+- SETTINGS in seven sections, with one key rule on every page: SELECT moves, OCT+ opens, OCT- goes back, the knobs change values.
+- VELOCITY > FILTER ENV is set in each patch.
+- ANALOG PULSE WIDTH for the PWM wave. TRIO INTERVAL 2 and 3 reach plus or minus 36 semitones.
+- LOFI shows more AVAILABLE VOICES.
+- The web pages have the DUELL look.
 
 ## Fixed
-- No crackle when chords start, when knobs or MIDI CCs move, or when the MORPH fader moves.
-- WAVE chords in CHORD mode play clean.
-- ANALOG no longer clicks on loud parts.
-- WHEEL no longer freezes with 8 voices.
-- The panel lights stay on while the unit saves.
-- FM6: OP MODE, OP TUNE and OP ENV come right after the EDIT pages.
-- Updated SCALE and CHORD keyboards.
-- UI improvements: the header fits two-digit voice numbers, the voice number stays steady with the arp, lines under each parameter, text aligned on its baseline.
-- Newer FM-1 units with the UC25HQ80 flash chip can save and update ([issue #3](https://github.com/oscillr/DUELL/issues/3)).
-- The installer finds any FM-1, whatever its MIDI port is called.
-- Other FM-1 firmwares can be installed from DUELL.
+- MIDI notes follow the part's TRANSPOSE ([issue #4](https://github.com/oscillr/DUELL/issues/4), thanks @thecandybars).
+- The installer's backup works, and the way back to the official firmware takes the V15 or V16 download ([issue #5](https://github.com/oscillr/DUELL/issues/5), thanks @jaggednz).
+- A matrix route to MORPH no longer costs voices.
+- PERFORM BALANCE, ANALOG PULSE WIDTH and MIDI LEARN screen details.
 
 ## Read this before you flash
-- DUELL has run on **two FM-1 units, the author's**, and more than 100 people have installed it through the Firmware Hub. The FM-1 has a single copy of its firmware and no known rollback besides the way back to the official firmware (V15).
+- DUELL has run on **two FM-1 units, the author's**, and more than 100 people have installed it through the Firmware Hub. The FM-1 has a single copy of its firmware and no known rollback besides the way back to the official firmware (V15 or V16).
 - **You install at your own risk. No warranty** (GPL-3.0). Use a data USB cable straight into the computer and never interrupt the write.
-- DUELL is **not affiliated with M-VAVE**. M-VAVE's firmware is **not distributed here**: to go back you download V15 yourself from <https://www.m-vave.com/download>.
+- DUELL is **not affiliated with M-VAVE**. M-VAVE's firmware is **not distributed here**: to go back you download V15 or V16 yourself from <https://www.m-vave.com/download>.
 - Recovery notes: [docs/RECOVERY.md](https://github.com/oscillr/DUELL/blob/main/docs/RECOVERY.md).
 
 ## Assets
 | File | What |
 |---|---|
-| `duell-1.2.fwsc` | the device package (the installer page loads this one) |
+| `duell-1.3.fwsc` | the device package (the installer page loads this one) |
 | `SHA256SUMS` | checksums |
 
 ```
-SHA256: 031a3feef898b407537214f2694cb0c7e5014e2c02553c8d57b4865308aa3690  duell-1.2.fwsc
+SHA256: a28fcd89ba4622eb8d1d6db5e0bba4c386a287756903523271e1863ff4b9345b  duell-1.3.fwsc
 ```
 
 ## Links

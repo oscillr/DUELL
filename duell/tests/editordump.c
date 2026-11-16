@@ -100,11 +100,11 @@ static void js_descs(const param_desc_t *d, uint32_t n)
 }
 
 static const char *const FAMN[] = {"HOME", "ENV", "LFO", "FX", "SCL", "EDIT", "GLO", "SAVE", "ARP", "SEQ", "TRK"};
-static const char *const SCN[] = {"TRACK", "GLOBAL", "ENGINE", "STEP", "TRK", "MORPH", "MODE", "TEST", "SCALE", "MIDI", "PERF", "MODS", "FXSUM", "GMIX"};   /* (every SC_* of params.c, MODS and FXSUM too: an index past the table read whatever string lay after it) */
+static const char *const SCN[] = {"TRACK", "GLOBAL", "ENGINE", "STEP", "TRK", "MORPH", "MODE", "TEST", "SCALE", "MIDI", "PERF", "MODS", "FXSUM", "GMIX", "MACRO"};   /* (every SC_* of params.c, MODS and FXSUM too: an index past the table read whatever string lay after it) */
 static const char *const GRN[] = {"NONE", "ADSR", "LFO", "STEPS", "ARP", "SCALE", "FX", "ROLL", "BROWSE", "SLOTS", "USER", "TRK", "SLCR", "MOD", "PATS",
                                   "TOOLS", "CHORD", "SLICES", "EVENTS", "FMOP", "FMOP2", "FMENV", "INS", "ENGINE", "MORPH", "MORPHSET", "MODE", "GLO",
-                                  "MIDI", "MLEARN", "SCHAIN", "TEST", "TEMPO", "PERF", "MODS", "MSTG", "FXSUM", "EQ", "COMP", "FILT", "SUB", "CYCLE", "SEQHELP"};   /* (every GR_* of params.c: MODS was missing, so MODULES' name was whatever string lay after the table; 0.2.25: FXSUM was missing too, then EQ COMP FILT) */
-_Static_assert(sizeof GRN / sizeof GRN[0] == GR_SEQHELP + 1u && sizeof SCN / sizeof SCN[0] == SC_GMIX + 1u, "editordump: a name for every GR_* and SC_* (0.2.25)");
+                                  "MIDI", "MLEARN", "SCHAIN", "TEST", "TEMPO", "PERF", "MODS", "MSTG", "FXSUM", "EQ", "COMP", "FILT", "SUB", "CYCLE", "SEQHELP", "MAC1", "MAC2"};   /* (2026-11-15: DUELL 1.3's MACROS pages: without their names the dump read past the table and crashed, so layout.json was stale since the macros) */   /* (every GR_* of params.c: MODS was missing, so MODULES' name was whatever string lay after the table; 0.2.25: FXSUM was missing too, then EQ COMP FILT) */
+_Static_assert(sizeof GRN / sizeof GRN[0] == GR_MAC2 + 1u && sizeof SCN / sizeof SCN[0] == SC_MACRO + 1u, "editordump: a name for every GR_* and SC_* (0.2.25)");
 
 /* page_visible (ui.c), by the page's ids: which engines show the page. "all" or a list of engine names */
 static void js_vis(const page_t *pg)

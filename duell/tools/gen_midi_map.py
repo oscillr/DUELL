@@ -38,9 +38,10 @@ DOCS_CSV = HERE.parents[1] / "docs" / "MIDI_MAP_DEFAULTS.csv"
 
 # the actions (firmware/src/midi_map.h MAP_T_*), the fixed part of the list of targets
 ACTIONS = ["MORPH", "ROLL_A", "ROLL_B", "UNDO", "ROLL", "AMOUNT", "TARGET", "SMART", "ARP", "PITCH", "MODE", "SPARE_BAL", "XFADE", "SPLIT",
-           "CUTOFF_SMART", "RES_SMART"]   # (item 157: SPARE_BAL is BALANCE's retired code, kept so no later code moves; no csv line may name it)
+           "CUTOFF_SMART", "RES_SMART",
+           "TIMBRE", "ENVELOPE", "FILTER", "CHARACTER", "MOTION", "SPACE", "KILL"]   # (DUELL 1.3: the MACROS, midi_map.h MAP_T_TIMBRE ..; item 157: SPARE_BAL is BALANCE's retired code, kept so no later code moves; no csv line may name it)
 SPECIAL = ["LOCKED", "REMOVED"]
-GLOBAL_ONLY = {"MODE", "XFADE", "SPLIT"}            # act on any channel, before the MIDI IN routing
+GLOBAL_ONLY = {"MODE", "XFADE", "SPLIT", "SPACE", "KILL"}   # act on any channel, before the MIDI IN routing (DUELL 1.3: PERFORM's SPACE and KILL)
 EITHER = {"TARGET", "SMART", "ARP", "PITCH"}                   # global in effect, but heard only on a channel the routing hears (as today)
 LOCKED_CC = [0, 1, 2, 4, 6, 11, 32, 38, 64] + list(range(96, 102)) + list(range(120, 128))   # MIDI_MAP_FINAL: 18 standard + the 5 inputs 1 2 4 11 64
 assert len(LOCKED_CC) == 23

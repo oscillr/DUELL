@@ -44,6 +44,7 @@ static uint32_t map_find(uint32_t code, uint32_t pk, uint32_t skip)
             return cc;
     return MAP_N;
 }
+static uint8_t ml_act;                                  /* owner 2026-11-15: SETTINGS > MIDI > MIDI LEARN's card picked by a knob (0 none, 1 LEARN / DONE, 2 CLEAR ALL); OCT+ does it (ui_menu.c) */
 static uint32_t ml_count(void)
 {
     uint32_t cc, n = 0;
@@ -78,9 +79,10 @@ static void map_unmap(uint32_t cc, uint32_t restore)
 }
 
 /* --- the names ---------------------------------------------------------------------------------------------------------- */
-static const char *const MAP_ACT_NAME[MAP_T_RES_SMART - MAP_T_MORPH + 1u] = {
+static const char *const MAP_ACT_NAME[MAP_T_ACT_END - MAP_T_MORPH] = {
     "MORPH", "ROLL A", "ROLL B", "UNDO", "ROLL", "MORPH AMOUNT", "MORPH TARGET", "MORPH SMART", "MORPH ARP", "MORPH PITCH", "MODE", "-", "XFADE",
-    "SPLIT NOTE", "CUTOFF", "RESONANCE"};
+    "SPLIT NOTE", "CUTOFF", "RESONANCE",
+    "TIMBRE", "ENV MACRO", "FILTER MACRO", "CHARACTER", "MOTION", "SPACE", "KILL"};   /* (DUELL 1.3: the MACROS, macro.c) */
 static const char *const MAP_X_NAME[NX] = {"ROUTE", "LINK", "TWIN KEY TRK", "ENV TO TWIN CUTOFF", "LFO 1 TO TWIN CUTOFF", "LFO 2 TO TWIN CUTOFF", "SUB LEVEL",
                                            "SUB OCTAVE", "SUB WAVE", "SUB HARMONICS", "CYCLE MODE", "CYCLE RISE", "CYCLE FALL", "CYCLE CURVE",
                                            "CYCLE SYNC", "AMP ENV TO SATURATION", "FILTER ENV TO FILTER BLEND", "FILTER ENV TO FILTER DRIVE", "FILTER ENV TO MULTI RES", "CYCLE TO TWIN CUTOFF", "CYCLE TO PAN", "CYCLE TO PITCH",
@@ -105,7 +107,7 @@ static void map_name(uint32_t l, char *b)
             ev_name(&trk[k % NTRK], code, b + str_len(b));
     } else if (code >= XW_BASE && code < XW_BASE + NX) {
         str_cpy(b + str_len(b), MAP_X_NAME[code - XW_BASE], 40u - str_len(b));
-    } else if (code >= MAP_T_MORPH && code <= MAP_T_RES_SMART) {
+    } else if (code >= MAP_T_MORPH && code < MAP_T_ACT_END) {
         str_cpy(b + str_len(b), MAP_ACT_NAME[code - MAP_T_MORPH], 40u - str_len(b));
     } else if (code >= MAP_T_G0 && code < MAP_T_G0 + G_COUNT) {
         desc_said(&GP[code - MAP_T_G0], b + str_len(b), 40u - str_len(b));
@@ -118,13 +120,13 @@ static void map_name(uint32_t l, char *b)
 /* 1: a target code the table may hold (a part value, an extension slot, an action, a global value) */
 static int map_code_ok(uint32_t code)
 {
-    return code < P_COUNT || (code >= XW_BASE && code < XW_BASE + NX) || (code >= MAP_T_MORPH && code <= MAP_T_RES_SMART && code != MAP_T_SPARE_BAL) ||   /* (item 144: every slot, X27 STRUM too, as CHRD / VOIC are; item 157: BALANCE's code is a spare) */
+    return code < P_COUNT || (code >= XW_BASE && code < XW_BASE + NX) || (code >= MAP_T_MORPH && code < MAP_T_ACT_END && code != MAP_T_SPARE_BAL) ||   /* (item 144: every slot, X27 STRUM too, as CHRD / VOIC are; item 157: BALANCE's code is a spare) */
            (code >= MAP_T_G0 && code < MAP_T_G0 + G_COUNT);
 }
 /* the part rules the target may have: the generator's table (tools/gen_midi_map.py) */
 static int map_rule_ok(uint32_t code, uint32_t rule)
 {
-    if ((code >= MAP_T_MODE && code <= MAP_T_SPLIT) || code >= MAP_T_G0)
+    if ((code >= MAP_T_MODE && code <= MAP_T_SPLIT) || code == MAP_T_SPACE || code == MAP_T_KILL || code >= MAP_T_G0)   /* (DUELL 1.3: SPACE, KILL global) */
         return rule == MAP_R_GLOBAL;
     if (code >= MAP_T_TARGET && code <= MAP_T_PITCH)
         return rule == MAP_R_CHANNEL || rule == MAP_R_GLOBAL;

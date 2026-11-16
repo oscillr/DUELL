@@ -183,10 +183,12 @@ export function buildPatterns(app, wrap) {
 }
 
 // ---------------------------------------------------------------- SETTINGS (MENU)
-export function buildSettings(app, wrap) {
+// DUELL 1.3 (owner 2026-11-15): grouped by the unit's SETTINGS categories (PLAYING RECORDING MORPH PERFORM MODULES MIDI SYSTEM, the unit's tab index and name), the rows in the unit's order (editor_menu.c ED_MENU); the MIDI section has
+// PART 1 / 2 CHANNEL, MIDI IN and MIDI PRESET, then its SIDECHAIN (ids 38..41, `sidechain`: the PART 1 / PART 2 card); MODULES its four switches. BASS MONO, COMP, WIDTH stay the GLOBAL tab's MASTER cards.
+export function buildSettings(app, wrap, sidechain) {
   const u = app.unit, box = h("div", { class: "menu tabbody" });
   wrap.append(box);
-  if (u.info.menuCount == null) { box.append(h("p", { class: "warn", text: "This firmware does not describe its MENU to an editor." })); return; }
+  if (u.info.menuCount == null) { box.append(h("p", { class: "warn", text: "This firmware does not describe its SETTINGS to an editor." })); return; }
   async function load() {
     box.replaceChildren(h("p", { class: "small", text: "Reading the settings ..." }));
     try { draw(await u.readMenu()); } catch (e) { app.fail(e); }
@@ -194,21 +196,28 @@ export function buildSettings(app, wrap) {
   function draw(items) {
     clear(box);
     const tabs = new Map();
-    for (const m of items) { if (m.id >= 33 && m.id <= 43) continue;   // BASS MONO (0.2.19, id 33), COMP (0.2.21, ids 34..37), SIDECHAIN (0.2.22, ids 38..41), WIDTH (0.2.23, id 42; id 43, DRIVE, is gone) are the GLOBAL tab's MASTER and SIDECHAIN cards, not settings
+    let midiTab = null;
+    const layer = (items.find((x) => x.id === 58)?.value ?? 0) === 0;   // (2026-11-15: MODE, LAYER first: XFADE and SPLIT show only in LAYER, as on the unit)
+    for (const m of items) { if (m.id >= 33 && m.id <= 43) continue;
+      if ((m.id === 62 || m.id === 63) && !layer) continue;   // BASS MONO (0.2.19, id 33), COMP (0.2.21, ids 34..37), WIDTH (0.2.23, id 42; id 43, DRIVE, is gone): the GLOBAL tab's MASTER cards; SIDECHAIN (ids 38..41): the card after MIDI
+      if (m.id === 55) midiTab = m.tab;   // (PART 1 CHANNEL: the MIDI section)
       if (!tabs.has(m.tab)) tabs.set(m.tab, { name: m.tabName, items: [] }); tabs.get(m.tab).items.push(m); }
-    for (const [, t] of [...tabs].sort((a, b) => a[0] - b[0])) {
-      const card = h("section", { class: "card" }, h("h3", {}, h("span", { class: "ttl", text: t.name || "SETTINGS", title: "The unit's own MENU settings (names, ranges and tabs come from the unit). A change is applied at once; the unit writes it to its memory when playback is stopped." })));
+    for (const [k, t] of [...tabs].sort((a, b) => a[0] - b[0])) {
+      const card = h("section", { class: "card" }, h("h3", {}, h("span", { class: "ttl", text: t.name || "SETTINGS", title: "The unit's own SETTINGS (names, ranges and tabs come from the unit). A change is applied at once; the unit writes it to its memory when playback is stopped." })));
       const g = h("div", { class: "grid" });
       for (const m of t.items) g.append(menuControl(m));
       card.append(g); box.append(card);
+      if (k === midiTab && sidechain) box.append(sidechain);
     }
+    if (midiTab == null && sidechain) box.append(sidechain);
   }
   function menuControl(m) {
     const val = h("span", { class: "val" }), unit = h("span", { class: "unit" });
-    const show = () => { val.textContent = m.kind === 0 ? m.names[m.value - m.min] ?? m.value : m.kind === 2 ? (m.value / 10).toFixed(1) : String(m.value); unit.textContent = m.kind !== 0 ? m.unit : ""; };   // kind 2 (0.2.22): tenths of the unit, one decimal
+    const NN = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];   // (SPLIT, id 63: 0 OFF, else the note + 1, named as the unit names it: params.c N_NOTE, C4 = 60)
+    const show = () => { val.textContent = m.id === 63 ? (m.value ? NN[(m.value - 1) % 12] + (Math.floor((m.value - 1) / 12) - 1) : "OFF") : m.kind === 0 ? m.names[m.value - m.min] ?? m.value : m.kind === 2 ? (m.value / 10).toFixed(1) : String(m.value); unit.textContent = m.kind !== 0 ? m.unit : ""; };   // kind 2 (0.2.22): tenths of the unit, one decimal
     const apply = async (v) => {
       if (m.id === 11 && !(await ask("USB SERIAL", ["Changing USB SERIAL makes the unit disconnect from USB and come back (USB-MIDI and USB audio go away for about a second). This page loses the connection: press Connect again afterwards."], "Change", true))) { input.value = m.value; return; }
-      try { m.value = await u.setMenu(m.id, v); show(); if (m.id === 11) app.say("The unit re-enumerates: press Connect again in a moment.", "warn"); } catch (e) { app.fail(e); input.value = m.value; }
+      try { m.value = await u.setMenu(m.id, v); show(); if (m.id === 58) load(); /* (MODE: XFADE and SPLIT appear or go) */ if (m.id === 11) app.say("The unit re-enumerates: press Connect again in a moment.", "warn"); } catch (e) { app.fail(e); input.value = m.value; }
     };
     const input = m.kind === 0
       ? h("select", { "aria-label": m.name, onchange: (e) => apply(+e.target.value) }, m.names.map((n, i) => h("option", { value: m.min + i, text: n })))
@@ -217,13 +226,6 @@ export function buildSettings(app, wrap) {
     return h("div", { class: "cell", title: m.name !== (MENU_LONG[m.name] ?? m.name) ? `On the unit: ${m.name}` : "" }, h("div", { class: "top" }, h("span", { class: "lab", text: MENU_LONG[m.name] ?? m.name }), h("span", { class: "right", hidden: m.kind === 0 }, val, unit)), input);
   }
   load();
-}
-
-// ---------------------------------------------------------------- MIDI
-export function buildMidi(app, wrap, globalCell, card, sidechain) {
-  const u = app.unit;
-  const shown = (id, label, p) => longDesc(descOf(p, id), id >= P_E0 ? `e:${engineLabel(p.eng)}` : id)?.label ?? label;   // (T0229: the editor's names, never the unit's short codes)
-  wrap.append(h("div", { class: "tabbody" }, card("MIDI", [globalCell(ID.G_ROUTE)], { tip: "PART CHANNEL: part 1 listens on its channel and part 2 on its channel (PART 1 CHANNEL and PART 2 CHANNEL are set on the unit: GLO > MIDI). ANY CHANNEL: every channel plays the part ALGORITHM selected." }), sidechain));
 }
 
 // ---------------------------------------------------------------- MIDI MAP (DUELL 1.1, owner item 15): the CC assignments (the unit's MIDI learn map, up to 16) shown and changed on the computer.

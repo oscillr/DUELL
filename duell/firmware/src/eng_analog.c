@@ -113,6 +113,13 @@ static __attribute__((noinline)) void analog_render_x(track_t *t, voice_t *v, in
     v->s[3] = jl;
 }
 
+/* DUELL 1.3 (owner): WAVE PWM's pulse width = PW (E4, -64..63, 0 = 50 %: about 25 % .. 75 %) plus the TIMBRE input, kept inside 5 % .. 95 % */
+static inline __attribute__((always_inline)) uint32_t analog_pw(const vmod_t *m, const int16_t *p)
+{
+    int64_t o = ((int64_t)(m->shape - (64 << 8)) << 15) + ((int64_t)p[P_E4] << 24);
+    return 0x80000000u + (uint32_t)(int32_t)(o > 0x73333333 ? 0x73333333 : o < -0x73333333 ? -0x73333333 : o);
+}
+
 /* WAVE 0..4 (the loop as it always was, less its filter) */
 static inline __attribute__((always_inline)) void analog_osc(track_t *t, voice_t *v, int32_t *out, uint32_t n,
                                                              const vmod_t *m)
@@ -125,7 +132,7 @@ static inline __attribute__((always_inline)) void analog_osc(track_t *t, voice_t
     /* DTN in cents. OSC B carries the voice's fine factor (unison detune, TUNE, bend) as OSC A does (SPEC 2.3: it
      * dropped it before DUELL) */
     uint32_t inc2 = det ? cents_inc(m->pitch16, det, m->fine) : inc1;
-    uint32_t pw = 0x80000000u + (uint32_t)((m->shape - (64 << 8)) << 15);
+    uint32_t pw = analog_pw(m, p);
     int32_t m2 = mix * 258, m1 = 32767 - m2;                    /* osc mix Q15 */
     if (m->amask)                                               /* ARP TARGET: the units on the arp (SPEC 2.3) */
         atg_analog(m, det, &inc1, &inc2, &m1, &m2);
@@ -196,7 +203,7 @@ static __attribute__((noinline)) void analog_render_m(track_t *t, voice_t *v, in
     int32_t drive = 32768 + p[P_E6] * 512;
     uint32_t inc1 = m->inc;
     uint32_t inc2 = det ? cents_inc(m->pitch16, det, m->fine) : inc1;
-    uint32_t pw = 0x80000000u + (uint32_t)((m->shape - (64 << 8)) << 15);
+    uint32_t pw = analog_pw(m, p);
     int32_t m2 = mix * 258, m1 = 32767 - m2;
     if (m->amask)
         atg_analog(m, det, &inc1, &inc2, &m1, &m2);
@@ -259,7 +266,7 @@ static const engine_t ENG_ANALOG = {
         {"DTN", F_INT, 0, 127, 10, 0, "ct"},
         {"MIX", F_PCT, 0, 127, 64, 0, 0},
         {"NOIS", F_PCT, 0, 127, 0, 0, 0},
-        {"-", F_INT, 0, 0, 0, 0, 0},                 /* was CUT: filter 1 (voice.c uf_run) */
+        {"PW", F_BIPCT, -64, 63, 0, 0, 0},          /* DUELL 1.3 (owner): PULSE WIDTH of WAVE PWM, around 50 % (0; 1.2 patches stored 0 here: they play as before); the TIMBRE input moves it further. Was CUT (filter 1, voice.c uf_run) */
         {"-", F_INT, 0, 0, 0, 0, 0},                 /* was RES */
         {"DRV", F_PCT, 0, 127, 0, 0, 0},
         {"-", F_INT, 0, 0, 0, 0, 0},                 /* was KTR (filter 1's KEY TRK) */

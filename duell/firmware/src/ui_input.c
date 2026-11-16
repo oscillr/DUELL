@@ -57,11 +57,8 @@ static uint32_t oct_leds(void)
         return 1u | OCT_BREATH;
     if (layer_set_open())                               /* a SET layer: OCT- puts back (UNDO), OCT+ nothing */
         return 1u;
-    if (ui.menu && !ui.confirm)
-        return ui.menu >= 2u ? 1u :                    /* (TEST, ABOUT: OCT- back, lit) */
-               !menu_valued(ui.menu_sel) ? OCT_BREATH :  /* BUTTON MAP / TEST / GUIDE / ABOUT / ERASE DATA: OCT+ opens */
-               (menu_step(ui.menu_sel, -1) != menu_get(ui.menu_sel) ? OCT_BREATH_DN : 0u) |   /* a value: each */
-               (menu_step(ui.menu_sel, 1) != menu_get(ui.menu_sel) ? OCT_BREATH : 0u);         /* way it can go */
+    if (ui.menu && !ui.confirm)                         /* DUELL 1.3: the list: OCT+ opens; a section, TEST, ABOUT, MIDI LEARN: OCT- back, lit; OCT+ opens a row that opens */
+        return ui.menu == 6u ? OCT_BREATH : 1u | (ui.menu == 1u && !menu_valued(ui.menu_sel) ? OCT_BREATH : 0u);
     if (ui.confirm || act_cols())
         return 1u | (ui.confirm || act_ready() ? OCT_BREATH : 0u);
     return (song.octave < 0 ? 1u : 0u) | (song.octave > 0 ? 2u : 0u);
@@ -777,6 +774,10 @@ static void morph_poll(void)
     uint32_t q[MQ_N], n = morph_pop(q), i;
     for (i = 0; i < n; i++) {
         uint32_t pi = (q[i] >> 8) & 0xFFu;
+        if ((q[i] & 0xFFu) >= MQ_MAC0) {                /* DUELL 1.3: a MACRO's CC (TIMBRE .. KILL: ui_perform.c mac_cc) */
+            mac_cc((q[i] & 0xFFu) - MQ_MAC0 + MAC_TIMBRE, pi, (q[i] >> 16) & 127u);
+            continue;
+        }
         morph_act(q[i] & 0xFFu, pi == MQ_PART_ALL ? (1u << NSHOWN) - 1u : morph_mask(pi), q[i] >> 16, pi);   /* (ALL: LAYER's wheel) */
     }
     morph_settings();
@@ -839,16 +840,19 @@ static void mode_knob(uint32_t slot, int32_t s)
 static int32_t perf_bal_pos;                            /* the position in detents, -32 (part 2 only) .. +32 (part 1 only); 0 = the middle */
 static int16_t perf_bal_base[2];                        /* the levels as the user set them, valid while the position is not 0 */
 static int16_t perf_bal_last[2];                        /* the levels this function wrote last, to find a change from outside */
-static int32_t perf_bal_index(int32_t g)                /* the nearest level-table index (0 .. 127) to a linear gain, Q12 */
+/* the nearest level-table index (0 .. 127) to a linear gain held in the detent scale (Q12 x PERF_BAL_DETENTS). DUELL 1.3 (owner 2026-11-13): the gain used to be
+ * divided back to Q12 first, and that rounding put the result one 0.5 dB step from the formula at 11 of the 715 positions. Nothing is rounded now: the distance to
+ * each table entry is compared in the same scale, so the level is the owner's formula exactly at every position (the middle and both ends were always exact) */
+static int32_t perf_bal_index(int32_t g32)
 {
     int32_t i, best = 0, bd = 0x7FFFFFFF;
     for (i = 0; i < 128; i++) {
-        int32_t d = (int32_t)LEVEL_Q12[i] - g;
+        int32_t d = (int32_t)LEVEL_Q12[i] * PERF_BAL_DETENTS - g32;
         d = d < 0 ? -d : d;
         if (d < bd)
             bd = d, best = i;
     }
-    return g <= 0 ? 0 : best;
+    return g32 <= 0 ? 0 : best;
 }
 /* the stateless formula: the level of one part from its base level, the position in detents (-32 .. +32) and whether this part is the one that goes up */
 static int32_t perf_bal_level(int32_t base, int32_t detents, int32_t up)
@@ -856,11 +860,9 @@ static int32_t perf_bal_level(int32_t base, int32_t detents, int32_t up)
     int32_t n = detents < 0 ? -detents : detents, g = (int32_t)LEVEL_Q12[base & 127], g0 = (int32_t)LEVEL_Q12[PERF_BAL_HOME];
     if (!n)
         return base;                                    /* (the middle: exactly the level the user set) */
-    if (up)
-        g += ((g0 - g) * n + (g0 >= g ? PERF_BAL_DETENTS / 2 : -PERF_BAL_DETENTS / 2)) / PERF_BAL_DETENTS;   /* g' = g + (g0dB - g) x |p| */
-    else
-        g = (g * (PERF_BAL_DETENTS - n) + PERF_BAL_DETENTS / 2) / PERF_BAL_DETENTS;                          /* g' = g x (1 - |p|) */
-    return perf_bal_index(g);
+    /* in the detent scale: g32 = g x 32 x (what the formula does), so no division and no rounding before the table is searched (4096 x 32 fits a long way inside int32) */
+    return perf_bal_index(up ? g * PERF_BAL_DETENTS + (g0 - g) * n        /* g' = g + (g0dB - g) x |p| */
+                             : g * (PERF_BAL_DETENTS - n));               /* g' = g x (1 - |p|)        */
 }
 static void perf_balance(int32_t s)
 {
@@ -1037,71 +1039,10 @@ static void clock_knob(int32_t steps)
 static void clock_poll(void)
 {
 }
-/* DUELL 0.2.14 GLO > MODULES (core.h MODS_*, ui.c mods_put): K1 ARP, K2 SEQ, K3 SENDS, K4 PART FX, each a switch: right ON, left OFF (a
- * detent switches, as MIDI IN). The header says what the change does; MIDI LEARN cannot learn them (device switches, no CC) */
-static void mods_knob(uint32_t slot, int32_t steps)
+static void midi_knob(uint32_t slot, int32_t steps)   /* MENU > MIDI > MIDI LEARN (DUELL 1.3: GLO's page was): K1 LEARN (right ON, left OFF), K2 right CLEAR */
 {
-    uint32_t k = slot & 3u, bit = 1u << k, off = steps < 0;
-    if (!steps)
-        return;
-    if (k < 2u) {                                       /* DUELL 1.1: ARP and SEQ have three values, left to right OFF, FOLLOWS PATCH, KEEPS RUNNING */
-        uint32_t was = mods_run_get(k), now = (uint32_t)clamp((int32_t)was + steps, 0, 2);
-        if (now != was) {
-            mods_run_put(k, now);                       /* (item 125: no header message: it replaced the page's title; the state is the value of its line) */
-        }
-        if (ui.ml.on)
-            ui_say(MODS_NAME[k], ": NO LEARN");
-        return;
-    }
-    if (((mods_get() & bit) != 0u) != off) {
-        mods_put(bit, off);
-    }
-    if (ui.ml.on)
-        ui_say(MODS_NAME[k], ": NO LEARN");             /* (as SPACE: no CC can be learned for a device switch) */
-}
-static void midi_knob(uint32_t slot, int32_t steps)
-{
-    if (cur_page()->graph == GR_MLEARN) {
-        if (slot == 0u && steps && (steps > 0) != (ui.ml.on != 0u))
-            ml_toggle();
-        else if (slot == 1u && steps > 0)
-            ui_message(ml_clear_all() ? "LEARN CLEARED" : "NOTHING LEARNED");
-        return;
-    }
-    if (cur_page()->graph == GR_SCHAIN) {              /* 0.2.22 SIDECHAIN: K1 P1 CH, K2 P1 NOTE, K3 P2 CH, K4 P2 NOTE (any SRC: a device setting). PART FX OFF: the ducker is skipped, no cards */
-        uint32_t n;
-        if ((mods_off & MODS_PFX) || !steps)
-            return;
-        if (slot & 1u) {
-            n = (uint32_t)clamp((int32_t)sc_get(slot) + accel(EN_K1 + slot, steps, 127), 0, 127);
-            sc_put(slot, n);
-        } else {
-            n = (uint32_t)clamp((int32_t)sc_get(slot) + steps, 0, 15);
-            sc_put(slot, n);
-        }
-        return;
-    }
-    if (cur_page()->graph != GR_MIDI)
-        return;
-    {
-        uint8_t vis[4];                                  /* T0227: the cards moved left (ui_draw.c midi_cards): knob k is the k-th that shows */
-        uint32_t n = midi_cards(vis);
-        if (slot >= n)
-            return;
-        slot = vis[slot];
-    }
-    if (slot == 2u) {
-        uint32_t r = steps > 0 ? 1u : steps < 0 ? 0u : (uint32_t)song.g[G_ROUTE] == 1u;
-        if (r != (uint32_t)(song.g[G_ROUTE] == 1)) {
-            song.g[G_ROUTE] = (int16_t)r;
-        }
-        return;
-    }
-    if (slot < 2u) {
-        uint32_t ch;
-        ch = (uint32_t)clamp((int32_t)midi_ch_get(slot) + steps, 0, 15);
-        midi_ch_put(slot, ch);
-    }
+    if (steps && slot < 2u)                            /* (owner 2026-11-15, as TOOLS: a knob picks its card, OCT+ does it: ui_menu.c menu_input; was: K1 right ON / left OFF, K2 right cleared all at once) */
+        ml_act = (uint8_t)(slot + 1u);
 }
 
 /* the SCALE page's (and the SCL quick layer's) knobs, GLOBAL (core.h): K1 SCALE, K2 ROOT, K3 OFF-SCALE SNAP / PLAY, K4 none. Edits the RAM globals;
@@ -1157,6 +1098,10 @@ static void edit_param(uint32_t slot, int32_t steps)
         perf_knob(slot, steps);
         return;
     }
+    if (pg->scope == SC_MACRO) {                          /* DUELL 1.3: HOME's MACROS 1/2, 2/2 (ui_perform.c mac_knob; knob k of page n: macro 4n + k) */
+        mac_knob((pg->graph == GR_MAC2 ? 4u : 0u) + (slot & 3u), EN_K1 + (slot & 3u), steps);
+        return;
+    }
 #if DUELL_TEST_MODE
     if (pg->scope == SC_TEST) {                           /* MENU > SYSTEM > TEST (ui_menu.c menu_input) */
         test_knob(slot, steps);
@@ -1187,19 +1132,15 @@ static void edit_param(uint32_t slot, int32_t steps)
             clock_knob(steps);
         return;
     }
-    if (pg->scope == SC_MIDI && pg->id[slot & 3u] == 0xFFu) {   /* GLO's MIDI, MIDI LEARN: the channels, LEARN (KNOB 3, 4: the DUCK's own below) */
+    if (pg->scope == SC_MIDI) {                           /* MENU > MIDI > MIDI LEARN's screen (DUELL 1.3): LEARN, CLEAR */
         midi_knob(slot, steps);
-        return;
-    }
-    if (pg->scope == SC_MODS) {                           /* GLO's MODULES (0.2.14): the four switches */
-        mods_knob(slot, steps);
         return;
     }
     if (pg->scope == SC_FXSUM) {                          /* FX's SEND FX (0.2.22): K1 / K2 / K3 jump to GLO's CHORUS / DELAY 1/2 / REVERB */
         fxsum_knob(slot, steps);
         return;
     }
-    if (slot == 3u && duck_midi_page(pg)) {               /* 0.2.22 DUCK 1/2 with SRC MIDI: K4 jumps to GLO > SIDECHAIN (the MIDI setup lives there) */
+    if (slot == 3u && duck_midi_page(pg)) {               /* 0.2.22 DUCK 1/2 with SRC MIDI: K4 jumps to MENU > MIDI > SIDECHAIN (the MIDI setup lives there; DUELL 1.3: was GLO > SIDECHAIN) */
         schain_jump(knob, steps);
         return;
     }
@@ -1347,41 +1288,33 @@ static void fxsum_knob(uint32_t slot, int32_t steps)
     page_entered();
 }
 
-/* DUCK 1/2 (FX) while the part's SRC is MIDI: K4 is a link card to GLO > SIDECHAIN (params.c duck_midi_page) */
-static void schain_jump(uint32_t knob, int32_t steps)
+/* the MENU's knob turn s of knob k (ui_menu.c): 0 while the twist that jumped there goes on (kr_on, as on the pages) */
+static int32_t kr_pass(uint32_t k, int32_t s)
 {
-    uint32_t i;
+    if (s && kr_on[k & 3u]) {
+        if (fm1_ms - kr_t[k & 3u] < KR_QUIET_MS) {
+            kr_t[k & 3u] = fm1_ms;
+            return 0;
+        }
+        kr_on[k & 3u] = 0;
+    }
+    return s;
+}
+/* DUELL 1.3: a twist that jumps to a MENU section opens the MENU there (t its section, MTAB_*: the row last picked in it); the rest of the twist is swallowed (kr_on), as after fxsum_knob */
+static void menu_jump(uint32_t knob, int32_t steps, uint32_t t)
+{
     if (!steps)
         return;
-    for (i = 0; i < NPAGES; i++)
-        if (PAGES[i].fam == FAM_GLO && PAGES[i].graph == GR_SCHAIN)
-            break;
-    if (i >= NPAGES)
-        return;
-    ui.page = (uint8_t)i;
-    ui.fam_last[FAM_GLO] = ui.page;
+    ui.confirm = 0;
+    song.seq_mode = 0;
+    menu_open_sec(t);
     kr_on[knob & 3u] = 1;                               /* (the knob that jumped: its further detents are swallowed) */
     kr_t[knob & 3u] = fm1_ms;
-    page_entered();
 }
-
-/* item 125: a twist of any knob of a page whose module is OFF (ui.c off_module, the notice of ui_graph.c graph_off) jumps to GLO > MODULES; the rest of that twist is swallowed (kr_on) as after fxsum_knob */
-static void off_knob(uint32_t knob, int32_t steps)
-{
-    uint32_t i;
-    if (!steps)
-        return;
-    for (i = 0; i < NPAGES; i++)
-        if (PAGES[i].fam == FAM_GLO && PAGES[i].scope == SC_MODS)
-            break;
-    if (i >= NPAGES)
-        return;
-    ui.page = (uint8_t)i;
-    ui.fam_last[FAM_GLO] = ui.page;
-    kr_on[knob & 3u] = 1;
-    kr_t[knob & 3u] = fm1_ms;
-    page_entered();
-}
+/* DUCK 1/2 (FX) while the part's SRC is MIDI: K4 is a link card to MENU > MIDI > SIDECHAIN (params.c duck_midi_page; DUELL 1.3: was GLO > SIDECHAIN) */
+static void schain_jump(uint32_t knob, int32_t steps) { menu_jump(knob, steps, MTAB_SCHAIN); }
+/* item 125: a twist of any knob of a page whose module is OFF (ui.c off_module, the notice of ui_graph.c graph_off) jumps to MENU > MODULES (DUELL 1.3: was GLO > MODULES) */
+static void off_knob(uint32_t knob, int32_t steps) { menu_jump(knob, steps, MTAB_MODULES); }
 
 /* 0: no reset on this card (the turn goes on as ever); 1: reset (said); 2: the card is not shown (a selection makes it inapplicable): nothing */
 static int reset_desc(const param_desc_t *d, int16_t *vp, track_t *t, const char *name)
@@ -1450,21 +1383,12 @@ static int knob_reset(uint32_t k)
         return 0;
     case SC_MODE:                                       /* (item 157: KNOB 2's BALANCE and its reset are gone; nothing on the MODE page resets) */
         return 0;
-    case SC_PERF:
-        if (k == 0u) {
-            morph_act(MQ_FADER, morph_mask(song.sel), 0u, song.sel);
-            return reset_say("MORPH");
-        }
-        if (k == 1u) {
-            perf_space = 0;
-            return reset_say("SPACE");
-        }
-        if (k == 2u) {
-            perf_filt = 0;
-            return reset_say("KILL");
-        }
-        perf_depth = 100;
-        return reset_say("DEPTH");
+    case SC_PERF:                                       /* (DUELL 1.3: the knob's picked macro: MENU > CONTROL > PERFORM KNOB 1..4) */
+        mac_reset(mac_pick(k & 3u));
+        return reset_say(MAC_NAME[mac_pick(k & 3u)]);
+    case SC_MACRO:                                      /* DUELL 1.3: HOME's MACROS: to the middle (MORPH: to A, as PERFORM's) */
+        mac_reset((pg->graph == GR_MAC2 ? 4u : 0u) + (k & 3u));
+        return reset_say(MAC_NAME[(pg->graph == GR_MAC2 ? 4u : 0u) + (k & 3u)]);
     case SC_SCALE:
         if (k == 0u) {
             scale_g = SCALE_D.def;
@@ -1475,21 +1399,11 @@ static int knob_reset(uint32_t k)
             return reset_say("ROOT");
         }
         return 0;
-    case SC_MIDI:                                       /* 0.2.22 SIDECHAIN: that channel or note to its default (channel 10, note C2) */
-        if (pg->graph != GR_SCHAIN || (mods_off & MODS_PFX))
-            return 0;
-        sc_put(k, (k & 1u) ? SC_NOTE_DEF : SC_CH_DEF);
-        return reset_say(k == 0u ? "P1 SC CH" : k == 1u ? "P1 SC NOTE" : k == 2u ? "P2 SC CH" : "P2 SC NOTE");
+    case SC_MIDI:                                       /* (MIDI LEARN: nothing to reset) */
     case SC_STEP:
     case SC_TEST:
     case SC_FXSUM:                                      /* (0.2.21: nothing to reset; the knob only jumps) */
         return 0;
-    case SC_MODS:                                       /* 0.2.14 GLO > MODULES: the switch to its default, ON */
-        if ((k & 3u) < 2u)
-            mods_run_put(k & 3u, 1u);                   /* (ARP, SEQ: FOLLOWS PATCH) */
-        else
-            mods_put(1u << (k & 3u), 0u);
-        return 1;                                       /* (item 125: reset to ON, no "RESET .." message over the title) */
     default:
         break;
     }
@@ -1976,6 +1890,7 @@ static void ui_input(void)
 #endif
     fm6_poll();                                         /* FM6: PTCH turned -> its patch */
     morph_poll();                                       /* DUELL 4b: MIDI's MORPH actions, AMOUNT / TARGET's settings */
+    mac_settings();                                     /* DUELL 1.3: the MIDI PRESET to the MIDI side, the MACROS' offsets to the audio side (ui.c) */
     pc_poll();                                          /* DUELL: MIDI's PROGRAM CHANGEs (ui.c) */
     pl_poll();                                          /* DUELL 0.2.16: PATCHES' accelerated K1 loads the sound it settled on (ui.c) */
     mode_settings();                                    /* DUELL step 5: the MODE and its settings byte */
@@ -2080,7 +1995,7 @@ static void ui_input(void)
         if (ui.menu) {
             menu_close();
         } else {
-            ui.menu = 1;                                /* (at the tab and row it was left at) */
+            ui.menu = 6;                                /* (DUELL 1.3: the list of the sections, at the section it was left at) */
             ui.confirm = 0;                             /* (a clear dialog is cancelled, NAME too) */
             name_close();
             ui.force = 1;
@@ -2090,9 +2005,30 @@ static void ui_input(void)
     if (rec == BT_TAP && !ui.menu && !ui.confirm && !name_on())   /* REC pressed in another layer (REC alone: */
         rec_tap();                                      /* its layer's tap); nothing in the menu, a dialog or NAME */
     if (ui.menu) {                                      /* SAVE / REC taps do nothing here (HOME: above) */
+        if (!ui.confirm) {                              /* owner 2026-11-15 (one rule with the GUIDE and every page): PLAY plays and stops, REC is the HOLD switch
+                                                         * (always HOLD here, whatever page is under SETTINGS); SAVE never comes here: it closes SETTINGS and opens SAVE, above */
+            if ((pressed >> panel.btn[B_PLAY]) & 1u)
+                play_press(now);
+            if (rec == BT_TAP)
+                rec_hold_tap();
+        }
         if (ui.save_t0)
             ui.save_t0 |= 2u;
         ui.pg_down = 0;
+        if (ui.confirm == CF_ML_CLEAR) {                /* (owner 2026-11-15: MIDI LEARN's CLEAR ALL dialog, over SETTINGS: OCT+ YES, OCT- NO or a page button cancels) */
+            if (oct & 2u) {
+                ui.confirm = 0;
+                ml_act = 0;
+                ui.force = 1;
+                ui_message(ml_clear_all() ? "LEARN CLEARED" : "NOTHING LEARNED");
+            } else if ((oct & 1u) || leave_pressed(pressed)) {
+                ui.confirm = 0;
+                ui.force = 1;
+                ui_message("NOTHING CLEARED");
+            }
+            enc_drop();
+            return;
+        }
         if (ui.confirm == CF_ERASE_ALL) {               /* DUELL 0.2.2: MENU > SYSTEM > ERASE DATA's dialog, over the menu: OCT+ YES erases and */
             if (oct & 2u) {                             /* restarts the unit as new; OCT- NO and any page button cancel, nothing erased */
                 int rc = erase_data_run();
@@ -2317,7 +2253,7 @@ static void ui_input(void)
             continue;
         }
         if (pg->scope == SC_STEP || page_desc(pg, k, &hv) ||
-            (pg->scope == SC_MORPH && !(pg->graph == GR_MORPHSET && k == 3u)) || pg->scope == SC_MODE || pg->scope == SC_MIDI || pg->scope == SC_TEST || pg->scope == SC_PERF || pg->scope == SC_MODS || pg->graph == GR_GLO ||
+            (pg->scope == SC_MORPH && !(pg->graph == GR_MORPHSET && k == 3u)) || pg->scope == SC_MODE || pg->scope == SC_MIDI || pg->scope == SC_TEST || pg->scope == SC_PERF || pg->scope == SC_MODS || pg->scope == SC_MACRO || pg->graph == GR_GLO ||
             (k == 3u && duck_midi_page(pg)) || (pg->scope == SC_SCALE && k < 3u) || (pg->scope == SC_FXSUM && k < 3u) ||            /* (SCALE: K1 SCALE, K2 ROOT, K3 OFF-SCALE; K4 is an empty column) */
             (pg->graph == GR_TEMPO && k == TEMPO_TAP_SLOT) ||
             ((pg->graph == GR_MOD || pg->graph == GR_PATS) && k == 0u)
@@ -2352,7 +2288,7 @@ static void setup_title(void)
         cv_text(x + 22, HEAD_MY, &AF_M, t, T_TEXT);
         cv_blit(0, 5);
     }
-    draw_text_box(0, 32, 240, &AF_S, "TEACH EACH BUTTON AND KNOB", T_MID, 1);
+    draw_text_box(0, 32, 240, &AF_S, "Teach each button and knob", T_MID, 1);
     draw_text_box(0, 206, 240, &AF_S, "ANY KEY: CANCEL", T_DIM, 1);
 }
 static void setup_show(const char *what, const char *name)     /* "PRESS" / "TURN RIGHT", the control */

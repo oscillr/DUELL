@@ -155,13 +155,22 @@ static int vbank_gone(void)                           /* DUELL 1.1 (item 91): th
     return 1;
 }
 static int velo_kept(void) { uint8_t v[160]; uint32_t j; if (velo_cal_load(v, sizeof v) != 128) return 0; for (j = 1; j < 128u; j++) if (v[j] != (uint8_t)(j * 5u + 1u)) return 0; return v[0] == 0u; }   /* (item 103) as fill() saved it: v[0] = 1 ^ 1 */
-static void open_dialog(void)
+static void menu_pick(uint32_t row)                   /* DUELL 1.3: in the MENU's list, row's section picked at row; OCT+ opens it there */
 {
-    hold(B_HOME);                                     /* HOME held: the menu */
-    ui.menu_sel = MI_ERASE;
-    ui.menu_row[MI_TAB[MI_ERASE]] = (uint8_t)(MI_ERASE - mtab_first(MI_TAB[MI_ERASE]));
+    ui.menu_sel = (uint8_t)row;
+    ui.menu_row[MI_TAB[row]] = (uint8_t)(row - mtab_first(MI_TAB[row]));
     ui.force = 1;
     frame();
+    press(B_OCTUP);
+}
+static void menu_row_open(uint32_t row)               /* HOME held: the MENU (1.3: its list of sections), then row's section at row */
+{
+    hold(B_HOME);
+    menu_pick(row);
+}
+static void open_dialog(void)
+{
+    menu_row_open(MI_ERASE);
     press(B_OCTUP);
 }
 
@@ -195,7 +204,7 @@ int main(void)
     }
 
     /* 1: the dialog */
-    ck("ERASE DATA is the last row of the SYSTEM tab, label of at most 12 characters", MI_TAB[MI_ERASE] == MTAB_SYSTEM && MI_ERASE == MI_COUNT - 1u &&
+    ck("ERASE DATA is the last row of the SYSTEM tab, label of at most 12 characters", MI_TAB[MI_ERASE] == MTAB_SYSTEM && mtab_end(MTAB_SYSTEM) == MI_ERASE + 1u &&   /* (1.3: SIDECHAIN's rows follow, a sub-section of MIDI) */
        str_len(MI_NAME[MI_ERASE]) <= 12u && menu_place(MI_ERASE, 0) + 1u == mtab_pages(MTAB_SYSTEM));   /* (0.2.14: on SYSTEM's last page) */
     for (i = 0; i < 5u; i++)
         if (text_w(&AF_S, ERASE_LINES[i]) > 200)
@@ -404,51 +413,37 @@ int main(void)
         persist_pending = 1;
         flush();
         pal0 = settings.palette;
-        hold(B_HOME);
-        ui.menu_sel = MI_COLOR;
-        ui.force = 1;
-        frame();
+        menu_row_open(MI_COLOR);
         turn(EN_K1, 1);
         pal1 = settings.palette;
         ck("MENU > COLOR: turned, the menu stays open, the palette changed", ui.menu == 1u && pal1 != pal0);
         frames(500);
         boot();
         ck("  a power cut 0.5 s after the turn: not saved yet (the knob may still be moving)", settings.palette == pal0);
-        hold(B_HOME);
-        ui.menu_sel = MI_COLOR;
-        ui.force = 1;
-        frame();
+        menu_row_open(MI_COLOR);
         turn(EN_K1, 1);
         pal1 = settings.palette;
         frames(2200);
         ck("  after the knob rests 2 s: written, with the menu still open", ui.menu == 1u && !persist_pending && persist_saved.palette == palette_to_stored(pal1));
         boot();
         ck("  a power cycle with the menu never left: the colour is kept", settings.palette == pal1);
-        hold(B_HOME);
-        ui.menu_sel = MI_ACCEL;
-        ui.force = 1;
-        frame();
+        menu_row_open(MI_ACCEL);
         e0 = n_erase;
-        press(B_OCTDN);                                 /* (0.2.14: ON on a new unit; OFF is the change) */
+        turn(EN_K1, -1);                                /* (0.2.14: ON on a new unit; OFF is the change. 1.3: a knob sets a value, OCT- goes back to the list) */
         ck("MENU > KNOB ACCEL (a two-value switch): saved at once", ui.menu == 1u && !(ui_prefs & PREF_ACCEL) && n_erase > e0 && !persist_pending);
         boot();
         ck("  a power cycle right after: OFF is kept (and the colour)", !(ui_prefs & PREF_ACCEL) && settings.palette == pal1);
-        hold(B_HOME);
-        ui.menu_sel = MI_PREVIEW;
-        ui.force = 1;
-        frame();
-        press(B_OCTUP);
-        ui.menu_sel = MI_COLOR;
+        menu_row_open(MI_PREVIEW);
+        turn(EN_K1, 1);                                 /* (1.3: a knob, not OCT+, sets a value) */
+        press(B_OCTDN);                                 /* (back to the list, then DISPLAY at COLOR) */
+        menu_pick(MI_COLOR);
         turn(EN_K1, 1);
         pal0 = settings.palette;
         frames(2200);
         boot();
         ck("  several settings changed in one visit (STEP PREVIEW, COLOR): all kept", (ui_prefs2 & (PREF_PREVIEW >> 16)) && !(ui_prefs & PREF_ACCEL) && settings.palette == pal0);
-        hold(B_HOME);
-        ui.menu_sel = MI_ACCEL;
-        ui.force = 1;
-        frame();
-        press(B_OCTUP);
+        menu_row_open(MI_ACCEL);
+        turn(EN_K1, 1);
         press(B_HOME);
         ck("leaving the menu after a change shows no message", !ui.menu && ui.msg_t == 0u);
     }

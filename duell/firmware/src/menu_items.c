@@ -20,14 +20,30 @@
  * BUTTON MAP), new groups (SCALE LEDS in DISPLAY), SCOPE and OVERVIEW removed (their editor ids 18 and 23 retired, never reused).
  * MI order = the order the device shows (a tab's rows follow each other); the editor's ids are editor_menu.c ED_MENU's, by row, so
  * the order is no id. MI_NAME is the editor's name (at most 12 characters, ed_str) and the device's label unless MI_LABEL has one */
-enum { MI_COLOR, MI_LEDS, MI_SCLLED, MI_ANIM, MI_SCROFF, MI_NOTESLEFT, MI_CPU,                    /* DISPLAY */
-       MI_MODERECALL, MI_HOMEPG, MI_ACCEL, MI_HOLD, MI_CHADD, MI_PREVIEW, MI_PERFLEAVE,  /* CONTROL (MULTI LOAD .. STEP KEYS .., PERF LEAVE) */
+/* DUELL 1.3 (owner 2026-11-13, menu-sections-proposal_2026-11-13 option A): seven SECTIONS (MTAB_*), the MENU opens on their list; PERFORM's
+ * rows left CONTROL, MIDI got GLO > MIDI's three settings, SIDECHAIN (its four values, a sub-section) and MIDI LEARN (its screen), MODULES got GLO > MODULES' four.
+ * The values and their storage are the same as before: only where they are shown and set changed */
+/* DUELL 1.3 (owner 2026-11-15, after the Fable review, menu-consistency_2026-11-15.md sections 15 and 16): seven categories in this order, PLAYING RECORDING MORPH PERFORM MODULES
+ * MIDI SYSTEM; MODE (with XFADE and SPLIT, LAYER only) and MORPH SET's SMART / ARP / PITCH came in from HOME's pages; DISPLAY, CONTROL and AUDIO are gone (their rows in PLAYING,
+ * RECORDING and SYSTEM). The order of the rows inside each category follows the review. The values and their storage are unchanged */
+enum { MI_MODE, MI_XFADE, MI_SPLIT, MI_MODERECALL,    /* PLAYING: MODE (was HOME's MODE page: duell_mode_req), XFADE and SPLIT (mix_xf, mix_split: LAYER only), MULTI LOAD, */
 #if DUELL_VELO
-       MI_KEYVEL,                                      /* (KEY VELOCITY OFF / ON: builds with KEY SENSE built in only, DUELL_VELO; no row, no editor id otherwise) */
+       MI_KEYVEL,                                      /* (KEY VELOCITY OFF / ON: builds with KEY SENSE built in only, DUELL_VELO; every product build since 0.2.30) */
        MI_AFTERT,                                      /* (DUELL 1.0: AFTERTOUCH OFF / ON, its own line, the same builds) */
 #endif
-       MI_CLICK, MI_CLKLVL, MI_COUNTIN, MI_TUNE,                 /* AUDIO (CLICK .. COUNT-IN, TUNE; 0.2.19: OUTPUT EQ removed; 0.2.25: USB LEVEL removed) */
-       MI_RESTORE, MI_PANEL,                                                        /* SYSTEM (RESTORE LAST, BUTTON MAP) */
+       MI_TUNE,                                        /* TUNE (the project's G_TUNE) */
+       MI_CLICK, MI_CLKLVL, MI_COUNTIN, MI_CHADD, MI_PREVIEW,   /* RECORDING: CLICK, CLICK LEVEL, COUNT-IN (contiguous: rp_get), STEP KEYS, STEP PREVIEW */
+       MI_RSMART, MI_RARP, MI_RPITCH,                  /* MORPH: MORPH SET's SMART, ARP, PITCH (morph.cfg MC_WILD inverted, MC_ARP, MC_PIT) */
+       MI_PERFK1, MI_PERFK2, MI_PERFK3, MI_PERFK4,     /* PERFORM: PERFORM's four knobs, each any of the eight macros (or DEPTH; K1 has no row: it is DEPTH), */
+       MI_QMAC1, MI_QMAC2, MI_QMAC3, MI_QMAC4,         /* QUICK MACRO's four (SEL held: ui_layer.c), */
+       MI_PERFLEAVE,                                   /* LEAVING PERFORM */
+       MI_ARP, MI_SEQ, MI_SENDS, MI_PFX,               /* MODULES (core.h MODS_*; ui.c mods_*) */
+       MI_P1CH, MI_P2CH, MI_MIDIIN,                    /* MIDI: the parts' channels (ui_input.c midi_ch_*), MIDI IN (the project's G_ROUTE), */
+       MI_MIDIPRE,                                     /* the MIDI PRESET (STANDARD, CIRCUIT TRACKS, MPC/FORCE: midi_control.c), */
+       MI_MLEARN, MI_SCHAIN,                           /* MIDI LEARN (opens its screen, ui.menu 4) and SIDECHAIN (opens its four values, MTAB_SCHAIN; last: it hides with PART FX OFF) */
+       MI_COLOR, MI_LEDS, MI_SCLLED, MI_ANIM, MI_SCROFF, MI_NOTESLEFT, MI_CPU,   /* SYSTEM, page 1: the look (was DISPLAY), */
+       MI_ACCEL, MI_HOLD,                              /* the feel (was CONTROL), */
+       MI_HOMEPG, MI_RESTORE, MI_PANEL,                /* page 2: where you land (HOME OPENS, RESTORE LAST), BUTTON MAP (no row), */
 #if FELUCCA_CDC
        MI_SERIAL,                                      /* (USB SERIAL: developer builds only, FELUCCA_CDC: the product has no serial console, so no row that would do nothing) */
 #endif
@@ -35,7 +51,9 @@ enum { MI_COLOR, MI_LEDS, MI_SCLLED, MI_ANIM, MI_SCROFF, MI_NOTESLEFT, MI_CPU,  
        MI_TEST,                                        /* (developer builds only: DUELL_TEST_MODE; the release has no TEST row) */
 #endif
        MI_GUIDE,                                       /* (DUELL 0.2.11: the first-start GUIDE again; no value, no editor id) */
-       MI_ABOUT, MI_ERASE, MI_COUNT };
+       MI_ABOUT, MI_ERASE,                             /* ERASE DATA last */
+       MI_SC1CH, MI_SC1NT, MI_SC2CH, MI_SC2NT,         /* MIDI > SIDECHAIN: the ducker's MIDI setup (ui.c sc_get / sc_put; was GLO > SIDECHAIN) */
+       MI_COUNT };
                                                        /* (1.1: the metronome's rows in AUDIO; 1.2: RESTORE LAST in
                                                         * SYSTEM, SCALE LEDS STEP PREVIEW CHORD ENTRY in CONTROL, SCOPE in
                                                         * DISPLAY, TUNE in AUDIO, MIDI IN in MIDI, INFO (now TEST) in SYSTEM;
@@ -51,15 +69,23 @@ static int menu_valued(uint32_t row);
 #else
 #define MI_READONLY(row) ((row) == MI_GUIDE || (row) == MI_ABOUT)
 #endif
-static int menu_valued(uint32_t row) { return row < MI_COUNT && row != MI_PANEL && row != MI_ERASE && !MI_READONLY(row); }   /* (a row with a value) */
-#define MI_PROJECT(row) ((row) == MI_TUNE)   /* the project's value (song.g), not a setting */
-static const char *const MI_NAME[MI_COUNT] = {"COLOR", "LEDS", "SCALE LEDS", "ANIMATION", "SCREEN OFF", "NOTES LEFT", "CPU METER",
-                                              "MULTI LOAD", "HOME OPENS", "KNOB ACCEL", "BUTTON HOLD", "STEP KEYS", "STEP PREVIEW", "PERF LEAVE",
+#define MI_OPENS(row) ((row) == MI_SCHAIN || (row) == MI_MLEARN)   /* (DUELL 1.3: the rows that open a sub-section or a screen: OCT+ or a knob right, as the three above) */
+static int menu_valued(uint32_t row) { return row < MI_COUNT && row != MI_PANEL && row != MI_ERASE && !MI_READONLY(row) && !MI_OPENS(row); }   /* (a row with a value) */
+#define MI_PROJECT(row) ((row) == MI_TUNE || (row) == MI_MIDIIN || ((row) >= MI_MODE && (row) <= MI_SPLIT) || ((row) >= MI_RSMART && (row) <= MI_RPITCH))   /* the project's value (song.g), not a setting; (owner 2026-11-15) MODE, XFADE, SPLIT and MORPH's three: saved by their own paths (ui_input.c mode_settings, morph_settings) */
+static const char *const MI_NAME[MI_COUNT] = {"MODE", "XFADE", "SPLIT", "MULTI LOAD",
 #if DUELL_VELO
                                               "KEY VELOCITY", "AFTERTOUCH",
 #endif
-                                              "CLICK", "CLICK LEVEL", "COUNT-IN", "TUNE",
-                                              "RESTORE LAST", "BUTTON MAP",
+                                              "TUNE",
+                                              "CLICK", "CLICK LEVEL", "COUNT-IN", "STEP KEYS", "STEP PREVIEW",
+                                              "MORPH SMART", "MORPH ARP", "MORPH PITCH",   /* (the editor's keys; the unit says SMART, ARP, PITCH under MORPH: MI_LABEL) */
+                                              "PERFORM K1", "PERFORM K2", "PERFORM K3", "PERFORM K4", "QUICK K1", "QUICK K2", "QUICK K3", "QUICK K4",   /* (DUELL 1.3: the editor's keys; the unit and the editor say them in full: MI_LABEL, labels.js MENU_LONG) */
+                                              "PERF LEAVE",
+                                              "ARP", "SEQ", "SENDS", "PART FX",
+                                              "PART 1 CHANNEL", "PART 2 CHANNEL", "MIDI IN", "MIDI PRESET", "MIDI LEARN", "SIDECHAIN",
+                                              "COLOR", "LEDS", "SCALE LEDS", "ANIMATION", "SCREEN OFF", "NOTES LEFT", "CPU METER",
+                                              "KNOB ACCEL", "BUTTON HOLD",
+                                              "HOME OPENS", "RESTORE LAST", "BUTTON MAP",
 #if FELUCCA_CDC
                                               "USB SERIAL",
 #endif
@@ -72,12 +98,17 @@ static const char *const MI_NAME[MI_COUNT] = {"COLOR", "LEDS", "SCALE LEDS", "AN
 #else
                                               "GUIDE",
 #endif
-                                              "ABOUT", "ERASE DATA"};
+                                              "ABOUT", "ERASE DATA",
+                                              "PART 1 CHANNEL", "PART 1 NOTE", "PART 2 CHANNEL", "PART 2 NOTE"};
 /* DUELL 0.2.14: the device's label where it is not MI_NAME (0: MI_NAME). One '\n' at most, a designed break (nothing wraps by itself):
  * the line after it is drawn small (S, MID: a hint, or the rest of a long name) and the row takes two units (ui_menu.c) */
 static const char *const MI_LABEL[MI_COUNT] = {
     [MI_LEDS] = "LIGHTS", [MI_SCLLED] = "SCALE LIGHTS", [MI_PERFLEAVE] = "LEAVING PERFORM",   /* (owner 2026-10-25; MI_NAME stays the editor's key, the editor says it in MENU_LONG) */
     [MI_ACCEL] = "KNOB ACCELERATION",                 /* (DUELL 1.1 label audit, owner: no cryptic ACCEL; MI_NAME stays the editor's key, the editor says it in MENU_LONG) */
+    [MI_MODERECALL] = "MULTI LOAD\n", [MI_RESTORE] = "RESTORE LAST\n",   /* DUELL 1.3 (owner 2026-11-13): a second line that says what the chosen value does (ui_menu.c menu_help) */
+    [MI_PERFK2] = "PERFORM KNOB 2", [MI_PERFK3] = "PERFORM KNOB 3", [MI_PERFK4] = "PERFORM KNOB 4",   /* DUELL 1.3 MACROS (one line: the approved drawing) */
+    [MI_RSMART] = "SMART", [MI_RARP] = "ARP", [MI_RPITCH] = "PITCH",   /* (owner 2026-11-15: MORPH SET's three, under MORPH) */
+    [MI_QMAC1] = "QUICK MACRO\nKNOB 1", [MI_QMAC2] = "QUICK MACRO\nKNOB 2", [MI_QMAC3] = "QUICK MACRO\nKNOB 3", [MI_QMAC4] = "QUICK MACRO\nKNOB 4",
 #if FELUCCA_CDC
     [MI_SERIAL] = "USB SERIAL\nDEVELOPER CONSOLE"      /* (USB SERIAL: its hint) */
 #endif
@@ -91,19 +122,28 @@ static const char *menu_label(uint32_t row)
  * a row is one unit (21 px and a 1 px rule) or two (a two-line label); a page holds MPAGE_UNITS units; a tab with more goes on
  * on a page 2 (menu_place), its pill then reads "CONTROL 1/2". Tabs are in the order the device shows them; a tab's index is what
  * the editor is told, not an id (1.2: MIDI came in before SYSTEM, SYSTEM's index 3 -> 4) */
-enum { MTAB_DISPLAY, MTAB_CONTROL, MTAB_AUDIO, MTAB_SYSTEM, MTAB_COUNT };   /* (DUELL: MIDI is GLO's, no tab here) */
-#define MPAGE_UNITS 7u
-static const char *const MTAB_NAME[MTAB_COUNT] = {"DISPLAY", "CONTROL", "AUDIO", "SYSTEM"};
+/* DUELL 1.3 (owner 2026-11-13): the tabs are the SECTIONS of the list the MENU opens on, in its order; MTAB_SCHAIN is MIDI's SIDECHAIN, a sub-section
+ * (opened from its row, not in the list: MTAB_LIST). MPAGE_UNITS 8: the rows start under the title (no tab bar) */
+enum { MTAB_PLAYING, MTAB_RECORDING, MTAB_MORPH, MTAB_PERFORM, MTAB_MODULES, MTAB_MIDI, MTAB_SYSTEM, MTAB_SCHAIN, MTAB_COUNT };   /* (owner 2026-11-15: this order) */
+#define MTAB_LIST MTAB_SCHAIN                          /* (the sections of the list: 0 .. MTAB_LIST - 1) */
+#define MPAGE_UNITS 8u
+static const char *const MTAB_NAME[MTAB_COUNT] = {"PLAYING", "RECORDING", "MORPH", "PERFORM", "MODULES", "MIDI", "SYSTEM", "SIDECHAIN"};
 static const uint8_t MI_TAB[MI_COUNT] = {
-    MTAB_DISPLAY, MTAB_DISPLAY, MTAB_DISPLAY, MTAB_DISPLAY, MTAB_DISPLAY, MTAB_DISPLAY, 0xFFu,   /* COLOR LEDS SCALE LEDS ANIMATION SCREEN OFF NOTES LEFT (CPU METER, last of its group: no tab, no row: the CPU bar is gone in DUELL 1.1; the row, its stored bit and its editor id 26 stay reserved) */
-    MTAB_CONTROL, MTAB_CONTROL, MTAB_CONTROL, MTAB_CONTROL, MTAB_CONTROL, MTAB_CONTROL,   /* MULTI LOAD HOME OPENS KNOB ACCEL BUTTON HOLD STEP KEYS
-                                                                                          * STEP PREVIEW */
-    MTAB_CONTROL,                                                                         /* PERF LEAVE (FADE / KEEP; the 7th unit: one page is full) */
+    MTAB_PLAYING, MTAB_PLAYING, MTAB_PLAYING, MTAB_PLAYING,                               /* MODE XFADE SPLIT MULTI LOAD */
 #if DUELL_VELO
-    MTAB_CONTROL, MTAB_CONTROL,                                                           /* KEY VELOCITY, AFTERTOUCH (OFF / ON; CONTROL page 2) */
+    MTAB_PLAYING, MTAB_PLAYING,                                                           /* KEY VELOCITY, AFTERTOUCH */
 #endif
-    MTAB_AUDIO, MTAB_AUDIO, MTAB_AUDIO, MTAB_AUDIO,                                       /* CLICK CLICK LEVEL COUNT-IN TUNE */
-    MTAB_SYSTEM, MTAB_SYSTEM,                                                             /* RESTORE LAST BUTTON MAP */
+    MTAB_PLAYING,                                                                         /* TUNE */
+    MTAB_RECORDING, MTAB_RECORDING, MTAB_RECORDING, MTAB_RECORDING, MTAB_RECORDING,       /* CLICK CLICK LEVEL COUNT-IN STEP KEYS STEP PREVIEW */
+    MTAB_MORPH, MTAB_MORPH, MTAB_MORPH,                                                   /* SMART ARP PITCH */
+    0xFFu, MTAB_PERFORM, MTAB_PERFORM, MTAB_PERFORM,                                      /* PERFORM KNOB 1 (no row: K1 is DEPTH, owner 2026-11-13), 2 .. 4 */
+    MTAB_PERFORM, MTAB_PERFORM, MTAB_PERFORM, MTAB_PERFORM,                               /* QUICK MACRO KNOB 1 .. 4 */
+    MTAB_PERFORM,                                                                         /* LEAVING PERFORM */
+    MTAB_MODULES, MTAB_MODULES, MTAB_MODULES, MTAB_MODULES,                               /* ARP SEQ SENDS PART FX */
+    MTAB_MIDI, MTAB_MIDI, MTAB_MIDI, MTAB_MIDI, MTAB_MIDI, MTAB_MIDI,                     /* PART 1 CHANNEL PART 2 CHANNEL MIDI IN MIDI PRESET MIDI LEARN SIDECHAIN */
+    MTAB_SYSTEM, MTAB_SYSTEM, MTAB_SYSTEM, MTAB_SYSTEM, MTAB_SYSTEM, MTAB_SYSTEM, 0xFFu,   /* COLOR LEDS SCALE LEDS ANIMATION SCREEN OFF NOTES LEFT (CPU METER: no row, its bit and editor id 26 reserved) */
+    MTAB_SYSTEM, MTAB_SYSTEM,                                                             /* KNOB ACCEL BUTTON HOLD */
+    MTAB_SYSTEM, MTAB_SYSTEM, 0xFFu,                                                      /* HOME OPENS, RESTORE LAST, BUTTON MAP (no row since 1.3: OCT- and OCT+ held at power-on still open it, main.c) */
 #if FELUCCA_CDC
     MTAB_SYSTEM,                                                                          /* USB SERIAL */
 #endif
@@ -113,11 +153,18 @@ static const uint8_t MI_TAB[MI_COUNT] = {
     MTAB_SYSTEM,                                                            /* GUIDE (DUELL 0.2.11) */
     MTAB_SYSTEM,                                                            /* ABOUT */
     MTAB_SYSTEM,                                                            /* ERASE DATA (DUELL 0.2.2: OCT+ opens its dialog, ui_menu.c) */
+    MTAB_SCHAIN, MTAB_SCHAIN, MTAB_SCHAIN, MTAB_SCHAIN,                     /* SIDECHAIN's PART 1 CHANNEL, PART 1 NOTE, PART 2 CHANNEL, PART 2 NOTE */
 };
+/* a row that shows: one with a section, and SIDECHAIN's (its row and its values) only while PART FX is ON (MODULES: the ducker is skipped otherwise; the hide rule) */
+static int menu_shown(uint32_t row)
+{
+    return row < MI_COUNT && MI_TAB[row] < MTAB_COUNT && !((row == MI_SCHAIN || MI_TAB[row] == MTAB_SCHAIN) && (mods_off & MODS_PFX)) &&
+           !((row == MI_XFADE || row == MI_SPLIT) && duell_mode_req != DM_LAYER);   /* (XFADE and SPLIT are LAYER's only, as on the MODE page: hidden in DUEL and STEREO) */
+}
 /* TUNE (DUELL 0.2.22: MASTER TUNE like a Roland keyboard's): the project's G_TUNE, the frequency of A4 in 0.1 Hz, 415.3 .. 466.2 Hz (core.h TUNE_MIN .. TUNE_MAX); as a row
  * its values 0..TUNE_N - 1 (value - TUNE_MIN, 510 steps, 247 = 440.0 Hz). The editor gets it as a number in tenths (EDM_TENTHS: min..max, its unit "Hz") */
 #define TUNE_N ((uint32_t)(TUNE_MAX - TUNE_MIN + 1))
-typedef char mtab_fits_ui[sizeof ui.menu_row >= MTAB_COUNT ? 1 : -1];   /* (ui.c: the row last picked per tab) */
+typedef char mtab_fits_ui[sizeof ui.menu_row >= MTAB_COUNT ? 1 : -1];   /* (ui.c: the row last picked per section) */
 static uint32_t mtab_first(uint32_t t)                 /* a tab's first row */
 {
     uint32_t i = 0;
@@ -125,18 +172,20 @@ static uint32_t mtab_first(uint32_t t)                 /* a tab's first row */
         i++;
     return i;
 }
-static uint32_t mtab_rows(uint32_t t)                  /* .. and how many it has */
+static uint32_t mtab_end(uint32_t t)                   /* .. and the row after its last (rows without a place may sit between: menu_shown) */
 {
-    uint32_t i, n = 0;
-    for (i = 0; i < MI_COUNT; i++)
-        n += MI_TAB[i] == t;
-    return n;
+    uint32_t i = MI_COUNT;
+    while (i && MI_TAB[i - 1u] != t)
+        i--;
+    return i;
 }
 /* DUELL 0.2.14: a row's units (1, or 2 for a two-line label) and its place: the page of its tab and the unit it starts at. Rows fill a
  * page in MI order until the next one does not fit; the rest go on the next page (a few loops over ~26 rows: no table to keep) */
 static uint32_t menu_units(uint32_t row)
 {
     const char *l = menu_label(row);
+    if (!menu_shown(row))
+        return 0;                                      /* (a row without a place: PERFORM KNOB 1, BUTTON MAP, SIDECHAIN with PART FX OFF) */
     while (*l && *l != '\n')
         l++;
     return *l ? 2u : 1u;
@@ -146,7 +195,7 @@ static uint32_t menu_place(uint32_t row, uint32_t *unit)   /* the page (0 ..) of
     uint32_t i = mtab_first(MI_TAB[row % MI_COUNT]), pg = 0, u = 0, n;
     for (;; i++) {
         n = menu_units(i);
-        if (u + n > MPAGE_UNITS) {
+        if (n && u + n > MPAGE_UNITS) {
             pg++;
             u = 0;
         }
@@ -160,7 +209,7 @@ static uint32_t menu_place(uint32_t row, uint32_t *unit)   /* the page (0 ..) of
 }
 static uint32_t mtab_pages(uint32_t t)                 /* a tab's pages (1 ..) */
 {
-    return menu_place(mtab_first(t) + mtab_rows(t) - 1u, 0) + 1u;
+    return menu_place(mtab_end(t) - 1u, 0) + 1u;
 }
 /* the two-valued rows: a bit of ui_prefs (PREF_REC: of ui_rec_prefs, ui.c PREF_SCALE_LEDS_OFF) and its names (bit clear =
  * the default, bit set). A step up (a knob right,
@@ -198,7 +247,7 @@ static const uint8_t ANIM_ORD[3] = {1, 0, 2};          /* (a value's place in th
  * its byte [15][26] kept as stored) */
 /* HOME OPENS (DUELL): the page the HOME button opens from another page, power-on and leaving the menu (ui.c go_main): MORPH (the
  * default, stored 0), MODE, MIXER; ui_home_pg (ui.c), an unknown stored code reads as MORPH (0.2.14: OVERVIEW's 3 too) */
-static const char *const HOMEPG_N[HP_COUNT] = {"MORPH", "MODE"};   /* (0.2.25: MIXER left HOME for GLO; a stored MIXER reads MORPH) */
+static const char *const HOMEPG_N[HP_COUNT] = {"MORPH", "MACROS 1/2", "MACROS 2/2", "PERFORM"};   /* (owner 2026-11-15: HOME's round in its order, then PERFORM) */   /* (owner 2026-11-15: MODE left HOME for SETTINGS > PLAYING; a stored MODE reads MORPH) */   /* (0.2.25: MIXER left HOME for GLO; a stored MIXER reads MORPH. DUELL 1.3 (owner 2026-11-13): PERFORM, stored as HP_PERF_CODE: ui.c home_pg) */
 /* (SCALE LINK, a CONTROL row of 0.2.1 builds before the global scale, is RETIRED: the scale is the instrument's, core.h; the editor protocol never
  * listed it, so no id is lost) */
 
@@ -243,9 +292,18 @@ static uint32_t menu_n(uint32_t row)
     if (row == MI_KEYVEL || row == MI_AFTERT)
         return SC_TYPE_N + 1u;                         /* OFF + 5 types */
 #endif
+    if (row == MI_MODE)
+        return DM_N;
+    if (row == MI_XFADE)
+        return 101u;                                   /* 0 .. 100 % */
+    if (row == MI_SPLIT)
+        return 129u;                                   /* 0 OFF, else the note + 1 */
     return row == MI_COLOR ? NPALETTES : (row >= MI_CLICK && row <= MI_COUNTIN) ? 3u :
            row == MI_HOLD ? 4u : row == MI_LEDS ? LEDS_COUNT : row == MI_SCROFF ? NELEM(SCROFF_N) :
-           row == MI_TUNE ? TUNE_N : row == MI_ANIM ? 3u : row == MI_HOMEPG ? (uint32_t)HP_COUNT : 2u;
+           row == MI_TUNE ? TUNE_N : row == MI_ANIM ? 3u : row == MI_HOMEPG ? (uint32_t)HP_COUNT :
+           row >= MI_PERFK1 && row <= MI_QMAC4 ? (uint32_t)MAC_N : row == MI_MIDIPRE ? (uint32_t)MPRE_N :   /* (DUELL 1.3: PERFORM's: the eight and DEPTH) */
+           row == MI_P1CH || row == MI_P2CH || row == MI_SC1CH || row == MI_SC2CH ? 16u : row == MI_SC1NT || row == MI_SC2NT ? 128u :   /* (a channel 1..16; a note: 0 ANY, then the notes) */
+           row == MI_ARP || row == MI_SEQ ? 3u : 2u;      /* (ARP, SEQ: OFF, ON (FOLLOWS PATCH), KEEPS RUNNING: ui.c mods_run_get) */
 }
 static uint32_t menu_get(uint32_t row)
 {
@@ -255,11 +313,25 @@ static uint32_t menu_get(uint32_t row)
         return ((ui_prefs | (uint32_t)ui_rec_prefs << 8 | (uint32_t)ui_prefs2 << 16) & f->bit) != 0;
     switch (row) {
     case MI_COLOR: return settings.palette % NPALETTES;
+    case MI_MODE: return (uint32_t)DM_LAYER - (duell_mode_req < DM_N ? duell_mode_req : DM_SPLIT);   /* (the list LAYER, STEREO, DUEL, as the MODE page read it) */
+    case MI_XFADE: return mix_xf <= 100u ? mix_xf : 100u;
+    case MI_SPLIT: return mix_split <= 128u ? mix_split : 0u;
+    case MI_RSMART: return !(morph.cfg & MC_WILD);
+    case MI_RARP: return (morph.cfg & MC_ARP) != 0u;
+    case MI_RPITCH: return (morph.cfg & MC_PIT) != 0u;
     case MI_HOLD: return settings_hold % 4u;
     case MI_SCROFF: return scr_get();
     case MI_ANIM: return ui_prefs & PREF_ANIM_OFF ? 1u : (ui_idle & 1u) ? 2u : 0u;
-    case MI_HOMEPG: return ui_home_pg < HP_COUNT ? ui_home_pg : HP_MORPH;
+    case MI_HOMEPG: return home_pg();
+    case MI_P1CH: case MI_P2CH: return midi_ch_get(row - MI_P1CH);
+    case MI_MIDIIN: return song.g[G_ROUTE] == 1;       /* (0 PART CHANNEL, 1 ANY CHANNEL: the project's G_ROUTE, as stored before) */
+    case MI_ARP: case MI_SEQ: return mods_run_get(row - MI_ARP);
+    case MI_SENDS: case MI_PFX: return !((mods_get() >> (row - MI_ARP)) & 1u);   /* (1 ON: the MODULES bit clear) */
+    case MI_SC1CH: case MI_SC1NT: case MI_SC2CH: case MI_SC2NT: return sc_get(row - MI_SC1CH);
     case MI_PERFLEAVE: return perf_keep();
+    case MI_PERFK1: case MI_PERFK2: case MI_PERFK3: case MI_PERFK4: case MI_QMAC1: case MI_QMAC2: case MI_QMAC3: case MI_QMAC4:
+        return mac_pick(row - MI_PERFK1);              /* DUELL 1.3 (ui.c) */
+    case MI_MIDIPRE: return mac_preset_get();
     case MI_NOTESLEFT: return notes_show_on();         /* 1 = ON (the stored bit is OFF: set = OFF, clear = ON, the default) */
 #if DUELL_VELO
     case MI_KEYVEL: return keyvel_on() ? 1u + keyvel_type() : 0u;   /* 0 OFF, 1..5 SOFTER .. HARDER (the ON bit: set = ON, clear = OFF, the default; the type in ui_sense_type) */
@@ -281,6 +353,21 @@ static const char *menu_vname(uint32_t row, uint32_t v)
         return f->name[v & 1u];
     switch (row) {
     case MI_COLOR: return UI_PALETTES[v % NPALETTES].name;
+    case MI_MODE: return DM_NAME[DM_LAYER - (v < DM_N ? v : 0u)];
+    case MI_XFADE: {
+        static char b[8];
+        fmt_int(b, (int32_t)v);
+        str_cpy(b + str_len(b), " %", 3);
+        return b;
+    }
+    case MI_SPLIT: {
+        static char b[8];
+        if (!v)
+            return "OFF";
+        note_name(b, v - 1u);
+        return b;
+    }
+    case MI_RSMART: case MI_RARP: case MI_RPITCH: return v & 1u ? "ON" : "OFF";
     case MI_HOLD: return HOLD_N[v & 3u];
     case MI_CLICK: return CLICK_N[v % 3u];
     case MI_CLKLVL: return CLKLVL_N[v % 3u];
@@ -288,6 +375,18 @@ static const char *menu_vname(uint32_t row, uint32_t v)
     case MI_SCROFF: return SCROFF_N[v % NELEM(SCROFF_N)];
     case MI_ANIM: return ANIM_N[v % 3u];
     case MI_HOMEPG: return HOMEPG_N[v % HP_COUNT];
+    case MI_MIDIIN: return v & 1u ? "ANY CHANNEL" : "PART CHANNEL";
+    case MI_ARP: case MI_SEQ: return v == 0u ? "OFF" : v == 1u ? "ON" : "KEEPS RUNNING";   /* (the words GLO > MODULES showed) */
+    case MI_SENDS: case MI_PFX: return v & 1u ? "ON" : "OFF";
+    case MI_P1CH: case MI_P2CH: case MI_SC1CH: case MI_SC2CH: case MI_SC1NT: case MI_SC2NT: {   /* a channel 1..16; a note as the DUCK's (F_DKNOTE: ANY, C-1 ..) */
+        static char b[PV_LEN];
+        const char *u;
+        if (row == MI_SC1NT || row == MI_SC2NT)
+            param_format(&SC_NOTE_D, (int16_t)v, b, &u);
+        else
+            fmt_int(b, (int32_t)v + 1);
+        return b;
+    }
 #if DUELL_VELO
     case MI_KEYVEL: case MI_AFTERT: {                  /* DUELL 1.1: OFF + 5 types, the same words on the unit and in the editor (list names are PV_LEN 32: spelled out) */
         static const char *const TYPE_N[6] = {"OFF", "SOFTER", "SOFT", "NORMAL", "HARD", "HARDER"};
@@ -295,7 +394,10 @@ static const char *menu_vname(uint32_t row, uint32_t v)
     }
 #endif
     case MI_NOTESLEFT: return v & 1u ? "ON" : "OFF";
-    case MI_PERFLEAVE: return v & 1u ? "KEEP" : "FADE";   /* DUELL 0.2.14: leaving PERFORM / loading a sound: SPACE and KILL fade to neutral (default) / stay */
+    case MI_PERFLEAVE: return v & 1u ? "KEEP" : "FADE";
+    case MI_PERFK1: case MI_PERFK2: case MI_PERFK3: case MI_PERFK4: case MI_QMAC1: case MI_QMAC2: case MI_QMAC3: case MI_QMAC4:
+        return MAC_NAME[v <= MAC_DEPTH ? v : 0u];
+    case MI_MIDIPRE: return MPRE_NAME[v < MPRE_N ? v : 0u];   /* DUELL 0.2.14: leaving PERFORM / loading a sound: SPACE and KILL fade to neutral (default) / stay */
     case MI_LEDS: return LEDS_NAME[LEDS_MENU[v % LEDS_COUNT]];
     case MI_TUNE: {                                    /* A4 in Hz with one decimal ("440.0"; the menu adds "Hz") */
         static char b[8];
@@ -328,12 +430,28 @@ static void menu_put(uint32_t row, uint32_t v)
         ui.force = 1;
         break;
     case MI_HOLD: settings_hold = (uint8_t)v; break;
+    case MI_MODE:                                      /* (owner 2026-11-15: was HOME's MODE page, ui_input.c mode_knob; the audio takes it at its next block, seq.c mode_apply) */
+        if ((uint32_t)DM_LAYER - (v < DM_N ? v : 0u) != duell_mode_req) {
+            duell_mode_req = (uint8_t)(DM_LAYER - (v < DM_N ? v : 0u));
+            ui.force = 1;                              /* (XFADE and SPLIT show or hide) */
+        }
+        break;
+    case MI_XFADE: mix_xf = (uint8_t)(v <= 100u ? v : 100u); break;
+    case MI_SPLIT: mix_split = (uint8_t)(v <= 128u ? v : 0u); break;
+    case MI_RSMART: case MI_RARP: case MI_RPITCH:      /* (as MORPH SET's knobs did: ui_input.c morph_knob) */
+        (void)morph_do(row == MI_RSMART ? MQ_SMART : row == MI_RARP ? MQ_ARP : MQ_PITCH, morph_mask(song.sel), v & 1u);   /* (morph.c: as MORPH SET's knobs did through ui_input.c morph_act; the row shows the value, no message) */
+        break;
     case MI_SCROFF: scr_put(v); break;                 /* (read every frame: ui.c scr_frame) */
     case MI_ANIM:                                      /* (read where they are used, every frame) */
         ui_prefs = (uint8_t)(v == 1u ? ui_prefs | PREF_ANIM_OFF : ui_prefs & ~PREF_ANIM_OFF);
         ui_idle = (uint8_t)(v == 2u ? ui_idle | 1u : ui_idle & ~1u);
         break;                                         /* (1.5: up to 1.4.1 it fell through: ANIM set HOME too) */
-    case MI_HOMEPG: ui_home_pg = (uint8_t)(v < HP_COUNT ? v : HP_MORPH); break;   /* (read where HOME opens: go_main) */
+    case MI_HOMEPG: ui_home_pg = (uint8_t)(v == HP_PERF ? HP_PERF_CODE : v == HP_MAC1 ? HP_MAC1_CODE : v == HP_MAC2 ? HP_MAC2_CODE : HP_MORPH); break;   /* (read where HOME opens: go_main) */
+    case MI_P1CH: case MI_P2CH: midi_ch_put(row - MI_P1CH, v); break;   /* (seq.c midi_pch at once, the settings bytes saved ~2 s later) */
+    case MI_MIDIIN: song.g[G_ROUTE] = (int16_t)(v & 1u); break;
+    case MI_ARP: case MI_SEQ: mods_run_put(row - MI_ARP, v); break;   /* (as GLO > MODULES' knob did: ui.c) */
+    case MI_SENDS: case MI_PFX: mods_put(1u << (row - MI_ARP), !v); break;
+    case MI_SC1CH: case MI_SC1NT: case MI_SC2CH: case MI_SC2NT: sc_put(row - MI_SC1CH, v); break;   /* (fx.c sc_midi at once, saved ~2 s later) */
     case MI_LEDS: settings_leds = LEDS_MENU[v]; break;
 #if DUELL_VELO
     case MI_KEYVEL:                                    /* (v 0 OFF, 1..5 a type; ON = the bit set; sense.c takes it at once, ui_input.c again every frame) */
@@ -353,6 +471,10 @@ static void menu_put(uint32_t row, uint32_t v)
 #endif
     case MI_NOTESLEFT: ui_notes_off = (uint8_t)(v ? ui_notes_off & ~NOTES_OFF_BIT : ui_notes_off | NOTES_OFF_BIT); break;   /* (read where the header is drawn: ui_draw.c) */
     case MI_PERFLEAVE: ui_idle = (uint8_t)(v ? ui_idle | PERF_KEEP_BIT : ui_idle & ~PERF_KEEP_BIT); break;   /* (read where PERFORM is left: ui_perform.c) */
+    case MI_PERFK1: case MI_PERFK2: case MI_PERFK3: case MI_PERFK4: case MI_QMAC1: case MI_QMAC2: case MI_QMAC3: case MI_QMAC4:
+        mac_pick_put(row - MI_PERFK1, v);              /* DUELL 1.3 (read where the knobs act and the cards are drawn: ui_perform.c) */
+        break;
+    case MI_MIDIPRE: mac_preset_put(v); break;         /* (midi_control.c reads it: ui.c mac_settings) */
     case MI_CLICK: case MI_CLKLVL: case MI_COUNTIN: rp_put(row - MI_CLICK, v); break;   /* (at once: click.c, seq.c) */
     case MI_TUNE: song.g[G_TUNE] = (int16_t)((int32_t)v + TUNE_MIN); break;
     }
@@ -364,8 +486,10 @@ static uint32_t menu_step(uint32_t row, int32_t s)
 {
     const menu_flag_t *f = menu_flag(row);
     uint32_t v = menu_get(row), n = menu_n(row);
-    if (row == MI_TUNE)
+    if (row == MI_TUNE || row == MI_XFADE)
         return (uint32_t)clamp((int32_t)v + s, 0, (int32_t)n - 1);
+    if (row == MI_SPLIT)                               /* (as the MODE page's SPLIT: from OFF the first turn starts at the middle key, F#4, stored 67) */
+        return (uint32_t)clamp(v == 0u && s ? 67 + (s > 0 ? s - 1 : s + 1) : (int32_t)v + s, 0, (int32_t)n - 1);
     if (row == MI_ANIM)                                /* OFF ON IDLE, stopping at the ends */
         return ANIM_ORD[clamp((int32_t)ANIM_ORD[v % 3u] + (s > 0) - (s < 0), 0, 2)];
     if (f && str_eq(f->name[0], "ON"))                 /* (USB SERIAL, RESTORE LAST, CPU METER: ON is their value 0) */

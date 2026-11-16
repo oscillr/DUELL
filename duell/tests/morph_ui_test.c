@@ -56,7 +56,7 @@ static void fresh(void)
 /* ------------------------------------------------------------------ ROUND --- */
 static void t_round(void)
 {
-    static const char *const T[3] = {"MORPH", "MORPH SET", "MODE"};   /* (0.2.25 layout round: the MIXER is GLO's first page, not HOME's) */
+    static const char *const T[3] = {"MORPH", "MACROS 1/2", "MACROS 2/2"};   /* (2026-11-15: MORPH SET and MODE left HOME for SETTINGS) */   /* (0.2.25 layout round: the MIXER is GLO's first page, not HOME's; DUELL 1.3: the MACROS after MORPH) */
     uint32_t k, ok = 1;
     fresh();
     go_title("AMP ENV");                                 /* (from another page HOME opens MORPH) */
@@ -67,10 +67,10 @@ static void t_round(void)
     }
     press(B_HOME);
     frames(64);
-    expect("HOME tapped: MORPH, MORPH SET, MODE, then MORPH again (0.2.14: no OVERVIEW; 0.2.25: no MIXER)", ok && str_eq(PAGES[ui.page].title, "MORPH"));
+    expect("HOME tapped: MORPH, MACROS 1/2, MACROS 2/2, then MORPH again (2026-11-15: no MORPH SET, no MODE) (0.2.14: no OVERVIEW; 0.2.25: no MIXER; 1.3: the MACROS)", ok && str_eq(PAGES[ui.page].title, "MORPH"));
     press(B_HOME);
     frames(64);
-    expect("  .. and MORPH SET; from another page HOME opens MORPH", str_eq(PAGES[ui.page].title, "MORPH SET"));
+    expect("  .. and MACROS 1/2; from another page HOME opens MORPH", str_eq(PAGES[ui.page].title, "MACROS 1/2"));
     go_title("AMP ENV");
     press(B_HOME);
     frames(64);
@@ -79,9 +79,9 @@ static void t_round(void)
         turn(EN_SELECT, 1);
         ok &= where() == page_of(T[k % 3u]);
     }
-    expect("SELECT right: the same round (MODE, then MORPH)", ok);
+    expect("SELECT right: the same round (MACROS 1/2, MACROS 2/2, then MORPH)", ok);
     turn(EN_SELECT, -1);
-    expect("SELECT left from MORPH: MODE (the round backwards)", where() == page_of("MODE"));
+    expect("SELECT left from MORPH: MACROS 2/2 (the round backwards)", where() == page_of("MACROS 2/2"));
     morph_page();
     {
         char nm[20], ct[12];
@@ -167,9 +167,6 @@ static void t_editb(void)
         morph_page();
         ui.force = 1; draw_head(); ui.force = 0;
         expect("  .. no letter on MORPH", !head_ab_on() && !ink_cols(33, 46));
-        go_title("MORPH SET");
-        ui.force = 1; draw_head(); ui.force = 0;
-        expect("  .. nor on MORPH SET", !head_ab_on() && !ink_cols(33, 46));
         go_title("MIXER");
         ui.force = 1; draw_head(); ui.force = 0;
         expect("  .. nor on the global pages (GLO)", !head_ab_on());
@@ -353,25 +350,13 @@ static void t_knobs(void)
     settle();
     turn(EN_K3, -MORPH_DET);
     expect("KNOB 3 left: UNDO A, B stays; no KEEP", rolls(0, 0) == 1u && msg_is("UNDO A") && rolls(0, 1) == 2u);
-    /* MORPH SET (0.2.9): SMART, ARP, PITCH, KNOB 4 empty; no TARGET card (ALGORITHM's BOTH on the MORPH page is the target) */
-    go_title("MORPH SET");
-    frames(32);
-    turn(EN_K1, -1); turn(EN_K2, 1); turn(EN_K3, 1);
+    /* MORPH SET's SMART, ARP, PITCH (0.2.9) are SETTINGS > MORPH's rows since 2026-11-15 (menu_items.c MI_RSMART .. MI_RPITCH) */
+    menu_put(MI_RSMART, 0u); menu_put(MI_RARP, 1u); menu_put(MI_RPITCH, 1u);
     frame();
-    expect("KNOB 1 left: WILD; KNOB 2 right: ARP ON; KNOB 3 right: PITCH ON (cards, settings bits)",
-           morph.cfg == (MC_WILD | MC_ARP | MC_PIT) && card_is(0, "SMART", "WILD") && card_is(1, "ARP", "ON") &&
-           card_is(2, "PITCH", "ON") && favorites.factory[15][8] == 7u);
-    {
-        uint32_t c = morph.cfg, t = morph.target;
-        turn(EN_K4, 1); turn(EN_K4, -1);
-        frame();
-        expect("  .. KNOB 4: an empty column, does nothing (no TARGET card on the page)", morph.cfg == c && morph.target == t &&
-               card_is(3, "", "") && !card_is(0, "TARGET", "PART") && !card_is(0, "TARGET", "BOTH"));
-    }
-    turn(EN_ALGO, 1);
-    expect("  .. ALGORITHM on MORPH SET: PART 2 only (no BOTH here)", song.sel == 1u && morph.target == MT_SELECTED);
-    turn(EN_ALGO, -1);
-    turn(EN_K1, 1); turn(EN_K2, -1); turn(EN_K3, -1);
+    expect("SETTINGS > MORPH: SMART OFF (WILD), ARP ON, PITCH ON (the rows, the settings bits)",
+           morph.cfg == (MC_WILD | MC_ARP | MC_PIT) && MI_TAB[MI_RSMART] == MTAB_MORPH && str_eq(menu_vname(MI_RSMART, menu_get(MI_RSMART)), "OFF") &&
+           str_eq(menu_vname(MI_RARP, menu_get(MI_RARP)), "ON") && str_eq(menu_vname(MI_RPITCH, menu_get(MI_RPITCH)), "ON") && favorites.factory[15][8] == 7u);
+    menu_put(MI_RSMART, 1u); menu_put(MI_RARP, 0u); menu_put(MI_RPITCH, 0u);
     frame();
     expect("  .. and back: SMART ON, ARP OFF, PITCH OFF (the defaults)", !morph.cfg && !favorites.factory[15][8]);
 }
@@ -471,8 +456,8 @@ static void t_target(void)
     }
     turn(EN_K3, MORPH_DET);
     expect("BOTH: UNDO B acts on both parts", rolls(0, 1) == 2u && rolls(1, 1) == 1u);
-    go_title("MORPH SET"); frames(32);
-    expect("BOTH, then MORPH SET: one badge (the selected part), BOTH kept", morph.target == MT_BOTH && badge_lit() == 1u);
+    go_title("AMP ENV"); frames(32);
+    expect("BOTH, then a part's page (AMP ENV): one badge (the selected part), BOTH kept", morph.target == MT_BOTH && badge_lit() == 1u);
     morph_page();
     expect("  .. back on MORPH: both badges again", morph.target == MT_BOTH && badge_lit() == 3u);
 }
@@ -864,9 +849,7 @@ static void t_settings(void)
     turn(EN_ALGO, 1);                                   /* (0.2.9: BOTH, then PART 2) */
     turn(EN_K4, 5 - (int)mph[1].amount);
     turn(EN_ALGO, -1);                                  /* BOTH: not saved */
-    go_title("MORPH SET"); frames(32);
-    turn(EN_K2, 1);
-    turn(EN_K3, 1);
+    menu_put(MI_RARP, 1u); menu_put(MI_RPITCH, 1u);   /* (SETTINGS > MORPH: ARP ON, PITCH ON; was MORPH SET's knobs) */
     frame();
     expect("AMOUNT 40 / 5 into the settings bytes (1 + %), BOTH not (bit 7 reserved, 0.2.9), a save queued",
            favorites.factory[15][12] == 41u && favorites.factory[15][13] == 6u && ui.mset_dirty && morph.target == MT_BOTH);

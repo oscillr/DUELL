@@ -87,17 +87,17 @@ int main(void)
     morph_act(MQ_FADER, morph_mask(song.sel), 60u, song.sel);
     perf_space = 40; perf_filt = -50; perf_depth = 30;
     btn_down(B_OCTDN); frame();
-    turn(EN_K1, 1);
-    expect("PERFORM K1 MORPH: 0 (A)", morph_fader_of(song.sel) == 0u);
+    turn(EN_K1, -1);                                    /* (DUELL 1.3: K1 DEPTH, fixed; K2 K3 K4 the picks, by default MORPH SPACE KILL) */
+    expect("PERFORM K1 DEPTH: 100", perf_depth == 100);
     quiet(); turn(EN_K2, 1);
-    expect("PERFORM K2 SPACE: 0", perf_space == 0);
-    quiet(); turn(EN_K3, -1);
-    expect("PERFORM K3 FILTER: 0", perf_filt == 0);
+    expect("PERFORM K2 MORPH: 0 (A)", morph_fader_of(song.sel) == 0u);
+    quiet(); turn(EN_K3, 1);
+    expect("PERFORM K3 SPACE: 0", perf_space == 0);
     quiet(); turn(EN_K4, -1);
-    expect("PERFORM K4 DEPTH: 100", perf_depth == 100);
+    expect("PERFORM K4 KILL: 0", perf_filt == 0);
     btn_up(B_OCTDN); frame(); frame();
     quiet();
-    turn(EN_K3, 5);
+    turn(EN_K4, 5);
     expect("PERFORM without OCT-: normal turn", perf_filt == 5);
     ui.perf = 0;
 

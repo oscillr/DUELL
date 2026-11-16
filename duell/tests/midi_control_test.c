@@ -5,6 +5,13 @@
 #include "ui_test.c"
 #include "scenes.h"                                   /* (0.2.23: 0.2.22's M03 EERIE SIGNAL as a test scene) */
 
+static void learn_screen(void)                          /* DUELL 1.3: MENU > MIDI > MIDI LEARN's screen (ui.menu 4; was GLO's page MIDI LEARN) */
+{
+    ui.menu = 4;
+    ui.menu_sel = MI_MLEARN;
+    ui.force = 1;
+    frame();
+}
 static void midi_test_reset(void)
 {
     ui_power_on();
@@ -756,18 +763,19 @@ static int learn_test(void)
     queued(0xB0, 20, 99, 1);
     bad += check("  an unlearned CC changes nothing (as before)", !memcmp(before, trk[0].p, sizeof before));
 
-    /* on: GLO > MIDI LEARN, KNOB 1 right */
-    go_title("MIDI LEARN");
+    /* on: MENU > MIDI > MIDI LEARN (DUELL 1.3; was GLO > MIDI LEARN), KNOB 1 right */
+    learn_screen();
     turn(EN_K1, 1);
     ok = ui.ml.on && msg_is("MIDI LEARN ON");
     turn(EN_K1, 1);                                                  /* (already on: nothing) */
     ok &= ui.ml.on;
-    bad += check("GLO > MIDI LEARN: KNOB 1 right = MIDI LEARN on", ok);
+    bad += check("MENU > MIDI > MIDI LEARN: KNOB 1 right = MIDI LEARN on", ok);
     queued(0xB0, 20, 99, 1); frame();
     bad += check("  no parameter picked yet: a CC learns nothing, sets nothing", !ml_count() &&
                  !memcmp(before, trk[0].p, sizeof before));
 
     /* a knob picks (as it edits), a CC is learned */
+    press(B_HOME);                                                   /* (the MENU closed, learning stays on) */
     frames(300);                                                     /* (#39: the knobs quiet after a layer) */
     go_title("MULTI FILTER 1/2");                                   /* (cloud job J: filter 1's CUT and RES are every engine's K1, K2) */
     cut = trk[0].p[P_FREEA];
@@ -876,25 +884,27 @@ static int learn_test(void)
     ok &= song.octave == 1;
     song.octave = 0;
     bad += check("OCT+: LEARN DONE (the map stays, OCT± shift the octave again)", ok);
-    go_title("MIDI LEARN"); turn(EN_K1, 1);
+    learn_screen(); turn(EN_K1, 1);
     ok = ui.ml.on && msg_is("MIDI LEARN ON");
     turn(EN_K1, -1);
-    bad += check("GLO > MIDI LEARN: KNOB 1 right = on, left = LEARN DONE", ok && !ui.ml.on && msg_is("LEARN DONE"));
+    bad += check("MENU > MIDI > MIDI LEARN: KNOB 1 right = on, left = LEARN DONE", ok && !ui.ml.on && msg_is("LEARN DONE"));
 
-    /* GLO > MIDI LEARN KNOB 2 CLEAR (DUELL 0.1; MENU > MIDI > LEARN CLEAR up to 1.5): right clears every learned CC */
-    ok = !strcmp(cur_page()->title, "MIDI LEARN") && ml_count() == ML_N;
+    /* MIDI LEARN KNOB 2 CLEAR (DUELL 0.1; MENU > MIDI > LEARN CLEAR up to 1.5; 1.3: the screen MENU > MIDI > MIDI LEARN): right clears every learned CC */
+    ok = ui.menu == 4u && ui.menu_sel == MI_MLEARN && ml_count() == ML_N;
     for (i = 0; i < MI_COUNT; i++) ok &= !str_eq(MI_NAME[i], "LEARN CLEAR");     /* (MENU has no MIDI row) */
     turn(EN_K2, -3);
     ok &= ml_count() == ML_N;                                           /* (left: nothing) */
     turn(EN_K2, 1);
     ok &= !ml_count() && msg_is("LEARN CLEARED") && song.octave == 0;
     memcpy(before, trk[1].p, sizeof before);
+    press(B_HOME);
     go_title("AMP ENV");
     queued(0xB0, 74, 3, 1);
     ok &= !memcmp(before, trk[1].p, sizeof before) && trk[0].p[P_FREEA] == 2;   /* (CC74 3 over the 0..82 dial: 2; the standard map again) */
-    go_title("MIDI LEARN"); turn(EN_K2, 1);
+    learn_screen(); turn(EN_K2, 1);
     ok &= msg_is("NOTHING LEARNED");
-    bad += check("GLO > MIDI LEARN KNOB 2 right: every CC cleared (LEARN CLEARED; none: NOTHING LEARNED)", ok);
+    press(B_HOME);
+    bad += check("MIDI LEARN KNOB 2 right: every CC cleared (LEARN CLEARED; none: NOTHING LEARNED)", ok);
 
     /* the lines of the map hold every parameter id as it went in (a common id, an engine one P_E0 + k, the INSERT, ESYNC), on one of the two tracks: the 7-bit codes of the old
      * learn table (ML_E0) are gone with it */
@@ -1030,8 +1040,9 @@ static int editb_midi_test(void)
     morph_set_amount(40);
     morph_roll(1);
     morph_set_fader(0);
-    go_title("MIDI LEARN");
+    learn_screen();
     turn(EN_K1, 1);
+    press(B_HOME);
     frames(300);
     go_title("EDIT 1");
     turn(EN_K2, -3);

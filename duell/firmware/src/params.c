@@ -106,7 +106,7 @@ static const char *const N_MDST[] = {"OFF", "PITCH", "CUT", "SHP", "AMP", "PAN",
                                      "CRT", "CDP", "FDBK", "DMDEP", "DMRAT", "RSIZE", "RDAMP",
                                      "FMODE",
                                      "AATK", "ADEC", "ASUS", "AREL",
-                                     "CUT2", "FRES2", "FDRV", "FBLND", "SUBLV", "SPACE"};   /* (DUELL 1.1: SPACE, mod.c MD_SPACE) */   /* cloud job B (mod.c MD_CUT2 ..; FILTER_PAGES_PROPOSAL 5.1's factory-sound names): filter 2's cutoff, RES, DRIVE, BLEND, the SUB LAYER's LEVEL */   /* T0229: the AMP ENV's times (mod.c MD_AATK ..; shown AMP / ATTACK ..) */          /* DUELL 0.2.25: the multimode filter's MODE (mod.c MD_FMODE; shown in full "MULTI FILTER MODE", the editor's "FILTER MODE") */
+                                     "CUT2", "FRES2", "FDRV", "FBLND", "SUBLV", "SPACE", "MORPH"};   /* (DUELL 1.1: SPACE, mod.c MD_SPACE) */   /* cloud job B (mod.c MD_CUT2 ..; FILTER_PAGES_PROPOSAL 5.1's factory-sound names): filter 2's cutoff, RES, DRIVE, BLEND, the SUB LAYER's LEVEL */   /* T0229: the AMP ENV's times (mod.c MD_AATK ..; shown AMP / ATTACK ..) */          /* DUELL 0.2.25: the multimode filter's MODE (mod.c MD_FMODE; shown in full "MULTI FILTER MODE", the editor's "FILTER MODE") */
 /* (a DST name is never an engine's EDIT label: the factory sounds' MOD routes name an engine slot by its label, RES = ANALOG's E6,
  * and tools/gen_duell_sounds.py takes an N_MDST name first; mod_test checks it) */
 static const char *const N_ENGNAME[] = {"ANALOG", "-" /* DIGITAL: retired */, "PHASE", "LOFI", "-" /* SAMPLE: retired, 0.2.9 */, "VOICE",
@@ -543,7 +543,7 @@ static const uint8_t MSRC_ORDER[18] = {0, 2, 11, 15, 1, 12, 3, 4, 5, 6, 7, 8, 9,
  * LFO: LFO 1 RATE, LFO 2 RATE (with the retired master depths 20 and 22 beside them); INSERT: its three values and MIX; DUCK: DEPTH; PART FX: SATURATION (then the removed EQ gains);
  * CHORUS: SEND, RATE, DEPTH; DELAY: SEND, FEEDBACK, MOD DEPTH (CHANCE in RANDOM and OCTAVE UP), MOD RATE; REVERB: SEND, DAMPING (then SIZE, removed); SPACE.
  * Only the order changes: every stored id keeps its meaning. The PARAMETER LOCKS list (ui_events.c) and the editor (labels.js MATRIX_GROUPS, layout.json "order") follow this order */
-static const uint8_t MDST_ORDER[57] = {0,
+static const uint8_t MDST_ORDER[58] = {0,
                                        1, 11,
                                        2, 38, 46, 51, 52, 53, 54,
                                        4, 23, 5,
@@ -557,7 +557,8 @@ static const uint8_t MDST_ORDER[57] = {0,
                                        7, 39, 40,
                                        8, 41, 42, 43,
                                        9, 45, 44,
-                                       56};
+                                       56,
+                                       57};   /* DUELL 1.3: MORPH, its own category, last */
 _Static_assert(sizeof MDST_ORDER == NELEM(N_MDST) && sizeof MSRC_ORDER == NELEM(N_MSRC), "the matrix lists' knob order: every value once");
 /* the arp's MODE: OFF, SEQ (appended last, shown second so it is not missed), then the rest as stored */
 static const uint8_t AMODE_ORDER[16] = {0, 15, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14};
@@ -882,7 +883,8 @@ enum { SC_TRACK, SC_GLOBAL, SC_ENGINE, SC_STEP, SC_TRK,   /* SC_TRK: HOME's MIXE
        SC_PERF,          /* DUELL 0.2.5: the PERFORM mode's page (PERF_PAGE below; ui_perform.c perf_knob): no parameter id */
        SC_MODS,          /* DUELL 0.2.14: GLO's MODULES page (core.h MODS_*: four device switches, ui.c mods_put; ui_input.c mods_knob): no parameter id */
        SC_FXSUM,
-       SC_GMIX };        /* 0.2.25 layout round: GLO's MIXER page (both parts' LEVEL and PAN, the MUTE cells, the meters: ui_layer.c, as the hold-GLO layer): no parameter id */       /* DUELL 0.2.22: FX's second page, SEND FX (the SELECTED part's three send levels with the global effect they feed under them: K1 CHORUS, K2 DELAY,
+       SC_GMIX,
+       SC_MACRO };       /* DUELL 1.3: HOME's MACROS pages (ui_perform.c mac_knob): no parameter id. SC_GMIX, 0.2.25 layout round: GLO's MIXER page (both parts' LEVEL and PAN, the MUTE cells, the meters: ui_layer.c, as the hold-GLO layer): no parameter id */       /* DUELL 0.2.22: FX's second page, SEND FX (the SELECTED part's three send levels with the global effect they feed under them: K1 CHORUS, K2 DELAY,
                           * K3 REVERB; a twist jumps to that effect's page in GLO; ui_draw.c, ui_input.c fxsum_knob): no parameter id, nothing stored (the levels are P_CHOR, P_DLY, P_REV) */
 enum { GR_NONE, GR_ADSR, GR_LFO, GR_STEPS, GR_ARP, GR_SCALE, GR_FX, GR_ROLL, GR_BROWSE, GR_SLOTS, GR_USER /* (retired: no page) */, GR_TRK,
        GR_SLCR /* (retired: no page, no graph; kept so the ids after it hold) */, GR_MOD, GR_PATS, GR_TOOLS, GR_CHORD, GR_SLICES /* (retired with SLICE, 0.2.9: no page) */, GR_EVENTS,
@@ -903,7 +905,8 @@ enum { GR_NONE, GR_ADSR, GR_LFO, GR_STEPS, GR_ARP, GR_SCALE, GR_FX, GR_ROLL, GR_
        GR_FILT,                      /* .. the filter's response: MULTI FILTER 1/2, 2/2 and the TWIN FILTER's three pages: both filters in one picture (graph_filt, twin_graph.c) */
        GR_SUB,                       /* .. SUB OSC: the sub's wave small, with its octave copies when HARM is up (ui_graph.c graph_sub) */
        GR_CYCLE,                     /* .. CYCLE ENV 1/2, 2/2: the cycle's shapes, the curve (ui_graph.c graph_cycle) */
-       GR_SEQHELP };                 /* item 118: SEQUENCER HELP, the legend of the STEP page's symbols (ui_graph.c graph_seqhelp; no knob does anything there) */                   /* DUELL 0.2.24: FX's SEND FX (the hint that a twist jumps to the effect's GLO page, and which effect is inactive for this part: ui_graph.c graph_fxsum) */
+       GR_SEQHELP,
+       GR_MAC1, GR_MAC2 };           /* DUELL 1.3: HOME's MACROS 1/2 and 2/2 (no picture: template 8, four cells; ui_draw.c draw_columns, ui_perform.c mac_card). GR_SEQHELP, item 118: SEQUENCER HELP, the legend of the STEP page's symbols (ui_graph.c graph_seqhelp; no knob does anything there) */                   /* DUELL 0.2.24: FX's SEND FX (the hint that a twist jumps to the effect's GLO page, and which effect is inactive for this part: ui_graph.c graph_fxsum) */
 
 typedef struct {
     const char *title;
@@ -935,7 +938,7 @@ static const page_t PAGES[] = {
     /* FAM_FX (0.2.21: only the PART's own pages) in the order the sound flows (fx.c mix_part): the part's DIST (FX page, KNOB 1) -> INSERT -> EQ -> DUCK -> level, pan and the
      * sends (FX page KNOBS 2-4); the global buses (CHORUS, the delay, the REVERB) are GLO's pages now, and the second page here, SEND FX, shows the part's three sends beside them */
     {"FX", FAM_FX, SC_TRACK, GR_FX, {P_DIST, P_CHOR, P_DLY, P_REV}},
-    {"SEND FX", FAM_FX, SC_FXSUM, GR_FXSUM, {0xFF, 0xFF, 0xFF, 0xFF}},   /* 0.2.22 (owner): the FX family's SECOND page (after FX, before INSERT 1/2), part-scoped (only the selected part's badge): K1 CHORUS, K2 DELAY, K3 REVERB show THIS part's send level (P_CHOR, P_DLY, P_REV: the FX page edits them) and what the global effect is (delay mode and time, reverb type and size); K4 no card. A twist of K1 / K2 / K3 jumps to GLO's CHORUS / DELAY 1/2 / REVERB (ui_input.c fxsum_knob), no value changes */
+    /* (owner 2026-11-15: the SEND FX page (SENDS) is removed; the FX page says where the global effects are edited) */
     {"INSERT 1/2", FAM_FX, SC_TRACK, GR_INS, {P_ITYPE, P_IA, P_IB, P_IC}},   /* 1.5: the track's INSERT (fx.c) */
     {"INSERT 2/2", FAM_FX, SC_TRACK, GR_INS, {P_IMIX, 0xFF, 0xFF, 0xFF}},  /* .. its dry / wet */
     {"EQ 1/2", FAM_FX, SC_TRACK, GR_EQ, {P_EQLF, P_EQLG, P_EQMF, P_EQMG}},   /* DUELL (SPEC 5c.3): the part's EQ after its INSERT. 0.2.25 layout round (owner): no ON / OFF switch, each band's frequency then its gain:
@@ -1000,10 +1003,8 @@ static const page_t PAGES[] = {
     {"COMPRESSOR", FAM_GLO, SC_GLOBAL, GR_COMP, {G_CR, G_CT, G_CA, G_CL}},   /* 0.2.21 (owner): the master compressor (fx.c comp_stage). 0.2.25 layout round (owner): K1 RATIO (OFF its lowest value: the stored 1:1, the stage not run;
                                                                              * turning it up switches it on), K2 THRESH, K3 ATTACK, K4 RELEASE; at OFF the other three have nothing to act on: their cards are not drawn; not in DUEL either
                                                                              * (ui_draw.c card_hidden_vp); the panel: the transfer curve and the gain reduction (ui_graph.c graph_comp) */
-    {"MODULES", FAM_GLO, SC_MODS, GR_MODS, {0xFF, 0xFF, 0xFF, 0xFF}},   /* DUELL 0.2.14 (owner): K1 ARP, K2 SEQ, K3 SENDS, K4 PART FX, each ON / OFF (core.h MODS_*) */
-    {"SIDECHAIN", FAM_GLO, SC_MIDI, GR_SCHAIN, {0xFF, 0xFF, 0xFF, 0xFF}},   /* 0.2.22 (owner): the sidechain's MIDI SETUP, a device setting (not in a patch or a multi): K1 P1 CH, K2 P1 NOTE, K3 P2 CH, K4 P2 NOTE (ui_input.c midi_knob, sc_*); DUCK 1/2, 2/2 keep SRC, RATE, DEPTH, ATK, RLS, CURVE */
-    {"MIDI", FAM_GLO, SC_MIDI, GR_MIDI, {0xFF, 0xFF, 0xFF, 0xFF}},
-    {"MIDI LEARN", FAM_GLO, SC_MIDI, GR_MLEARN, {0xFF, 0xFF, 0xFF, 0xFF}},
+    /* (DUELL 1.3, owner 2026-11-13: GLO's MODULES, SIDECHAIN, MIDI and MIDI LEARN pages left the round: their settings are MENU > MIDI and MENU > MODULES rows
+     * (menu_items.c), MIDI LEARN is MENU > MIDI > MIDI LEARN's screen, MLEARN_PAGE below) */
     /* SAVE's taps (1.5, #173; names and order 2026-10-11, 2026-10-12): PATCHES (one list of the sounds; SAVE's first tap), PATTERNS (Felucca's PHRASES, with DUELL's slots P1..P16), MULTI
      * (DUELL: Felucca's PROJECT, sixteen multis M01..M16: SLOT, LOAD SAVE; project.c multi.c), TOOLS.
      * DUELL has no song mode: GLO keeps the TEMPO page, Felucca's SONG page is gone */
@@ -1027,8 +1028,11 @@ static const page_t PAGES[] = {
      * the settings: ui_input.c mode_knob, mode_settings), the MIXER (MUTE PAN SPACE LEVEL: the mixer level). No P_* id: the morph is not a
      * parameter */
     {"MORPH", FAM_TRK, SC_MORPH, GR_MORPH, {0xFF, 0xFF, 0xFF, 0xFF}},
-    {"MORPH SET", FAM_TRK, SC_MORPH, GR_MORPHSET, {0xFF, 0xFF, 0xFF, 0xFF}},
-    {"MODE", FAM_TRK, SC_MODE, GR_MODE, {0xFF, 0xFF, 0xFF, 0xFF}},
+    /* DUELL 1.3 MACROS (owner 2026-11-12, macros-and-device-presets_2026-11-12.md section 6): right after MORPH in HOME's round. 1/2: K1 MORPH, K2 TIMBRE, K3 ENVELOPE, K4 FILTER;
+     * 2/2: K1 CHARACTER, K2 MOTION, K3 SPACE, K4 KILL (the global two next to the part ones: the owner's exception to rule A8). Knob k of page n is macro 4n + k (macro.c MAC_*) */
+    {"MACROS 1/2", FAM_TRK, SC_MACRO, GR_MAC1, {0xFF, 0xFF, 0xFF, 0xFF}},
+    {"MACROS 2/2", FAM_TRK, SC_MACRO, GR_MAC2, {0xFF, 0xFF, 0xFF, 0xFF}},
+    /* (owner 2026-11-15: MORPH SET and MODE left HOME's round for SETTINGS > MORPH and SETTINGS > PLAYING: menu_items.c) */
     /* (0.2.25 layout round, owner: HOME's MIXER page is gone: the mixer is GLO's first page, MIXER, and the hold-GLO layer; SPACE is PERFORM's K2) */
     /* the matrix pages again as the ENV family's last two (after AMP ENV, AMP DEST, ENV 2, ENV 2 DEST): the same title, graph and ids as the LFO
      * family's MOD 1 / MOD 2, so ENV 2 is routable without the LFO button. Appended here so no earlier PAGES index moves; the family
@@ -1046,7 +1050,9 @@ static const page_t PAGES[] = {
  * part's engine and patch, the CPU meter; K1 MORPH, K2 ROLL, K3 LOAD MULTI, K4 RESET (ui_input.c test_knob) */
 #if DUELL_TEST_MODE                                      /* developer builds only (DUELL_TEST_MODE); SC_TEST / GR_TEST stay in the enums so no id moves */
 static const page_t TEST_PAGE = {"TEST", FAM_GLO, SC_TEST, GR_TEST, {0xFF, 0xFF, 0xFF, 0xFF}};
+/* DUELL 1.3: MENU > MIDI > MIDI LEARN (ui.menu 4, ui_menu.c), the screen GLO's MIDI LEARN page was: K1 LEARN, K2 CLEAR (ui_input.c midi_knob), shown the same way as TEST */
 #endif
+static const page_t MLEARN_PAGE = {"MIDI LEARN", FAM_GLO, SC_MIDI, GR_MLEARN, {0xFF, 0xFF, 0xFF, 0xFF}};
 /* PERFORM (DUELL 0.2.5, SPEC "PERFORM mode"): a mode, not a page of a family's round. A long press of FX (or a key pressed with FX held)
  * shows it over the page the unit was on (ui.c cur_page: ui.perf); a tap of FX goes back to that page, HOME and every other page button
  * leave it for their own page. In FAM_FX (FX's LED lit), on no family's round (no page number, SELECT turns nothing): K1 MORPH, K2 SPACE,
@@ -1317,7 +1323,7 @@ static const char *eng_shown(const char *name)
 static const char *title_shown(const char *t)
 {
     static const char *const TT[][2] = {
-        {"STEP", "SEQUENCER"}, {"ENV 2", "FILTER ENV"}, {"ENV 2 DEST", "FILTER ENV DEST"}, {"AMP DEST", "AMP ENV DEST"}, {"TWIN MOD", "TWIN CUTOFF MOD"}, {"SEND FX", "SENDS"},   /* (DUELL 1.1, owner: the DEST pages say ENV; the header picks the font that fits: ui_draw.c head) */
+        {"STEP", "SEQUENCER"}, {"ENV 2", "FILTER ENV"}, {"ENV 2 DEST", "FILTER ENV DEST"}, {"AMP DEST", "AMP ENV DEST"}, {"TWIN MOD", "TWIN CUTOFF MOD"}, {"FX", "SEND FX"}, {"INSERT 1/2", "INSERT FX 1/2"}, {"INSERT 2/2", "INSERT FX 2/2"}, {"INSERT", "INSERT FX"},   /* (owner 2026-11-15: FX's pages say SEND FX, then INSERT FX) */   /* (DUELL 1.1, owner: the DEST pages say ENV; the header picks the font that fits: ui_draw.c head) */
         /* the engines' EDIT 1 / EDIT 2 titles */
         {"FLT", "FILTER"}, {"OP TUNE", "OPERATOR TUNE"}, {"OP ENV", "OPERATOR ENV"}, {"OP MODE", "OPERATOR MODE"},
         {"PHS", "OSC"}, {"MOTN", "MOTION"}, {"VOWL", "SPEECH"}, {"BARS", "DRAWBARS"}, {"EXCT", "EXCITER"}, {"SRC", "SOURCE"}, {"MOVE", "MOTION"},

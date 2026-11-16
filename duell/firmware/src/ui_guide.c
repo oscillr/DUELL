@@ -19,13 +19,15 @@
 #define GD_X UT_T6_X                                    /* the text's left edge (item 118: x 9, as the picture; was 12) */
 #define GD_W (240 - 2 * UT_T6_X)                        /* the text's room: x 9 .. 230 */
 #define GD_HINT_Y UT_T6_END                             /* the body's end (item 118): the legend row is drawn in the last strip, the shared footer (draw_foot) owns rows 217 .. 239 */
-static uint8_t guide_pick[2];                           /* the option picked on SETUP 1/5 (0 LAYER, 1 STEREO, 2 DUEL) and on SETUP 5/5 (0 LATER, 1 NOW) */
-#define GUIDE_KNOB_MSG "HOME ENDS THE GUIDE"            /* a knob turned while it is up (it does nothing there) */
+static uint8_t guide_pick[2];                           /* DUELL 1.3 (owner 2026-11-15): the option picked on SETUP 1/5 (0 KEYS, 1 CIRCUIT TRACKS, 2 MPC/FORCE: the MIDI PRESET) and on SETUP 2/5 (0 LAYER, 1 STEREO, 2 DUEL) */
+#define GUIDE_KNOB_MSG "HOME CLOSES GUIDE"              /* (owner 2026-11-15: one wording with SETTINGS' "HOME CLOSES SETTINGS"; was HOME ENDS THE GUIDE) */            /* a knob turned while it is up (it does nothing there) */
 static const khint_t *guide_kh;                       /* the key hints drawn last (the host test reads them) */
 static uint32_t guide_sig;                              /* the page drawn last (+ 1; 0: draw it) */
-static uint32_t guide_lo(void) { return ui.guide_menu ? 2u : 1u; }          /* the first and the last page shown (the menu's: the GUIDE pages only) */
-static uint32_t guide_hi(void) { return ui.guide_menu ? 4u : GUIDE_N; }
-static int guide_ask(uint32_t pg) { return pg == 1u || pg == 5u; }          /* SETUP pages ask, GUIDE pages tell */
+static uint32_t guide_lo(void) { return ui.guide_menu ? 3u : 1u; }          /* the first and the last page shown (the menu's: the GUIDE pages only) */
+static uint32_t guide_hi(void) { return GUIDE_N; }
+static int guide_ask(uint32_t pg) { return pg == 1u || pg == 2u; }          /* SETUP pages ask (DUELL 1.3: the device, then the mode), GUIDE pages tell */
+/* SETUP 2/5's recommended mode for the device picked on SETUP 1/5 (owner 2026-11-15): KEYS LAYER, CIRCUIT TRACKS DUEL, MPC/FORCE STEREO */
+static uint32_t guide_rec_mode(void) { return guide_pick[0] == 1u ? 2u : guide_pick[0] == 2u ? 1u : 0u; }
 
 #if DUELL_BENCH
 /* (DUELL_BENCH developer builds, HANDOFF_V2 item 107: the first-start guide is not built in, so XIP holds the CPU suite and the velocity capture together:
@@ -71,26 +73,20 @@ static void guide_close(void)
         settings_save();
     }
 }
-/* GLO > MIDI (SETUP 5/5: NOW): the page itself, as if its button had been pressed */
-static void guide_to_midi(void)
-{
-    uint32_t i;
-    for (i = 0; i < NPAGES; i++)
-        if (PAGES[i].graph == GR_MIDI && page_visible(i)) {
-            ui.page = (uint8_t)i;
-            page_entered();
-            break;
-        }
-}
 static void guide_page(int32_t d)                      /* the next / previous page, stopping at both ends */
 {
     ui.guide = (uint8_t)clamp((int32_t)ui.guide + d, (int32_t)guide_lo(), (int32_t)guide_hi());
 }
-/* the choice of the page just left: SETUP 1/5 sets the mode (the audio takes it at its next block, seq.c mode_apply) */
+/* the choice of the page just left: SETUP 1/5 sets the MIDI PRESET (KEYS: STANDARD) and ticks its recommended mode on SETUP 2/5; SETUP 2/5 sets the mode (the audio takes it at its next block, seq.c mode_apply) */
 static void guide_apply(uint32_t pg)
 {
-    if (pg == 1u && !ui.guide_menu)
-        duell_mode_req = (uint8_t)(guide_pick[0] == 0u ? DM_LAYER : guide_pick[0] == 1u ? DM_STEREO : DM_SPLIT);
+    if (ui.guide_menu)
+        return;
+    if (pg == 1u) {
+        mac_preset_put(guide_pick[0] == 1u ? MPRE_CIRCUIT : guide_pick[0] == 2u ? MPRE_MPC : MPRE_STANDARD);
+        guide_pick[1] = (uint8_t)guide_rec_mode();
+    } else if (pg == 2u)
+        duell_mode_req = (uint8_t)(guide_pick[1] == 0u ? DM_LAYER : guide_pick[1] == 1u ? DM_STEREO : DM_SPLIT);
 }
 
 /* ui_input, while it is up (after the HOME and REC button timers). 1: it took this frame's input; 0: it closed for a page button or
@@ -113,16 +109,17 @@ static int guide_input(uint32_t pressed, uint32_t rec, uint32_t now)
     }
     if ((pressed >> panel.btn[B_PLAY]) & 1u)            /* PLAY/STOP as on HOME (twice: STOP ALL); its hold: play_hold */
         play_press(now);
-    if (rec == BT_TAP && !ui.menu)                      /* REC: the HOLD switch (rec_tap: rec_is_hold on HOME) */
-        rec_tap();
+    if (rec == BT_TAP) {                                /* REC: the HOLD switch (rec_tap: rec_is_hold on HOME; owner 2026-11-15: from SETTINGS too, as SETTINGS does) */
+        if (ui.menu)
+            rec_hold_tap();
+        else
+            rec_tap();
+    }
     song.grid = (uint8_t)keys_mode();                   /* (the keys play) */
     if ((pressed >> panel.btn[B_OCTUP]) & 1u) {
         guide_apply(ui.guide);
-        if (ui.guide >= guide_hi()) {                   /* OCT+ on the last page: done (SETUP 5/5: NOW goes on to GLO > MIDI) */
-            uint32_t now_midi = !ui.guide_menu && guide_pick[1] == 1u;
+        if (ui.guide >= guide_hi()) {                   /* OCT+ on the last page: done */
             guide_close();
-            if (now_midi)
-                guide_to_midi();
             enc_drop();
             return 1;
         }
@@ -131,7 +128,7 @@ static int guide_input(uint32_t pressed, uint32_t rec, uint32_t now)
     if ((pressed >> panel.btn[B_OCTDN]) & 1u)
         guide_page(-1);
     s = panel_enc(EN_SELECT);
-    if (guide_ask(ui.guide) && !ui.guide_menu) {      /* SETUP 1/5 and 5/5: the four knobs turn through the options too (they have nothing else to do there) */
+    if (guide_ask(ui.guide) && !ui.guide_menu) {      /* SETUP 1/5 and 2/5: KNOB 1 (shown), 2, 3 and 4 (silently) turn through the options (owner 2026-11-16: the knobs never turn pages) */
         uint32_t k;
         for (k = EN_K1; k <= EN_K4; k++) {
             int32_t d = panel_enc(k);
@@ -141,7 +138,7 @@ static int guide_input(uint32_t pressed, uint32_t rec, uint32_t now)
     }
     if (s != 0) {
         if (guide_ask(ui.guide) && !ui.guide_menu) {    /* a question: SELECT picks the option */
-            uint32_t pk = ui.guide == 1u ? 0u : 1u, n = ui.guide == 1u ? 3u : 2u;
+            uint32_t pk = ui.guide == 1u ? 0u : 1u, n = 3u;
             guide_pick[pk] = (uint8_t)clamp((int32_t)guide_pick[pk] + (s > 0 ? 1 : -1), 0, (int32_t)n - 1);
         } else
             guide_page(s > 0 ? 1 : -1);
@@ -257,23 +254,29 @@ static void guide_leader(int32_t x, int32_t y0, int32_t y, int32_t x1)
         cv_rect(x, y, x1 - x, 1, T_MID);
 }
 /* from (x, y) right to xc, then up to y1 (the leader of a note to its item in the capsule) */
-static void guide_leader2(int32_t x, int32_t y, int32_t xc, int32_t y1)
+static void guide_leader2(int32_t x, int32_t y, int32_t xc, int32_t y1)   /* (owner 2026-11-15: in the selected part's colour, as the GUIDE pages' headings) */
 {
-    cv_rect(x, y, xc - x + 1, 1, T_MID);
-    cv_rect(xc, y1, 1, y - y1 + 1, T_MID);
+    cv_rect(x, y, xc - x + 1, 1, T_PTHEME(song.sel));
+    cv_rect(xc, y1, 1, y - y1 + 1, T_PTHEME(song.sel));
 }
 /* one page's content into the current canvas (the caller sets cv_oy for the strip; everything is drawn at its SCREEN row) */
 static void guide_content(uint32_t pg)
 {
-    static const t6_opt_t O1[3] = {{50, 55, 69, 84}, {111, 39, 130, 144}, {152, 39, 171, 185}};   /* SETUP 1/5: LAYER, STEREO, DUEL (FINAL_V1_08_setup) */
-    static const t6_opt_t O5[2] = {{50, 39, 69, 84}, {91, 69, 110, 125}};                          /* SETUP 5/5: LATER, NOW (the same rules) */
+    static const t6_opt_t O1[3] = {{50, 25, 69, 0}, {77, 39, 96, 111}, {118, 39, 137, 152}};       /* DUELL 1.3 SETUP 1/5 (owner 2026-11-15): KEYS OR OTHER MIDI (the name alone), CIRCUIT TRACKS, MPC/FORCE (a line: what it sets) */
+    static const t6_opt_t O2[3] = {{45, 55, 64, 79}, {102, 37, 120, 134}, {141, 37, 159, 173}};   /* SETUP 2/5: LAYER, STEREO, DUEL (FINAL_V1_08_setup; was SETUP 1/5; 2026-11-16: up, the legend's KNOB 2 CHOOSE line under them) */
     int32_t y;
-    if (pg == 1u) {
+    if (pg == 1u) {                                     /* DUELL 1.3 (owner 2026-11-15): the device first, its MIDI PRESET at once; replaces SETUP 5/5's "Set up MIDI now?" */
+        cv_text_on(GD_X, UT_TY(M, UT_T6_Q_BASE), &AF_M, "What do you play DUELL with?", T_TEXT, T_BG);
+        guide_option(&O1[0], "KEYS OR OTHER MIDI", "", "", "", "", guide_pick[0] == 0u);
+        guide_option(&O1[1], "CIRCUIT TRACKS", "Its knobs 1 to 8 turn the macros", "", "", "", guide_pick[0] == 1u);
+        guide_option(&O1[2], "MPC/FORCE", "Its Q-Links turn the macros", "", "", "", guide_pick[0] == 2u);
+    } else if (pg == 2u) {                              /* the mode: all three always, RECOMMENDED on the one that fits SETUP 1/5's device */
+        uint32_t r = guide_rec_mode();
         cv_text_on(GD_X, UT_TY(M, UT_T6_Q_BASE), &AF_M, "How do you want to start?", T_TEXT, T_BG);
-        guide_option(&O1[0], "LAYER", "BOTH PARTS COMBINED:", "VELOCITY CROSSFADE, KEY SPLIT", "", "RECOMMENDED", guide_pick[0] == 0u);
-        guide_option(&O1[1], "STEREO", "BOTH PARTS IN ONE STEREO FIELD", "", "", "", guide_pick[0] == 1u);
-        guide_option(&O1[2], "DUEL", "DUAL MONO, FOR EXTERNAL EFFECTS", "", "", "", guide_pick[0] == 2u);
-    } else if (pg == 2u) {                              /* FIRST_RUN_SETUP_V2_A.png: PART MARKER, the capsule at the right, three short notes (part number, morph end, voices), each joined to its cell by a thin line */
+        guide_option(&O2[0], "LAYER", "Both parts combined:", "velocity crossfade, key split", "", r == 0u ? "RECOMMENDED" : "", guide_pick[1] == 0u);
+        guide_option(&O2[1], "STEREO", "Both parts in one stereo field", "", "", r == 1u ? "RECOMMENDED" : "", guide_pick[1] == 1u);
+        guide_option(&O2[2], "DUEL", "Dual mono, for external effects", "", "", r == 2u ? "RECOMMENDED" : "", guide_pick[1] == 2u);
+    } else if (pg == 3u) {                              /* FIRST_RUN_SETUP_V2_A.png: PART MARKER, the capsule at the right, three short notes (part number, morph end, voices), each joined to its cell by a thin line */
         const int32_t cx = 240 - 12 - CAP_W, tw = 172, my = AF_M_CAP_Y + AF_M_CAP_H / 2;
         static const char *const NOTE[3] = {"Part 1 or 2", "The morph end that you edit", "POLY: remaining voices with the current settings, or MONO, LEGATO, UNISON"};   /* (owner 2026-11-06: short notes, no full sentences) */
         static const int32_t NY[3] = {72, 108, 142};
@@ -287,55 +290,58 @@ static void guide_content(uint32_t pg)
             y = guide_wrap(GD_X, NY[i], i == 2u ? tw + 24 : tw, &AF_M, NOTE[i], T_TEXT, UT_T6_G_LINE + 1);
             guide_leader2(guide_last_x + 3, y - (UT_T6_G_LINE + 1) + my, xc, 65);
         }
-    } else if (pg == 3u) {                              /* outcome as a heading (L), the how-sentence under it with its keycaps in the sentence */
+    } else if (pg == 4u) {                              /* (owner 2026-11-15: the headings in the selected part's colour, T_PTHEME, as SETUP's boxes) outcome as a heading (L), the how-sentence under it with its keycaps in the sentence */
         y = UT_T6_G_HEAD0;
-        cv_text_on(GD_X, UT_TY(L, y), &AF_L, "PERFORM MODE", T_TEXT, T_BG);
+        cv_text_on(GD_X, UT_TY(L, y), &AF_L, "PERFORM MODE", T_PTHEME(song.sel), T_BG);
         y = guide_rich(GD_X, y + UT_T6_G_HT, GD_W, "Hold [FX] and the white keys turn into effects.") + UT_T6_G_TH;
-        cv_text_on(GD_X, UT_TY(L, y), &AF_L, "QUICK EDIT", T_TEXT, T_BG);
+        cv_text_on(GD_X, UT_TY(L, y), &AF_L, "QUICK EDIT", T_PTHEME(song.sel), T_BG);
         y = guide_rich(GD_X, y + UT_T6_G_HT, GD_W, "Keep [SEL] [ENV] [LFO] [EDIT] [GLO] [ARP] [SEQ] or [REC] pressed to show its main knobs over the page.") + UT_T6_G_TH;
-        cv_text_on(GD_X, UT_TY(L, y), &AF_L, "STOP ALL", T_TEXT, T_BG);
+        cv_text_on(GD_X, UT_TY(L, y), &AF_L, "STOP ALL", T_PTHEME(song.sel), T_BG);
         guide_rich(GD_X, y + UT_T6_G_HT, GD_W, "Tap [PLAY] twice.");
-    } else if (pg == 4u) {
+    } else {                                            /* 5: the last GUIDE page */
         y = UT_T6_G_HEAD0;
-        cv_text_on(GD_X, UT_TY(L, y), &AF_L, "RESET A KNOB", T_TEXT, T_BG);
+        cv_text_on(GD_X, UT_TY(L, y), &AF_L, "RESET A KNOB", T_PTHEME(song.sel), T_BG);
         y = guide_rich(GD_X, y + UT_T6_G_HT, GD_W, "Hold [OCT-] and turn the knob.") + UT_T6_G_TH;
-        cv_text_on(GD_X, UT_TY(L, y), &AF_L, "SAVE OVER A PATCH", T_TEXT, T_BG);
+        cv_text_on(GD_X, UT_TY(L, y), &AF_L, "SAVE OVER A PATCH", T_PTHEME(song.sel), T_BG);
         y = guide_rich(GD_X, y + UT_T6_G_HT, GD_W, "Keep [SAVE] pressed.") + UT_T6_G_TH;
-        cv_text_on(GD_X, UT_TY(L, y), &AF_L, "PARAMETER LOCK", T_TEXT, T_BG);
+        cv_text_on(GD_X, UT_TY(L, y), &AF_L, "PARAMETER LOCK", T_PTHEME(song.sel), T_BG);
         guide_rich(GD_X, y + UT_T6_G_HT, GD_W, "One step gets its own value for the knob you turn. With a note key down, press [OCT+] and turn a knob.");
-    } else {                                            /* 5: SETUP 5/5 */
-        cv_text_on(GD_X, UT_TY(M, UT_T6_Q_BASE), &AF_M, "Set up MIDI now?", T_TEXT, T_BG);
-        guide_option(&O5[0], "LATER", "GLO > MIDI HAS IT AT ANY TIME", "", "", "DEFAULT", guide_pick[1] == 0u);
-        guide_option(&O5[1], "NOW", "OPENS GLO > MIDI.", "WHEN YOU LEAVE IT,", "HOME ENDS THE FIRST START", "", guide_pick[1] == 1u);
     }
 }
 /* the legend row (item 118, FINAL_V1_08_setup): each key's cap (the firmware's own) and its word (S, grey) on the capitals' last row UT_T6_LEG_BASE; two items: at x UT_T6_LEG_X1 and UT_T6_LEG_X2 as the picture,
  * three: the first at X1, the last ending at UT_T6_LEG_R, the middle one between them. Three items whose words do not leave UT_T6_LEG_MIN px between them (the MENU copy's OCT+ NEXT / OCT- BACK / HOME CLOSE and
  * OCT+ FINISH: 219 / 229 px of 222) lose the LAST item's word, as cv_key_row always did; no other word is touched (HANDOFF_V2 item 118 lists it) */
-static void guide_legend(const khint_t *h, uint32_t n)
+static void guide_legend(const khint_t *h, uint32_t n)   /* owner 2026-11-15: three FIXED places, OCT- BACK at the left (the way back), HOME in the middle, OCT+ at the right (forward);
+                                                         * h[0..2] left, middle, right; an entry with no word (act 0) is a key that does nothing on this page: its place stays empty */
 {
     uint32_t i;
     int32_t x[3], w[3];
-    int word2 = 1;
+    int word1 = 1;
     uint16_t grey = ux_mix(T_BG, T_TEXT, UT_GREY_PCT);
+    (void)n;
     for (;;) {
-        for (i = 0; i < n; i++)
-            w[i] = kc_w(h[i].key) + (h[i].act[0] && (i + 1u < n || word2) ? UT_T6_LEG_GAP + text_w(&AF_S, h[i].act) : 0);
+        for (i = 0; i < 3u; i++)
+            w[i] = h[i].act ? kc_w(h[i].key) + (h[i].act[0] && (i != 1u || word1) ? UT_T6_LEG_GAP + text_w(&AF_S, h[i].act) : 0) : 0;
         x[0] = UT_T6_LEG_X1;
-        if (n == 2u) {
-            x[1] = UT_T6_LEG_X2;
-            break;
-        }
         x[2] = UT_T6_LEG_R - w[2];
-        x[1] = x[0] + w[0] + (x[2] - x[0] - w[0] - w[1]) / 2;
-        if (!word2 || (x[1] - x[0] - w[0] >= UT_T6_LEG_MIN && x[2] - x[1] - w[1] >= UT_T6_LEG_MIN))
+        x[1] = 120 - w[1] / 2;
+        if (!word1 || !h[1].act || ((!h[0].act || x[1] - x[0] - w[0] >= UT_T6_LEG_MIN) && (!h[2].act || x[2] - x[1] - w[1] >= UT_T6_LEG_MIN)))
             break;
-        word2 = 0;
+        word1 = 0;                                      /* (too tight: the middle item loses its word, its keycap stays) */
     }
-    for (i = 0; i < n; i++) {
-        int32_t e = cv_keycap(x[i], UT_T6_LEG_Y, h[i].key, T_KEY, T_KINK, T_BG);
-        if (h[i].act[0] && (i + 1u < n || word2))
+    for (i = 0; i < 3u; i++) {
+        int32_t e;
+        if (!h[i].act)
+            continue;
+        e = cv_keycap(x[i], UT_T6_LEG_Y, h[i].key, T_KEY, T_KINK, T_BG);
+        if (h[i].act[0] && (i != 1u || word1))
             cv_text_on(e + UT_T6_LEG_GAP, UT_TY(S, UT_T6_LEG_BASE), &AF_S, h[i].act, grey, T_BG);
+    }
+    if (guide_ask((ui.guide - 1u) % GUIDE_N + 1u) && !ui.guide_menu) {   /* owner 2026-11-16: KNOB 1 CHOOSE (every knob chooses, KNOB 1 is shown) with the other keys, at the first place's x: in the legend row when that place is
+                                                                          * empty (no BACK: SETUP 1/5), else a second legend line right above it */
+        int32_t up = h[0].act ? UT_T6_LEG_LINE : 0;
+        int32_t e = cv_keycap(UT_T6_LEG_X1, UT_T6_LEG_Y - up, KC_K1, T_KEY, T_KINK, T_BG);
+        cv_text_on(e + UT_T6_LEG_GAP, UT_TY(S, UT_T6_LEG_BASE - up), &AF_S, "CHOOSE", grey, T_BG);
     }
 }
 #else
@@ -345,16 +351,18 @@ static void guide_legend(const khint_t *h, uint32_t n) { (void)h; (void)n; }
 /* the page (ui_draw_page): the content when the page or a pick changes (or ui.force), the header every frame (its own signature: a message) */
 static void guide_draw(void)
 {
-    static const khint_t H1[2] = {{KC_OCTUP, "NEXT"}, {KC_HOME, "SKIP"}};
-    static const khint_t HL[2] = {{KC_OCTUP, "FINISH"}, {KC_HOME, "SKIP"}};
-    static const khint_t HN[3] = {{KC_OCTUP, "NEXT"}, {KC_OCTDN, "BACK"}, {KC_HOME, "SKIP"}};
-    static const khint_t HM[3] = {{KC_OCTUP, "NEXT"}, {KC_OCTDN, "BACK"}, {KC_HOME, "CLOSE"}};
-    static const khint_t HMF[3] = {{KC_OCTUP, "FINISH"}, {KC_OCTDN, "BACK"}, {KC_HOME, "CLOSE"}};
+    /* left OCT- BACK, middle HOME, right OCT+ (owner 2026-11-15); {key, 0}: nothing there on that page (no BACK on the first page, no HOME on the last) */
+    static const khint_t H1[3] = {{KC_OCTDN, 0}, {KC_HOME, "SKIP"}, {KC_OCTUP, "NEXT"}};            /* the first start's first page */
+    static const khint_t HN[3] = {{KC_OCTDN, "BACK"}, {KC_HOME, "SKIP"}, {KC_OCTUP, "NEXT"}};
+    static const khint_t HL[3] = {{KC_OCTDN, "BACK"}, {KC_HOME, 0}, {KC_OCTUP, "FINISH"}};         /* the last page: FINISH does what HOME would */
+    static const khint_t HM1[3] = {{KC_OCTDN, 0}, {KC_HOME, "CLOSE"}, {KC_OCTUP, "NEXT"}};         /* SETTINGS' copy */
+    static const khint_t HM[3] = {{KC_OCTDN, "BACK"}, {KC_HOME, "CLOSE"}, {KC_OCTUP, "NEXT"}};
+    static const khint_t HMF[3] = {{KC_OCTDN, "BACK"}, {KC_HOME, 0}, {KC_OCTUP, "FINISH"}};
     uint32_t pg = (ui.guide - 1u) % GUIDE_N + 1u, sig = pg * 64u + ui.guide_menu * 32u + guide_pick[0] * 4u + guide_pick[1];
     if (ui.force || guide_sig != sig + 1u) {
         static const int32_t EDGE[3] = {H_HEAD, H_HEAD + 124, GD_HINT_Y};
         uint32_t band;
-        const khint_t *kh = ui.guide_menu ? (pg == 4u ? HMF : HM) : pg == 1u ? H1 : pg == 5u ? HL : HN;   /* (SETUP questions: only OCT + NEXT and HOME SKIP) */
+        const khint_t *kh = ui.guide_menu ? (pg == GUIDE_N ? HMF : pg == guide_lo() ? HM1 : HM) : pg == 1u ? H1 : pg == GUIDE_N ? HL : HN;
         guide_sig = sig + 1u;
         guide_kh = kh;
         for (band = 0; band < 2u; band++) {             /* two strips: the canvas holds 124 rows (the legend row is in the last one) */
@@ -363,13 +371,16 @@ static void guide_draw(void)
                 cv_oy = -y0;
                 guide_content(pg);
                 if (band == 1u)
-                    guide_legend(kh, guide_ask(pg) && !ui.guide_menu ? 2u : 3u);
+                    guide_legend(kh, 3u);
                 cv_oy = 0;
                 cv_blit(0, (uint32_t)y0 + (uint32_t)cv_by);
             }
         }
     }
-    draw_head();                                        /* SETUP or GUIDE (ui_draw.c head_page_title), or a message (STOP ALL) */
+    if (ui.guide_menu && !ui.msg_t)                     /* (owner 2026-11-15: opened from SETTINGS, titled SETTINGS > SYSTEM > GUIDE, as SETTINGS' pages) */
+        menu_head();
+    else
+        draw_head();                                    /* SETUP or GUIDE (ui_draw.c head_page_title), or a message (STOP ALL) */
     draw_foot();                                        /* item 118: the shared footer, the counter 1/5 (MENU's copy 1/3) in it */
     if (ui.msg_t && !--ui.msg_t && ui.msg2[0]) {
         str_cpy(ui.msg, ui.msg2, sizeof ui.msg);

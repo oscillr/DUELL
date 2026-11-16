@@ -29,6 +29,22 @@ static void lcd_blit(uint32_t x, uint32_t y, uint32_t w, uint32_t h, const uint1
 #include "../firmware/src/panel.c"
 #include "../firmware/src/ui.c"
 #include "../firmware/src/menu_items.c"
+/* DUELL 1.3: MENU > MIDI's PART 1 / PART 2 CHANNEL rows call ui_input.c's midi_ch_get / midi_ch_put (not built here): the same two, for the menu's rows */
+static uint32_t midi_ch_get(uint32_t k)
+{
+    uint32_t b = k ? ui_midi_p2 : ui_midi_p1;
+    return b >= 1u && b <= 16u ? b - 1u : k;
+}
+static void midi_ch_put(uint32_t k, uint32_t ch)
+{
+    uint8_t *b = k ? &ui_midi_p2 : &ui_midi_p1;
+    if (ch > 15u || *b == (uint8_t)(ch + 1u))
+        return;
+    *b = (uint8_t)(ch + 1u);
+    midi_pch[k] = (uint8_t)ch;
+    ui.mset_dirty = 1;
+    ui.mset_t = fm1_ms;
+}
 static void panel_setup(void) {}
 
 static uint8_t nor[0x100000], flash_ok = 1;

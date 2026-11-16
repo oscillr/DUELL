@@ -6,6 +6,15 @@ by OSCILL/R
 
 Each release: a one-line summary, then New, Fixed, Compatibility, Install, Files.
 
+## DUELL 1.3
+
+An update for the M-VAVE FM-1. It plays with Novation Circuit Tracks and Akai MPC / Force out of the box, and adds MACROS and your own PERFORM knobs.
+
+- **New:** MIDI PRESETS for Novation Circuit Tracks and Akai MPC / Force, picked at the first start; MACROS (TIMBRE, ENV MACRO, FILTER MACRO, CHARACTER, MOTION) on HOME, with SEL held and on MIDI CC 56 to 62; your own PERFORM knobs 2, 3 and 4; MORPH as a mod matrix destination.
+- **Changed:** SETTINGS in seven sections with one key rule on every page; VELOCITY > FILTER ENV set in each patch; ANALOG PULSE WIDTH; TRIO INTERVAL 2 and 3 to plus or minus 36 semitones; LOFI shows more AVAILABLE VOICES; the web pages have the DUELL look.
+- **Fixed:** MIDI notes follow the part's TRANSPOSE (issue #4, thanks @thecandybars); the installer's backup, and the way back takes the V15 or V16 download (issue #5, thanks @jaggednz); a matrix route to MORPH no longer costs voices; PERFORM BALANCE, ANALOG PULSE WIDTH and MIDI LEARN screen details.
+- **Install:** save a backup, use the installer page, and make a new backup with 1.3.
+
 ## DUELL 1.2
 
 An update for the M-VAVE FM-1. Up to 16 voices a part from one shared voice pool over both cores, and it works with newer FM-1 units.

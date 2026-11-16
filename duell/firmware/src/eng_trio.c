@@ -341,8 +341,8 @@ static const engine_t ENG_TRIO = {
     .page_title = {"OSC", "TONE"},
     .edit = {
         {"WAVE", F_ENUM, 0, 15, 0, N_TRIO_WAVE, 0},
-        {"INT2", F_SEMI, -24, 24, 0, 0, 0},
-        {"INT3", F_SEMI, -24, 24, -12, 0, 0},
+        {"INT2", F_SEMI, -36, 36, 0, 0, 0},          /* DUELL 1.3 (owner): plus or minus 3 octaves, was 2 */
+        {"INT3", F_SEMI, -36, 36, -12, 0, 0},
         {"DTN", F_INT, 0, 50, 6, 0, "ct"},
         {"-", F_INT, 0, 0, 0, 0, 0},                 /* was MODE: filter 2's TYPE */
         {"-", F_INT, 0, 0, 0, 0, 0},                 /* was CUT: filter 2's CUTOFF */

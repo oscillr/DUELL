@@ -81,8 +81,8 @@ static int page_is(uint32_t n)                          /* page n is up: the tit
     char tb[24], c[8];
     uint32_t pi, m = ui.guide_menu != 0u;
     head_page_title(tb, &pi);
-    snprintf(c, sizeof c, "%u/%u", m ? n - 1u : n, m ? 3u : GUIDE_N);
-    return ui.guide == n && !strcmp(tb, (n == 1u || n == 5u) && !m ? "SETUP" : "GUIDE") && rows_has(215, 250, c);
+    snprintf(c, sizeof c, "%u/%u", m ? n - 2u : n, m ? 3u : GUIDE_N);   /* (2026-11-15: the copy in SETTINGS is pages 3 .. 5) */
+    return ui.guide == n && !strcmp(tb, (n == 1u || n == 2u) && !m ? "SETUP" : "GUIDE")   /* (2026-11-15: SETUP 1/5 the device, 2/5 the mode) */ && rows_has(215, 250, c);
 }
 
 int main(void)
@@ -93,11 +93,11 @@ int main(void)
 
     /* the pages fit: every text drawn in the page's body within the text room (x GD_X .. GD_X + GD_W, ink to the pixel), above the key hints; every L heading and option name has its glyphs in the sparse L face */
     {
-        static const char *const GUIDE_L[] = {"LAYER", "STEREO", "DUEL", "PART MARKER", "PERFORM MODE", "QUICK EDIT", "STOP ALL", "RESET A KNOB", "SAVE OVER A PATCH", "PARAMETER LOCK", "LATER", "NOW"};
+        static const char *const GUIDE_L[] = {"LAYER", "STEREO", "DUEL", "PART MARKER", "PERFORM MODE", "QUICK EDIT", "STOP ALL", "RESET A KNOB", "SAVE OVER A PATCH", "PARAMETER LOCK", "KEYS", "CIRCUIT TRACKS", "MPC/FORCE"};
         uint32_t p, m, q, ok = 1, glyphs = 1, maxw = 0, maxy = 0, seen = 0;
         const char *s;
         for (m = 0; m < 2u; m++)
-            for (p = m ? 2u : 1u; p <= (m ? 4u : GUIDE_N); p++) {
+            for (p = m ? 3u : 1u; p <= GUIDE_N; p++) {
                 ui_power_on();
                 guide_open(m);
                 ui.guide = (uint8_t)p;
@@ -138,30 +138,36 @@ int main(void)
     expect("  it stays up by itself (no time-out) and has written nothing of its own yet", ui.guide == 1u && !stored_seen());
 
     /* the keys: next, back, the ends. DUELL 1.1: SETUP 1/5 and 5/5 ask a question (SELECT and the knobs pick the option there, guide_setup_test.c; OCT+ / OCT- turn the page); the GUIDE pages 2/5 .. 4/5 turn with SELECT too */
+    /* DUELL 1.3 (owner 2026-11-15): SETUP 1/5 asks the device and SETUP 2/5 the mode (SELECT and the knobs pick there); GUIDE 3/5 .. 5/5 turn with SELECT too; 5/5 is the last page */
     turn(EN_SELECT, 1);
-    expect("SETUP 1/5: SELECT right picks (STEREO), the page stays", page_is(1u) && guide_pick[0] == 1u);
+    expect("SETUP 1/5: SELECT right picks (CIRCUIT TRACKS), the page stays", page_is(1u) && guide_pick[0] == 1u);
     turn(EN_SELECT, -3);
-    expect("  .. SELECT left picks LAYER and stops, the page stays", page_is(1u) && guide_pick[0] == 0u);
+    expect("  .. SELECT left picks KEYS and stops, the page stays", page_is(1u) && guide_pick[0] == 0u);
     press(B_OCTUP);
-    expect("OCT+: page 2", page_is(2u));
+    expect("OCT+: page 2 (SETUP: the mode, LAYER ticked for KEYS)", page_is(2u) && guide_pick[1] == 0u);
     turn(EN_SELECT, 1);
-    expect("SELECT right: page 3", page_is(3u));
+    expect("SETUP 2/5: SELECT right picks STEREO, the page stays", page_is(2u) && guide_pick[1] == 1u);
+    turn(EN_SELECT, -1);
     press(B_OCTUP);
-    expect("OCT+: page 4", page_is(4u));
+    expect("OCT+: page 3", page_is(3u));
+    turn(EN_SELECT, 1);
+    expect("SELECT right: page 4", page_is(4u));
+    press(B_OCTUP);
+    expect("OCT+: page 5", page_is(5u));
     press(B_OCTDN);
-    expect("OCT-: page 3", page_is(3u));
+    expect("OCT-: page 4", page_is(4u));
     turn(EN_SELECT, -1);
-    expect("SELECT left: page 2", page_is(2u));
+    expect("SELECT left: page 3", page_is(3u));
     turn(EN_SELECT, -1);
-    expect("SELECT left again: page 1 (a question again)", page_is(1u));
+    expect("SELECT left again: page 2 (a question again)", page_is(2u));
+    press(B_OCTDN);
+    expect("OCT-: page 1", page_is(1u));
     turn(EN_SELECT, -3); press(B_OCTDN);
     expect("  .. and stays on page 1 at the start", page_is(1u));
     press(B_OCTUP); press(B_OCTUP); press(B_OCTUP); press(B_OCTUP);
-    expect("OCT+ four times: the last page (GUIDE_N), SETUP 5/5", page_is(GUIDE_N));
+    expect("OCT+ four times: the last page (GUIDE_N), GUIDE 5/5", page_is(GUIDE_N));
     turn(EN_SELECT, 20);
-    expect("SELECT right far on the last page (a question): picks NOW, no further, the page stays", page_is(GUIDE_N) && guide_pick[1] == 1u);
-    turn(EN_SELECT, -20);
-    expect("  .. SELECT left far: LATER (the finish below goes to HOME)", page_is(GUIDE_N) && guide_pick[1] == 0u);
+    expect("SELECT right far on the last page: no further, the guide stays", page_is(GUIDE_N) && ui.guide);
     expect("the octave never moved (OCT- / OCT+ were the guide's)", (frames(200), song.octave == 0));
     press(B_OCTDN); press(B_OCTDN);
     expect("OCT- twice: GUIDE 3/5, an information page (no question): the playing checks below are made here", page_is(3u));
@@ -172,7 +178,7 @@ int main(void)
         uint32_t pre = TSEL->preset, sel = song.sel, s0 = trk[0].eng_req, f0 = morph_fader_of(0), oct = (uint32_t)song.octave;
         memcpy(keep[0], trk[0].p, sizeof keep[0]);
         memcpy(keep[1], trk[1].p, sizeof keep[1]);
-        turn(EN_K1, 5); turn(EN_K2, -4); turn(EN_K3, 3); turn(EN_K4, 2); turn(EN_PRESET, 3); turn(EN_ALGO, 1);
+        turn(EN_K1, 2); turn(EN_K2, -4); turn(EN_K3, 3); turn(EN_K4, 2); turn(EN_PRESET, 3); turn(EN_ALGO, 1);   /* (owner 2026-11-16: the knobs never turn pages) */
         expect("  .. the header says why (\"[HOME] CLOSES GUIDE\", no silently ignored knob)", ui.msg_t && str_eq(ui.msg, GUIDE_KNOB_MSG));
         frames(400);
         expect("KNOB 1-4, PRESETS, ALGORITHM: nothing changed (every parameter, the sound, the part, the morph fader, the page)",
@@ -210,7 +216,7 @@ int main(void)
     }
 
     press(B_OCTUP); press(B_OCTUP);
-    expect("OCT+ twice: SETUP 5/5 again, LATER picked", page_is(GUIDE_N) && guide_pick[1] == 0u);
+    expect("OCT+ twice: the last page again, GUIDE 5/5", page_is(GUIDE_N));
 
     /* finishing: OCT+ on the last page sets the bit, one settings write */
     e0 = erases;
@@ -231,16 +237,16 @@ int main(void)
     /* MENU > SYSTEM > GUIDE: the same pages, the bit untouched */
     ui.menu = 1; ui.menu_sel = MI_GUIDE; ui.force = 1; frame();
     e0 = erases;
-    turn(EN_K1, 1);
-    expect("MENU > SYSTEM > GUIDE, KNOB 1 right: the guide on its first page (2 of the five: the MENU copy shows GUIDE 2/5 .. 4/5 as 1/3 .. 3/3), the menu under it", page_is(2u) && ui.menu == 1u);
-    turn(EN_SELECT, 20);                                /* (a turn is one page a frame, whatever its size: page 3) */
-    expect("  SELECT right: the next page only (a turn moves one page), page 3 (the MENU copy's 2/3)", page_is(3u));
     press(B_OCTUP);
-    expect("  OCT+: the copy's last page, GUIDE 3/3 (page 4)", page_is(4u));
+    expect("SETTINGS > SYSTEM > GUIDE, OCT+: the guide on its first page (3 of the five: the copy shows GUIDE 3/5 .. 5/5 as 1/3 .. 3/3), SETTINGS under it", page_is(3u) && ui.menu == 1u);
+    turn(EN_SELECT, 20);                                /* (a turn is one page a frame, whatever its size: page 3) */
+    expect("  SELECT right: the next page only (a turn moves one page), page 4 (the copy's 2/3)", page_is(4u));
+    press(B_OCTUP);
+    expect("  OCT+: the copy's last page, GUIDE 3/3 (page 5)", page_is(5u));
     press(B_OCTUP);
     expect("  OCT+ at its end: back to the MENU at the GUIDE row", !ui.guide && ui.menu == 1u && ui.menu_sel == MI_GUIDE);
     press(B_OCTUP);
-    expect("  OCT+ on the row opens it again", page_is(2u));
+    expect("  OCT+ on the row opens it again", page_is(3u));
     press(B_HOME);
     frames(100);
     expect("  HOME: the guide and the menu closed, HOME's page (HOME OPENS: MORPH)", !ui.guide && !ui.menu && (at_home() || cur_fam() == FAM_TRK));
@@ -268,7 +274,7 @@ int main(void)
         ui.guide = 0; ui.force = 1;
         ui.menu = 1; ui.menu_sel = MI_GUIDE; frame();
         e0 = erases;
-        turn(EN_K1, 1);
+        press(B_OCTUP);
         press(B_HOME);
         frames(2600);
         settings_poll();

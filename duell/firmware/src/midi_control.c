@@ -152,10 +152,17 @@ static void mchord_tone(mchord_t *m, uint32_t i)
 
 /* (STRUM, item 144: a MIDI note's chord is strummed as a key's, chord.c strum_blocks: the lowest tone now, the rest by strum_block; a note-off before a
  * tone's turn cancels it) */
+/* (GitHub issue 4, owner 2026-11-16: a MIDI note gets the part's TRANSPOSE, as the keys do (seq.c kb_pitch). A transposed note differs from the one
+ * received, so it is kept as an mchord with the notes it started: its note-off ends exactly those, even after TRANSPOSE was turned meanwhile. With no
+ * mchord free (24 held at once) the note plays untransposed, as before) */
+static uint32_t midi_trans(const track_t *t, uint32_t note)
+{
+    return (uint32_t)clamp((int32_t)note + t->p[P_TRANS], 0, 127);
+}
 static void midi_play(track_t *t, uint32_t ch, uint32_t note, uint32_t vel)
 {
     uint8_t nn[CHORD_MAX];
-    uint32_t n = chord_build(t, note, nn), i, f = 0, lay, rt, sb;
+    uint32_t n = chord_build(t, midi_trans(t, note), nn), i, f = 0, lay, rt, sb;
     if (n > 1u || nn[0] != note)
         for (f = 0; f < MCHORD_N && mchord[f].id; f++)
             ;
@@ -200,7 +207,7 @@ static void midi_play(track_t *t, uint32_t ch, uint32_t note, uint32_t vel)
     }
     if (lay && (rt & 2u)) {     /* LAYER: part 2 gets the note too, its own chord and arp (id 2) */
         track_t *t2 = &trk[1];
-        n = chord_build(t2, note, nn);
+        n = chord_build(t2, midi_trans(t2, note), nn);
         f = 0;
         if (n > 1u || nn[0] != note)
             for (f = 0; f < MCHORD_N && mchord[f].id; f++)
@@ -469,7 +476,9 @@ static int __attribute__((noinline)) midi_glob_act(uint32_t code, uint32_t value
     else if (code == MAP_T_MODE) {
         duell_mode_req = (uint8_t)(value < 43u ? DM_SPLIT : value < 86u ? DM_STEREO : DM_LAYER);
         mode_apply();
-    } else
+    } else if (code == MAP_T_SPACE || code == MAP_T_KILL)   /* DUELL 1.3: SPACE, KILL (global, any channel): queued for the main loop (morph_poll) */
+        morph_push(MQ_MAC0 + code - MAP_T_TIMBRE, 0u, value);
+    else
         return 0;
     return 1;
 }
@@ -514,15 +523,54 @@ static void __attribute__((noinline)) midi_map_cc(uint32_t ch, track_t *ct, uint
         midi_cc_set(t, id, value);
     } else if (code >= MAP_T_MORPH && code <= MAP_T_PITCH) {
         midi_morph(ch, trk_index(t), code, value);
+    } else if (code >= MAP_T_TIMBRE && code <= MAP_T_MOTION) {   /* DUELL 1.3: a part's MACRO: queued for the main loop as the MORPH's (morph_poll) */
+        morph_push(MQ_MAC0 + code - MAP_T_TIMBRE, trk_index(t), value);
     } else {
         (void)midi_glob_act(code, value);           /* (a global target on a part rule: typed by hand; the editor refuses it) */
     }
 }
 
+/* DUELL 1.3 MIDI PRESET (owner 2026-11-12; design studies/device-knob-tables_2026-11-12.md sections 1 and 2): a device setting (MENU > CONTROL > MIDI PRESET, ui.c mac_settings)
+ * that changes only which CC numbers go where, for a device whose knobs have fixed factory numbers. The channels stay the user's; the user's map (midi_map) is not touched:
+ * while a preset is on, its lines come first for their numbers (also the locked inputs 1, 2, 11: owner, "a preset may take over the locked numbers"), every other number
+ * acts as the map says. SPACE and KILL are in no preset (owner). STANDARD: no lines. A MIDI LEARN waiting for a CC takes it as ever.
+ *   CIRCUIT TRACKS (MIDI tracks, knobs 1..8): CC 1 TIMBRE, 2 MORPH, 5 ENVELOPE, 11 FILTER ENV DEPTH (MULTI), 12 FILTER, 13 MULTI RES, 71 MOTION, 74 CHARACTER
+ *   MPC/FORCE (a new MIDI track's Q-Links): CC 75 ENVELOPE, 72 MOTION, 74 FILTER, 67 TIMBRE, 66 CHARACTER, 65 MORPH; the rest is the standard map (7 LEVEL, 10 PAN, 11 and 1
+ *   the inputs, 73 AMP ATTACK, 91 REVERB, 92 DELAY, 93 CHORUS, 95 INSERT MIX, 64 sustain) */
+enum { MPRE_STANDARD, MPRE_CIRCUIT, MPRE_MPC, MPRE_N };
+static const char *const MPRE_NAME[MPRE_N] = {"STANDARD", "CIRCUIT TRACKS", "MPC/FORCE"};
+static volatile uint8_t midi_preset;                     /* MPRE_* (the main loop sets it from the settings: ui.c mac_settings) */
+typedef struct { uint8_t cc; uint16_t code; } mpre_line_t;   /* code: a target as a map line's (midi_map.h) */
+static const mpre_line_t MPRE_LINES[MPRE_N - 1u][9] = {
+    {{1, MAP_T_TIMBRE}, {2, MAP_T_MORPH}, {5, MAP_T_ENVELOPE}, {11, P_E2FLT}, {12, MAP_T_FILTER}, {13, P_FREEB}, {71, MAP_T_MOTION}, {74, MAP_T_CHARACTER}, {0, 0}},
+    {{75, MAP_T_ENVELOPE}, {72, MAP_T_MOTION}, {74, MAP_T_FILTER}, {67, MAP_T_TIMBRE}, {66, MAP_T_CHARACTER}, {65, MAP_T_MORPH}, {0, 0}},
+};
+/* the preset's line for cc, acted on: 1 = taken (flash code: only while a preset is on) */
+static __attribute__((noinline)) int midi_preset_cc(uint32_t ch, uint32_t cc, uint32_t value)
+{
+    const mpre_line_t *l;
+    track_t *t;
+    if (midi_preset == MPRE_STANDARD || midi_preset >= MPRE_N || (ml_io && ml_arm))
+        return 0;
+    for (l = MPRE_LINES[midi_preset - 1u]; l->code && l->cc != cc; l++)
+        ;
+    if (!l->code)
+        return 0;
+    t = midi_track(ch);
+    if (l->code < P_COUNT)
+        midi_cc_set(t, l->code, value);
+    else if (l->code == MAP_T_MORPH)
+        midi_morph(ch, trk_index(t), MAP_T_MORPH, value);
+    else
+        morph_push(MQ_MAC0 + l->code - MAP_T_TIMBRE, trk_index(t), value);
+    return 1;
+}
 static void midi_control(uint32_t ch, uint32_t cc, uint32_t value)
 {
     midi_channel_t *c = midi_channel(ch);
     uint32_t i, mask;
+    if (midi_preset && midi_preset_cc(ch, cc, value))    /* DUELL 1.3: a MIDI PRESET's line first */
+        return;
     switch (cc) {
     case 1:
         c->wheel = (uint8_t)value;

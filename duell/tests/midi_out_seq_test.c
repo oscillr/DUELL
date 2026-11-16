@@ -150,11 +150,7 @@ int main(void)
     bad += check("LAYER: part 1's arp sends on channel 1", ev_n >= 1 && ST(0) == 0x90u && CHN(0) == 0u && NOTE(0) == 60u);
     duell_mode_force(DM_SPLIT);
 
-    {   /* the width of the LAYER note on GLO > MIDI (ui_graph.c graph_midi, AF_S at x = 12, the screen is 240 wide) */
-        int32_t w = text_w(&AF_S, "LAYER MODE: PART 1 CHANNEL COUNTS");
-        printf("  LAYER note width %d px (x 12 .. %d of 240)\n", (int)w, (int)(12 + w));
-        bad += check("LAYER note fits inside the 240 px screen (the longest other line on that page is 203 px)", 12 + w <= 240);
-    }
+    /* (DUELL 1.3: GLO > MIDI and its LAYER note, ui_graph.c graph_midi, are gone: the channels are MENU > MIDI's rows; the note's width check went with it) */
     printf("%s\n", bad ? "MIDI OUT ARP/SEQ TEST FAILED" : "midi out arp/seq test passed");
     return bad != 0;
 }
