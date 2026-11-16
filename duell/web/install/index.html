@@ -49,12 +49,12 @@
   .card .lock { color: var(--dim); font-size: 13px; min-height: 1.2em; margin: 0 0 8px; }
   .retwarn { border: 2px solid #e08a00; padding: 8px 12px; margin: 8px 0 12px; font-weight: 700; }
 </style>
+<link rel="stylesheet" href="../brand.css">
 </head>
 <body>
 <div id="banner" role="alert" hidden></div>
+<header class="brandhead"><img class="logo" src="../editor/img/duell-logo-white.png" alt="DUELL"><img class="desc" src="../editor/img/multimorphing-bitimbral-white.png" alt="MultiMorphing Bitimbral Synthesizer by OSCILL/R"></header>
 <main>
-  <h1>DUELL</h1>
-  <p class="tag">MultiMorphing Bitimbral Synthesizer<br>by OSCILL/R</p>
   <p><b><span class="ver">DUELL</span> installer</b> for the M-VAVE FM-1.</p>
 
   <div class="box" id="notreleased">
@@ -103,7 +103,7 @@
       <p class="small"><b id="erase-detect"></b> <button id="detect" type="button" disabled>Check the unit</button></p>
       <label><input type="checkbox" id="erase-after"> <b id="erase-label">Erase my saved data after installing (start from scratch)</b></label>
       <p class="small" id="erase-smart"></p>
-      <p class="small" id="erase-help">Erases your settings (theme, scale, MIDI channels, favourites), the autosave, your patches, your multis and your patterns. The factory sounds, multis and patterns come back. This cannot be undone: back up first. Left off, your saved data stays and the unit comes back as you left it.</p>
+      <p class="small" id="erase-help">Erases your settings (theme, scale, MIDI channels, favourites), the autosave, your patches, your multis and your patterns. DUELL's own patches, multis and patterns come back. This cannot be undone: back up first. Left off, your saved data stays and the unit comes back as you left it.</p>
       <p class="small" id="erase-lock"></p>
       <p><b>Do not switch off or unplug the unit while it installs.</b> <a href="../editor/backup.html">Back up first (recommended)</a></p>
       <p><button id="go" disabled>Install <span class="ver">DUELL</span></button></p>
@@ -121,11 +121,11 @@
     <div class="card return" id="card-return">
       <h2>RETURN TO OFFICIAL FIRMWARE</h2>
       <p class="retwarn">This writes the official M-VAVE firmware back. DUELL will be removed. Keep the cable connected until DONE.</p>
-      <p>Download the official FM-1 firmware (<code>FM-1.fwsc</code>, V15) yourself from M-VAVE's download page:
+      <p>Download the official FM-1 firmware (<code>FM-1.fwsc</code>, V16 today) yourself from M-VAVE's download page:
       <a href="https://www.m-vave.com/download" target="_blank" rel="noopener">m-vave.com/download</a>. This project does not host or redistribute M-VAVE's files.
-      Select the unmodified file here; the page checks it in your browser (it is never uploaded) and only accepts V15.</p>
+      Select the unmodified file here; the page checks it in your browser (it is never uploaded) and accepts V15 and V16. If one version is refused (Failed -5 on the FM-1), use the other one.</p>
       <p><label>Official FM-1.fwsc<br><input id="stock-file" type="file" accept=".fwsc"></label></p>
-      <p><button id="stock-go" disabled>Back up and return to official V15</button></p>
+      <p><button id="stock-go" disabled>Back up and return to the official firmware</button></p>
       <p class="lock" id="lock-return"></p>
       <progress class="bar" id="bar-return" max="100" value="0" hidden></progress>
       <p class="status" id="status-return"></p>
@@ -146,7 +146,9 @@
 <script type="module">
 import { productOf, logicalImage, sha256hex, validateStockPackage } from "../fm1pkg.js";
 import { Updater } from "../fm1ota.js";
-import { BackupConnection, captureBackup, eraseAllData, parseInfo } from "../fm1backup.js";
+import { BackupConnection, eraseAllData } from "../fm1backup.js";
+// (2026-11-16, owner yes) the backup is the editor's own (DUELL patch records, multis, patterns, wavetables), so a file from here restores in the editor
+import { captureBackup, parseInfo, fileName } from "../editor/duellbackup.js";
 import { uiState, TEXT, SWITCH_OFF_ON, ERASE, eraseOutcome, SMART, detectUnit, eraseDecision } from "../installer_state.js";
 
 const $ = (id) => document.getElementById(id);
@@ -371,15 +373,14 @@ $("go").addEventListener("click", async () => {
 // ---- backup
 function saveArchive(archive) {
   const url = URL.createObjectURL(new Blob([JSON.stringify(archive)], { type: "application/json" }));
-  const a = document.createElement("a"); a.href = url; a.download = `DUELL-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  const a = document.createElement("a"); a.href = url; a.download = fileName("DUELL-backup");
   document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 function archiveInfo(a) {
-  const { version, tags, caps, patchCap } = parseInfo(a);
-  // the firmware reports "FELUCCA <version string>", DUELL's too. A complete backup needs the preferences, motion and backup tags
-  // (the song-rows byte is not compared: Felucca sent 16, DUELL sends 0) and the backup tag's bit 0.
-  const supported = /^FELUCCA /i.test(version) && tags.has(0x55) && tags.has(0x4d) && caps !== null && !!(caps & 1);
-  return { version, supported, caps: caps ?? 0, patchCap };
+  const info = parseInfo(a);
+  // (2026-11-16) DUELL reports "DUELL <version>" since 2026-11-07 (before: "FELUCCA DUELL ..."); a backup needs the backup tag's bit 0
+  const supported = /^(FELUCCA )?DUELL /i.test(info.version) && info.caps !== null && !!(info.caps & 1);
+  return { ...info, supported, caps: info.caps ?? 0 };
 }
 // card = the card that shows the progress ("backup", or "return" when the return makes its backup first)
 async function doBackup(up, card) {
@@ -391,7 +392,7 @@ async function doBackup(up, card) {
     const info = archiveInfo(await link.request([1, []]));
     if (!detected) { detected = detectUnit(info.version); refresh(); }      // the backup just talked to the unit: reuse its answer
     if (!info.supported) { result(card, "This firmware cannot make a complete backup (the official firmware, or an old build). Nothing was saved.", card === "backup"); return false; }
-    const archive = await captureBackup((r, o) => link.request(r, o), info.version,
+    const archive = await captureBackup((r, o) => link.request(r, o), info,
       (d, t) => { const pc = d / Math.max(1, t) * 100; say(card, `Saving backup ${Math.round(pc)}%`); if (card === "backup") $("bar-backup").value = pc; });
     saveArchive(archive);
     result(card, "Backup saved to your downloads." + (info.caps & 4 ? "" : " MULTIs and PATTERN slots are not in it (this firmware cannot save them)."));
@@ -409,13 +410,13 @@ $("backup").addEventListener("click", async () => {
   finally { end("backup"); }
 });
 
-// ---- return to the official V15 (Felucca's flow, unchanged in method)
+// ---- return to the official V15 or V16 (Felucca's flow, unchanged in method)
 $("stock-file").addEventListener("change", async () => {
   stock = null; refresh();
   const f = $("stock-file").files[0]; if (!f) return;
   try {
     stock = await validateStockPackage(new Uint8Array(await f.arrayBuffer()));
-    $("stockstate").textContent = "Official V15 verified.";
+    $("stockstate").textContent = "Official " + stock.version + " verified.";
   } catch (e) { $("stockstate").textContent = "Cannot use this file: " + e.message; }
   refresh();
 });
@@ -426,22 +427,26 @@ $("stock-go").addEventListener("click", async () => {
   try {
     let midi;
     try { midi = await navigator.requestMIDIAccess({ sysex: true }); } catch { result("return", ERR.denied, true); return; }
-    const up = new Updater(midi, log), step = progress("return", 74 + 1167);
+    const up = new Updater(midi, log), step = progress("return", 74 + selected.blocks);
     const loader = await up.find((id) => id.model === "ota-FM-1");
     if (loader) {
       loader.link.close();
       if (!$("stock-recovery").checked) { result("return", "The FM-1 is in update mode, so no backup can be made now. Tick \"Resume an interrupted return\" only if you already saved a backup.", true); return; }
-      if (!confirm("Return to official V15? DUELL music cannot be opened by the official firmware.")) return;
+      if (!confirm("Return to official " + selected.version + "? DUELL music cannot be opened by the official firmware.")) return;
       if (await up.resume(selected.image, step, selected.product)) result("return", TEXT.done.return); else result("return", ERR.stopped, true);
     } else {
       say("return", "Backing up before the return (nothing is written yet)");
-      if (!(await doBackup(up, "return"))) { if (!confirm("No backup was made. Return to official V15 anyway?")) return; }
-      else if (!confirm("The backup file was downloaded. Has it been saved on this computer? Continue to return to official V15.")) return;
+      if (!(await doBackup(up, "return"))) { if (!confirm("No backup was made. Return to official " + selected.version + " anyway?")) return; }
+      else if (!confirm("The backup file was downloaded. Has it been saved on this computer? Continue to return to official " + selected.version + ".")) return;
       result("return", "");
       await up.install(selected.image, selected.product, step);
       result("return", TEXT.done.return);
     }
-  } catch (e) { fail("return", e); }
+  } catch (e) {
+    fail("return", e);
+    // (2026-11-16, GitHub issue 5) the unit refuses a file whose start area differs from its own: it shows Failed -5 and writes nothing
+    if (e && e.code === "stopped") result("return", ERR.stopped + " If the FM-1 screen showed Failed -5: this official version does not match the start area your FM-1 boots from, so nothing was written and DUELL is still installed. Select the other official version (V15 or V16) and press the button again.", true);
+  }
   finally { end("return"); }
 });
 refresh();

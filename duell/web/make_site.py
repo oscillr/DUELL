@@ -46,7 +46,7 @@ def product_of(raw):
     return "".join(chr((m - i - 1) & 0xFF) for i in range(BLOCKS) if (m := raw[i * BLK + KEEP]) != 0x7D)
 
 
-PKG_NAME = re.compile(r"duell-(\d+(?:\.\d+)+)(?:-beta)?\.fwsc")
+PKG_NAME = re.compile(r"duell-(\d+(?:\.\d+)+)(?:-beta|(-test\d+|-BENCHV\d+|-(?:test|bench)-\d{4}-\d{2}-\d{2}(?:-[b-z])?))?\.fwsc")
 
 
 def version_of(name):
@@ -90,7 +90,7 @@ def main():
     inst.mkdir(parents=True)
     (out / ".nojekyll").write_text("", encoding="utf-8")
     shutil.copy(HERE / "landing.html", out / "index.html")
-    for js in ("fm1pkg.js", "fm1ota.js", "fm1backup.js", "installer_state.js"):
+    for js in ("fm1pkg.js", "fm1ota.js", "fm1backup.js", "installer_state.js", "brand.css"):   # (brand.css: the public pages' look, owner 2026-11-16)
         shutil.copy(HERE / js, out / js)
 
     shutil.copytree(HERE / "editor", out / "editor", ignore=shutil.ignore_patterns(".DS_Store"))
@@ -104,7 +104,7 @@ def main():
         ver = version_of(pkg.name)
         if not ver:
             raise SystemExit(f"{pkg.name}: the file name must be duell-<version>-beta.fwsc (the version is read from it)")
-        vtxt = ".".join(map(str, ver))
+        vtxt = ".".join(map(str, ver)) + (PKG_NAME.fullmatch(pkg.name)[2] or "")   # (DUELL 1.1: 1.1.0-test1 keeps its suffix)
         shutil.copy(pkg, inst / pkg.name)
         if pkg.name != "duell-latest.fwsc":
             shutil.copy(pkg, inst / "duell-latest.fwsc")      # the page tries this name first
@@ -117,10 +117,14 @@ def main():
     for n in names:
         shutil.copy(lic / n, inst / "LICENSES" / n)
     (inst / "LICENSES" / "index.html").write_text(     # Pages lists no folders
-        '<!doctype html><meta charset="utf-8"><title>DUELL licences</title><h1>Licence texts</h1><ul>'
+        '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>DUELL licences</title>'
+        '<style>main { max-width: 600px; margin: 0 auto; padding: 0 16px 64px; }</style><link rel="stylesheet" href="../../brand.css">'
+        '<header class="brandhead"><img class="logo" src="../../editor/img/duell-logo-white.png" alt="DUELL">'
+        '<img class="desc" src="../../editor/img/multimorphing-bitimbral-white.png" alt="MultiMorphing Bitimbral Synthesizer by OSCILL/R"></header>'
+        '<main><h1>Licence texts</h1><ul>'
         + "".join(f'<li><a href="{n}">{n}</a></li>' for n in names)
         + '</ul><p><a href="../LICENSING.md">LICENSING.md</a> · <a href="../LICENSE">LICENSE (GPL-3.0)</a> · '
-          '<a href="https://github.com/oscillr/DUELL">Source code</a></p>\n', encoding="utf-8")
+          '<a href="https://github.com/oscillr/DUELL">Source code</a></p></main>\n', encoding="utf-8")
     for doc, src in (("LICENSE", ROOT / "LICENSE"), ("LICENSING.md", BASE / "LICENSING.md")):
         shutil.copy(src, inst / doc)
 
