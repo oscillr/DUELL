@@ -49,6 +49,15 @@ enum { ANN_HELLO = 1, ANN_BYE = 2, ANN_WHERE = 3, ANN_SAY = 16 };
 
 static int ann_wire_send(const uint8_t *p, uint32_t n);
 
+#if BENCH_TRIM   /* (2026-11-17, owner: "Bench build, no reader") bench builds only: no screen reader (and no splash logo, ui_draw.c), so a 1.3.1 bench build fits; the unit never answers a reader */
+static int ann_on(void) { return 0; }
+static void ann_say(const char *a, const char *b, uint32_t flags) { (void)a, (void)b, (void)flags; }
+static void ann_later(const char *s, uint32_t flags, uint32_t quiet_ms, uint32_t now) { (void)s, (void)flags, (void)quiet_ms, (void)now; }
+static int ann_where(void) { return 0; }
+static void ann_tick(uint32_t now) { (void)now; }
+static int ann_frame(const uint8_t *p, uint32_t n, uint32_t now) { (void)p, (void)n, (void)now; return 0; }
+#else
+
 static struct {
     uint8_t on, where;
     uint32_t heard;                           /* the last HELLO */
@@ -165,3 +174,4 @@ static int ann_frame(const uint8_t *p, uint32_t n, uint32_t now)
     }
     return 1;
 }
+#endif /* BENCH_TRIM */

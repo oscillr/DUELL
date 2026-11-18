@@ -1,16 +1,16 @@
-# DUELL 1.3.1
+# DUELL 1.3.2
 
 **DUELL**
 **MultiMorphing Bitimbral Synthesizer**
 **by OSCILL/R**
 
-DUELL 1.3.1 is a small update for the M-VAVE FM-1: DUELL can now speak.
+DUELL 1.3.2 is a small update for the M-VAVE FM-1: the screen reader says more.
 
-## What is new
-- **Screen reader support.** Open Charles Vestal's [FM-1 Screen Reader](https://charlesvestal.github.io/fm1-reader/) page in Chrome or Edge with your FM-1 on USB, and DUELL says what is on its screen: the page and its knobs, each knob as you turn it, SETTINGS rows, messages, questions and the first-start guide. Use your own screen reader (VoiceOver, NVDA, JAWS, TalkBack) or the page's own voice. Without the reader page DUELL stays silent. Thanks for the idea, @woodjackmusic-JD ([issue #2](https://github.com/oscillr/DUELL/issues/2)).
-- **The web emulator speaks too.** Its new Screen reader section reads the screen with your screen reader or its own voice.
+## What has changed
+- **The screen reader says the names of patterns and multis** when you save them on SAVE > PATTERNS and SAVE > MULTIS, not only the slot number, and it reads the three rows of TOOLS. Thanks for the idea, @woodjackmusic-JD ([issue #2](https://github.com/oscillr/DUELL/issues/2)).
+- **LOFI's AVAILABLE VOICES** now shows what LOFI really plays with everything on, while you turn the knobs.
 
-Everything new in 1.3 is in the [changelog](https://github.com/oscillr/DUELL/blob/main/CHANGELOG.md).
+Everything new in 1.3 and 1.3.1 is in the [changelog](https://github.com/oscillr/DUELL/blob/main/CHANGELOG.md).
 
 ## Read this before you flash
 - DUELL has run on **two FM-1 units, the author's**, and more than 100 people have installed it through the Firmware Hub. The FM-1 has a single copy of its firmware and no known rollback besides the way back to the official firmware (V15 or V16).
@@ -21,11 +21,11 @@ Everything new in 1.3 is in the [changelog](https://github.com/oscillr/DUELL/blo
 ## Assets
 | File | What |
 |---|---|
-| `duell-1.3.1.fwsc` | the device package (the installer page loads this one) |
+| `duell-1.3.2.fwsc` | the device package (the installer page loads this one) |
 | `SHA256SUMS` | checksums |
 
 ```
-SHA256: 36184f90ad6a02e69850aedcb13084711b4eed2679eacdaaa2703efc6f810440  duell-1.3.1.fwsc
+SHA256: 5b5834ba2423dd4296a49445aee02727ff9ee1cae4bd8daaae63f6397f90ee9b  duell-1.3.2.fwsc
 ```
 
 ## Links

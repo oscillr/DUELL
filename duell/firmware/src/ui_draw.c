@@ -2440,8 +2440,15 @@ static void draw_columns(void)
                     k != EVK_ADD ? VAL(3u) : T_DIM, RATIO(d, enum_rank(d, v)), param_icon(d, v));
         return;
     }
-    if (cur_page()->graph == GR_TOOLS)                 /* TOOLS (grid_on 17): no cards, the three rows are the page (ui_graph.c graph_tools); the knob actions stay in ui.c */
+    if (cur_page()->graph == GR_TOOLS) {               /* TOOLS (grid_on 17): no cards, the three rows are the page (ui_graph.c graph_tools); the knob actions stay in ui.c */
+        char part[8] = "PART 1";                       /* (2026-11-17: the screen reader hears the three rows as graph_tools draws them, not the cards of the page before) */
+        part[5] = (char)('1' + song.sel % NTRK);
+        sp_card_set(0, "CLEAR PATTERN", part, "");
+        sp_card_set(1, "INITIALIZE SOUND", part, "");
+        sp_card_set(2, "RESTORE ALL PATCHES", up_count() ? "Every slot replaced" : "NOTHING TO RESTORE", "");
+        sp_card_set(3, "", "", "");
         return;
+    }
     if (cur_page()->scope == SC_PERF) {                /* PERFORM (ui_perform.c): MORPH SPACE FILTER DEPTH */
         if (AREA_ON) {                                 /* TEMPLATE 9 (PERFORM_NEW_LAYOUT_V4): what SELECT does here, after MORPH's value on knob 1's line (the footer's first row is gone) */
             k1_after_next = "SELECT = BALANCE";
@@ -2600,6 +2607,10 @@ static void draw_columns(void)
         char tag[4], nm[13];
         pat_label(k, tag, nm);
         draw_column(0, "SLOT", tag, "", VAL(0u), (int32_t)k * 1000 / (int32_t)(n > 1u ? n - 1u : 1u), ICON_X_PATTERN);
+        str_cpy(val, tag, sizeof val);                   /* (GitHub issue 2, 2026-11-17: the screen reader hears the slot AND its name, "SLOT P03 OFFBEAT") */
+        str_cpy(val + str_len(val), " ", 2);
+        str_cpy(val + str_len(val), nm, sizeof val - str_len(val));
+        sp_card_set(0, "SLOT", val, "");
         draw_act_column(1, "LOAD", T_THEME, ICON_AUTO);
         draw_act_column(2, "SAVE", T_THEME, ICON_AUTO);   /* (change list A.9 / H.8: ERASE is gone, SAVE is knob 3) */
         draw_column_hide(3);
@@ -2610,6 +2621,13 @@ static void draw_columns(void)
         int used = project_used(k);
         mu_label(val, k);
         draw_column(0, "SLOT", val, "", VAL(0u), (int32_t)k * 1000 / (int32_t)(MU_SLOTS - 1u), ICON_AUTO);
+        if (used) {                                      /* (GitHub issue 2, 2026-11-17: the screen reader hears the slot AND its name as the list shows it, "SLOT M03 PAD SPLIT"; an empty slot just its number) */
+            char nm[13];                                 /* (PROJ_NAME_LEN + 1: project.c, included after this file) */
+            project_name(k, nm);
+            str_cpy(val + str_len(val), " ", 2);
+            str_cpy(val + str_len(val), nm[0] ? nm : "USED", sizeof val - str_len(val));
+            sp_card_set(0, "SLOT", val, "");
+        }
         draw_act_column(1, "LOAD", used ? T_THEME : T_DIM, ICON_AUTO);
         draw_act_column(2, "SAVE", T_THEME, ICON_AUTO);   /* (change list A.9: ERASE is gone, SAVE is knob 3) */
         draw_column_hide(3);
@@ -2804,6 +2822,9 @@ static uint32_t splash_t0, splash_fr;
  * No RAM: the run list is walked from its start, only the pixels inside the strip are touched. */
 static void splash_logo_draw(int32_t y0, int32_t h)
 {
+#if BENCH_TRIM                                          /* (2026-11-17, bench builds only: BENCH_TRIM, the splash shows no logo so a 1.3.1 bench build fits) */
+    (void)y0, (void)h;
+#else
     uint16_t tx = T_TEXT;
     uint32_t i, p = 0;
     uint8_t gray = (tx >> 11) == (tx & 31u);            /* (GREY / MONO: one channel blended, so the pixel stays neutral) */
@@ -2823,6 +2844,7 @@ static void splash_logo_draw(int32_t y0, int32_t h)
         }
         p = e;
     }
+#endif
 }
 /* MENU > ABOUT's key hints (0.2.9, the owner: KNOB 1 scrolls, SELECT goes left and right between its sections; OCT- back, lit) */
 static const khint_t ABOUT_KEYS[2] = {{KC_K1, "SCROLL"}, {KC_SELECT, "HEADINGS"}};   /* (DUELL 1.1: SELECT jumps to the next heading: the logo, ABOUT, CREDITS, LICENSES) */

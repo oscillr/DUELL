@@ -1265,7 +1265,9 @@ static BENCH_FN int bench_input(uint32_t pressed, uint32_t notes)
 #ifdef BENCH_HOST
 static uint8_t bench_noreset;
 #endif
-#if BENCH_HEADLESS
+#if BENCH_HEADLESS && BENCH_TRIM
+#define TL_N 64u                /* (2026-11-17, BENCH_TRIM: the 1.3.1 bench build's RAM; a voice-check test sends about 40 events, 'full' if more) */
+#elif BENCH_HEADLESS
 #define TL_N 128u
 #else
 #define TL_N 256u
@@ -1428,6 +1430,7 @@ static uint32_t blseg[BLSEG_N][4][SG_N] BENCH_BSS;    /* (2026-11-08, the WAVE c
 static uint32_t blgap[BLSEG_N] BENCH_BSS;             /* .. and the time from the half before's start to this one's (the interrupt's own lateness), ticks */
 #endif
 static uint32_t blat_total BENCH_BSS;
+static struct { uint32_t s0, h0; uint8_t armed, l0, lfx_v, shed_v, held_v; } bgd BENCH_BSS;   /* (2026-11-17) the guard's first action in a test: voices + 1 (0 = never) */
 static BENCH_FN void bench_late(uint32_t us)
 {
     uint32_t i, bu = 0, bi = 0, n = blat_total++;
@@ -1483,6 +1486,19 @@ static BENCH_FN void bench_late_print(void)
         }
     }
 #endif
+    d = bench_put(b, "BENCH,GUARD,lfx_v ");             /* (2026-11-17) voices sounding at the first LIGHT FX / voice cut / held-note cut of the test, 0 = none; lfx_at_start */
+    d = bench_num(d, (int32_t)bgd.lfx_v - 1);
+    d = bench_put(d, ",shed_v ");
+    d = bench_num(d, (int32_t)bgd.shed_v - 1);
+    d = bench_put(d, ",held_v ");
+    d = bench_num(d, (int32_t)bgd.held_v - 1);
+    d = bench_put(d, ",held_n ");
+    d = bench_num(d, (int32_t)(shed_held - bgd.h0));
+    d = bench_put(d, ",lfx_at_start ");
+    d = bench_num(d, (int32_t)bgd.l0);
+    bench_put(d, "\r\n");
+    BENCH_REPLY(b);
+    memset(&bgd, 0, sizeof bgd);
     memset(blat, 0, sizeof blat);
     blat_total = 0;
 #if defined(DUELL_TWOCORE) && DUELL_TWOCORE && TC_MEAS
@@ -1564,9 +1580,18 @@ static BENCH_FN void bench_half(void)
     }
     fm1_irq_on();
     if (btl.win) {
-        btl.vsum += bench_voices();
+        uint32_t v = bench_voices();
+        btl.vsum += v;
         btl.vn++;
         btl.lfn += ovl_lite != 0u;
+        if (!bgd.armed)                                 /* (2026-11-17, owner "measure it": the voices sounding at the guard's first action of the test) */
+            bgd.armed = 1, bgd.s0 = shed_count, bgd.h0 = shed_held, bgd.l0 = ovl_lite != 0u;
+        if (!bgd.lfx_v && ovl_lite)
+            bgd.lfx_v = (uint8_t)(v + 1u);
+        if (!bgd.shed_v && shed_count != bgd.s0)
+            bgd.shed_v = (uint8_t)(v + 1u);
+        if (!bgd.held_v && shed_held != bgd.h0)
+            bgd.held_v = (uint8_t)(v + 1u);
     }
     if (btl.win && (h >= btl.m1 || h >= btl.dur)) {      /* the window closes: the counters as they are at the start of this half */
         btl.n1 = cpu_n, btl.s1 = cpu_sum, btl.c1 = cpu_miss, btl.d1 = shed_count, btl.pk1 = cpu_pk;
@@ -2264,9 +2289,11 @@ static BENCH_FN void bench_con(const char *p)
             bench_tm_set((uint32_t)n, 0xFFFFFFFFu);
 #if TC_MEAS
         bd_pool_lim_now = BD_POOL_LIM;                 /* (2026-11-09: `pool`) */
+        shed_pct = 85u;                                /* (2026-11-17: `shed`) */
 #endif
         bench_tm_clear();
 #endif
+        memset(&bgd, 0, sizeof bgd);
         memset(blat, 0, sizeof blat);
         blat_total = 0;
         bench_say("OK reset", 0, 0);
@@ -2332,6 +2359,17 @@ static BENCH_FN void bench_con(const char *p)
         }
         bd_pool_lim_now = (uint32_t)n;
         bench_say("OK pool", x, 0);
+        return;
+    }
+    if (bench_ieq(w, "shed")) {                        /* 2026-11-17: shed N (50..100), the % of a half above which two halves in a row cut a voice and turn LIGHT FX on (audio.c, normal builds 85) */
+        int32_t n = -1;
+        x[0] = 0;
+        if (!bench_tok(&p, x, sizeof x) || !bench_int(x, &n) || n < 50 || n > 100) {
+            bench_err("usage: shed 50..100");
+            return;
+        }
+        shed_pct = (uint32_t)n;
+        bench_say("OK shed", x, 0);
         return;
     }
 #endif

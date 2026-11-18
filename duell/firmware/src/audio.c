@@ -160,6 +160,18 @@ static uint8_t shed_over;                              /* bit k: the half k halv
 #define SHED_TICKS ((HALF_FRAMES * 1000000u / FS) * 85u / 100u * FM1_TICKS_PER_US)   /* 85 % of a half */
 #define SHED_FULL_TICKS ((HALF_FRAMES * 1000000u / FS) * FM1_TICKS_PER_US)                 /* the whole half */
 static uint32_t shed_count;
+#if DUELL_BENCH
+static uint32_t shed_pct = 85u;                         /* (2026-11-17, owner: the brake's line as a bench setting, `tune shed N`; bench reset puts 85 back) */
+#define SHED_LINE ((HALF_FRAMES * 1000000u / FS) * shed_pct / 100u * FM1_TICKS_PER_US)
+#else
+#define SHED_LINE SHED_TICKS
+#endif
+#if DUELL_BENCH
+static uint32_t shed_held;                              /* (2026-11-17, bench only: held notes the 85 % rule cut, bench.c BENCH,GUARD) */
+#define SHED_HELD_INC() (shed_held++)
+#else
+#define SHED_HELD_INC() ((void)0)
+#endif
 
 /* end of a half: all = its ticks, TIMER5 nested in it included -> the render alone in us. The deadline sees
  * both; shed after 2 overloaded halves in a row (out of line: keeps the ISR's render loops as they were) */
@@ -171,7 +183,7 @@ static uint32_t shed_count;
 static uint32_t shed_check(uint32_t all);
 static __attribute__((noinline)) uint32_t shed_check(uint32_t all)
 {
-    shed_over = (uint8_t)(shed_over << 1 | (all > SHED_TICKS));
+    shed_over = (uint8_t)(shed_over << 1 | (all > SHED_LINE));
 #if defined(BENCH_NOLIMIT)                              /* (bench only, 2026-11-08: no voice shed, no LIGHT FX: the test sees how far the unit really goes) */
     if (0)
 #else
@@ -257,6 +269,7 @@ static void shed_voice(void)
     if (best) {
         voice_kill(best);
         shed_count++;
+        SHED_HELD_INC();
     }
 }
 

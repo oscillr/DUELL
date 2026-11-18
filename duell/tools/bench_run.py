@@ -235,8 +235,8 @@ def parse_suite(text):
             elif k == "set":
                 cur.setup.append(("set", tok[1:]))
             elif k == "tune":
-                if not ((tok[1] in ("slack", "calm", "pause", "lrun", "vrun", "floor", "pool") and len(tok) == 3) or (tok[1] == "core1" and len(tok) == 3 and tok[2] in ("on", "off")) or (tok[1] == "vwin" and len(tok) in (3, 4))):
-                    raise SuiteError("tune slack N | calm MS | pause on|off | lrun N | vrun N | vwin K [MS] | floor 0|1 | core1 off|on | pool N")
+                if not ((tok[1] in ("slack", "calm", "pause", "lrun", "vrun", "floor", "pool", "shed") and len(tok) == 3) or (tok[1] == "core1" and len(tok) == 3 and tok[2] in ("on", "off")) or (tok[1] == "vwin" and len(tok) in (3, 4))):
+                    raise SuiteError("tune slack N | calm MS | pause on|off | lrun N | vrun N | vwin K [MS] | floor 0|1 | core1 off|on | pool N | shed N")
                 cur.setup.append(("tune", tok[1:]))
             elif k == "ref":
                 cur.ref = (tok[1], tok[2])

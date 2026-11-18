@@ -11,6 +11,10 @@
  *   - the sound changing (PRESETS): its slot number and name
  *   - messages: ui_say (ui.c) says them at once
  * Nothing here runs while no reader listens (ann_on). Included at the end of ui_layer.c: every build with the UI has it. */
+#if BENCH_TRIM   /* (2026-11-17, owner: "Bench build, no reader") bench builds only: no screen reader (and no splash logo, ui_draw.c) (announce.c stubs too) */
+static void sp_card_set(uint32_t c, const char *label, const char *val, const char *unit) { (void)c, (void)label, (void)val, (void)unit; }
+static void ui_speak(void) {}
+#else
 #define SP_MAX 241u
 #define SP_CARD 40u
 static char sp_card[4][SP_CARD];      /* the four cards as draw_column last had them, "LABEL value unit" ("" = no card) */
@@ -265,3 +269,4 @@ static void ui_speak(void)
         ann_later(sp_buf, ANN_NOW, 200u, now);
     }
 }
+#endif /* BENCH_TRIM */

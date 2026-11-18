@@ -310,6 +310,8 @@ def build_app():
             flags.append("-DBENCH_HEADLESS=1")
         if os.environ.get("BENCH_NOLIMIT") == "1":      # (2026-11-08, owner: the voice limits off to see how far the unit goes) no shedding, no LIGHT FX, no VOICE CAP; bench builds only
             flags.append("-DBENCH_NOLIMIT=1")
+        if os.environ.get("BENCH_TRIM") == "1":     # (2026-11-17, owner: "Bench build, no reader") no screen reader (announce.c stubs), so a bench build fits next to the reader of 1.3.1; bench builds only
+            flags.append("-DBENCH_TRIM=1")
         if os.environ.get("BENCH_T5_PRIO"):             # BENCHVI (2026-11-06, the WHEEL crash): TIMER5 at this priority (3 = it never nests in the audio interrupt); bench builds only
             flags.append("-DBENCH_T5_PRIO=" + str(int(os.environ["BENCH_T5_PRIO"])))
         if os.environ.get("BENCH_WX"):                  # (2026-11-06, the WHEEL crash) test switches, bench builds only: 1 = core 1 held after its start, 2 = interrupts off while a half renders, 4 = wheel_render moved by 2 bytes

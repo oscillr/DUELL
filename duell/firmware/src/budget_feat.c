@@ -76,7 +76,7 @@ static void bd_feat(const track_t *t, bd_part_t *r, const bd_tw_t *wm)
         if (p[P_VOICE] == V_UNISON)
             r->misc += c;
         else
-            r->ext += c;
+            r->ext += c, r->sub = c;
     }
 
     /* CYCLE (job F): the CYCLE envelope while an active slot reads it (t->cy) */

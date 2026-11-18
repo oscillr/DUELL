@@ -67,7 +67,12 @@ static const struct { const engine_t *e; uint16_t c; } BD_ENG[] = {   /* (cal) *
  * swept while chords play, the limits on) then showed which engine really has that room: LOFI none of the overload guards at pool 9000 (16 voices), NOISE and VOICE the guards at 8000
  * (VOICE a missed half at 9000), WHEEL the guards at 8000, WAVE and PHASE missed halves at 7500 / 8000 (2026-11-15/16). So only LOFI's voice is priced lower in the pool: 73 % keeps
  * LOFI everything-on at 9 (unit 11) and with the six macros + a MORPH route moving at 11 (unit 11). The other engines stay at the table (their numbers were at or under the unit's) */
-#define BD_VPCT_LOFI 73u
+/* 1.4 (2026-11-18, owner: "set the true value", then the octopus test; report working docs/reports/voice-calibration_2026-11-16.md): LOFI everything on, a chord of N notes
+ * held while every knob is swept (bench LOFI-OCTOPUS, B1117E, the brake as shipped at 85 %, 3 runs each): 6, 7, 8 notes no dropout and no brake action; 9 the brake cuts a note;
+ * 10 a dropout. So 8. A LOFI voice = its engine at the table + the rest at BD_VPCT_LOFI + its SUB at BD_SPCT_LOFI (the SUB measured cheap on LOFI: bench LOFI-PRICE, B1116D).
+ * 8 for 99 .. 104 %, also with the macros turning SUB and SAT down: 101 */
+#define BD_VPCT_LOFI 101u
+#define BD_SPCT_LOFI 17u
 #define BD_FADE 66u             /* .. an engine choice cross-faded, both shapes made (old: 2 %) */
 /* THE POOL'S REAL ROOM (owner 2026-11-07: "at all times we don't let them play more"; measured, POOL-SWEEP on the unit, bench_runs/pool-sweep_2026-11-07_b1107b, report
  * working docs/reports/voice-numbers-check_2026-11-07.md). Both parts the same plain sound, two cores, the heavy globals: the blocks go very late from core 0 at about 68 % on its meter while
@@ -123,6 +128,7 @@ typedef struct {                /* one part's items, host instructions a sample 
     uint32_t need;              /* the fixed need in its own voices: 0 POLY, 1 MONO / LEGATO, UNISON its stack (= cap) */
     uint32_t comb;              /* a TWIN COMB sounds (live or at a MORPH end) */
     uint32_t on;                /* sounds at all (not muted) */
+    uint32_t sub;               /* the SUB inside ext, a voice (budget_feat.c; 1.4: priced apart for LOFI) */
     uint32_t vpct;              /* the pool's price of one voice, % of the table's (BD_VPCT: the engine's correction from the unit; 100 = the table) */
 } bd_part_t;
 typedef struct { uint32_t idle, fx; bd_part_t p[2]; } bd_t;   /* the global items too */
@@ -326,7 +332,8 @@ static void budget_pool(const bd_t *b, bd_pool_t *o)
     uint32_t c[2], fx[2], need[2], g = BD_U(b->idle + b->fx), lim = BD_POOL_LIM_NOW, p, r0, r1, cm, cl, nc;   /* (the pool's measured room a core, not BUDGET_LIMIT) */
     for (p = 0; p < 2u; p++) {
         const bd_part_t *r = &b->p[p];
-        c[p] = r->on ? (BD_U(r->eng + r->filt + r->ext + BD_POOL_V) * r->vpct + 99u) / 100u : 0;   /* (+ core 0's own work a voice, measured: BD_POOL_V; the engine's correction BD_VPCT, rounded up) */
+        c[p] = !r->on ? 0 : r->vpct == 100u ? BD_U(r->eng + r->filt + r->ext + BD_POOL_V)
+             : BD_U(r->eng + BD_POOL_V) + (BD_U(r->filt + r->ext - r->sub) * r->vpct + 99u) / 100u + (BD_U(r->sub) * BD_SPCT_LOFI + 99u) / 100u;   /* (+ core 0's own work a voice, measured: BD_POOL_V; the engine's correction BD_VPCT, rounded up) */
         fx[p] = r->on ? BD_U(r->ins + r->sat + r->eq + r->misc + r->base) : 0;
         need[p] = r->on ? r->need : 0;
     }

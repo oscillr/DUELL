@@ -6,6 +6,13 @@ by OSCILL/R
 
 Each release: a one-line summary, then New, Fixed, Compatibility, Install, Files.
 
+## DUELL 1.3.2
+
+A small update for the M-VAVE FM-1: the screen reader says more.
+
+- **Changed:** the screen reader says the names of patterns and multis on SAVE > PATTERNS and SAVE > MULTIS, and the three rows of TOOLS (issue #2, thanks @woodjackmusic-JD); LOFI's AVAILABLE VOICES shows what it really plays with everything on.
+- **Install:** save a backup, use the installer page, and make a new backup with 1.3.2.
+
 ## DUELL 1.3.1
 
 A small update for the M-VAVE FM-1: DUELL can now speak.
