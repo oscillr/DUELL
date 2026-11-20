@@ -6,6 +6,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 ver="$(tr -d '[:space:]' < VERSION)"
+python3 -m pip install --quiet fonttools        # the icon and font generators read the font files with it (the Hub's workflow installs only Pillow)
 rm -rf release
 mkdir -p release
 cd duell
