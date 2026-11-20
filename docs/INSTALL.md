@@ -71,7 +71,7 @@ Your DUELL data cannot be opened by the official firmware. This path is the same
 
 ## SMK-37 (Pro, Elite, MKE-P37)
 
-DUELL 1.3.5 also runs on the M-VAVE SMK-37. Each model has its own package (`duell-1.3.5-smk37-pro.fwsc`, `duell-1.3.5-smk37-elite.fwsc`, `duell-1.3.5-smk37-mke.fwsc`), and the same installer page picks the one for the keyboard you connect: it asks the unit (or its update mode) which model it is.
+DUELL 1.3.6 also runs on the M-VAVE SMK-37. Each model has its own package (`duell-1.3.6-smk37-pro.fwsc`, `duell-1.3.6-smk37-elite.fwsc`, `duell-1.3.6-smk37-mke.fwsc`), and the same installer page picks the one for the keyboard you connect: it asks the unit (or its update mode) which model it is.
 
 - **Install:** the same steps as above, with the SMK-37 connected. After a clean install the unit shows a start-up guide for its buttons.
 - **Back to the official firmware:** on the installer page, the SMK-37 Elite's official `SMK37-Elite-V16.fwsc` from M-VAVE (<https://open.m-vave.com>) is accepted under "Return to the official firmware". For the SMK-37 Pro and the MKE-P37 use M-VAVE's own updater: DUELL's update mode answers to it with the keyboard's own name.

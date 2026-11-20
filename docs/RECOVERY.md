@@ -1,6 +1,6 @@
 # Recovery: if a flash is interrupted or fails
 
-**DUELL 1.3.5**, MultiMorphing Bitimbral Synthesizer by OSCILL/R
+**DUELL 1.3.6**, MultiMorphing Bitimbral Synthesizer by OSCILL/R
 
 Plain version: **DUELL has run on two FM-1 units (the author's) and more than 100 people have installed it through the Firmware Hub, the way back to the official firmware (V15 or V16) has worked for the author, and nobody can promise that a failed flash is fixable.** You install at your own risk. This page says what we know, what we do not know, and what to try if you end up in this situation anyway.
 

@@ -6,6 +6,13 @@ by OSCILL/R
 
 Each release: a one-line summary, then New, Fixed, Compatibility, Install, Files.
 
+## DUELL 1.3.6
+
+The same firmware as 1.3.5, built and signed by GitHub.
+
+- **New:** GitHub builds the four packages from the source at the release tag and signs them (the Firmware Hub's shared fm1-build workflow); the Hub shows "Built from source on GitHub". The source also builds on an imitated FM-1, so the Hub's VIBE FM plugin build works again.
+- **Install:** nothing changes on the unit; updating from 1.3.5 is not needed.
+
 ## DUELL 1.3.5
 
 DUELL now runs on the M-VAVE SMK-37 (Pro, Elite and MKE-P37) as well as the M-VAVE FM-1.

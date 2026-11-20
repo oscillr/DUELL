@@ -1,12 +1,14 @@
-# DUELL 1.3.5
+# DUELL 1.3.6
 
 **DUELL**
 **MultiMorphing Bitimbral Synthesizer**
 **by OSCILL/R**
 
-DUELL 1.3.5 runs on the M-VAVE FM-1 and now also on the M-VAVE SMK-37 (Pro, Elite and MKE-P37).
+DUELL 1.3.6 runs on the M-VAVE FM-1 and the M-VAVE SMK-37 (Pro, Elite and MKE-P37).
 
-## New: DUELL on the SMK-37
+**New in 1.3.6: built on GitHub.** GitHub builds every package from the source at this release and signs it, so anyone can check that the file they install is exactly the public code. The Firmware Hub shows it as "Built from source on GitHub". Nothing changes on the unit: if you run 1.3.5, you do not need to update.
+
+## New in 1.3.5: DUELL on the SMK-37
 - **Both parts on one screen.** KNOB 1 to 4 set part 1 and KNOB 5 to 8 set part 2, on every page.
 - **The faders** set each part's LEVEL and MORPH.
 - **The 16 pads are PERFORM's effects**: hold one, press harder for more. The keys keep playing notes.
@@ -30,18 +32,13 @@ Everything since 1.3 is in the [changelog](https://github.com/oscillr/DUELL/blob
 ## Assets
 | File | What |
 |---|---|
-| `duell-1.3.5.fwsc` | the FM-1 package (the installer page loads this one) |
-| `duell-1.3.5-smk37-pro.fwsc` | the SMK-37 Pro package |
-| `duell-1.3.5-smk37-elite.fwsc` | the SMK-37 Elite package |
-| `duell-1.3.5-smk37-mke.fwsc` | the MKE-P37 package |
+| `duell-1.3.6.fwsc` | the FM-1 package (the installer page loads this one) |
+| `duell-1.3.6-smk37-pro.fwsc` | the SMK-37 Pro package |
+| `duell-1.3.6-smk37-elite.fwsc` | the SMK-37 Elite package |
+| `duell-1.3.6-smk37-mke.fwsc` | the MKE-P37 package |
 | `SHA256SUMS` | checksums |
 
-```
-SHA256: 0515ae00a9c393a361574a2ef9875d3ac22e206b66f6b88ec1bbca46200bf202  duell-1.3.5.fwsc
-SHA256: 924b2ba398e3b30c4c58f712435fce06ac2cbf2a46396e720d6e80a2b224773f  duell-1.3.5-smk37-pro.fwsc
-SHA256: 0a8fd7dcaf27584a45bcaed1cc4249453732040230324cd57de14113b587c7fb  duell-1.3.5-smk37-elite.fwsc
-SHA256: 74edffb02edc36620d9c82ef6d21e9b8d7b658fb716dde7e1d29a17b0051559b  duell-1.3.5-smk37-mke.fwsc
-```
+`SHA256SUMS` on the release page lists the checksum of each package.
 
 ## Links
 - Installer: <https://oscillr.github.io/DUELL/install/>

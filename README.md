@@ -3,7 +3,7 @@
 **MultiMorphing Bitimbral Synthesizer**  
 **by OSCILL/R**
 
-**Two synths in one small box.** DUELL is firmware for the M-VAVE FM-1 and the M-VAVE SMK-37 (Pro, Elite and MKE-P37): two complete parts, three ways to play them together, and a morph that glides between two versions of every sound. This is **DUELL 1.3.5**.
+**Two synths in one small box.** DUELL is firmware for the M-VAVE FM-1 and the M-VAVE SMK-37 (Pro, Elite and MKE-P37): two complete parts, three ways to play them together, and a morph that glides between two versions of every sound. This is **DUELL 1.3.6**.
 
 **Try it in your browser, no FM-1 needed:** <https://oscillr.github.io/DUELL/emu/>
 
@@ -18,11 +18,11 @@
 3. While the new firmware is written, the unit shows the **update screen**: the DUELL word over moving wave lines, WRITING, a percent number, a bar of 20 segments and DO NOT SWITCH OFF. Do not unplug until it is done. If the screen stays dark the write may still be running: wait for the installer to say Done.
 4. Details, the checklist and the way back to the official firmware: [docs/INSTALL.md](docs/INSTALL.md). If something goes wrong: [docs/RECOVERY.md](docs/RECOVERY.md).
 
-The FM-1 package is `duell-1.3.5.fwsc` (compare its SHA-256 with `SHA256SUMS` on the release page).
+The FM-1 package is `duell-1.3.6.fwsc` (compare its SHA-256 with `SHA256SUMS` on the release page).
 
 ## DUELL on the SMK-37
 
-The same DUELL runs on the M-VAVE SMK-37 Pro, SMK-37 Elite and MKE-P37, one package for each model (`duell-1.3.5-smk37-pro.fwsc`, `duell-1.3.5-smk37-elite.fwsc`, `duell-1.3.5-smk37-mke.fwsc`). The installer page above picks the right one for the keyboard you connect. SMK-37 Cheat Sheet: <https://oscillr.github.io/DUELL/cheatsheet/smk37/>
+The same DUELL runs on the M-VAVE SMK-37 Pro, SMK-37 Elite and MKE-P37, one package for each model (`duell-1.3.6-smk37-pro.fwsc`, `duell-1.3.6-smk37-elite.fwsc`, `duell-1.3.6-smk37-mke.fwsc`). The installer page above picks the right one for the keyboard you connect. SMK-37 Cheat Sheet: <https://oscillr.github.io/DUELL/cheatsheet/smk37/>
 
 - **Both parts on one screen.** KNOB 1 to 4 set part 1, KNOB 5 to 8 set part 2, on every page.
 - **Faders:** FADER 1 and 2 set each part's LEVEL, FADER 3 and 4 each part's MORPH.
@@ -183,7 +183,7 @@ One map for the whole unit. A CC on a part's channel moves that part; "both part
 
 **Learn-only parameters** have no CC of their own: the matrix choices and amounts, EQ, ARP and SEQ set-up, DUCK, the LFOs beyond the vibrato rows, the voice set-up, the master settings, UNDO, the four MORPH switches (TARGET, SMART, ARP, PITCH) and the settings that belong to both parts (BALANCE, XFADE, SPLIT, MODE). Teach a CC to one with SETTINGS > MIDI > MIDI LEARN on the unit.
 
-## What is not in 1.3.5
+## What is not in 1.3.6
 The editor's MIDI MAP tab, switching multis with preset changes, the SUB HARMONICS card (switched off). The full list is in [docs/KNOWN_LIMITS.md](docs/KNOWN_LIMITS.md).
 
 ## Build and test
