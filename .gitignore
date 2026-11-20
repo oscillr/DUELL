@@ -42,3 +42,4 @@ tmp/
 .env.*
 *.pem
 *.key
+release/

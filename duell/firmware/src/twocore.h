@@ -186,6 +186,11 @@ TC_C1_INLINE void tc_c1_step(tc_c1_t *c)
 /* ---------------------------------------------------------------- core 0's side (src/twocore.c) --- */
 enum { TCA_NONE, TCA_CLAIMED, TCA_DONE, TCA_YIELD, TCA_REFUSED, TCA_BAD };   /* core 1's answer to a job (tc_answer) */
 typedef struct { uint32_t magic, state, last; } tc_nv_t;   /* the record across a reset (.noinit on the unit) */
+#ifndef TC_NV_HAL                                          /* a hal that keeps no record across a reset (a plugin or emulator build that imitates
+                                                            * the FM-1, e.g. the Firmware Hub's VIBE FM converter): the record in plain RAM. The unit's
+                                                            * hal (hal/fm1_core1.h) and the computer tests define TC_NV_HAL and declare tc_nv themselves */
+static tc_nv_t tc_nv;
+#endif
 #define TCNV_MAGIC 0x54434E56u                             /* "TCNV" */
 #define TCNV_ARMED 0xA4ED17C2u                             /* a start is armed for the next power-on (used once: stage 1, as BENCH-B3) */
 #define TCNV_RAN 0x2B17E5C2u                               /* core 1 was started and not held cleanly since */

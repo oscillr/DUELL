@@ -1,0 +1,21 @@
+# DUELL release: GitHub builds the four packages (FM-1, SMK-37 Pro, Elite, MKE-P37) from the source at the tag, signs
+# them (a build attestation) and publishes them as the release of that tag. It uses the Firmware Hub's shared,
+# reviewed workflow (zvenson/fm1-build@v1), so the Hub shows "Built from source on GitHub" on DUELL's card.
+# A tag v<VERSION> releases; "Run workflow" builds and signs without a release (a dry run).
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  build:
+    uses: zvenson/fm1-build/.github/workflows/build.yml@v1
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    with:
+      build: bash release_build.sh
+      packages: release/*.fwsc

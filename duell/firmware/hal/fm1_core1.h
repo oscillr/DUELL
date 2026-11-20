@@ -81,6 +81,7 @@ FM1_INLINE void fm1_c1_st(uint32_t *p, uint32_t v) { *(volatile uint32_t *)p = v
 #define TC_MB_ATTR __attribute__((aligned(64), section(".pool.ztwocore")))
 #define TC_CTX_SECT __attribute__((section(".pool.ztwocore")))   /* (job 5: the block's snapshot, src/twocore_run.c tc_ctx, 64 B, beside tc_mb) */
 static int fm1_cpu1_start(void);
+#define TC_NV_HAL 1                                        /* (tc_nv is declared here, below: src/twocore.h) */
 #include "twocore.h"
 tc_nv_t tc_nv __attribute__((section(".noinit.ztwocore")));   /* the record across a reset (src/twocore.c; tools/elfcheck.py NOINIT_OBJECTS:
                                                          * 12 B; not static, so no optimiser assumes it 0) */

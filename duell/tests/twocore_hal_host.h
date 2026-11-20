@@ -64,6 +64,7 @@ static inline void tc_host_halt(void) { __atomic_store_n(&tc_host_live, 0, __ATO
 #define TC_C1_START() tc_host_start()
 #define TC_C1_HALT() tc_host_halt()
 #define TC_SUPPLY_STOCK() (7u | 15u << 8)
+#define TC_NV_HAL 1
 #include "../firmware/src/twocore.h"
 static tc_nv_t tc_nv;                                   /* (the unit's is in .noinit: hal/fm1_core1.h) */
 static int tc_host_start(void)
