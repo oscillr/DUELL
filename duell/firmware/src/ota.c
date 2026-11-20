@@ -22,9 +22,21 @@
  *   ota_show(step, code)       progress / result for the screen
  *   ota_commit(parm)           write RAM record + reset (never returns on hardware)
  */
+#if BOARD_SMK37
+/* SMK-37 (after OberVave's ota.c, from genkigenki/sloop-fm1 smk37, GPL-3.0): the last 5 sectors of the stock VM
+ * (0xBB000..0xBFFFF, hal/smk_flash_map.h SMK_OTA_*), below the Bluetooth pairing and calibration at 0xC0000; the update
+ * loader may drop records only below 0xC0000. The record names the stock app of this model (Pro 18 bytes, Elite 20) */
+#define OTA_AREA SMK_OTA_LO                      /* staged loader, 5 x 4 KiB */
+#define OTA_AREA_LEN 0x5000u
+#define OTA_RES (OTA_AREA + OTA_AREA_LEN - 0x100u)  /* 0xBFF00 = 4K boundary - 256: SPL scan */
+#define OTA_PARM_ID "ota-" SMK_MODEL "_016"
+_Static_assert(OTA_AREA + OTA_AREA_LEN == SMK_OTA_HI && OTA_AREA >= SMK_VM_HI, "SMK: update staging outside its window");
+_Static_assert(sizeof OTA_PARM_ID - 1u <= 0x20u, "SMK: the record's identity field (+8 .. +0x27)");
+#else
 #define OTA_AREA 0x000E0000u                     /* staged loader, 5 x 4 KiB */
 #define OTA_AREA_LEN 0x5000u
 #define OTA_RES (OTA_AREA + OTA_AREA_LEN - 0x100u)  /* 0xE4F00 = 4K boundary - 256: SPL scan */
+#endif
 #define OTA_LDR_HCRC 0xEBAAu                     /* official update loader (usb_hid_ota.bin) */
 #define OTA_LDR_DCRC 0x5881u
 #define OTA_LDR_LEN 0x4DE1u
@@ -363,8 +375,13 @@ static int ota_session(void)
     ota_wr16(parm + 2, 0x5A0Du);
     ota_wr16(parm + 4, 0x5A01u);
     ota_wr16(parm + 6, 0x5441u);
+#if BOARD_SMK37
+    for (i = 0; i < sizeof OTA_PARM_ID - 1u; i++)
+        parm[8 + i] = (uint8_t)OTA_PARM_ID[i];       /* the loader's own USB identity (the SMK model's) */
+#else
     for (i = 0; i < 12u; i++)
         parm[8 + i] = (uint8_t)"ota-FM-1_015"[i];    /* the loader's own USB identity */
+#endif
     ota_wr32(parm + 72, OTA_AREA);
     ota_wr16(parm, ota_crc16(parm + 2, 78, 0));
 #if FELUCCA_OTA_DRYRUN

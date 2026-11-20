@@ -99,6 +99,10 @@ static void perf_input(uint32_t pressed, uint32_t now, uint32_t lay)
     }
     perf_fxb = ok && !ui.perf && !lay && !(ui.fx_t0 & 2u) ? fxbit : 0u;   /* (the ISR: a key with FX down is PERFORM's) */
     perf_keys = (uint8_t)(ui.perf && ok && !lay);       /* (a quick layer held over PERFORM: its keys are the layer's, not PERFORM's effects) */
+#if BOARD_SMK37
+    perf_fxb = 0;                                       /* the SMK-37: the pads are PERFORM's effects (smk_play.c), every key plays notes */
+    perf_keys = 0;                                      /* in PERFORM too (owner, 2026-11-16) */
+#endif
     perf_fade_step();
     if (!ok)
         perf_kill = 1;                                  /* (the menu, a dialog, NAME: every effect off until its keys are let go) */

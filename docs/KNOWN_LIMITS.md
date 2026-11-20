@@ -1,10 +1,10 @@
-# Known limits: DUELL 1.3
+# Known limits: DUELL 1.3.5
 
 **DUELL**
 MultiMorphing Bitimbral Synthesizer
 by OSCILL/R
 
-What you can meet in 1.3, in plain words. More detail in [KNOWN_ISSUES.md](KNOWN_ISSUES.md).
+What you can meet in 1.3.5, in plain words. More detail in [KNOWN_ISSUES.md](KNOWN_ISSUES.md).
 
 - **Units tested.** DUELL has run on two FM-1 units, the author's, and more than 100 people have installed it through the Firmware Hub. Cables and hubs are untested.
 - **The way back (V15 or V16)** has worked for the author. There is no known rollback beyond it. See [RECOVERY.md](RECOVERY.md).

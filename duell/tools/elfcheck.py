@@ -275,6 +275,9 @@ def dis_functions(dis):
     return fns
 
 
+ABSENT = set()                       # names of the lists a board's build does not have (build.py: the SMK-37's, FM-1 only)
+
+
 def check_ramplace(elf, img, dis, app_xip=APP_XIP):
     """-> (errors, notes) for ranges X and Z. img: the app image (duell.bin) the package carries; dis: objdump -d of the ELF"""
     import ram_fns_x
@@ -301,7 +304,7 @@ def check_ramplace(elf, img, dis, app_xip=APP_XIP):
     # the functions: exactly the lists, nothing of the interrupt / USB / MIDI / update paths
     for name, mod, lo, hi in ((".ramx", ram_fns_x, xlo, xhi), (".ramz", ram_fns_z, zlo, zhi)):
         got = {n for n, a, sz, sec in elf["symbols"] if sec == name and n and sz and not n.startswith(".")}   # (sz: no linker labels)
-        want = set(getattr(mod, "ELF_NAMES", mod.NAMES))
+        want = set(getattr(mod, "ELF_NAMES", mod.NAMES)) - ABSENT
         if got != want:
             errors.append(f"{name} holds {sorted(got - want)[:4]} not listed, lacks {sorted(want - got)[:4]}")
         bad = [n for n in got if FLASH_ONLY.search(n)]

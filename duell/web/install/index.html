@@ -48,32 +48,31 @@
   .card .result { min-height: 1.2em; margin: 4px 0 8px; }
   .card .lock { color: var(--dim); font-size: 13px; min-height: 1.2em; margin: 0 0 8px; }
   .retwarn { border: 2px solid #e08a00; padding: 8px 12px; margin: 8px 0 12px; font-weight: 700; }
+  .pagetitle { font-size: 26px; margin: 8px 0 12px; }
 </style>
 <link rel="stylesheet" href="../brand.css">
 </head>
 <body>
+<nav class="sitenav"><a href="../emu/">Web Emulator</a><a href="../install/" aria-current="page">Installer</a><a href="../editor/">Editor</a><a href="../cheatsheet/">FM-1 Cheat Sheet</a><a href="../cheatsheet/smk37/">SMK-37 Cheat Sheet</a></nav>
+<style>.sitenav{display:flex;flex-wrap:wrap;gap:6px 18px;padding:10px 16px;background:#000;border-bottom:1px solid #35343a;font:600 15px/1.3 "Barlow Semi Condensed",-apple-system,"Helvetica Neue",Arial,sans-serif;position:relative;z-index:50}.sitenav a{color:#fffbff;text-decoration:none;letter-spacing:.02em}.sitenav a:hover{color:#de38ff}.sitenav a[aria-current]{color:#de38ff}.sitenav a{display:flex;align-items:center}@media print{.sitenav{display:none}}</style>
+
 <div id="banner" role="alert" hidden></div>
-<header class="brandhead"><img class="logo" src="../editor/img/duell-logo-white.png" alt="DUELL"><img class="desc" src="../editor/img/multimorphing-bitimbral-white.png" alt="MultiMorphing Bitimbral Synthesizer by OSCILL/R"></header>
+<header class="brandhead"><a href="../"><img class="logo" src="../editor/img/duell-logo-white.png" alt="DUELL"></a><img class="desc" src="../editor/img/multimorphing-bitimbral-white.png" alt="MultiMorphing Bitimbral Synthesizer by OSCILL/R"></header>
 <main>
-  <p><b><span class="ver">DUELL</span> installer</b> for the M-VAVE FM-1.</p>
+  <h1 class="pagetitle"><span class="ver">DUELL</span> Installer</h1>
+  <p class="box"><b>Install at your own risk.</b> For the FM-1 and the SMK-37.</p>
 
   <div class="box" id="notreleased">
-    <p><b>DUELL firmware is not yet released.</b></p>
-    <p><a href="../emu/">Web emulator</a> · <a href="https://github.com/oscillr/DUELL">Source code</a></p>
+    <p><b>Not released yet.</b> <a href="../emu/">Web Emulator</a></p>
   </div>
-
-  <p class="small" id="risknote">Installing is at your own risk. If something goes wrong, the way back is the official firmware (the last card below, "Go back to the official firmware"); the <a href="https://github.com/oscillr/DUELL/blob/main/docs/RECOVERY.md">recovery notes</a> explain it. DUELL is not affiliated with M-VAVE.</p>
 
   <p class="small" id="browser"></p>
 
   <section>
     <details id="backup-details">
-    <summary><b>Back up (recommended)</b></summary>
+    <summary><b>Back Up</b></summary>
     <div class="card backup" id="card-backup">
-      <h2>BACK UP</h2>
-      <p>Reads the unit and saves a file with your current sounds and settings to this computer. Nothing is written to the FM-1. It needs a firmware that supports
-      backups (Felucca or DUELL). The official M-VAVE firmware cannot be backed up from this page.</p>
-      <p class="small">The file holds every patch, the settings and the music of both parts; from DUELL 0.2.14 on also the MULTIs and the PATTERN slots, and the user wavetables. An older firmware cannot save the MULTIs and PATTERN slots: the message after the backup says so. A backup is restored in the editor (its Backup page).</p>
+      <p class="small">Saves your sounds and settings to a file. Restore it in the editor.</p>
       <p><button id="backup" disabled>Save a backup file</button></p>
       <p class="lock" id="lock-backup"></p>
       <progress class="bar" id="bar-backup" max="100" value="0" hidden></progress>
@@ -85,63 +84,47 @@
 
   <div class="needpkg" hidden>
   <section>
-    <h2>The DUELL build</h2>
-    <p id="pkgstate">Looking for the build ...</p>
-    <p class="small" id="pkginfo"></p>
-  </section>
-
-  <section>
-    <h2>Connect</h2>
-    <p>Connect the FM-1 by USB and switch it on. Close other programs that use MIDI (a DAW, another browser tab). Chrome will ask to allow MIDI with SysEx: allow it.</p>
-  </section>
-
-  <section>
     <h2>Install</h2>
+    <p class="small" id="pkgstate">Looking for the build ...</p>
+    <p class="small" id="pkginfo"></p>
+    <p class="small" id="smkinfo"></p>
     <div class="card install" id="card-install">
-      <h2>INSTALL DUELL</h2>
-      <p class="small">The page checks what your FM-1 runs now and sets the box below for you. You can always tick or untick it yourself.</p>
+      <p>Connect the unit by USB. Allow MIDI when the browser asks.</p>
       <p class="small"><b id="erase-detect"></b> <button id="detect" type="button" disabled>Check the unit</button></p>
-      <label><input type="checkbox" id="erase-after"> <b id="erase-label">Erase my saved data after installing (start from scratch)</b></label>
+      <label><input type="checkbox" id="erase-after"> <b id="erase-label">Erase my saved data (start from scratch)</b></label>
       <p class="small" id="erase-smart"></p>
-      <p class="small" id="erase-help">Erases your settings (theme, scale, MIDI channels, favourites), the autosave, your patches, your multis and your patterns. DUELL's own patches, multis and patterns come back. This cannot be undone: back up first. Left off, your saved data stays and the unit comes back as you left it.</p>
+      <p class="small" id="erase-help">Erases your patches, multis, patterns and settings. Back up first.</p>
       <p class="small" id="erase-lock"></p>
-      <p><b>Do not switch off or unplug the unit while it installs.</b> <a href="../editor/backup.html">Back up first (recommended)</a></p>
+      <p><b>Do not unplug while it installs.</b></p>
       <p><button id="go" disabled>Install <span class="ver">DUELL</span></button></p>
       <p class="lock" id="lock-install"></p>
       <progress class="bar" id="bar-install" max="100" value="0" hidden></progress>
       <p class="status" id="status-install"></p>
       <p class="result" id="result-install"></p>
-      <p class="small">If it stops: replug the cable and press Install again. The FM-1 stays in update mode until the write is finished, and the page resumes it.</p>
     </div>
   </section>
   </div>
 
   <section>
-    <h2>Go back to the official firmware</h2>
+    <h2>Back to the Official Firmware</h2>
     <div class="card return" id="card-return">
-      <h2>RETURN TO OFFICIAL FIRMWARE</h2>
-      <p class="retwarn">This writes the official M-VAVE firmware back. DUELL will be removed. Keep the cable connected until DONE.</p>
-      <p>Download the official FM-1 firmware (<code>FM-1.fwsc</code>, V16 today) yourself from M-VAVE's download page:
-      <a href="https://www.m-vave.com/download" target="_blank" rel="noopener">m-vave.com/download</a>. This project does not host or redistribute M-VAVE's files.
-      Select the unmodified file here; the page checks it in your browser (it is never uploaded) and accepts V15 and V16. If one version is refused (Failed -5 on the FM-1), use the other one.</p>
-      <p><label>Official FM-1.fwsc<br><input id="stock-file" type="file" accept=".fwsc"></label></p>
+      <p class="retwarn">This removes DUELL. Keep the cable connected until DONE.</p>
+      <p>Official file from M-VAVE: <a href="https://www.m-vave.com/download" target="_blank" rel="noopener">FM-1</a> (V15 or V16) · <a href="https://open.m-vave.com" target="_blank" rel="noopener">SMK-37 Elite</a>. SMK-37 Pro and MKE-P37: M-VAVE's own updater.</p>
+      <p><label>Official firmware file (.fwsc)<br><input id="stock-file" type="file" accept=".fwsc"></label></p>
       <p><button id="stock-go" disabled>Back up and return to the official firmware</button></p>
       <p class="lock" id="lock-return"></p>
       <progress class="bar" id="bar-return" max="100" value="0" hidden></progress>
       <p class="status" id="status-return"></p>
       <p class="result" id="result-return"></p>
-      <p class="small">DUELL music and sounds cannot be opened by the official firmware.</p>
-      <p class="small"><label><input id="stock-recovery" type="checkbox"> Resume an interrupted return: I already saved a complete backup to this computer</label></p>
+      <p class="small">DUELL sounds do not open on the official firmware.</p>
+      <p class="small"><label><input id="stock-recovery" type="checkbox"> Resume an interrupted return (backup already saved)</label></p>
       <p class="small" id="stockstate"></p>
     </div>
   </section>
 
-  <p class="small" style="margin-top:32px"><a href="https://github.com/oscillr/DUELL/blob/main/docs/RECOVERY.md">Recovery</a> · <a href="https://github.com/oscillr/DUELL/blob/main/docs/TROUBLESHOOTING.md">Troubleshooting</a> · <a href="https://github.com/oscillr/DUELL/blob/main/docs/INSTALL.md">Install guide</a> · <a href="https://github.com/oscillr/DUELL/blob/main/docs/KNOWN_ISSUES.md">Known issues</a></p>
+  <p class="small" style="margin-top:32px"><a href="https://github.com/oscillr/DUELL/blob/main/docs/INSTALL.md">Install Guide</a> · <a href="https://github.com/oscillr/DUELL/blob/main/docs/RECOVERY.md">Recovery</a> · <a href="https://github.com/oscillr/DUELL/blob/main/docs/TROUBLESHOOTING.md">Troubleshooting</a></p>
   <pre id="log"></pre>
-  <p class="small"><span class="ver">DUELL</span> installer. DUELL is free software under the GPL-3.0, with <b>no warranty</b>. It is a fork of Felucca by Leo Kuroshita (@kurogedelic), Hügelton Instruments, with the SHIM and RESO reverbs from JIANT.
-    The package also holds three JieLi AC79 SDK files (uboot.boot, cfg_tool.bin, eq_cfg_hw.bin; JieLi Technology, Apache-2.0).
-    <a href="./LICENSES/">Licence texts</a> · <a href="https://github.com/oscillr/DUELL/blob/main/duell/LICENSING.md">LICENSING.md</a> · <a href="https://github.com/oscillr/DUELL/blob/main/LICENSE">GPL-3.0</a> · <a href="https://github.com/oscillr/DUELL">Source code</a>.<br>
-    M-VAVE and FM-1 are trademarks of their respective owners. DUELL is independent and not affiliated with, endorsed by or supported by them.</p>
+  <p class="small">GPL-3.0, no warranty. Based on Felucca by Leo Kuroshita, Hügelton Instruments. <a href="./LICENSES/">Licence texts</a> · <a href="https://github.com/oscillr/DUELL">Source Code</a>. Not affiliated with M-VAVE.</p>
 </main>
 <script type="module">
 import { productOf, logicalImage, sha256hex, validateStockPackage } from "../fm1pkg.js";
@@ -214,11 +197,23 @@ function end(card) { say(card, ""); busy = null; refresh(); }
 window.addEventListener("beforeunload", (e) => { if (busy) { e.preventDefault(); e.returnValue = "Writing. Do not close the page."; } });
 
 if (!navigator.requestMIDIAccess) {
-  $("browser").textContent = "This browser cannot talk to the FM-1. Open this page in Chrome or Edge on a computer.";
+  $("browser").textContent = "This browser cannot talk to the unit. Open this page in Chrome or Edge on a computer.";
   $("browser").classList.add("warn");
 } else { ready = true; $("browser").textContent = "Browser OK (WebMIDI available)."; }
 
 // a package is accepted if it is an FM-1 firmware package with a 9xx identity (DUELL is FM-1_901), as web/make_site.py insists (2026-11-10, owner: no loader-name check; we do not force a name on others)
+// DUELL 1.3.4 (owner 2026-11-20): the SMK-37 packages too (SMK-37 Pro_901, SMK-37 Elite_901, MKE-P37_901), one per model; the install takes the one whose model the connected unit reports
+const SMK_MODELS = { pro: "SMK-37 Pro", elite: "SMK-37 Elite", mke: "MKE-P37" };
+const smk = {};                                       // model name -> { image, product, source }
+const modelOf = (id) => String(id || "").split("_")[0];
+async function acceptSmkPackage(bytes, source, model) {
+  const id = productOf(bytes);
+  if (modelOf(id) !== model || !/_9\d\d$/.test(id)) return;
+  smk[model] = { image: logicalImage(bytes), product: id, source };
+  $("smkinfo").textContent = "Also for the SMK-37: " + Object.keys(smk).join(", ") + " (the install picks the package of the unit that is connected).";
+  document.querySelectorAll(".needpkg").forEach((e) => { e.hidden = false; }); $("notreleased").hidden = true;
+  refresh();
+}
 async function acceptPackage(bytes, source) {
   try {
     const id = productOf(bytes);
@@ -246,6 +241,12 @@ async function acceptPackage(bytes, source) {
     }
     if (!r) throw new Error("not found");
     await acceptPackage(new Uint8Array(await r.arrayBuffer()), url);
+    for (const [k, model] of Object.entries(SMK_MODELS)) {      // (the SMK-37 packages, when the release has them: make_site.py writes duell-latest-smk37-<model>.fwsc)
+      try {
+        const rs = await fetch(`./duell-latest-smk37-${k}.fwsc`, { cache: "no-store" });
+        if (rs.ok) await acceptSmkPackage(new Uint8Array(await rs.arrayBuffer()), rs.url, model);
+      } catch { /* no package for this model */ }
+    }
   } catch {
     // no package next to this page: the notice stays, the install card stays hidden
     $("pkgstate").innerHTML = "<b>Build not yet attached.</b> No DUELL firmware file is published with this page yet, so there is nothing to install.";
@@ -258,13 +259,13 @@ const STEPS = { start: "Starting", verify: "Verifying", loader: "Switching to up
 const ERR = {
   nomidi: "This browser cannot do it. Open the page in Chrome or Edge.",
   denied: "MIDI (SysEx) access was not allowed. Allow MIDI in the site settings (address bar) and try again.",
-  notfound: "FM-1 not found. Check that the cable is a data cable, plugged straight into the computer, and close other programs that use MIDI.",
-  model: "The connected device is not an FM-1.",
+  notfound: "No FM-1 or SMK-37 found. Check that the cable is a data cable, plugged straight into the computer, and close other programs that use MIDI.",
+  model: "There is no DUELL package for the connected device.",
   lost: "The USB connection was lost. Replug and press the same button again. Do not unplug while it says it is writing.",
   stopped: "Stopped. Replug the USB cable and press the same button again.",
-  noloader: "The FM-1 in update mode was not found. Replug the USB cable and press the same button again (it stays in update mode until it is finished). If it still does not start: the firmware on the FM-1 refused this package (DUELL 1.1 and some other firmwares accept only their own update loader). Then use USB RESCUE on thefirmwarehub.com once, and install DUELL again.",
-  noreturn: "The FM-1 did not come back. Switch it off and on again.",
-  mismatch: "Written, but the FM-1 reports another version: ",
+  noloader: "The unit in update mode was not found. Replug the USB cable and press the same button again (it stays in update mode until it is finished). If it still does not start: the firmware on the unit refused this package (DUELL 1.1 and some other firmwares accept only their own update loader). Then use USB RESCUE on thefirmwarehub.com once, and install DUELL again.",
+  noreturn: "The unit did not come back. Switch it off and on again.",
+  mismatch: "Written, but the unit reports another version: ",
 };
 // a failure stays in the card that failed
 const fail = (card, e) => { result(card, e && e.code && ERR[e.code] ? ERR[e.code] + (e.detail || "") : "Error: " + (e && e.message), true); log(String(e && e.stack || e)); };
@@ -336,12 +337,12 @@ $("detect").addEventListener("click", async () => {
 // The optional erase (the box in the INSTALL card; ticked or not by what the unit runs, see eraseDecision): after the install finished and the unit restarted into DUELL,
 // connect to it and send ERASE_ALL (fm1backup.js; the unit checks the token and refuses while it plays). Anything but the unit's
 // rc 0 is reported as "installed, data NOT erased, use MENU > SYSTEM > ERASE DATA": never "erased" unless the unit said so.
-async function eraseAfterInstall(midi) {
+async function eraseAfterInstall(midi, model = "FM-1") {
   say("install", ERASE.status);
   $("bar-install").value = 100;
   try {
     const up = new Updater(midi, log);
-    const device = await up.waitFor((id) => id.model === "FM-1", 30000);   // the restarted DUELL
+    const device = await up.waitFor((id) => id.model === model, 30000);   // the restarted DUELL (FM-1 or the SMK-37 model installed)
     if (!device) return eraseOutcome(null, "notfound");
     const input = device.link.input, output = device.link.output;
     device.link.close();
@@ -359,13 +360,19 @@ $("go").addEventListener("click", async () => {
     try { midi = await navigator.requestMIDIAccess({ sysex: true }); } catch { result("install", ERR.denied, true); return; }
     const up = new Updater(midi, log), step = progress("install", 74 + 1167);
     const ota = await up.find((id) => /^ota-/i.test(id.model));
+    // the package for the unit that is connected: the FM-1's, or the SMK-37 model's (DUELL 1.3.4)
+    const dev = ota ? null : await up.find((id) => !/^ota-/i.test(id.model));
+    const model = ota ? ota.id.model.replace(/^ota-/i, "") : dev ? dev.id.model : "FM-1";
+    if (dev) dev.link.close();
+    const pkg = model === "FM-1" ? (image ? { image, product } : null) : smk[model];
+    if (!pkg) { if (ota) ota.link.close(); result("install", ERR.model + " (" + model + ")", true); return; }
     let installed = false;
     if (ota) {
       ota.link.close();
-      if (await up.resume(image, step, product)) installed = true; else result("install", ERR.stopped, true);
-    } else { await up.install(image, product, step); installed = true; }
+      if (await up.resume(pkg.image, step, pkg.product)) installed = true; else result("install", ERR.stopped, true);
+    } else { await up.install(pkg.image, pkg.product, step); installed = true; }
     if (installed && !wantErase) result("install", TEXT.done.install);
-    else if (installed) { const o = await eraseAfterInstall(midi); result("install", o.text + " " + SWITCH_OFF_ON, o.bad); }
+    else if (installed) { const o = await eraseAfterInstall(midi, model); result("install", o.text + " " + SWITCH_OFF_ON, o.bad); }
   } catch (e) { fail("install", e); }
   finally { end("install"); }
 });
@@ -384,7 +391,7 @@ function archiveInfo(a) {
 }
 // card = the card that shows the progress ("backup", or "return" when the return makes its backup first)
 async function doBackup(up, card) {
-  const device = await up.find((id) => id.model === "FM-1");
+  const device = await up.find((id) => !/^ota-/i.test(id.model));   // (the FM-1 or an SMK-37 running DUELL; info.supported below says whether it can)
   if (!device) { result(card, ERR.notfound, true); return false; }
   const input = device.link.input, output = device.link.output; device.link.close();
   const link = new BackupConnection(input, output);
@@ -428,10 +435,10 @@ $("stock-go").addEventListener("click", async () => {
     let midi;
     try { midi = await navigator.requestMIDIAccess({ sysex: true }); } catch { result("return", ERR.denied, true); return; }
     const up = new Updater(midi, log), step = progress("return", 74 + selected.blocks);
-    const loader = await up.find((id) => id.model === "ota-FM-1");
+    const loader = await up.find((id) => id.model === "ota-" + selected.product.split("_")[0]);   // (the FM-1's, or the SMK-37 Elite's)
     if (loader) {
       loader.link.close();
-      if (!$("stock-recovery").checked) { result("return", "The FM-1 is in update mode, so no backup can be made now. Tick \"Resume an interrupted return\" only if you already saved a backup.", true); return; }
+      if (!$("stock-recovery").checked) { result("return", "The unit is in update mode, so no backup can be made now. Tick \"Resume an interrupted return\" only if you already saved a backup.", true); return; }
       if (!confirm("Return to official " + selected.version + "? DUELL music cannot be opened by the official firmware.")) return;
       if (await up.resume(selected.image, step, selected.product)) result("return", TEXT.done.return); else result("return", ERR.stopped, true);
     } else {

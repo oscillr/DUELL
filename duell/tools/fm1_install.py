@@ -35,7 +35,9 @@ BLOCKS, BLK, KEEP = 20, 0x30, 0x2F
 # the unmodified official FM-1 V15 (FM-1.fwsc from M-VAVE): returning to it is allowed without --force,
 # as the web installer's "Return to official V15" (web/fm1pkg.js validateStockPackage)
 STOCK_V15_SHA256 = "db1642b2b6fa5c2cccb11ffd13878068bb28601678d3644049f99dc40e7edb8a"
-PORT_RE = re.compile(r"fm-1|felucca|ota|composite|sinco|usb-midi", re.I)   # never probe other gear
+PORT_RE = re.compile(r"fm-1|felucca|ota|composite|sinco|usb-midi|smk|elite|mke-p37", re.I)   # never probe other gear
+# (smk, elite, mke-p37: the M-Vave SMK-37 family under its stock firmware, for DUELL's SMK-37 packages; the model check below
+# still takes a package only for a unit of the same name: SMK-37 Elite to SMK-37 Elite)
 
 # seconds; the tests shorten them
 DELAY = {"open": 0.3, "start": 2.0, "reply": 0.01, "loader": 3.0, "reboot": 3.0, "retry": 1.0,

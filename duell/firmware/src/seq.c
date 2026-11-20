@@ -42,6 +42,9 @@ static uint8_t in_key;                   /* the key (+ 1) whose notes go into in
 #if DUELL_VELO
 #define KEY_VEL(k) sense_vel(k)                  /* the velocity of key k's note: sense.c, after Velo's method (100 while the setting is OFF, and for the top 7 keys' fixed one) */
 #define KEY_VELU(k) ((uint32_t)sense_vel(k))
+#elif BOARD_SMK37
+#define KEY_VEL(k) fm1_in.key_vel[SMK_KEY_F3 + (k)]   /* the SMK-37: the key's two contacts and the unit's factory curve (smk_input.h) */
+#define KEY_VELU(k) ((uint32_t)fm1_in.key_vel[SMK_KEY_F3 + (k)])
 #else
 #define KEY_VEL(k) 100                           /* every key plays velocity 100 */
 #define KEY_VELU(k) 100u
@@ -775,9 +778,21 @@ static uint32_t kb_raw(uint32_t k)
     return (uint32_t)clamp(53 + (int32_t)k + 12 * song.octave, 0, 127);
 }
 /* LAYER with SPLIT set: which parts play note n (bit 0 part 1 below the split, bit 1 part 2 at or above it); 3 both */
+#if BOARD_SMK37
+/* the part(s) the SMK's keys play (owner 2026-11-18; GLOBE + CHN 1 / CHN 2: smk_ui.c smk_layer_key): 0 as the MODE says (LAYER both, STEREO and
+ * DUEL split, part 1 below F#4, part 2 from it), 1 part 1 alone, 2 part 2 alone. smk_lay_ext: the outer keys pressed in a layer (smk_play.c), bit b of key k
+ * (k 0..4 bit k, 32..36 bit k - 27), for the layer's keys in the main loop */
+static uint8_t smk_kp;
+static volatile uint32_t smk_lay_ext, smk_ext_down;
+static uint32_t smk_key_part(uint32_t k37);
+#endif
 static uint32_t lay_route(uint32_t n)
 {
     uint32_t s = mix_split;
+#if BOARD_SMK37
+    if (smk_kp)                                     /* (a part alone: LAYER plays that part only) */
+        return smk_kp;
+#endif
     return !s ? 3u : n + 1u < s ? 1u : 2u;
 }
 /* input_on of a LAYER note: the part's XFADE share rides with the voices it starts (an arp's later notes keep it) */
@@ -991,10 +1006,16 @@ static __attribute__((noinline)) void velo_at_block(void)
 }
 #endif
 
+#if BOARD_SMK37
+static void smk_events_block(void);              /* (smk_play.c, at the end of this file: the pads, the wheels, the outer keys) */
+#endif
 static void keyboard_block(void)
 {
     uint32_t cur = fm1_in.notes, ch, k;
     uint32_t lay, mute, pk;
+#if BOARD_SMK37
+    smk_events_block();
+#endif
     static uint8_t gen_seen;
     if (gen_seen != scale_gen) {
         gen_seen = scale_gen;
@@ -1021,7 +1042,11 @@ static void keyboard_block(void)
         if (!((ch >> k) & 1u))
             continue;
         if ((cur >> k) & 1u) {                    /* the selected track; the key-up goes to the same one */
+#if BOARD_SMK37
+            kb_trk[k] = duell_mode == DM_LAYER ? 0u : smk_key_part(k + SMK_KEY_F3);   /* (LAYER: part 1, key_on's copy; STEREO, DUEL: the split or the part alone) */
+#else
             kb_trk[k] = duell_mode == DM_LAYER ? 0u : song.sel;   /* (LAYER: part 1; key_on gives part 2 its own copy) */
+#endif
             if (kb_asleep) {                      /* (SCREEN OFF: the wake press is swallowed) */
                 kb_note[k] = KB_SILENT;
                 continue;
@@ -1806,3 +1831,6 @@ static void events_block(uint32_t n)
     if (song.playing)
         song.tick++;
 }
+#if BOARD_SMK37
+#include "smk_play.c"               /* the SMK-37: pads, wheels, the outer keys (the event step's side) */
+#endif

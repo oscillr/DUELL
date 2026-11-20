@@ -35,6 +35,9 @@ enum { MI_MODE, MI_XFADE, MI_SPLIT, MI_MODERECALL,    /* PLAYING: MODE (was HOME
        MI_CLICK, MI_CLKLVL, MI_COUNTIN, MI_CHADD, MI_PREVIEW,   /* RECORDING: CLICK, CLICK LEVEL, COUNT-IN (contiguous: rp_get), STEP KEYS, STEP PREVIEW */
        MI_RSMART, MI_RARP, MI_RPITCH,                  /* MORPH: MORPH SET's SMART, ARP, PITCH (morph.cfg MC_WILD inverted, MC_ARP, MC_PIT) */
        MI_PERFK1, MI_PERFK2, MI_PERFK3, MI_PERFK4,     /* PERFORM: PERFORM's four knobs, each any of the eight macros (or DEPTH; K1 has no row: it is DEPTH), */
+#if SMK_SCREEN
+       MI_PK1, MI_PK2, MI_PK3, MI_PK4, MI_PK5, MI_PK6, MI_PK7, MI_PK8,   /* (the SMK-37, owner 2026-11-18: PERFORM's eight knobs, each a macro of a part, SPACE, KILL or a matrix destination of a part: smk_pk_*) */
+#endif
        MI_QMAC1, MI_QMAC2, MI_QMAC3, MI_QMAC4,         /* QUICK MACRO's four (SEL held: ui_layer.c), */
        MI_PERFLEAVE,                                   /* LEAVING PERFORM */
        MI_ARP, MI_SEQ, MI_SENDS, MI_PFX,               /* MODULES (core.h MODS_*; ui.c mods_*) */
@@ -79,7 +82,11 @@ static const char *const MI_NAME[MI_COUNT] = {"MODE", "XFADE", "SPLIT", "MULTI L
                                               "TUNE",
                                               "CLICK", "CLICK LEVEL", "COUNT-IN", "STEP KEYS", "STEP PREVIEW",
                                               "MORPH SMART", "MORPH ARP", "MORPH PITCH",   /* (the editor's keys; the unit says SMART, ARP, PITCH under MORPH: MI_LABEL) */
-                                              "PERFORM K1", "PERFORM K2", "PERFORM K3", "PERFORM K4", "QUICK K1", "QUICK K2", "QUICK K3", "QUICK K4",   /* (DUELL 1.3: the editor's keys; the unit and the editor say them in full: MI_LABEL, labels.js MENU_LONG) */
+                                              "PERFORM K1", "PERFORM K2", "PERFORM K3", "PERFORM K4",
+#if SMK_SCREEN
+                                              "PERFORM KNOB 1", "PERFORM KNOB 2", "PERFORM KNOB 3", "PERFORM KNOB 4", "PERFORM KNOB 5", "PERFORM KNOB 6", "PERFORM KNOB 7", "PERFORM KNOB 8",
+#endif
+                                              "QUICK K1", "QUICK K2", "QUICK K3", "QUICK K4",   /* (DUELL 1.3: the editor's keys; the unit and the editor say them in full: MI_LABEL, labels.js MENU_LONG) */
                                               "PERF LEAVE",
                                               "ARP", "SEQ", "SENDS", "PART FX",
                                               "PART 1 CHANNEL", "PART 2 CHANNEL", "MIDI IN", "MIDI PRESET", "MIDI LEARN", "SIDECHAIN",
@@ -108,6 +115,11 @@ static const char *const MI_LABEL[MI_COUNT] = {
     [MI_MODERECALL] = "MULTI LOAD\n", [MI_RESTORE] = "RESTORE LAST\n",   /* DUELL 1.3 (owner 2026-11-13): a second line that says what the chosen value does (ui_menu.c menu_help) */
     [MI_PERFK2] = "PERFORM KNOB 2", [MI_PERFK3] = "PERFORM KNOB 3", [MI_PERFK4] = "PERFORM KNOB 4",   /* DUELL 1.3 MACROS (one line: the approved drawing) */
     [MI_RSMART] = "SMART", [MI_RARP] = "ARP", [MI_RPITCH] = "PITCH",   /* (owner 2026-11-15: MORPH SET's three, under MORPH) */
+#if SMK_SCREEN
+    [MI_PK1] = "KNOB 1\nOR NOTE REPEAT HELD + A KNOB",   /* (owner 2026-11-18: the other way, said where the rows are; "KNOB n" under PERFORM: */
+    [MI_PK2] = "KNOB 2", [MI_PK3] = "KNOB 3", [MI_PK4] = "KNOB 4",   /*  with PERFORM KNOB n the longest choice, 117 px, does not fit beside it) */
+    [MI_PK5] = "KNOB 5", [MI_PK6] = "KNOB 6", [MI_PK7] = "KNOB 7", [MI_PK8] = "KNOB 8",
+#endif
     [MI_QMAC1] = "QUICK MACRO\nKNOB 1", [MI_QMAC2] = "QUICK MACRO\nKNOB 2", [MI_QMAC3] = "QUICK MACRO\nKNOB 3", [MI_QMAC4] = "QUICK MACRO\nKNOB 4",
 #if FELUCCA_CDC
     [MI_SERIAL] = "USB SERIAL\nDEVELOPER CONSOLE"      /* (USB SERIAL: its hint) */
@@ -133,10 +145,23 @@ static const uint8_t MI_TAB[MI_COUNT] = {
 #if DUELL_VELO
     MTAB_PLAYING, MTAB_PLAYING,                                                           /* KEY VELOCITY, AFTERTOUCH */
 #endif
+#if SMK_SCREEN
+    0xFFu,                                                                                /* TUNE: no row on the SMK-37 (owner 2026-11-18: moved to GLOBAL > MASTER) */
+#else
     MTAB_PLAYING,                                                                         /* TUNE */
+#endif
+#if SMK_SCREEN
+    0xFFu, 0xFFu, 0xFFu, MTAB_RECORDING, MTAB_RECORDING,                                  /* CLICK, CLICK LEVEL, COUNT-IN: no rows on the SMK-37 (moved to GLOBAL > TEMPO), STEP KEYS, STEP PREVIEW */
+#else
     MTAB_RECORDING, MTAB_RECORDING, MTAB_RECORDING, MTAB_RECORDING, MTAB_RECORDING,       /* CLICK CLICK LEVEL COUNT-IN STEP KEYS STEP PREVIEW */
+#endif
     MTAB_MORPH, MTAB_MORPH, MTAB_MORPH,                                                   /* SMART ARP PITCH */
+#if SMK_SCREEN
+    0xFFu, 0xFFu, 0xFFu, 0xFFu,                                                           /* (SMK-37: the FM-1's PERFORM KNOB 2 .. 4: no rows, the eight below) */
+    MTAB_PERFORM, MTAB_PERFORM, MTAB_PERFORM, MTAB_PERFORM, MTAB_PERFORM, MTAB_PERFORM, MTAB_PERFORM, MTAB_PERFORM,   /* PERFORM KNOB 1 .. 8 (also NOTE REPEAT held + a knob, smk_ui.c) */
+#else
     0xFFu, MTAB_PERFORM, MTAB_PERFORM, MTAB_PERFORM,                                      /* PERFORM KNOB 1 (no row: K1 is DEPTH, owner 2026-11-13), 2 .. 4 */
+#endif
     MTAB_PERFORM, MTAB_PERFORM, MTAB_PERFORM, MTAB_PERFORM,                               /* QUICK MACRO KNOB 1 .. 4 */
     MTAB_PERFORM,                                                                         /* LEAVING PERFORM */
     MTAB_MODULES, MTAB_MODULES, MTAB_MODULES, MTAB_MODULES,                               /* ARP SEQ SENDS PART FX */
@@ -159,7 +184,8 @@ static const uint8_t MI_TAB[MI_COUNT] = {
 static int menu_shown(uint32_t row)
 {
     return row < MI_COUNT && MI_TAB[row] < MTAB_COUNT && !((row == MI_SCHAIN || MI_TAB[row] == MTAB_SCHAIN) && (mods_off & MODS_PFX)) &&
-           !((row == MI_XFADE || row == MI_SPLIT) && duell_mode_req != DM_LAYER);   /* (XFADE and SPLIT are LAYER's only, as on the MODE page: hidden in DUEL and STEREO) */
+           !((row == MI_XFADE || (row == MI_SPLIT && !SMK_SCREEN)) && duell_mode_req != DM_LAYER);   /* (XFADE and SPLIT are LAYER's only, as on the MODE page: hidden in DUEL and STEREO;
+                                                                                                      * the SMK-37 (owner 2026-11-20): SPLIT in every mode, its keys split in STEREO and DUEL too) */
 }
 /* TUNE (DUELL 0.2.22: MASTER TUNE like a Roland keyboard's): the project's G_TUNE, the frequency of A4 in 0.1 Hz, 415.3 .. 466.2 Hz (core.h TUNE_MIN .. TUNE_MAX); as a row
  * its values 0..TUNE_N - 1 (value - TUNE_MIN, 510 steps, 247 = 440.0 Hz). The editor gets it as a number in tenths (EDM_TENTHS: min..max, its unit "Hz") */
@@ -181,6 +207,25 @@ static uint32_t mtab_end(uint32_t t)                   /* .. and the row after i
 }
 /* DUELL 0.2.14: a row's units (1, or 2 for a two-line label) and its place: the page of its tab and the unit it starts at. Rows fill a
  * page in MI order until the next one does not fit; the rest go on the next page (a few loops over ~26 rows: no table to keep) */
+#if SMK_SCREEN
+static const char *menu_vname(uint32_t row, uint32_t v);
+static uint32_t menu_get(uint32_t row);
+/* a PERFORM KNOB row whose choice does not fit beside its name (FILTER ENV MULTI CUTOFF 1): the choice gets a line of its own, full size (ui_menu.c menu_row) */
+static int smk_pk_long(uint32_t row)
+{
+    const char *l = menu_label(row);
+    char l1[24];
+    uint32_t n = 0;
+    if (row < MI_PK1 || row > MI_PK8)
+        return 0;
+    while (l[n] && l[n] != '\n' && n + 1u < sizeof l1) {
+        l1[n] = l[n];
+        n++;
+    }
+    l1[n] = 0;
+    return 224 - text_w(&AF_M, menu_vname(row, menu_get(row))) < 16 + text_w(&AF_M, l1) + 8;   /* (ui_menu.c MR_VR, MR_LX) */
+}
+#endif
 static uint32_t menu_units(uint32_t row)
 {
     const char *l = menu_label(row);
@@ -188,6 +233,10 @@ static uint32_t menu_units(uint32_t row)
         return 0;                                      /* (a row without a place: PERFORM KNOB 1, BUTTON MAP, SIDECHAIN with PART FX OFF) */
     while (*l && *l != '\n')
         l++;
+#if SMK_SCREEN
+    if (smk_pk_long(row))
+        return *l ? 3u : 2u;
+#endif
     return *l ? 2u : 1u;
 }
 static uint32_t menu_place(uint32_t row, uint32_t *unit)   /* the page (0 ..) of row in its tab; *unit its first unit there */
@@ -285,6 +334,60 @@ static const menu_flag_t *menu_flag(uint32_t row)
     return 0;
 }
 
+#if SMK_SCREEN
+/* the SMK-37's PERFORM KNOB rows (owner 2026-11-18): the list a row steps, in this order: part 1's macros (TIMBRE .. MOTION), part 1's matrix destinations that have a
+ * stored value (mod_lock_id: a parameter of the part; the virtual ones, MORPH and SPACE are not knobs), the same for part 2, then SPACE and KILL. Entry i into kind / part / id;
+ * the count when i is past the end */
+static void smk_pk_name(uint32_t kind, uint32_t part, uint32_t id, char *b);   /* (smk_screen.c: "MULTI CUTOFF 1") */
+static uint32_t smk_pk_at(uint32_t i, uint32_t *kind, uint32_t *part, uint32_t *id)
+{
+    uint32_t n = 0, p, d;
+    for (p = 0; p < 2u; p++) {
+        for (d = MAC_TIMBRE; d <= MAC_MOTION; d++, n++)
+            if (n == i) {
+                *kind = SPK_MACRO; *part = p; *id = d;
+                return i;
+            }
+        for (d = 1; d < MD_N; d++) {
+            uint32_t lid = mod_lock_id(d);
+            if (!lid || lid >= EXT_P_LEN || d == MD_SPACE || d == MD_MORPH || mod_dst_removed(eng_idx(trk[p].eng_req), (int32_t)d))
+                continue;
+            if (MD_ENGINE(d)) {
+                const param_desc_t *e = track_desc(&trk[p], lid);
+                if (!e || !e->label || e->label[0] == '-' || e->max == e->min)
+                    continue;
+            }
+            if (n++ == i) {
+                *kind = SPK_TRACK; *part = p; *id = lid;
+                return i;
+            }
+        }
+    }
+    for (d = MAC_SPACE; d <= MAC_KILL; d++, n++)
+        if (n == i) {
+            *kind = SPK_MACRO; *part = 0; *id = d;
+            return i;
+        }
+    return n;
+}
+static uint32_t smk_pk_n(void)
+{
+    uint32_t k, p, d;
+    return smk_pk_at(0xFFFFu, &k, &p, &d);
+}
+static uint32_t smk_pk_index(uint32_t knob)            /* the row's value: knob's entry in the list (0 when it is not in it) */
+{
+    uint32_t part, id, kind = smk_pf_get(knob, &part, &id), i, n = smk_pk_n(), k2, p2, d2;
+    if (kind == SPK_MACRO && (id == MAC_SPACE || id == MAC_KILL))
+        part = 0;
+    for (i = 0; i < n; i++) {
+        smk_pk_at(i, &k2, &p2, &d2);
+        if (k2 == kind && p2 == part && d2 == id)
+            return i;
+    }
+    return 0;
+}
+#endif
 /* a row's value as 0..menu_n(row) - 1 in the order the menu steps it (LEDS: OFF LOW MEDIUM MAX, LEDS_MENU) */
 static uint32_t menu_n(uint32_t row)
 {
@@ -294,13 +397,17 @@ static uint32_t menu_n(uint32_t row)
 #endif
     if (row == MI_MODE)
         return DM_N;
+#if SMK_SCREEN
+    if (row >= MI_PK1 && row <= MI_PK8)
+        return smk_pk_n();
+#endif
     if (row == MI_XFADE)
         return 101u;                                   /* 0 .. 100 % */
     if (row == MI_SPLIT)
         return 129u;                                   /* 0 OFF, else the note + 1 */
     return row == MI_COLOR ? NPALETTES : (row >= MI_CLICK && row <= MI_COUNTIN) ? 3u :
            row == MI_HOLD ? 4u : row == MI_LEDS ? LEDS_COUNT : row == MI_SCROFF ? NELEM(SCROFF_N) :
-           row == MI_TUNE ? TUNE_N : row == MI_ANIM ? 3u : row == MI_HOMEPG ? (uint32_t)HP_COUNT :
+           row == MI_TUNE ? TUNE_N : row == MI_ANIM ? 3u : row == MI_HOMEPG ? (uint32_t)(SMK_SCREEN ? 2 : HP_COUNT) :   /* (SMK-37: MORPH, PERFORM; no MACROS pages) */
            row >= MI_PERFK1 && row <= MI_QMAC4 ? (uint32_t)MAC_N : row == MI_MIDIPRE ? (uint32_t)MPRE_N :   /* (DUELL 1.3: PERFORM's: the eight and DEPTH) */
            row == MI_P1CH || row == MI_P2CH || row == MI_SC1CH || row == MI_SC2CH ? 16u : row == MI_SC1NT || row == MI_SC2NT ? 128u :   /* (a channel 1..16; a note: 0 ANY, then the notes) */
            row == MI_ARP || row == MI_SEQ ? 3u : 2u;      /* (ARP, SEQ: OFF, ON (FOLLOWS PATCH), KEEPS RUNNING: ui.c mods_run_get) */
@@ -322,13 +429,17 @@ static uint32_t menu_get(uint32_t row)
     case MI_HOLD: return settings_hold % 4u;
     case MI_SCROFF: return scr_get();
     case MI_ANIM: return ui_prefs & PREF_ANIM_OFF ? 1u : (ui_idle & 1u) ? 2u : 0u;
-    case MI_HOMEPG: return home_pg();
+    case MI_HOMEPG: return SMK_SCREEN ? (home_pg() == HP_PERF) : home_pg();   /* (SMK-37: 0 MORPH, 1 PERFORM) */
     case MI_P1CH: case MI_P2CH: return midi_ch_get(row - MI_P1CH);
     case MI_MIDIIN: return song.g[G_ROUTE] == 1;       /* (0 PART CHANNEL, 1 ANY CHANNEL: the project's G_ROUTE, as stored before) */
     case MI_ARP: case MI_SEQ: return mods_run_get(row - MI_ARP);
     case MI_SENDS: case MI_PFX: return !((mods_get() >> (row - MI_ARP)) & 1u);   /* (1 ON: the MODULES bit clear) */
     case MI_SC1CH: case MI_SC1NT: case MI_SC2CH: case MI_SC2NT: return sc_get(row - MI_SC1CH);
     case MI_PERFLEAVE: return perf_keep();
+#if SMK_SCREEN
+    case MI_PK1: case MI_PK2: case MI_PK3: case MI_PK4: case MI_PK5: case MI_PK6: case MI_PK7: case MI_PK8:
+        return smk_pk_index(row - MI_PK1);
+#endif
     case MI_PERFK1: case MI_PERFK2: case MI_PERFK3: case MI_PERFK4: case MI_QMAC1: case MI_QMAC2: case MI_QMAC3: case MI_QMAC4:
         return mac_pick(row - MI_PERFK1);              /* DUELL 1.3 (ui.c) */
     case MI_MIDIPRE: return mac_preset_get();
@@ -362,6 +473,8 @@ static const char *menu_vname(uint32_t row, uint32_t v)
     }
     case MI_SPLIT: {
         static char b[8];
+        if (!v && SMK_SCREEN && duell_mode_req != DM_LAYER)
+            v = 67u;                                   /* (the SMK-37's STEREO and DUEL always split: OFF reads as the middle key, F#4) */
         if (!v)
             return "OFF";
         note_name(b, v - 1u);
@@ -374,7 +487,7 @@ static const char *menu_vname(uint32_t row, uint32_t v)
     case MI_COUNTIN: return COUNTIN_N[v % 3u];
     case MI_SCROFF: return SCROFF_N[v % NELEM(SCROFF_N)];
     case MI_ANIM: return ANIM_N[v % 3u];
-    case MI_HOMEPG: return HOMEPG_N[v % HP_COUNT];
+    case MI_HOMEPG: return HOMEPG_N[SMK_SCREEN ? (v & 1u ? HP_PERF : HP_MORPH) : v % HP_COUNT];
     case MI_MIDIIN: return v & 1u ? "ANY CHANNEL" : "PART CHANNEL";
     case MI_ARP: case MI_SEQ: return v == 0u ? "OFF" : v == 1u ? "ON" : "KEEPS RUNNING";   /* (the words GLO > MODULES showed) */
     case MI_SENDS: case MI_PFX: return v & 1u ? "ON" : "OFF";
@@ -395,6 +508,22 @@ static const char *menu_vname(uint32_t row, uint32_t v)
 #endif
     case MI_NOTESLEFT: return v & 1u ? "ON" : "OFF";
     case MI_PERFLEAVE: return v & 1u ? "KEEP" : "FADE";
+#if SMK_SCREEN
+    case MI_PK1: case MI_PK2: case MI_PK3: case MI_PK4: case MI_PK5: case MI_PK6: case MI_PK7: case MI_PK8: {
+        static char b[32];
+        uint32_t kind, part, id;
+        smk_pk_at(v, &kind, &part, &id);
+        if (kind == SPK_TRACK && mod_lock_dst(id)) {   /* (a matrix destination: its full name, so no two read the same: FILTER ENV MULTI CUTOFF, not MULTI CUTOFF) */
+            const char *m = mod_dst_name(&trk[part & 1u], (int32_t)mod_lock_dst(id));
+            uint32_t j;
+            for (j = 0; m[j] && j + 3u < sizeof b; j++)
+                b[j] = m[j] == '\n' ? ' ' : m[j];
+            str_cpy(b + j, part ? " 2" : " 1", 3);
+        } else
+            smk_pk_name(kind, part, id, b);
+        return b;
+    }
+#endif
     case MI_PERFK1: case MI_PERFK2: case MI_PERFK3: case MI_PERFK4: case MI_QMAC1: case MI_QMAC2: case MI_QMAC3: case MI_QMAC4:
         return MAC_NAME[v <= MAC_DEPTH ? v : 0u];
     case MI_MIDIPRE: return MPRE_NAME[v < MPRE_N ? v : 0u];   /* DUELL 0.2.14: leaving PERFORM / loading a sound: SPACE and KILL fade to neutral (default) / stay */
@@ -446,7 +575,8 @@ static void menu_put(uint32_t row, uint32_t v)
         ui_prefs = (uint8_t)(v == 1u ? ui_prefs | PREF_ANIM_OFF : ui_prefs & ~PREF_ANIM_OFF);
         ui_idle = (uint8_t)(v == 2u ? ui_idle | 1u : ui_idle & ~1u);
         break;                                         /* (1.5: up to 1.4.1 it fell through: ANIM set HOME too) */
-    case MI_HOMEPG: ui_home_pg = (uint8_t)(v == HP_PERF ? HP_PERF_CODE : v == HP_MAC1 ? HP_MAC1_CODE : v == HP_MAC2 ? HP_MAC2_CODE : HP_MORPH); break;   /* (read where HOME opens: go_main) */
+    case MI_HOMEPG: if (SMK_SCREEN) v = v & 1u ? HP_PERF : HP_MORPH;
+        ui_home_pg = (uint8_t)(v == HP_PERF ? HP_PERF_CODE : v == HP_MAC1 ? HP_MAC1_CODE : v == HP_MAC2 ? HP_MAC2_CODE : HP_MORPH); break;   /* (read where HOME opens: go_main) */
     case MI_P1CH: case MI_P2CH: midi_ch_put(row - MI_P1CH, v); break;   /* (seq.c midi_pch at once, the settings bytes saved ~2 s later) */
     case MI_MIDIIN: song.g[G_ROUTE] = (int16_t)(v & 1u); break;
     case MI_ARP: case MI_SEQ: mods_run_put(row - MI_ARP, v); break;   /* (as GLO > MODULES' knob did: ui.c) */
@@ -471,6 +601,16 @@ static void menu_put(uint32_t row, uint32_t v)
 #endif
     case MI_NOTESLEFT: ui_notes_off = (uint8_t)(v ? ui_notes_off & ~NOTES_OFF_BIT : ui_notes_off | NOTES_OFF_BIT); break;   /* (read where the header is drawn: ui_draw.c) */
     case MI_PERFLEAVE: ui_idle = (uint8_t)(v ? ui_idle | PERF_KEEP_BIT : ui_idle & ~PERF_KEEP_BIT); break;   /* (read where PERFORM is left: ui_perform.c) */
+#if SMK_SCREEN
+    case MI_PK1: case MI_PK2: case MI_PK3: case MI_PK4: case MI_PK5: case MI_PK6: case MI_PK7: case MI_PK8: {
+        uint32_t kind, part, id;
+        if (v < smk_pk_n()) {
+            smk_pk_at(v, &kind, &part, &id);
+            smk_pf_put(row - MI_PK1, kind, part, id);   /* (the same store as NOTE REPEAT held + a knob: ui.c smk_set) */
+        }
+        break;
+    }
+#endif
     case MI_PERFK1: case MI_PERFK2: case MI_PERFK3: case MI_PERFK4: case MI_QMAC1: case MI_QMAC2: case MI_QMAC3: case MI_QMAC4:
         mac_pick_put(row - MI_PERFK1, v);              /* DUELL 1.3 (read where the knobs act and the cards are drawn: ui_perform.c) */
         break;
@@ -489,7 +629,7 @@ static uint32_t menu_step(uint32_t row, int32_t s)
     if (row == MI_TUNE || row == MI_XFADE)
         return (uint32_t)clamp((int32_t)v + s, 0, (int32_t)n - 1);
     if (row == MI_SPLIT)                               /* (as the MODE page's SPLIT: from OFF the first turn starts at the middle key, F#4, stored 67) */
-        return (uint32_t)clamp(v == 0u && s ? 67 + (s > 0 ? s - 1 : s + 1) : (int32_t)v + s, 0, (int32_t)n - 1);
+        return (uint32_t)clamp(v == 0u && s ? 67 + (s > 0 ? s - 1 : s + 1) : (int32_t)v + s, SMK_SCREEN && duell_mode_req != DM_LAYER ? 1 : 0, (int32_t)n - 1);   /* (the SMK-37's STEREO, DUEL: no OFF) */
     if (row == MI_ANIM)                                /* OFF ON IDLE, stopping at the ends */
         return ANIM_ORD[clamp((int32_t)ANIM_ORD[v % 3u] + (s > 0) - (s < 0), 0, 2)];
     if (f && str_eq(f->name[0], "ON"))                 /* (USB SERIAL, RESTORE LAST, CPU METER: ON is their value 0) */

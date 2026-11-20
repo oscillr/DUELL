@@ -14,6 +14,9 @@ export const STOCK_V15_SIZE = 699956;
 export const STOCKS = [
   { product: "FM-1_015", size: 699956, sha256: STOCK_V15_SHA256, flashSize: 602112, otaSize: 19969 },
   { product: "FM-1_016", size: 718196, sha256: "d017fb65e70aca97ee29d944470c3515a74581df5c0576bf70de917c7b2b61d5", flashSize: 692224, otaSize: 19969 },
+  // (DUELL 1.3.4, owner 2026-11-20) the SMK-37 Elite's official V16 (M-VAVE's SMK-37 kit, open.m-vave.com): tested DUELL -> V16 -> DUELL on an Elite.
+  // The Pro's V16 file has another flash.bin layout this parser refuses, and there is no MKE-P37 file: those return with M-VAVE's updater.
+  { product: "SMK-37 Elite_016", size: 705236, sha256: "b2ee38abfef3ae922e4eecdb8a551e14345300ae6f270265feacd33b6ef99cb6", flashSize: 643072, otaSize: 19969 },
 ];
 
 const T = new Uint16Array(256);
@@ -244,11 +247,11 @@ export async function sha256hex(bytes) {
 export async function validateStockPackage(bytes) {
   const sha = await sha256hex(bytes);
   const s = STOCKS.find((k) => k.size === bytes.length && k.sha256 === sha);
-  if (!s) throw new Error("Select the unmodified official FM-1 file (FM-1.fwsc, V15 or V16) from M-VAVE.");
+  if (!s) throw new Error("Select the unmodified official file from M-VAVE (FM-1.fwsc V15 or V16, or the SMK-37 Elite's SMK37-Elite-V16.fwsc).");
   const pkg = new Package(bytes);
   if (pkg.product !== s.product || pkg.flashSize !== s.flashSize || pkg.appBase !== 16384 ||
       !pkg.entries.some((e) => e.type === 100 && e.name === "ota.bin" && e.size === s.otaSize))
-    throw new Error("The official firmware has an unsupported FM-1 layout.");
+    throw new Error("The official firmware has an unsupported layout.");
   return { product: pkg.product, version: "V" + pkg.product.slice(-2), image: logicalImage(bytes), sha256: sha,
            blocks: Math.round(1167 * s.flashSize / 602112) };
 }

@@ -6,6 +6,15 @@ by OSCILL/R
 
 Each release: a one-line summary, then New, Fixed, Compatibility, Install, Files.
 
+## DUELL 1.3.5
+
+DUELL now runs on the M-VAVE SMK-37 (Pro, Elite and MKE-P37) as well as the M-VAVE FM-1.
+
+- **New:** DUELL on the SMK-37: both parts on one screen, KNOB 1 to 4 for part 1 and KNOB 5 to 8 for part 2 on every page; the faders set each part's LEVEL and MORPH; the 16 pads are PERFORM's effects while the keys keep playing notes; the keys split at F#4 in STEREO and DUEL (SPLIT moves it), GLOBE + CHN 1 or CHN 2 plays one part alone; a start-up guide for its buttons. One installer page for every unit picks the package of the keyboard you connect, and takes the SMK-37 Elite's official V16 for the way back; the editor works with the SMK-37 and opens the FM-1 Cheat Sheet or the SMK-37 Cheat Sheet, for the connected unit; an SMK-37 Cheat Sheet.
+- **Changed:** PAN shows L 100, CENTER, R 100.
+- **Fixed:** PERFORM DRIVE is never louder than the dry sound.
+- **Install:** save a backup, use the installer page, and make a new backup with 1.3.5.
+
 ## DUELL 1.3.3
 
 A small update for the M-VAVE FM-1: a few updates and small fixes.

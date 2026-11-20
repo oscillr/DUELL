@@ -216,10 +216,12 @@ static void fm1_main(void)
     fm1_guard_lock_top();
     fm1_irq_enable_all();
     fm1_delay_ms(30);
+#if !BOARD_SMK37                              /* (the SMK-37's table is fixed: panel.c) */
     if ((fm1_in.buttons & 3u) == 3u) {
         panel_setup();                        /* OCT- + OCT+ held at power-on */
         settings_save();
     }
+#endif
     if (autosave_boot(boot_clean))            /* (1.2) the last session's music, under the splash */
         first_boot_pending = 0;               /* (DUELL 0.1: a restored session is not a new unit's start) */
     splash_begin();                           /* DUELL: the splash proper (ui_draw.c): drawn by the main loop, the synth already

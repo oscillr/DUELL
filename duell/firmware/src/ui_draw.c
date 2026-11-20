@@ -363,6 +363,10 @@ static void head_page_title(char *tb, uint32_t *pi)
     } else {
         int roll = page_parts(nm, ct);
         str_cpy(tb, roll ? "SEQUENCER" : nm, 40);            /* (item 118, FINAL_V1_07: the piano roll's title is STEP, no scale name; the name is the SCALE page's) */
+#if SMK_SCREEN
+        if (grid_on == SMK_GRID && cur_page()->scope == SC_ENGINE && cur_page()->graph != GR_ENGINE)   /* (the SMK-37's EDIT 1 / EDIT 2: both engines under the header, the page's own title here) */
+            str_cpy(tb, title_shown(cur_page()->title), 24);
+#endif
         *pi = page_icon(cur_page());
     }
 }
@@ -382,7 +386,7 @@ static int head_ab_on(void)
         return 0;
     if (ui.layer)
         return ui.layer == LAYER_EDIT || ui.layer == LAYER_LFO || ui.layer == LAYER_ENV || ui.layer == LAYER_ARP ? morph_view_on(song.sel) : 0;
-    if (page_global(pg) || (pg->scope != SC_TRACK && pg->scope != SC_ENGINE) || pg->fam == FAM_SAVE || pg->fam == FAM_HOME)
+    if (page_global(pg) || (pg->scope != SC_TRACK && pg->scope != SC_ENGINE) || PG_SAVE(pg) || pg->fam == FAM_HOME)
         return 0;
     if (pg->graph == GR_BROWSE || pg->graph == GR_PATS || pg->graph == GR_TOOLS || pg->graph == GR_EVENTS || pg->graph == GR_SLOTS)
         return 0;
@@ -401,6 +405,18 @@ static uint32_t badge_lit(void)
 {
     uint32_t lit = 1u << song.sel;
     const page_t *pg = cur_page();
+#if SMK_SCREEN
+    {                                                   /* the SMK-37 (owner 2026-11-18): on every page the badges of the part(s) the keys play (GLOBE + CHN 1 / CHN 2: one part; else both,
+                                                         * layered or split) */
+        uint32_t m = (1u << NSHOWN) - 1u;
+#if BOARD_SMK37
+        if (smk_kp)
+            m = 1u << ((smk_kp - 1u) & 1u);
+#endif
+        (void)pg;
+        return m;
+    }
+#endif
     if (ui.layer)                                       /* a quick layer (0.2.11, owner): the selected part alone, as it edits one part (also over a BOTH page); */
         return ui.layer == LAYER_GLO ? (1u << NSHOWN) - 1u : ui.layer == LAYER_MACRO ? lit | morph_mask(song.sel) : lit;   /* (DUELL 1.3 QUICK MACRO: ALGORITHM's part(s), as the MACROS pages) */   /* GLO's cards are per part: both (QUICK SCALE, whose three were global, is removed: change list A.7) */
     if (page_global(pg) || pg->scope == SC_MODE)   /* (a GLOBAL page: the SCALE page's, GLO's; the MODE page counts as global as in screen_global and ui_input.c algo_input, item 138: one rule. A global screen draws no capsules, so nothing on the screen changes) */
@@ -572,9 +588,22 @@ static void head_capsule(int32_t x, uint32_t k, uint32_t lit, uint32_t b, int32_
 /* the page title, on the header canvas (item 111: face T Bold 15, T_TEXT white, centred on the screen's middle, no colour, no line; S when T does not fit; `glob`: no capsules, the whole width).
  * One function for every header: draw_head below and the MENU / ABOUT header (ui_menu.c menu_head, item 119) */
 static int32_t head_title_ink(const char *tb, int glob, uint16_t ink, int32_t *pw);
+#if SMK_SCREEN
+static int smk_title_dot(const char *tb, int glob);    /* (smk_screen.c) */
+#endif
 static void head_title_draw(const char *tb, int glob)
 {
     int32_t w;
+#if SMK_SCREEN
+    if (smk_title_dot(tb, glob))                       /* (the SMK-37's packed pages: "CHORUS|DELAY" is drawn CHORUS . DELAY, smk_screen.c) */
+        return;
+#endif
+#if SMK_SCREEN
+    if (!glob && !ui.menu && !ui.layer && !ui.perf && cur_page()->graph == GR_MOD) {   /* the SMK-37: a part's MATRIX, its title in the part's colour (owner 2026-11-18) */
+        (void)head_title_ink(tb, glob, vt(T_PTHEME(song.sel), T_BG), &w);
+        return;
+    }
+#endif
     (void)head_title_ink(tb, glob, T_TEXT, &w);
 }
 /* item 158: the title's one placement and drawing, in colour ink (the page title: T_TEXT; a program change's '#NN NAME': the part's colour, head_title_msg). Returns the pen's
@@ -687,6 +716,8 @@ static void draw_head(void)
     cv_begin(240, H_HEAD, T_BG);
     if (!glob) {                                       /* a part page: the capsules */
         uint32_t lit = badge_lit(), p;
+#if SMK_SCREEN
+#endif
         int32_t v0 = -1, v1 = -1;
         if (nv == 2u) {
             v0 = vn[0];
@@ -731,11 +762,21 @@ static void draw_gaps(uint32_t y, uint32_t h)
     }
 }
 /* full redraw: the strips (header, cards, panel, footer) cover the rest; only the BG between them is filled */
+#if SMK_SCREEN
+static uint8_t smk_nofill;
+static uint8_t smk_fill_once;                         /* (an overlay just closed: the next forced frame fills the body once, ui_draw_page) */
+#endif
 static void draw_frame(void)
 {
     const uint32_t ch = CARD_H, gy = Y_GRAPH, gh = H_GRAPH;
     if (ui.force == 2)                                 /* item 152 A: the same page again (ui_refresh): the strips and cards cover their own rows, the BG between them is already there */
         return;
+#if SMK_SCREEN
+    if (smk_nofill || (!smk_fill_once && !ui.menu && !ui.layer && !ui.guide && !ui.confirm && !ui.uboot && !name_on()))   /* the SMK-37 (owner 2026-11-19: the screen never flickers): a page and PERFORM cover
+                                                         * every pixel themselves (tests/ui_render.c SMK_NOFILL: magenta under, no blank fill, none left), so a redraw paints over what is
+                                                         * there instead of blanking it first; MENU, the layers, the guide and the dialogs keep the fill */
+        return;
+#endif
     if (grid_on) {                                     /* the grid: everything under the header is drawn over the background */
         gap_rows(H_HEAD, Y_FOOT + 15);
         return;
@@ -1470,9 +1511,33 @@ static void seg_next(uint32_t n, int i)
     cell_seg_i = (uint8_t)(n ? i : 0);
 }
 static void sp_card_set(uint32_t c, const char *label, const char *val, const char *unit);   /* DUELL 1.4: ui_speak.c (the screen reader) */
+#if SMK_SCREEN
+/* the SMK-37's stacked pages: draw_columns run for one part with smk_cap_on keeps what its four cards say instead of drawing them (smk_screen.c smk_stack_draw) */
+static uint8_t smk_cap_on;
+static struct {
+    char lb[12], v[24], u[6];                       /* (v: the longest card value, RESONANT\nTRAPEZOID, is 19) */
+    uint16_t vc;
+    uint8_t on;
+} smk_cap[4] SMK_POOL;
+#endif
 static void draw_column(uint32_t c, const char *label, const char *val, const char *unit, uint16_t vc,
                         int32_t ratio, uint32_t icon)
 {
+#if SMK_SCREEN
+    if (smk_cap_on) {
+        uint32_t q = c & 3u;
+        smk_cap[q].on = !card_hide_next && (label[0] || val[0]);
+        str_cpy(smk_cap[q].lb, smk_cap[q].on ? label : "", sizeof smk_cap[q].lb);
+        str_cpy(smk_cap[q].v, smk_cap[q].on ? val : "", sizeof smk_cap[q].v);
+        str_cpy(smk_cap[q].u, smk_cap[q].on && unit ? unit : "", sizeof smk_cap[q].u);
+        smk_cap[q].vc = vc;
+        (void)ratio, (void)icon;
+        card_hide_next = 0;
+        card_mk_next = card_mot_next = card_ctr_next = 0;
+        card_why_next = 0;
+        return;
+    }
+#endif
     if (grid_on == 4 || (grid_on == 3 && c == 0u) || (grid_on == 6 && c >= 2u)) {    /* (the MODE list is K1's; the MATRIX rows draw all four knobs themselves) */
         card_hide_next = 0;
         card_mk_next = card_mot_next = card_ctr_next = 0;
@@ -1846,6 +1911,12 @@ static int card_hidden_vp(const int16_t *vp)
         return 1;
     if (ENGINES[t->eng_req % NENGINES] == &ENG_LOFI && vp == &t->p[P_E2] && t->p[P_E1] != RW_PLS)   /* DUELL 1.1: LOFI's PULSE WIDTH (K4) is the pulse's only; every other WAVE hides it */
         return 1;
+#if SMK_SCREEN
+    if ((vp == &song.g[G_SHPITCH] || vp == &song.g[G_SHMOD]) && song.g[G_RTYPE] != 3)   /* SMK-37 DELAY|REVERB: SHIMMER PITCH and MOD only with the reverb TYPE SHIM */
+        return 1;
+    if (vp == &t->p[P_ATGT] && ENGINES[eng_idx(t->eng_req)]->atgt == ATG_NONE)   /* SMK-37 ARP 3/3|CHORD: TARGET only where the engine has one */
+        return 1;
+#endif
     return (vp == &t->p[P_LRATE] && t->p[P_LSYNC]) || (vp == &t->p[P_L2RATE] && t->p[P_L2SYNC]);
 }
 
@@ -2018,9 +2089,17 @@ static void draw_foot(void)
     uint32_t sig;
     const engine_t *e = ENGINES[TSEL->eng_req % NENGINES];
     const char *ename = e->name, *save_hint;
+#if SMK_SCREEN
+    if (!ui.menu && !ui.layer && !ui.perf && cur_page()->graph == GR_MOD)   /* (a part's MATRIX: PART n in the part's colour where the engine's name is) */
+        ename = song.sel ? "PART 2" : "PART 1";
+#endif
     int32_t ctp, rdot;
     uint32_t fnm;
     int foot_short;
+#if SMK_SCREEN
+    if (SMK_OWN_GRID(grid_on))                         /* (the SMK-37's TWIN TABLE, G1, PERFORM, LEVEL: no footer; the counter and battery are under the header, smk_screen.c) */
+        return;
+#endif
     pfl[0] = pfr[0] = 0;
     if (!ui.ml.on && !ui.layer && !ui.guide && grid_on != 16)
         (void)perf_foot(pfl, pfr);                     /* PERFORM: row 1 says what SELECT and ALGORITHM do there; row 2 as on every page (TEMPLATE 9: no first row, as PERFORM_NEW_LAYOUT_V4: SELECT = BALANCE is on knob 1's line) */
@@ -2040,9 +2119,15 @@ static void draw_foot(void)
         layer_foot_title(ti, ct);
     } else if (ui.guide) {                             /* item 118: the GUIDE / SETUP page's counter, "1/5" (the MENU's copy "1/3"), where every other page has its number */
         ti[0] = 0;
+#if SMK_SCREEN
+        fmt_int(ct, (int32_t)ui.guide - (ui.guide_menu ? 2 : 1));   /* (the SMK-37: no device page: SETUP and GUIDE 1/7 .. 7/7, the MENU's copy 1/6 .. 6/6) */
+        str_cpy(ct + str_len(ct), "/", (uint32_t)sizeof ct - str_len(ct));
+        fmt_int(ct + str_len(ct), (int32_t)GUIDE_N - (ui.guide_menu ? 2 : 1));
+#else
         fmt_int(ct, ui.guide_menu ? (int32_t)ui.guide - 2 : (int32_t)ui.guide);   /* (DUELL 1.3: the MENU's copy is pages 3 .. 5) */
         str_cpy(ct + str_len(ct), "/", (uint32_t)sizeof ct - str_len(ct));
         fmt_int(ct + str_len(ct), ui.guide_menu ? 3 : (int32_t)GUIDE_N);
+#endif
     } else {
         page_parts(ti, ct);                            /* the name (header) and "6/7" (OVERVIEW 5/5 on HOME) */
     }
@@ -2175,9 +2260,18 @@ static void engine_card(uint32_t c)
  * A page with nothing hidden is drawn as ever (its blank slots where they are). Not on the pages with cards of their own (PARAMETER LOCKS, the action pages, the
  * matrix, FM6's operators, the step page) nor in the QUICK layers, whose group cells sit over fixed knobs (ui_layer.c layer_quick).
  * -> n, the page slots K1..Kn show in vis[] */
+#if SMK_SCREEN
+static int smk_twin_page(const page_t *pg);            /* (smk_screen.c) */
+static int smk_stack_page(const page_t *pg);           /* (smk_screen.c) */
+static void smk_stack_draw(void);
+#endif
 static int page_compacts(const page_t *pg)
 {
     uint32_t g = pg->graph;
+#if SMK_SCREEN
+    if (smk_twin_page(pg) || pg->g8)                   /* the SMK-37's TWIN TABLE: the cards keep their knobs (a row is one control on both parts; a hidden one leaves its side empty); G1 the same */
+        return 0;
+#endif
     if (ui.layer || (pg->scope != SC_TRACK && pg->scope != SC_GLOBAL && pg->scope != SC_ENGINE))
         return 0;
     if (g == GR_EVENTS || g == GR_TOOLS || g == GR_ENGINE || g == GR_BROWSE || g == GR_PATS || g == GR_SLOTS || g == GR_MOD || g == GR_ROLL || g == GR_GLO || fop_page(g))
@@ -2193,9 +2287,13 @@ static int slot_hidden(const page_t *pg, uint32_t s)
         return pg->graph == GR_MAC2 && s == 2u && (mods_off & MODS_SENDS);
     if (pg->graph == GR_TEMPO && s == TEMPO_TAP_SLOT)
         return clock_src() != 0;
+#if SMK_SCREEN
+    if (s == DUCK_LINK_SLOT && duck_midi_page(pg))      /* (SMK-37: the link stands in RATE's place) */
+        return 0;
+#endif
     if (pg->id[s] == P_DKRATE && duck_ctx_id(TSEL) == 0xFFu)
         return 1;
-    if (s == 3u && duck_midi_page(pg))
+    if (s == DUCK_LINK_SLOT && duck_midi_page(pg))
         return 0;
     (void)page_desc(pg, s, &vp);
     return vp && card_hidden_vp(vp);
@@ -2206,7 +2304,7 @@ static int slot_blank(const page_t *pg, uint32_t s)
     const param_desc_t *d;
     if (pg->scope == SC_MODS || pg->scope == SC_MACRO)  /* (GLO's MODULES, DUELL 1.3 MACROS: all four slots are cells, though no parameter id) */
         return 0;
-    if ((pg->graph == GR_TEMPO && s == TEMPO_TAP_SLOT) || (s == 3u && duck_midi_page(pg)))
+    if ((pg->graph == GR_TEMPO && s == TEMPO_TAP_SLOT) || (s == DUCK_LINK_SLOT && duck_midi_page(pg)))
         return 0;
     d = page_desc(pg, s, &vp);
     return !d || !d->label || d->label[0] == '-';
@@ -2255,6 +2353,10 @@ static int cells_page(const page_t *pg)
 static int page_empty(const page_t *pg)
 {
     uint32_t s, g = pg->graph;
+#if SMK_SCREEN
+    if (pg->g8)                                         /* (SMK-37's G1 pages: never empty, VOLUME TUNE, the effects' always show) */
+        return 0;
+#endif
     if (off_module(pg) || (pg->scope != SC_TRACK && pg->scope != SC_GLOBAL && pg->scope != SC_ENGINE))
         return 0;
     if (g == GR_EVENTS || g == GR_TOOLS || g == GR_ENGINE || g == GR_BROWSE || g == GR_PATS || g == GR_SLOTS || g == GR_MOD || g == GR_ROLL || g == GR_GLO || g == GR_SEQHELP || fop_page(g))
@@ -2363,6 +2465,9 @@ static void eng_gaps(void)
             lcd_fill(0, bot, 240, end - bot, T_BG);
     }
 }
+#if SMK_SCREEN
+#include "smk_screen.c"                                /* the SMK-37's two-part screen: the TWIN TABLE, the curve strip */
+#endif
 /* (the name a card shows: params.c desc_shown, T0227's unit label pass) */
 static void draw_columns(void)
 {
@@ -2371,6 +2476,24 @@ static void draw_columns(void)
     char val[PV_LEN];
     const char *unit;
     int32_t twin_rt;
+#if SMK_SCREEN
+    if (grid_on == SMK_GRID) {                         /* the SMK-37's TWIN TABLE: both parts, four rows (smk_screen.c) */
+        smk_twin_draw();
+        return;
+    }
+    if (grid_on == SMK_G1GRID) {                       /* .. G1: eight global cells */
+        smk_g1_draw();
+        return;
+    }
+    if (grid_on == SMK_PFGRID) {                       /* .. PERFORM: the pads, the effect held, DEPTH, the eight knobs */
+        smk_perf_draw();
+        return;
+    }
+    if (grid_on == SMK_STGRID && !smk_cap_on) {        /* .. the stacked pages: part 1 above, part 2 below */
+        smk_stack_draw();
+        return;
+    }
+#endif
     grid_wide = 0;
     (void)motion_mask(song.sel, card_mot_mask);       /* (PLAY OFF: no scan) */
     if (off_module(cur_page()))                        /* item 125: its module is OFF in GLO > MODULES: no cards, only the notice (ui_graph.c graph_off) */
@@ -2514,9 +2637,30 @@ static void draw_columns(void)
             str_cpy(val, f ? "B" : "A", sizeof val);
         else
             fmt_int(val, (int32_t)f);
+#if SMK_SCREEN
+        {   /* SMK-37 (owner 2026-11-18): K1 / K5 change the parts' patches (the faders do MORPH): the cell (its label is the picture's knob line, PATCH, as MORPH's was) shows
+             * part 1's patch name over part 2's, each in its part's colour; drawn again only when a name, the colours or the cell change */
+            static uint32_t pn_sig;
+            char nb[PV_LEN];
+            int32_t gx, gy, gw, gh;
+            uint32_t sig;
+            sound_name(&trk[0], val);
+            sound_name(&trk[1], nb);
+            grid_geo(0, &gx, &gy, &gw, &gh);
+            sig = str_hash(str_hash(ux.gen * 31u + (uint32_t)gw * 7u + (uint32_t)gy, val), nb);
+            if (gw && (ui.force || sig != pn_sig)) {
+                pn_sig = sig;
+                cv_begin((uint32_t)gw, (uint32_t)gh, T_BG);
+                cv_text_fit(4, UT_TY(T, gh / 2 - 3), &AF_T, val, vt(T_PTHEME(0), T_BG), T_BG, gw - 8);
+                cv_text_fit(4, UT_TY(T, gh / 2 + 15), &AF_T, nb, vt(T_PTHEME(1), T_BG), T_BG, gw - 8);
+                cv_blit((uint32_t)gx, (uint32_t)gy);
+            }
+        }
+#else
         grid_big = (uint8_t)(grid_on != 0);                /* (HOME's grid: the big value, PAGES_V1_home.png) */
         draw_column(0, "MORPH", val, "", VAL(0u), (int32_t)f * 1000 / 127, ICON_MIX);
         grid_big = 0;
+#endif
         g = morph_pending(0);                          /* ROLL: A left, B right; a twist building up: its way */
         seg_next(g ? 2u : 0u, g > 0);                  /* (owner 2026-11-08: the line lights its half while ROLL is turned: the left half toward A, the right toward B; at rest the empty track) */
         draw_column(1, "ROLL", g < 0 ? "<A" : g > 0 ? "B>" : "A<>B", "", g ? T_ACCENT : VAL(1u), -1, ICON_NONE);
@@ -2782,7 +2926,7 @@ static void draw_columns(void)
             draw_column_hide(c);
             continue;
         }
-        if (s == 3u && duck_midi_page(cur_page())) {    /* DUCK 1/2, SRC MIDI: the notes come from MENU > MIDI > SIDECHAIN (DUELL 1.3; was GLO > SIDECHAIN); K4 jumps there */
+        if (s == DUCK_LINK_SLOT && duck_midi_page(cur_page())) {    /* DUCK 1/2, SRC MIDI: the notes come from MENU > MIDI > SIDECHAIN (DUELL 1.3; was GLO > SIDECHAIN); K4 jumps there */
             draw_column(c, "SETUP", "SETTINGS", "", VAL(c), -1, ICON_MIDI);   /* (T0227: the link card says SETUP, its value the place it jumps to: SETTINGS, owner 2026-11-15; was MENU) */
             continue;
         }
@@ -3303,6 +3447,11 @@ static void draw_oct_page(void)
     draw_foot();
     ui.force = 0;
 }
+#if SMK_SCREEN
+#define PERF_GRID SMK_PFGRID                           /* (the SMK-37's PERFORM: smk_screen.c smk_perf_draw) */
+#else
+#define PERF_GRID 16u
+#endif
 static void ui_draw(void)
 {
     static uint8_t counting;
@@ -3311,7 +3460,12 @@ static void ui_draw(void)
     {   /* item 152 A: a fader moved (MORPH, a modulated fader) shifts the part colour A -> B only: the page is drawn again WITHOUT the BG fill (ui_refresh); the part, the layer or a GLOBAL page changing the background fills as before */
         uint8_t keep = (uint8_t)(ux.part == (song.sel & 1u) && ux.layer == (uint8_t)(duell_mode_req == DM_LAYER) && ux.glob == (uint8_t)(screen_global() != 0));
         uint16_t bg0 = ux.bg;
+#if SMK_SCREEN
+        if (!smk_fd_busy() &&                           /* (the SMK-37: the colour waits until the MORPH fader rests: a step never redraws the page, smk_screen.c) */
+            theme_follow(song.sel, morph_fader_of(0), morph_fader_of(1), duell_mode_req == DM_LAYER, screen_global())) {
+#else
         if (theme_follow(song.sel, morph_fader_of(0), morph_fader_of(1), duell_mode_req == DM_LAYER, screen_global())) {
+#endif
             if (keep && bg0 == ux.bg)
                 ui_refresh();
             else
@@ -3343,11 +3497,28 @@ static void ui_draw(void)
         if (notice_on)
             return;
     }
+#if SMK_SCREEN
+    smk_view_page(counting);                            /* (the SMK-37: a fader's picture for a moment, else the page: smk_screen.c) */
+#else
     ui_draw_page(counting);
+#endif
     scr_shown();
 }
 static void ui_draw_page(uint32_t counting)
 {
+#if SMK_SCREEN
+    {   /* (owner 2026-11-20: something of an earlier screen showed through MORPH) a layer, MENU, the guide, a dialog, NAME, the octave or the count-in that closes:
+         * the page is drawn whole once, over a blank body; else a redraw never blanks (draw_frame) */
+        static uint8_t ovl_was;
+        uint8_t ovl = (uint8_t)(ui.menu || ui.layer || ui.guide || ui.uboot || ui.confirm || name_on() || counting || oct_show_on());
+        smk_fill_once = 0;
+        if (ovl_was && !ovl) {
+            ui.force = 1;
+            smk_fill_once = 1;
+        }
+        ovl_was = ovl;
+    }
+#endif
     {   /* item 120: the PERFORM page (not over a layer, menu or dialog) has its own map rows and a two-line footer hint (Y_GRAPH, H_GRAPH, draw_foot) */
         uint8_t pp = (uint8_t)(ui.perf && cur_page()->scope == SC_PERF && !(ui.layer || ui.menu || ui.guide || ui.uboot || ui.confirm || name_on() || counting || oct_show_on() || glo_pg()));
         if (pp != perf_pg) {
@@ -3358,7 +3529,7 @@ static void ui_draw_page(uint32_t counting)
     {   /* the MIXER (GLO's page, and QUICK GLO over any page) is a grid screen (7): PAGES_V2_glo-a.png; every other layer and screen uses the old layout */
         uint8_t quiet = !(ui.menu || ui.guide || ui.uboot || ui.confirm || name_on() || counting || oct_show_on());
         uint8_t want = ui.menu == 4u && !ui.guide ? 6u   /* DUELL 1.3: MENU > MIDI > MIDI LEARN, the page's template (ui_menu.c draw_page_screen) */
-                     : perf_pg ? 16u                    /* TEMPLATE 9: the PERFORM page (kept here too, so that the line below does not drop it every frame) */
+                     : perf_pg ? PERF_GRID                    /* TEMPLATE 9: the PERFORM page (kept here too, so that the line below does not drop it every frame) */
                      : (ui.layer == LAYER_GLO || (!ui.layer && glo_pg())) && quiet ? 7u
                      : off_layer(ui.layer) && quiet ? 13u   /* item 125: QUICK ARP / QUICK SEQ with the module OFF: the notice */
                      : ui.layer == LAYER_SEQ && quiet ? 16u   /* TEMPLATE 9 (QUICK_SEQ_NEW_LAYOUT): knob 1's line, the tools' boxes in the area, three cards */
@@ -3458,7 +3629,7 @@ static void ui_draw_page(uint32_t counting)
             if (gp->scope == SC_FXSUM)                  /* TEMPLATE 5 (item 117): the SENDS page, no cards, all text on the background (graph_fxsum) */
                 g = 9;
             /* owner V13: the working pages keep their own arrangement, only the look is new: PATCHES, PATTERNS, MULTIS, TOOLS (the SAVE family), STEP (the piano roll), PARAMETER LOCKS and ARP are not grid pages */
-            if (gp->fam == FAM_SAVE || gp->fam == FAM_ARP || gk == GR_ROLL || gk == GR_EVENTS || gk == GR_BROWSE || gk == GR_PATS || gk == GR_SLOTS || gk == GR_TOOLS)
+            if (PG_SAVE(gp) || gp->fam == FAM_ARP || gk == GR_ROLL || gk == GR_EVENTS || gk == GR_BROWSE || gk == GR_PATS || gk == GR_SLOTS || gk == GR_TOOLS)
                 g = 0;
             if (gk == GR_TOOLS)                         /* TOOLS: its own grid value; the three rows are drawn whole by ui_graph.c graph_tools, no cards */
                 g = 17;
@@ -3489,6 +3660,16 @@ static void ui_draw_page(uint32_t counting)
             g = 14;
         if (!ui.perf && !page_over && off_module(gp))   /* item 125 (last, over every template): the notice of a switched-off module */
             g = 13;
+#if SMK_SCREEN
+        if (smk_twin_page(gp))                         /* the SMK-37: a part page of parameter cards shows both parts (smk_screen.c) */
+            g = SMK_GRID;
+        if (!ui.perf && !page_over && gp->g8)          /* .. a G1 page: eight cells */
+            g = SMK_G1GRID;
+        if (perf_pg)                                   /* .. PERFORM */
+            g = SMK_PFGRID;
+        if (smk_stack_page(gp))                        /* .. SEQUENCER, PARAMETER LOCKS, PATCHES, PATTERNS, TOOLS: both parts stacked */
+            g = SMK_STGRID;
+#endif
         {
             static uint8_t list_was;
             int sw = (g == 15 && grid_on == 5) || (g == 5 && grid_on == 15);   /* (item 165: K1 turning onto LOFI / NOISE or off them) */

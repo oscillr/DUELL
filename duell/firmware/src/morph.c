@@ -2628,6 +2628,10 @@ static volatile uint8_t mq_lost;                         /* actions dropped (the
 
 static uint32_t morph_mask(uint32_t pi)                  /* the parts a control of part pi acts on */
 {
+#if SMK_SCREEN
+    return 1u << (pi < NSHOWN ? pi : 0u);             /* (the SMK-37, owner 2026-11-20: every control is one part's, MORPH 1 and MORPH 2 on their own faders and knobs: BOTH never
+                                                        * links them, the fader, the MORPH page's ROLL UNDO AMOUNT, MIDI's CCs, OCT- resets, the macros act on their own part) */
+#endif
     return morph.target == MT_BOTH ? (1u << NSHOWN) - 1u : 1u << (pi < NSHOWN ? pi : 0u);
 }
 /* what the page shows of part pi without touching it (a part never used: AMOUNT's default, ends at the Original) */

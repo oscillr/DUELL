@@ -7,6 +7,15 @@
  * graph_signature() changes. The look:
  * curves THEME (2 px), guides and empty marks RAISE, captions MID / DIM, the active thing ACCENT,
  * bars rounded; a list's selected row is a THEME bar with INK text. */
+#if SMK_SCREEN
+#define SMK_GRID 20u                                 /* grid_on of the SMK-37's TWIN TABLE pages (smk_screen.c; ui.c grid_on's list ends at 17) */
+#define SMK_G1GRID 21u                               /* .. its G1 pages: eight global cells (smk_screen.c smk_g1_draw) */
+#define SMK_PFGRID 22u                               /* .. its PERFORM page (smk_screen.c smk_perf_draw) */
+#define SMK_LVGRID 23u                               /* .. a LEVEL fader's picture (smk_screen.c smk_view_page) */
+static uint8_t smk_ov_shown;                         /* the SMK-37's fader picture shown: 1, 2 a LEVEL, 3 MORPH (smk_screen.c smk_view_page; graph_morph: both parts) */
+#define SMK_STGRID 24u                               /* .. the stacked pages: SEQUENCER, PARAMETER LOCKS, PATCHES, PATTERNS, TOOLS, part 1 above, part 2 below (smk_screen.c smk_stack_draw) */
+#define SMK_OWN_GRID(g) ((g) == SMK_GRID || (g) == SMK_G1GRID || (g) == SMK_PFGRID || (g) == SMK_LVGRID || (g) == SMK_STGRID)
+#endif
 #define PANEL_X0 10                                  /* the graphs' inner area: x 10..230 */
 #define PANEL_W 220
 #define GOY (grid_on ? 1 : 11)                                       /* graphs drawn on a 100 px scale sit at y 11..111 */
@@ -960,6 +969,14 @@ static void graph_mod_new(const track_t *t)
                 int32_t lx = k & 1u ? 124 : 9, ly = MX_LEG_Y + (int32_t)(k >> 1) * 14;
                 cv_rrect(lx, ly, 11, 11, 5, T_TEXT, T_BG);
                 cv_text_in(lx, ly + HALF_UP(11 - AF_D_CAP_H) - AF_D_CAP_Y, 11, &AF_DOT, d, T_BG, T_TEXT);
+#if SMK_SCREEN
+                {   /* the SMK-37 (owner 2026-11-18): knobs 5..8 do what 1..4 do on a part's matrix: both numbers */
+                    char d2[2] = {(char)('5' + k), 0};
+                    cv_rrect(lx + 13, ly, 11, 11, 5, T_TEXT, T_BG);
+                    cv_text_in(lx + 13, ly + HALF_UP(11 - AF_D_CAP_H) - AF_D_CAP_Y, 11, &AF_DOT, d2, T_BG, T_TEXT);
+                    lx += 13;
+                }
+#endif
                 cv_text(lx + 15, UT_TY(S, ly + 10), &AF_S, LG[k], T_TEXT);
             }
         }
@@ -2147,6 +2164,11 @@ static void list5_note(const char *a, const char *b)
     if (b)
         cv_free_hint(UT_L5_TAG_X, UT_TY(S, UT_L5_Y0 + UT_L5_PITCH + UT_L5_TEXT_BASE), b, T_MID, T_BG, UT_L5_X + UT_L5_W - UT_L5_TAG_X);
 }
+#if SMK_SCREEN
+static uint32_t smk_l5_rows = UT_L5_ROWS;              /* (the SMK-37's stacked PATCHES / PATTERNS: three rows of the list in a part's half, smk_screen.c smk_st_list) */
+#undef UT_L5_ROWS
+#define UT_L5_ROWS smk_l5_rows
+#endif
 /* the first row of a bounded window of UT_L5_ROWS rows over n rows with cur on the middle row where it can be */
 static uint32_t list5_first(uint32_t cur, uint32_t n)
 {
@@ -2341,9 +2363,19 @@ static void graph_tools(void)
 #define LK_SX 42
 #define LK_NX 66
 #define LK_R 230
+#if SMK_SCREEN
+static int32_t lk_dy;                                 /* (the SMK-37's stacked PARAMETER LOCKS: a part's rows moved into its half, fewer of them: smk_screen.c) */
+static int32_t lk_rows = 4;
+#define LK_BASE0 (68 + lk_dy)
+#else
 #define LK_BASE0 68
+#endif
 #define LK_PITCH 20                                  /* (measured 20 on the picture: capitals 58, 78, 98, 118; the job brief said 19: QUESTION in the report) */
+#if SMK_SCREEN
+#define LK_ROWS lk_rows
+#else
 #define LK_ROWS 4
+#endif
 #define LK_FILL_DY 15                                /* the selected row's fill: from LK_FILL_DY rows over the capitals' last row, UT_L5_H high (the list pages' row: capitals 5 rows under its top) */
 static int32_t lk_value(int32_t base, const char *v, const char *unit, uint16_t fg, uint16_t bg)   /* a row's value and unit ending at LK_R; -> the value's left x */
 {
@@ -2818,8 +2850,16 @@ static void graph_morph(void)
             const int32_t by = UT_GR_TITLE_BASE - UT_GR_Y, dy = by - AF_S_CAP_H + 1;
             cv_rrect(UT_GR_TITLE_X, dy, AF_S_CAP_H, AF_S_CAP_H, AF_S_CAP_H / 2, T_MID, T_BG);
             cv_text_in(UT_GR_TITLE_X, dy + HALF_UP(AF_S_CAP_H - AF_D_CAP_H) - AF_D_CAP_Y, AF_S_CAP_H, &AF_DOT, "1", T_BG, T_MID);
+#if SMK_SCREEN
+            {   /* SMK-37 (owner 2026-11-18): knob 1 and knob 5 are the parts' PATCH; no SAVE button on the SMK: no note */
+                int32_t x5 = cv_text_on(UT_GR_TITLE_X + UT_CARD_LBL_DX, UT_TY(S, by), &AF_S, "PATCH", T_MID, T_BG) + 6;
+                cv_rrect(x5, dy, AF_S_CAP_H, AF_S_CAP_H, AF_S_CAP_H / 2, T_MID, T_BG);
+                cv_text_in(x5, dy + HALF_UP(AF_S_CAP_H - AF_D_CAP_H) - AF_D_CAP_Y, AF_S_CAP_H, &AF_DOT, "5", T_BG, T_MID);
+            }
+#else
             cv_text_on(UT_GR_TITLE_X + UT_CARD_LBL_DX, UT_TY(S, by), &AF_S, "MORPH", T_MID, T_BG);
             cv_text_on(UT_GR_NOTE_X, UT_TY(S, UT_GR_NOTE_BASE - UT_GR_Y), &AF_S, "Hold SAVE = save patch", T_DIM, T_BG);
+#endif
         }
         return;
     }
@@ -3110,6 +3150,10 @@ static void draw_graph(void)
     const track_t *t = TSEL;
     uint16_t c = ACC;
     uint32_t sig;
+#if SMK_SCREEN
+    if (SMK_OWN_GRID(grid_on))                       /* (the SMK-37's TWIN TABLE: its strip is drawn with the rows, smk_screen.c; G1, PERFORM, LEVEL: no picture) */
+        return;
+#endif
     sig = graph_signature();
     if (!ui.force && sig == ui.graph_sig) {
         if (pg->graph == GR_COMP)                    /* (0.2.25: the gain reduction bar, its own strip, each frame) */
@@ -3135,10 +3179,12 @@ static void draw_graph(void)
         graph_off(off_module(pg));
         return;
     }
+#if !SMK_SCREEN                                       /* (the SMK-37 has no such page, or draws it its own way: the code is left out of its build) */
     if (grid_on == 17) {                             /* TOOLS: three rows on the background, in their own strips in screen rows (graph_tools) */
         graph_tools();
         return;
     }
+#endif
     if (grid_on == 4) {                              /* the MATRIX rows (graph_mod_new) */
         graph_mod_new(t);
         return;
@@ -3174,18 +3220,22 @@ static void draw_graph(void)
         }
         return;
     }
+#if !SMK_SCREEN                                       /* (the SMK-37 has no such page, or draws it its own way: the code is left out of its build) */
     if (pg->graph == GR_ROLL && grid_on == 10) {     /* TEMPLATE 7 (item 118): the STEP page's roll card in two strips */
         graph_roll_t7(t, c);
         return;
     }
+#endif
     if (pg->graph == GR_SEQHELP) {                   /* SEQUENCER HELP (item 118): the legend, on the background */
         graph_seqhelp();
         return;
     }
+#if !SMK_SCREEN                                       /* (the SMK-37 has no such page, or draws it its own way: the code is left out of its build) */
     if (pg->graph == GR_FXSUM) {                     /* TEMPLATE 5 (item 117): the SENDS page, text on the background in two strips */
         graph_fxsum();
         return;
     }
+#endif
     CV_BANDS(240, H_GRAPH, T_BG) {                 /* (in bands: gfx.c CV_BANDS) */
         cv_bg = T_BG;                                    /* (text drawn with cv_text lands on it) */
         cv_oy = GOY;                                     /* graphs on a 100 px scale */
@@ -3207,9 +3257,11 @@ static void draw_graph(void)
             cv_oy = 0;
             graph_chord(t, c);
             break;
+#if !SMK_SCREEN                                       /* (the SMK-37 has no such page, or draws it its own way: the code is left out of its build) */
         case GR_FX:
             graph_fx(t, c);
             break;
+#endif
         case GR_INS:
             graph_insert(t, c);
             break;
@@ -3262,10 +3314,12 @@ static void draw_graph(void)
             cv_oy = 0;
             graph_morph();
             break;
+#if !SMK_SCREEN                                       /* (the SMK-37 has no such page, or draws it its own way: the code is left out of its build) */
         case GR_PERF:
             cv_oy = 0;
             graph_perf();
             break;
+#endif
         case GR_MORPHSET:
             cv_oy = 0;
             graph_morphset();
@@ -3278,10 +3332,12 @@ static void draw_graph(void)
             cv_oy = 0;
             graph_mlearn();
             break;
+#if !SMK_SCREEN                                       /* (the SMK-37 has no such page, or draws it its own way: the code is left out of its build) */
         case GR_MSTG:
             cv_oy = 0;
             graph_mstg(c);
             break;
+#endif
         case GR_EQ:
             graph_eq(t, c);
             break;

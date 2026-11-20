@@ -75,6 +75,7 @@ def main():
     ap.add_argument("out", nargs="?", default=str(ROOT / "site"))
     ap.add_argument("--pkg")
     ap.add_argument("--emu")
+    ap.add_argument("--smk", action="append", default=[], help="the SMK-37 packages (duell-<version>-smk37-<model>.fwsc), next to the installer as duell-latest-smk37-<model>.fwsc")
     a = ap.parse_args()
     out = Path(a.out).resolve()
     pkg = Path(a.pkg) if a.pkg else (newest_package(BASE / "build") or BASE / "build" / "duell-none.fwsc")
@@ -112,6 +113,14 @@ def main():
             shutil.copy(pkg, inst / "duell-latest.fwsc")      # the page tries this name first
         (inst / "duell-version.json").write_text(json.dumps({"version": vtxt}) + "\n", encoding="utf-8")
         note = f"{pkg.name} ({len(raw)} B, {product}), version {vtxt}, also duell-latest.fwsc + duell-version.json"
+    for sp in map(Path, a.smk):                        # (DUELL 1.3.4, owner 2026-11-20: the SMK-37 Pro, Elite and MKE-P37 packages; the page picks the connected unit's)
+        m = re.fullmatch(r"duell-[0-9.]+-smk37-(pro|elite|mke)\.fwsc", sp.name)
+        sprod = product_of(sp.read_bytes())
+        if not m or not re.fullmatch(r"(SMK-37 Pro|SMK-37 Elite|MKE-P37)_9\d\d", sprod):
+            raise SystemExit(f"{sp}: not a DUELL SMK-37 package (duell-<version>-smk37-<model>.fwsc, identity <model>_9xx; it is {sprod!r})")
+        shutil.copy(sp, inst / sp.name)
+        shutil.copy(sp, inst / f"duell-latest-smk37-{m[1]}.fwsc")
+        note += f"; {sp.name} ({sprod})"
     (inst / "index.html").write_text(html, encoding="utf-8")
     lic = BASE / "LICENSES"        # the package holds JieLi SDK files (Apache-2.0): the licence texts travel with it
     (inst / "LICENSES").mkdir()

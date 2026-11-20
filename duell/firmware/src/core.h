@@ -86,7 +86,8 @@ enum {
     F_CREL,                                /* .. RELEASE, 0..12: CMP_REL_MS, shown in ms, from 1000 in s */
     F_TUNEHZ,                              /* DUELL 0.2.22: MASTER TUNE, the value is the frequency of A4 in 0.1 Hz (TUNE_MIN .. TUNE_MAX), shown "440.0" Hz */
     F_DSEMI,                               /* TWIN FILTER (ext.h, cloud job B): filter 2's OFFSET, whole dial steps shown as semitones with one decimal (a dial step is 0.1103 octave: 1.3236 st), "+1.3" "-83.4" st */
-    F_N99                                  /* DUELL 1.1 (owner 2026-10-25): FM6's AMP ENV knobs, 0..127 shown as the DX7 number 0..99 of the loudest carrier ((v * 99 + 63) / 127), no unit (appended: the fmt numbers are in the protocol) */
+    F_N99,                                 /* DUELL 1.1 (owner 2026-10-25): FM6's AMP ENV knobs, 0..127 shown as the DX7 number 0..99 of the loudest carrier ((v * 99 + 63) / 127), no unit (appended: the fmt numbers are in the protocol) */
+    F_PAN                                  /* DUELL 1.3.2 (owner 2026-11-18): PAN, -64..63 shown "L 100" .. "CENTER" .. "R 100" (the same scale as F_BIPCT), no unit, never a percent (appended) */
 };
 
 typedef struct {
@@ -686,6 +687,11 @@ static track_t trk[NTRK];        /* the instrument: parts A and B */
                                   * load) or deep in it (a 4-byte load, a second address constant) changes whenever any other small variable grows or
                                   * shrinks. That moved the hot block's free bytes by 20 B when NPART went 4 -> 2 (memory trim 1). Pinned: song, and the dry mix
                                   * pair (fx.c mixlr, as one object: the left is the right + 128). Check the free bytes after a change of small globals (build.py) */
+#if SMK_SCREEN && !defined(__APPLE__)
+#define SMK_POOL __attribute__((section(".pool")))     /* the SMK-37's screen buffers the main loop writes before it reads them: in the pool (zeroed at start, main.c), not the RAM .bss (1.3.3: its headroom) */
+#else
+#define SMK_POOL
+#endif
 #define SCRATCH_BSS __attribute__((section(".bss.scr")))   /* main-loop scratch buffers kept in ordinary RAM instead of the pool (memory trim 1, item 5: the pool tail is where the
                                   * core-1 code of range Z grows; the ordinary RAM had 18 KB to spare). A section of its own, so the compiler's merging of small globals is not disturbed.
                                   * Only buffers that the main loop alone touches (no interrupt, no core 1, no second owner at the same time) may use it */

@@ -121,7 +121,12 @@ static const char *quick_label(const page_t *pg, uint32_t s)
 }
 /* the layer takes the keys (seq.c kb_mask). 0.2.11: not QUICK FILTER's either (EDIT's keys used to be INIT and the engine's quick actions: an F played
  * erased the sound); every quick layer's keys play */
+#if BOARD_SMK37
+/* the SMK-37 (owner 2026-11-18): with GLOBE (GLO) or ARP held the keys are the layer's, by what is printed over them (layer_key) */
+static int ly_keys(uint32_t l) { return l && ((LAYERS[l % LAYER_N].kind != LK_QUICK && l != LAYER_EDIT) || l == LAYER_GLO || l == LAYER_ARP); }
+#else
 static int ly_keys(uint32_t l) { return l && LAYERS[l % LAYER_N].kind != LK_QUICK && l != LAYER_EDIT; }
+#endif
 static int ly_lock(uint32_t l) { return l && LAYERS[l % LAYER_N].kind != LK_QUICK; }   /* a double tap locks it open (#83; EDIT's keeps its lock) */
 static uint32_t ly_seen(uint32_t l) { return LAYERS[l % LAYER_N].kind == LK_QUICK ? 1u : 1u << l; }   /* its bit in layer_seen */
 #define LY_OPEN 2u                     /* ui.ly_t0: the map opened (no tap any more) */
@@ -439,10 +444,70 @@ static void layer_key(uint32_t l, uint32_t k)
             tools_key(p);
     }
 }
+#if BOARD_SMK37
+/* key k37 (0 = C3 .. 36 = C6) pressed with GLOBE or ARP held: what is printed over it (owner 2026-11-18, the three he kept):
+ *   GLOBE + CHN 1 / CHN 2 (C3, C#3): the keys play part 1 / part 2 alone; both pressed together: back to the MODE's way (LAYER both, else split)
+ *   GLOBE + SC C .. B (C5 .. B5): the GLOBAL SCALE's ROOT
+ *   ARP + 1/4 .. 1/32T (C5 .. G5): the ARP RATE of the part(s) the keys play */
+static void smk_layer_key(uint32_t l, uint32_t k37)
+{
+    static const uint8_t RATE[8] = {0, 10, 1, 4, 2, 5, 3, 12};   /* 1/4 4T 1/8 8T 1/16 16T 1/32 32T: params.c N_DIV's places */
+    static const char *const RN[8] = {"1/4", "1/4T", "1/8", "1/8T", "1/16", "1/16T", "1/32", "1/32T"};
+    static const char *const NN[12] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
+    char m[24];
+    if (l == LAYER_GLO && k37 < 2u) {
+        uint32_t other = (smk_ext_down >> (k37 ^ 1u)) & 1u;
+        smk_kp = other ? 0u : (uint8_t)(k37 + 1u);
+        if (smk_kp || duell_mode_req == DM_LAYER)
+            ui_message(smk_kp == 1u ? "KEYS PLAY PART 1" : smk_kp == 2u ? "KEYS PLAY PART 2" : "KEYS PLAY BOTH PARTS");
+        else {                                          /* (the split as MENU > PLAYING > SPLIT has it, smk_play.c smk_split_k37) */
+            char m[24], nb[6];
+            note_name(nb, 48u + smk_split_k37());
+            str_cpy(m, "KEYS SPLIT AT ", sizeof m);
+            str_cpy(m + str_len(m), nb, sizeof m - str_len(m));
+            ui_message(m);
+        }
+        ui.force = 1;
+    } else if (l == LAYER_GLO && k37 >= 24u && k37 < 36u) {
+        root_g = (int16_t)(k37 - 24u);
+        str_cpy(m, "ROOT ", sizeof m);
+        str_cpy(m + 5, NN[k37 - 24u], sizeof m - 5u);
+        ui_message(m);
+    } else if (l == LAYER_ARP && k37 >= 24u && k37 < 32u) {
+        uint32_t pm = smk_kp ? 1u << (smk_kp - 1u) : 3u, p;
+        for (p = 0; p < 2u; p++)
+            if ((pm >> p) & 1u) {
+                trk[p].p[P_ARATE] = (int16_t)RATE[k37 - 24u];
+                motion_capture(&trk[p], P_ARATE, trk[p].p[P_ARATE]);
+            }
+        str_cpy(m, "ARP RATE ", sizeof m);
+        str_cpy(m + 9, RN[k37 - 24u], sizeof m - 9u);
+        ui_message(m);
+        ui.force = 1;
+    }
+}
+#endif
 /* each pass: the keys the layer got now */
 static void layer_keys(uint32_t keys)
 {
     uint32_t k, l = layer_open() ? layer_open() : ui.layer ? ui.layer : 0u;
+#if BOARD_SMK37
+    uint32_t e = smk_lay_ext;
+    smk_lay_ext &= ~e;
+    if (!l)
+        l = ui.ly;
+    for (k = 0; k < 10u; k++)                           /* (the outer keys, smk_play.c) */
+        if ((e >> k) & 1u)
+            smk_layer_key(l, k < 5u ? k : k + 27u);
+    for (k = 0; keys && k < 27u; k++)
+        if ((keys >> k) & 1u) {
+            if (l == LAYER_GLO || l == LAYER_ARP)
+                smk_layer_key(l, k + SMK_KEY_F3);
+            else
+                layer_key(l, k);
+        }
+    return;
+#endif
     for (k = 0; keys && k < 27u; k++)
         if ((keys >> k) & 1u)
             layer_key(l, k);
@@ -506,9 +571,11 @@ static void layer_knob(uint32_t k, int32_t s)
     if (l && layer_quick_reset(l, k))
         return;
     if (l == LAYER_REC) {                        /* CLICK, COUNT-IN, LEVEL; KNOB 4 CLEAR: the dialog */
-        if (k < 3u)
+        if (k < 3u) {
+#if !SMK_SCREEN                                         /* (SMK-37, owner 2026-11-18: CLICK, COUNT-IN, CLICK LEVEL moved to GLOBAL > TEMPO; QUICK REC keeps CLEAR) */
             rec_set(k, (uint32_t)clamp((int32_t)rp_get(RL_F[k]) + s, 0, 2));
-        else if (s)
+#endif
+        } else if (s)
             rec_clear_ask();
     } else if (l == LAYER_GLO) {                        /* QUICK GLO: K1 LEVEL 1, K2 LEVEL 2, K3 PAN 1, K4 PAN 2 (the MIXER page's own; item 117) */
         glo_knob(k, s);
@@ -534,6 +601,10 @@ static void glo_knob(uint32_t k, int32_t s)
     int16_t *vp = &t->p[id];
     if (id == P_PAN && duell_mode_req == DM_SPLIT)
         return;
+#if SMK_SCREEN
+    if (id == P_LEVEL)                                  /* (SMK-37, owner 2026-11-18: no LEVEL on any knob, faders 1 and 2 are the level) */
+        return;
+#endif
     *vp = (int16_t)clamp(*vp + accel(EN_K1 + k, s, TP[id].max - TP[id].min), TP[id].min, TP[id].max);
     motion_capture(t, id, *vp);
     ml_knob(t, id);                                     /* (MIDI LEARN: Tk LEVEL / Tk PAN picked) */
@@ -963,7 +1034,7 @@ static void glo_cards(void)
     uint32_t c;
     for (c = 0; c < 4u; c++) {
         uint32_t k = c & 1u, id = (c >> 1) & 1u ? P_PAN : P_LEVEL;
-        if (id == P_PAN && duell_mode_req == DM_SPLIT) {
+        if ((id == P_PAN && duell_mode_req == DM_SPLIT) || (SMK_SCREEN && id == P_LEVEL)) {   /* (SMK-37: the LEVELs are the faders, no knob) */
             draw_column_hide(c);
             continue;
         }
@@ -984,6 +1055,11 @@ static void layer_cards(uint32_t l)
     } else if (l == LAYER_REC) {                        /* DUELL 1.0 layout (QUICK_REC_NEW_LAYOUT.png): four cells CLICK, COUNT, LEVEL (choices of three: the segment line), CLEAR */
         for (c = 0; c < 3u; c++) {
             uint32_t v = rp_get(RL_F[c]);
+#if SMK_SCREEN
+            (void)v;
+            draw_column_hide(c);                        /* (SMK-37: the click moved to GLOBAL > TEMPO) */
+            continue;
+#endif
             cell_seg_n = 3;                             /* (template 8: the CHOICE this card shows, for this card only) */
             cell_seg_i = (uint8_t)(v % 3u);
             draw_column(c, RL_LABEL[c], rl_name(c, v), "", VAL(c), -1, RL_ICON[c]);

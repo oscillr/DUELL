@@ -12,13 +12,28 @@
 #define FELUCCA_OTA 1
 #define FELUCCA_OTA_DRYRUN 0
 #define FELUCCA_USB_PID 0x0002
+#include "fm1_cc.h"                                 /* BOARD_SMK37, SMK_MODEL */
+#if BOARD_SMK37
+#define FELUCCA_ID "ota-" SMK_MODEL "_900"           /* (after OberVave's loader.c, genkigenki/sloop-fm1 smk37, GPL-3.0) */
+#else
 #define FELUCCA_ID "ota-FM-1_900"
+#endif
 #define RING_PUBLISH() __asm__ volatile("" ::: "memory")
 #include "fm1_time.h"
 #include "fm1_sys.h"
 /* the loader may write the app area and erase update records; never the head, nor Felucca's store
  * [0x97000, 0xE0000) (user data, never a record: ldr_core.c) */
+#if BOARD_SMK37
+/* the SMK-37 (hal/smk_flash_map.h): the app area 0x4000..0x9CFFF and the update staging 0xBB000..0xBFFFF (where records
+ * live); never DUELL's store, never a protected range (the calibration, Bluetooth pairing, stock resources, key data) */
+#define FL_RANGE_OK(off, n) ((SMK_IN(off, n, SMK_APP_LO, SMK_APP_HI) || SMK_IN(off, n, SMK_OTA_LO, SMK_OTA_HI)) && \
+                             !SMK_PROTECTED(off, n))
+#ifndef LDR_SCREEN
+#define LDR_SCREEN 0                                /* the SMK-37's loader stays dark, as OberVave's (proven on units) */
+#endif
+#else
 #define FL_RANGE_OK(off, n) (FL_IN(off, n, 0x4000u, 0x97000u) || FL_IN(off, n, 0xE0000u, 0xFC000u))
+#endif
 #include "fm1_flash.h"
 #include "../src/libc.c"
 #include "../src/usb.c"

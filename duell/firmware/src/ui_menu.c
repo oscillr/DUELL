@@ -499,6 +499,17 @@ static void menu_row(uint32_t row)
         n++;
     }
     l1[n] = 0;
+#if SMK_SCREEN
+    if (smk_pk_long(row)) {                            /* SMK-37 PERFORM KNOB n with a choice too wide beside it: the name, then the choice on its own line (full size,
+                                                        * right), then KNOB 1's hint; a unit each (menu_items.c menu_units) */
+        int32_t t = y + HALF_UP(MU_P - 1 - AF_M_CAP_H);
+        cv_text_on(MR_LX, t - AF_M_CAP_Y, &AF_M, l1, fg, bg);
+        cv_text_r(MR_VR, t + MU_P - AF_M_CAP_Y, &AF_M, v, val, bg);
+        if (l[n] == '\n')
+            cv_text_on(MR_LX, y + 2 * MU_P + HALF_UP(MU_P - 1 - AF_S_CAP_H) - AF_S_CAP_Y, &AF_S, l + n + 1, T_MID, bg);
+        return;
+    }
+#endif
     if (l[n] == '\n') {                                /* two lines: M 11 px caps, 6 px, S 9 px caps, centred in h */
         int32_t top = y + HALF_UP(h - (AF_M_CAP_H + 6 + AF_S_CAP_H));
         GFX_HOOK_ALIGN(0, top, 0, top + AF_M_CAP_H, AL_V, "menu row name's first line");

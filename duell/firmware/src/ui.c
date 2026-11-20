@@ -95,7 +95,11 @@ static void patch_restore_all_do(void);      /* SAVE > TOOLS: RESTORE ALL */
                                                 * CLICK REC, USB SERIAL OFF where the old default was stored); clear in every older setting and on a new unit */
 #define PREF_GUIDE_SEEN (0x20u << 16)          /* DUELL 0.2.11: the first-start GUIDE was left (ui_guide.c); clear on a new unit and in every older setting (never
                                                 * written before 0.2.11): the guide shows once after the splash. Not a MENU_FLAGS row: MENU > SYSTEM > GUIDE only replays it */
+#if SMK_SCREEN
+#define GUIDE_N 9u                             /* the SMK-37 (owner 2026-11-20): SETUP 2 (mode; no device page: it has its own keys), GUIDE 3 (the capsule) .. 9 (ui_guide.c) */
+#else
 #define GUIDE_N 5u                             /* .. its pages: SETUP 1/5 (device), SETUP 2/5 (mode), GUIDE 3/5 to 5/5 (ui_guide.c; DUELL 1.3) */
+#endif
 /* DUELL 0.1: MENU > CONTROL > HOME OPENS, the page the HOME button opens from another page, power-on and leaving the menu (go_main):
  * 0 MORPH (the default, every older setting), 1 MODE, 2 MIXER; [15][2], a byte no engine uses, saved with the settings;
  * an unknown code reads as MORPH. HOME tapped on HOME's own pages goes round them from MORPH as ever (home_tap).
@@ -362,6 +366,68 @@ static void mac_preset_put(uint32_t v)
     mac_tag();
     ui_mac_set[9] = (uint8_t)(v < MPRE_N ? v : MPRE_STANDARD);
 }
+#if SMK_SCREEN
+/* SMK-37 device settings (owner 2026-11-18), in the same row's free bytes [10..27] (favorites.defaults[13]: SLICE's retired favourites row, the MACROS' settings use [0..9]): [10] the tag SMK_SET_TAG
+ * (without it, a new unit, ERASE DATA, every older record: the defaults), [11] VOLUME + 1 (0 = 100 %), [12..27] PERFORM's eight knobs, two bytes each (smk_pf_*). A device setting: no patch,
+ * multi or project holds it. Written with the other settings once it has rested (ui.mset_dirty) */
+#define smk_set (&favorites.defaults[13][10])
+#define SMK_SET_TAG 0xE7u
+enum { SPK_NONE, SPK_TRACK, SPK_GLOBAL, SPK_MACRO };   /* a PERFORM knob's kind (byte 0 bits 0..1; bit 2 the part; byte 1 the parameter id, the global id or the macro) */
+static const uint8_t SMK_PF_DEF[8][2] = {             /* (owner 2026-11-18) K1 SPACE, K2 ENV MACRO 1, K3 MULTI CUTOFF 1, K4 MULTI RES 1, K5 KILL, K6 ENV MACRO 2, K7 MULTI CUTOFF 2, K8 MULTI RES 2 */
+    {SPK_MACRO, MAC_SPACE}, {SPK_MACRO, MAC_ENVELOPE}, {SPK_TRACK, P_FREEA}, {SPK_TRACK, P_FREEB},
+    {SPK_MACRO, MAC_KILL}, {SPK_MACRO | 4u, MAC_ENVELOPE}, {SPK_TRACK | 4u, P_FREEA}, {SPK_TRACK | 4u, P_FREEB}};
+static void smk_set_tag(void)
+{
+    uint32_t k;
+    if (smk_set[0] == SMK_SET_TAG)
+        return;
+    smk_set[1] = 0;
+    for (k = 0; k < 8u; k++) {
+        smk_set[2u + 2u * k] = SMK_PF_DEF[k][0];
+        smk_set[3u + 2u * k] = SMK_PF_DEF[k][1];
+    }
+    smk_set[0] = SMK_SET_TAG;
+}
+static void smk_set_dirty(void)
+{
+    ui.mset_dirty = 1;
+    ui.mset_t = fm1_ms;
+}
+static uint32_t smk_volume(void)                      /* 0 .. 100 % */
+{
+    uint32_t v = smk_set[0] == SMK_SET_TAG ? smk_set[1] : 0u;
+    return v && v <= 101u ? v - 1u : 100u;
+}
+static void smk_volume_put(uint32_t v)
+{
+    smk_set_tag();
+    smk_set[1] = (uint8_t)((v > 100u ? 100u : v) + 1u);
+    smk_set_dirty();
+}
+/* PERFORM knob k (0..7): its kind, part and id; an entry out of range reads as its default */
+static uint32_t smk_pf_get(uint32_t k, uint32_t *part, uint32_t *id)
+{
+    uint32_t a = SMK_PF_DEF[k & 7u][0], b = SMK_PF_DEF[k & 7u][1];
+    if (smk_set[0] == SMK_SET_TAG) {
+        a = smk_set[2u + 2u * (k & 7u)];
+        b = smk_set[3u + 2u * (k & 7u)];
+        if (((a & 3u) == SPK_TRACK && b >= EXT_P_LEN) || ((a & 3u) == SPK_MACRO && b > MAC_KILL) || a > 7u) {
+            a = SMK_PF_DEF[k & 7u][0];
+            b = SMK_PF_DEF[k & 7u][1];
+        }
+    }
+    *part = (a >> 2) & 1u;
+    *id = b;
+    return a & 3u;
+}
+static void smk_pf_put(uint32_t k, uint32_t kind, uint32_t part, uint32_t id)
+{
+    smk_set_tag();
+    smk_set[2u + 2u * (k & 7u)] = (uint8_t)((kind & 3u) | (part & 1u) << 2);
+    smk_set[3u + 2u * (k & 7u)] = (uint8_t)id;
+    smk_set_dirty();
+}
+#endif
 /* every pass (ui_input): the MIDI PRESET to the MIDI side (an import or an editor restore takes effect here too), the macros' sets to the audio side (macro.c) */
 static void mac_settings(void)
 {
@@ -604,7 +670,12 @@ static void scr_shown(void)                            /* after the frame: the r
 }
 
 static const page_t *page_over;   /* a quick layer's own four knobs (ui_layer.c), while it edits or draws them */
+#if SMK_SCREEN
+static const page_t *smk_pg_over;                      /* SMK-37: a page shown or edited in the current page's place for a moment (a G1 page's right half; the MORPH picture of a fader) */
+static const page_t *cur_page(void) { return smk_pg_over ? smk_pg_over : page_over ? page_over : ui.perf ? &PERF_PAGE : &PAGES[ui.page]; }
+#else
 static const page_t *cur_page(void) { return page_over ? page_over : ui.perf ? &PERF_PAGE : &PAGES[ui.page]; }
+#endif
 /* PERFORM (ui_perform.c) ends: every way off its page (another page, HOME, the menu's HOME) comes here; FILTER back to its
  * neutral place (SPACE and DEPTH stay) */
 /* DUELL 0.2.14 PERF LEAVE (MENU > CONTROL; ui.c perf_keep): FADE (default) glides PERFORM's two live values, SPACE (perf_space) and KILL (perf_filt),
@@ -733,10 +804,25 @@ static int page_visible(uint32_t i)
         const char *l = ENGINES[TSEL->eng_req % NENGINES]->edit[(id - P_E0) & 7u].label;
         return l && l[0] && l[0] != '-';
     }
+#if SMK_SCREEN
+    if (PAGES[i].scope == SC_TRACK && PAGES[i].id[0] == P_ATGT)   /* SMK-37: ARP 3/3|CHORD is always there (CHORD's three); TARGET hides where the engine has none */
+        return 1;
+    if (PAGES[i].scope == SC_TRACK && PAGES[i].id[0] == XW_BASE + X_SUBWAVE) {   /* SMK-37: SUB OSC alone only where the engine has no eighth control (else EDIT 2|SUB OSC) */
+        const engine_t *e = ENGINES[TSEL->eng_req % NENGINES];
+        const char *l = e->edit[(e->uiord ? e->uiord[7] : 7u) & 7u].label;
+        return !(l && l[0] && l[0] != '-');
+    }
+#endif
     if (PAGES[i].scope == SC_TRACK && PAGES[i].id[0] == P_ATGT)   /* ARP 3/3 (ARP TARGET; owner 2026-10-28): only where the engine has more than ALL (ANALOG, TRIO, FM6: its atgt kind); the page counter, SELECT and the footer skip it */
         return ENGINES[eng_idx(TSEL->eng_req)]->atgt != ATG_NONE;
     if (PAGES[i].graph >= GR_FMOP && PAGES[i].graph <= GR_FMENV)
         return TSEL->eng_req % NENGINES == ENGI_FM6;
+#if BOARD_SMK37
+    if (PAGES[i].scope == SC_MACRO)
+        return 0;                                       /* SMK-37 (owner 2026-11-18): no MACROS pages; PERFORM's eight knobs are the macros (MENU > PERFORM > PERFORM KNOB 1 .. 8) */
+    if ((PAGES[i].fam == FAM_ENV || PAGES[i].fam == FAM_LFO) && (PAGES[i].graph == GR_MOD) != (cur_page()->graph == GR_MOD))
+        return 0;                                       /* SMK-37 (owner 2026-11-18): MATRIX is its own round (KNOB BANK + FADER BANK), not in ENV's or LFO's */
+#endif
     if (PAGES[i].graph == GR_MOD && PAGES[i].id[1] == P_M5SRC)   /* MATRIX 5-8 (0.2.24, owner): only while slots 1..4 are all in use (the matrix stays packed: mod.c mod_compact) */
         return TSEL->p[P_M4SRC] != 0;
     return 1;
@@ -928,7 +1014,13 @@ static void open_family(uint32_t fam)
 static void go_main_to(uint32_t want)
 {
     uint32_t i;
+#if BOARD_SMK37
+    for (i = 0; i < NPAGES && (PAGES[i].fam != FAM_TRK || PG_SAVE(&PAGES[i])); i++)   /* SMK-37 (owner 2026-11-18): PATCH opens MORPH, not the SAVE pages in its round */
+        ;
+    ui.page = (uint8_t)(i < NPAGES ? i : page_first(FAM_TRK));
+#else
     ui.page = (uint8_t)page_first(FAM_TRK);
+#endif
     for (i = 0; (want == HP_MAC1 || want == HP_MAC2) && i < NPAGES; i++)   /* (owner 2026-11-15: HOME OPENS MACROS 1/2 or 2/2) */
         if (PAGES[i].fam == FAM_TRK && page_visible(i) && PAGES[i].graph == (want == HP_MAC1 ? GR_MAC1 : GR_MAC2)) {
             ui.page = (uint8_t)i;
@@ -983,6 +1075,11 @@ static void home_tap(void)
     uint32_t i = ui.page + 1u;
     if (cur_page()->fam != FAM_TRK) {
         go_main();
+#if BOARD_SMK37
+    } else if (1) {                                   /* SMK-37 (owner 2026-11-18): MORPH, MACROS 1/2, MACROS 2/2, PATCHES, PATTERNS, MULTIS, TOOLS, round (SELECT's order) */
+        (void)i;
+        page_select(1);
+#endif
     } else if (i < NPAGES && PAGES[i].fam == FAM_TRK) {
         open_family(FAM_TRK);                         /* (on HOME's page again: the next one) */
     } else {
@@ -1985,10 +2082,43 @@ static uint32_t preset_visible(uint32_t cur, uint32_t total, uint32_t row)
 }
 
 /* select track i (KNOB 1 on TRACKS, the editor): its sound, pages and pattern from now on */
+#if SMK_SCREEN
+static int smk_twin_page(const page_t *pg);            /* (smk_screen.c) */
+static int smk_stack_page(const page_t *pg);
+/* the SMK-37's stacked pages (owner 2026-11-18: SEQUENCER, PARAMETER LOCKS, PATCHES, PATTERNS, TOOLS show both parts, part 1 above, part 2 below): each part keeps its own
+ * step cursor, lock row and pattern pick; the live ui fields are the selected part's, the other part's wait here (smk_screen.c smk_stack_draw shows them) */
+typedef struct {
+    uint8_t cursor, bank, ev_step, ev_id, ev_vel, ppick;
+    uint16_t ev_row, ev_keep;
+} smk_sq_t;
+static smk_sq_t smk_sq[2];
+static void smk_sq_put(smk_sq_t *q)
+{
+    q->cursor = ui.cursor; q->bank = ui.bank; q->ev_step = ui.ev_step; q->ev_id = ui.ev_id;
+    q->ev_vel = ui.ev_vel; q->ppick = ui.ppick; q->ev_row = ui.ev_row; q->ev_keep = ui.ev_keep;
+}
+static void smk_sq_get(const smk_sq_t *q)
+{
+    ui.cursor = q->cursor; ui.bank = q->bank; ui.ev_step = q->ev_step; ui.ev_id = q->ev_id;
+    ui.ev_vel = q->ev_vel; ui.ppick = q->ppick; ui.ev_row = q->ev_row; ui.ev_keep = q->ev_keep;
+}
+#endif
 static void track_select(uint32_t i)
 {
     if (i >= NSHOWN || i == song.sel)             /* (tracks 3, 4: hidden) */
         return;
+#if SMK_SCREEN
+    pl_commit();                                  /* (a patch waiting to load is the part's being left) */
+    smk_sq_put(&smk_sq[song.sel & 1u]);
+    song.sel = (uint8_t)i;
+    ui.entry_open = 0;
+    ui.hot_t = 0;
+    smk_sq_get(&smk_sq[i & 1u]);
+    sync_reload = 1;
+    if (!smk_twin_page(cur_page()) && !smk_stack_page(cur_page()) && !cur_page()->g8)
+        ui.force = 1;                             /* (a page that shows both parts redraws what changed only: the whole screen drawn again flickered, owner 2026-11-19) */
+    return;
+#endif
     song.sel = (uint8_t)i;
     ui.entry_open = 0;
     ui.hot_t = 0;

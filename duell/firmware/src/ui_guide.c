@@ -25,7 +25,11 @@ static const khint_t *guide_kh;                       /* the key hints drawn las
 static uint32_t guide_sig;                              /* the page drawn last (+ 1; 0: draw it) */
 static char sp_guide[241];                              /* DUELL 1.4: the page's words as drawn last, for the screen reader (ui_speak.c) */
 static char sp_guide_keys[72];                          /* .. and its legend row (said after the words) */
-static uint32_t guide_lo(void) { return ui.guide_menu ? 3u : 1u; }          /* the first and the last page shown (the menu's: the GUIDE pages only) */
+#if SMK_SCREEN
+static uint32_t guide_lo(void) { return ui.guide_menu ? 3u : 2u; }          /* (the SMK-37: no device page, it is its own keyboard) */
+#else
+static uint32_t guide_lo(void) { return ui.guide_menu ? 3u : 1u; }
+#endif          /* the first and the last page shown (the menu's: the GUIDE pages only) */
 static uint32_t guide_hi(void) { return GUIDE_N; }
 static int guide_ask(uint32_t pg) { return pg == 1u || pg == 2u; }          /* SETUP pages ask (DUELL 1.3: the device, then the mode), GUIDE pages tell */
 /* SETUP 2/5's recommended mode for the device picked on SETUP 1/5 (owner 2026-11-15): KEYS LAYER, CIRCUIT TRACKS DUEL, MPC/FORCE STEREO */
@@ -191,6 +195,23 @@ static int32_t guide_wrap(int32_t x, int32_t y, int32_t w, const aafont_t *f, co
 #if !DUELL_BENCH                                       /* (the guide's page drawing: not in a DUELL_BENCH developer build, see guide_seen) */
 /* DUELL 1.1 (FIRST_RUN_SETUP_V2_A.png): a sentence (M) wrapped at spaces to w px, a word "[SAVE]" drawn as its keycap (kc_tag) in the line, centred on the line's capitals; the first line's capitals end on row `base`,
  * the next ones UT_T6_G_LINE under it; -> the last line's baseline */
+#if SMK_SCREEN
+/* the SMK-37's printed buttons as pills of the keycaps' look (it has none of its own): the label in S on the key colour, 13 px tall */
+static int32_t smk_pill_w(const char *lb) { return text_w(&AF_S, lb) + 8; }
+static int32_t smk_pill(int32_t x, int32_t y, const char *lb)
+{
+    int32_t pw = smk_pill_w(lb);
+    cv_rrect(x, y, pw, KC_H + 1, 4, T_KEY, T_BG);         /* (one row taller than a keycap: the Q of SEQ keeps its tail inside) */
+    cv_text_in(x, y + HALF_UP(KC_H - AF_S_CAP_H) - AF_S_CAP_Y, pw, &AF_S, lb, T_KINK, T_KEY);
+    return x + pw;
+}
+static const char *smk_kc_name(uint32_t id) { return id == KC_OCTDN ? "OCT-" : id == KC_OCTUP ? "OCT+" : id == KC_HOME ? "PATCH" : 0; }   /* (the guide's legend: the SMK's buttons; OCT- / OCT+ short, owner 2026-11-20) */
+static int32_t guide_kw(uint32_t id) { return smk_kc_name(id) ? smk_pill_w(smk_kc_name(id)) : kc_w(id); }
+static int32_t guide_kcap(int32_t x, int32_t y, uint32_t id) { return smk_kc_name(id) ? smk_pill(x, y, smk_kc_name(id)) : cv_keycap(x, y, id, T_KEY, T_KINK, T_BG); }
+#else
+#define guide_kw(id) kc_w(id)
+#define guide_kcap(x, y, id) cv_keycap((x), (y), (id), T_KEY, T_KINK, T_BG)
+#endif
 static int32_t guide_rich(int32_t x, int32_t base, int32_t w, const char *s)
 {
     int32_t cx = x;
@@ -211,6 +232,29 @@ static int32_t guide_rich(int32_t x, int32_t base, int32_t w, const char *s)
         wd[n] = 0;
         id = kc_tag(wd, &tl);
         wpx = id >= 0 ? kc_w((uint32_t)id) : text_w(&AF_M, wd);
+#if SMK_SCREEN
+        if (wd[0] == '[') {                             /* the SMK-37's printed buttons, every one as a pill (also ARP, SEQ: one look) (no keycap of the FM-1's: [GLOBE], [KNOB_BANK], [NOTE_REPEAT] ..): a pill of the same look,
+                                                         * its label in S, '_' a space, a mark after it (",") as the keycaps' */
+            char lb[16];
+            uint32_t a = 1u, b = 0, e;
+            for (e = 1u; wd[e] && wd[e] != ']'; e++)
+                ;
+            while (a < e && b + 1u < sizeof lb)
+                lb[b++] = wd[a] == '_' ? ' ' : wd[a], a++;
+            lb[b] = 0;
+            wpx = smk_pill_w(lb) + (wd[e] && wd[e + 1u] ? text_w(&AF_M, wd + e + 1u) : 0);
+            if (cx > x && cx + wpx > x + w) {
+                cx = x;
+                base += UT_T6_G_LINE;
+            }
+            cx = smk_pill(cx, base - AF_M_CAP_H + 1 - (KC_H - AF_M_CAP_H) / 2, lb);
+            if (wd[e] && wd[e + 1u])
+                cx = cv_text_on(cx, UT_TY(M, base), &AF_M, wd + e + 1u, T_TEXT, T_BG);
+            cx += 5;
+            s += n;
+            continue;
+        }
+#endif
         if (id >= 0 && wd[tl])                          /* (a mark after the keycap: "[OCT+]," ) */
             wpx += text_w(&AF_M, wd + tl);
         if (cx > x && cx + wpx > x + w) {
@@ -266,12 +310,127 @@ static void guide_leader(int32_t x, int32_t y0, int32_t y, int32_t x1)
         cv_rect(x, y, x1 - x, 1, T_MID);
 }
 /* from (x, y) right to xc, then up to y1 (the leader of a note to its item in the capsule) */
+#if SMK_SCREEN
+#define GD_CAP_END (50 + CAP_Y + CAP_H + 2)             /* (the SMK-37, owner 2026-11-20: the pointers stop under the capsule, they never enter it) */
+#else
+#define GD_CAP_END 65
+#endif
 static void guide_leader2(int32_t x, int32_t y, int32_t xc, int32_t y1)   /* (owner 2026-11-15: in the selected part's colour, as the GUIDE pages' headings) */
 {
     cv_rect(x, y, xc - x + 1, 1, T_PTHEME(song.sel));
     cv_rect(xc, y1, 1, y - y1 + 1, T_PTHEME(song.sel));
 }
 /* one page's content into the current canvas (the caller sets cv_oy for the strip; everything is drawn at its SCREEN row) */
+#if SMK_SCREEN
+/* the SMK-37's guide (owner 2026-11-20: everything DUELL's guide says, in the SMK's buttons, and what the SMK does its own way): SETUP 2 the mode (the keys split at F#4 in
+ * STEREO and DUEL), GUIDE 3 the capsule (as the FM-1), 4 .. 8 three topics each. The printed buttons in brackets (guide_rich: a pill; '_' a space) */
+/* (owner 2026-11-20: rows, not sentences; what is printed on the unit in a pill, a knob as the screen's knob dot, the parts and GLOBAL in their colours) a body line's
+ * tokens, space apart: [NAME] a pill (printed on the unit; '_' a space), #n knob n's dot, {1} {2} {G} the words PART 1, PART 2, GLOBAL in their colours, else a word */
+static int32_t guide_tok_w(const char *w, uint32_t n)
+{
+    char b[24];
+    uint32_t i;
+    for (i = 0; i < n && i + 1u < sizeof b; i++)
+        b[i] = w[i] == '_' ? ' ' : w[i];
+    b[i] = 0;
+    if (b[0] == '[' && i > 2u) {
+        b[i - 1u] = 0;
+        return smk_pill_w(b + 1);
+    }
+    if (b[0] == '#' && i == 2u)
+        return AF_S_CAP_H;
+    if (b[0] == '{' && i == 3u)
+        return text_w(&AF_M, b[1] == 'G' ? "GLOBAL" : b[1] == '1' ? "PART 1" : "PART 2");
+    return text_w(&AF_M, b);
+}
+static void guide_tok(int32_t x, int32_t base, const char *w, uint32_t n)
+{
+    char b[24];
+    uint32_t i;
+    for (i = 0; i < n && i + 1u < sizeof b; i++)
+        b[i] = w[i] == '_' ? ' ' : w[i];
+    b[i] = 0;
+    if (b[0] == '[' && i > 2u) {
+        b[i - 1u] = 0;
+        (void)smk_pill(x, base - AF_M_CAP_H + 1 - (KC_H - AF_M_CAP_H) / 2, b + 1);
+    } else if (b[0] == '#' && i == 2u)
+        smk_dot(x, base - AF_M_CAP_H + 1, (uint32_t)(b[1] - '1'), T_TEXT);
+    else if (b[0] == '{' && i == 3u)
+        cv_text_on(x, UT_TY(M, base), &AF_M, b[1] == 'G' ? "GLOBAL" : b[1] == '1' ? "PART 1" : "PART 2",
+                   b[1] == 'G' ? smk_gcol() : vt(T_PTHEME(b[1] == '2'), T_BG), T_BG);
+    else
+        cv_text_on(x, UT_TY(M, base), &AF_M, b, T_TEXT, T_BG);
+}
+static int32_t guide_rows(int32_t y, const char *s)     /* the body: its lines ('\n'), each from the left edge; -> the last line's baseline */
+{
+    char *said = gfx_said;
+    if (said)
+        gfx_said_add(s);
+    gfx_said = 0;
+    while (*s) {
+        int32_t x = GD_X;
+        while (*s && *s != '\n') {
+            uint32_t n = 0;
+            while (*s == ' ')
+                s++;
+            while (s[n] && s[n] != ' ' && s[n] != '\n')
+                n++;
+            if (n) {
+                guide_tok(x, y, s, n);
+                x += guide_tok_w(s, n) + 4;
+            }
+            s += n;
+        }
+        if (*s == '\n') {
+            s++;
+            y += UT_T6_G_LINE;
+        }
+    }
+    gfx_said = said;
+    return y;
+}
+static void guide_topics(const char *const *t)          /* up to three headings, each with its rows */
+{
+    int32_t y = UT_T6_G_HEAD0;
+    uint32_t i;
+    for (i = 0; i < 3u && t[2u * i]; i++) {
+        if (i) {                                       /* (owner 2026-11-20: a line and some room between two topics) */
+            cv_rect(GD_X, y - UT_T6_G_TH + 8, GD_W, 1, ux_mix(T_BG, T_TEXT, 22));
+            y += 8;
+        }
+        cv_text_on(GD_X, UT_TY(L, y), &AF_L, t[2u * i], T_PTHEME(song.sel), T_BG);
+        y = guide_rows(y + UT_T6_G_HT, t[2u * i + 1u]) + UT_T6_G_TH;
+    }
+}
+static void guide_capsule_page(void);
+static void guide_content(uint32_t pg)
+{
+    static const t6_opt_t O2[3] = {{45, 55, 64, 79}, {102, 37, 120, 134}, {141, 37, 159, 173}};
+    static const char *const T[6][6] = {             /* (owner 2026-11-20: what first, then how; rows, short; one name once; LFO, ENVELOPE singular) */
+        {"TWO PARTS", "KNOBS #1 - #4 = {1}\nKNOBS #5 - #8 = {2}",
+         "THREE COLOURS", "{1} {2} = the two parts\n{G} = the whole unit", 0, 0},
+        {"SWITCH PARTS", "{1} only = [GLOBE] + [CHN_1] C3\n{2} only = [GLOBE] + [CHN_2] C#3\nBoth = [GLOBE] + [CHN_1] [CHN_2]",
+         "KEY SPLIT", "In STEREO and DUEL:\n{1} = low keys\n{2} = high keys\nMove = [BT] MENU > PLAYING > SPLIT", 0, 0},
+        {"CONTROLS", "{1} LEVEL = [FADER_1]\n{2} LEVEL = [FADER_2]\n{1} MORPH = [FADER_3]\n{2} MORPH = [FADER_4]\nLFO = [KNOB_BANK]\nENVELOPE = [FADER_BANK]\nMOD MATRIX =\n[KNOB_BANK] + [FADER_BANK]\nMENU = [BT]", 0, 0, 0, 0},
+        {"PADS", "An effect = hold a pad\nMore of it = press harder",
+         "PERFORM", "Your eight knobs = [NOTE_REPEAT]\nPut a control there: on its page,\nhold [NOTE_REPEAT] + turn its knob", 0, 0},
+        {"QUICK EDIT", "Main knobs over the page = hold\n[PARA] [SCALE] [GLOBE] [ARP]\n[SEQ] or [SEQ_REC]",
+         "PRINTED KEYS", "ARP RATE = [ARP] + [1/4] .. [1/32T]\nSCALE ROOT =\n[GLOBE] + [SC_C] .. [SC_B]", 0, 0},
+        {"RESET A KNOB", "[OCT-] + turn the knob",
+         "PARAMETER LOCK", "A step's own value =\nhold its key + [OCT+] + turn a knob",
+         "STOP ALL", "[SEQ_PLAY] twice"}};
+    if (pg == 2u) {
+        cv_text_on(GD_X, UT_TY(M, UT_T6_Q_BASE), &AF_M, "How do you want to start?", T_TEXT, T_BG);
+        guide_option(&O2[0], "LAYER", "Both parts combined:", "velocity crossfade, key split", "", "RECOMMENDED", guide_pick[1] == 0u);
+        guide_option(&O2[1], "STEREO", "Both parts in one stereo field", "", "", "", guide_pick[1] == 1u);
+        guide_option(&O2[2], "DUEL", "Dual mono, for external effects", "", "", "", guide_pick[1] == 2u);
+    } else if (pg == 3u)
+        guide_capsule_page();
+    else if (pg >= 4u && pg <= 9u)
+        guide_topics(T[pg - 4u]);
+}
+#define guide_content guide_content_fm1                 /* (the FM-1's pages below: their page 3 is the SMK's too) */
+#endif
 static void guide_content(uint32_t pg)
 {
     static const t6_opt_t O1[3] = {{50, 25, 69, 0}, {77, 39, 96, 111}, {118, 39, 137, 152}};       /* DUELL 1.3 SETUP 1/5 (owner 2026-11-15): KEYS OR OTHER MIDI (the name alone), CIRCUIT TRACKS, MPC/FORCE (a line: what it sets) */
@@ -303,7 +462,7 @@ static void guide_content(uint32_t pg)
         for (i = 0; i < 3u; i++) {                      /* each leader starts 3 px after the end of its own text's last line, runs right, then up to its item in the capsule */
             int32_t xc = cx + (int32_t)i * CAP_NUM_W + (i == 0u ? CAP_NUM_W : i == 1u ? CAP_LET_W : CAP_VOI_W) / 2;
             y = guide_wrap(GD_X, NY[i], i == 2u ? tw + 24 : tw, &AF_M, NOTE[i], T_TEXT, UT_T6_G_LINE + 1);
-            guide_leader2(guide_last_x + 3, y - (UT_T6_G_LINE + 1) + my, xc, 65);
+            guide_leader2(guide_last_x + 3, y - (UT_T6_G_LINE + 1) + my, xc, GD_CAP_END);
         }
     } else if (pg == 4u) {                              /* (owner 2026-11-15: the headings in the selected part's colour, T_PTHEME, as SETUP's boxes) outcome as a heading (L), the how-sentence under it with its keycaps in the sentence */
         y = UT_T6_G_HEAD0;
@@ -323,6 +482,10 @@ static void guide_content(uint32_t pg)
         guide_rich(GD_X, y + UT_T6_G_HT, GD_W, "One step gets its own value for the knob you turn. With a note key down, press [OCT+] and turn a knob.");
     }
 }
+#if SMK_SCREEN
+static void guide_capsule_page(void) { guide_content_fm1(3u); }   /* (the SMK-37's GUIDE 3: the FM-1's capsule page) */
+#undef guide_content
+#endif
 /* the legend row (item 118, FINAL_V1_08_setup): each key's cap (the firmware's own) and its word (S, grey) on the capitals' last row UT_T6_LEG_BASE; two items: at x UT_T6_LEG_X1 and UT_T6_LEG_X2 as the picture,
  * three: the first at X1, the last ending at UT_T6_LEG_R, the middle one between them. Three items whose words do not leave UT_T6_LEG_MIN px between them (the MENU copy's OCT+ NEXT / OCT- BACK / HOME CLOSE and
  * OCT+ FINISH: 219 / 229 px of 222) lose the LAST item's word, as cv_key_row always did; no other word is touched (HANDOFF_V2 item 118 lists it) */
@@ -336,7 +499,7 @@ static void guide_legend(const khint_t *h, uint32_t n)   /* owner 2026-11-15: th
     (void)n;
     for (;;) {
         for (i = 0; i < 3u; i++)
-            w[i] = h[i].act ? kc_w(h[i].key) + (h[i].act[0] && (i != 1u || word1) ? UT_T6_LEG_GAP + text_w(&AF_S, h[i].act) : 0) : 0;
+            w[i] = h[i].act ? guide_kw(h[i].key) + (h[i].act[0] && (i != 1u || word1) ? UT_T6_LEG_GAP + text_w(&AF_S, h[i].act) : 0) : 0;
         x[0] = UT_T6_LEG_X1;
         x[2] = UT_T6_LEG_R - w[2];
         x[1] = 120 - w[1] / 2;
@@ -348,7 +511,7 @@ static void guide_legend(const khint_t *h, uint32_t n)   /* owner 2026-11-15: th
         int32_t e;
         if (!h[i].act)
             continue;
-        e = cv_keycap(x[i], UT_T6_LEG_Y, h[i].key, T_KEY, T_KINK, T_BG);
+        e = guide_kcap(x[i], UT_T6_LEG_Y, h[i].key);
         if (h[i].act[0] && (i != 1u || word1))
             cv_text_on(e + UT_T6_LEG_GAP, UT_TY(S, UT_T6_LEG_BASE), &AF_S, h[i].act, grey, T_BG);
     }

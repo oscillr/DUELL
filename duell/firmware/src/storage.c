@@ -90,6 +90,35 @@ static uint32_t st_crc32_add(uint32_t c, const void *p, uint32_t n)   /* zlib CR
 }
 static uint32_t st_crc32(const void *p, uint32_t n) { return ~st_crc32_add(0xFFFFFFFFu, p, n); }
 
+#if BOARD_SMK37
+/* the SMK-37 (hal/smk_flash_map.h): every object moved out of the protected ranges; OBJ_VELO has no place (the factory
+ * calibration replaces it) and is refused like a retired object; an unknown or retired id gets an address outside every
+ * window, which the driver refuses */
+#define ST_SMK_NOWHERE 0xFFFFF000u
+static uint32_t st_sector(uint32_t obj, uint32_t copy)  /* flash offset of copy A (0) / B (1) */
+{
+    if (obj == OBJ_SETTINGS)
+        return SMK_SETTINGS_AT + copy * ST_SECTOR;
+    if (obj == OBJ_VELO || obj >= OBJ_COUNT || OBJ_RETIRED(obj))
+        return ST_SMK_NOWHERE;
+    if (obj >= OBJ_PATCHX0) {                            /* chunks 6..21 */
+        uint32_t i = obj - OBJ_PATCHX0;
+        return (i < SMK_PATCHX_LO_N ? SMK_PATCHX_LO_AT + i * 2u * ST_SECTOR
+                                    : SMK_PATCHX_HI_AT + (i - SMK_PATCHX_LO_N) * 2u * ST_SECTOR) + copy * ST_SECTOR;
+    }
+    if (obj >= OBJ_WTAB0)
+        return SMK_WTAB_AT + (obj - OBJ_WTAB0) * 2u * ST_SECTOR + copy * ST_SECTOR;
+    if (obj >= OBJ_PATCH0)                               /* chunks 0..5 */
+        return SMK_PATCH_AT + (obj - OBJ_PATCH0) * 2u * ST_SECTOR + copy * ST_SECTOR;
+    if (obj >= OBJ_MULTI0)
+        return SMK_MULTI_AT + (obj - OBJ_MULTI0) * 2u * ST_SECTOR + copy * ST_SECTOR;
+    if (obj >= OBJ_PATSLOT0)
+        return SMK_PATSLOT_AT + (obj - OBJ_PATSLOT0) * 2u * ST_SECTOR + copy * ST_SECTOR;
+    if (obj == OBJ_AUTOSAVE)
+        return SMK_AUTOSAVE_AT + copy * ST_SECTOR;
+    return ST_SMK_NOWHERE;
+}
+#else
 static uint32_t st_sector(uint32_t obj, uint32_t copy)  /* flash offset of copy A (0) / B (1) */
 {
     if (obj == OBJ_SETTINGS)
@@ -119,6 +148,7 @@ static uint32_t st_sector(uint32_t obj, uint32_t copy)  /* flash offset of copy 
         return 0xDC000u + (obj - OBJ_UPRESET0) * 2u * ST_SECTOR + copy * ST_SECTOR;
     return 0x97000u + (obj - OBJ_PROJECT0) * 2u * ST_SECTOR + copy * ST_SECTOR;
 }
+#endif /* BOARD_SMK37 */
 
 static uint8_t st_buf[ST_PAYLOAD_MAX] __attribute__((aligned(4), section(".pool")));   /* (main loop only) */
 
@@ -126,6 +156,10 @@ static int st_head(uint32_t obj, uint32_t copy, st_hdr_t *h)   /* commit record 
 {
     if (obj >= OBJ_COUNT || OBJ_RETIRED(obj) || copy > 1u)
         return -1;
+#if BOARD_SMK37
+    if (obj == OBJ_VELO)                                 /* (no place on the SMK-37: smk_flash_map.h) */
+        return -1;
+#endif
     if (st_read(st_sector(obj, copy), h, sizeof *h))
         return -1;
     if (h->magic != ST_MAGIC || h->type != obj || h->slot != copy || h->len > ST_PAYLOAD_MAX ||

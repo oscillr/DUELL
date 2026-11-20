@@ -4,7 +4,7 @@
 MultiMorphing Bitimbral Synthesizer
 by OSCILL/R
 
-DUELL turns the FM-1 into two synths in one box. This page is the short tour; [SPEC.md](../SPEC.md) is the full design. DUELL 1.3 runs on the FM-1 ([INSTALL.md](INSTALL.md)) ([web emulator](https://oscillr.github.io/DUELL/emu/)).
+DUELL turns the FM-1 and the SMK-37 into two synths in one box. This page is the short tour, with the FM-1's button names; the SMK-37's are on the [SMK-37 Cheat Sheet](https://oscillr.github.io/DUELL/cheatsheet/smk37/). [SPEC.md](../SPEC.md) is the full design. DUELL 1.3.5 ([INSTALL.md](INSTALL.md)) ([web emulator](https://oscillr.github.io/DUELL/emu/)).
 
 
 ## The idea

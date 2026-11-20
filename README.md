@@ -3,24 +3,39 @@
 **MultiMorphing Bitimbral Synthesizer**  
 **by OSCILL/R**
 
-**Two synths in one small box.** DUELL is free, open-source firmware (GPL-3.0) for the M-VAVE FM-1. It turns the FM-1 into a bitimbral instrument: two complete parts, three ways to play them together, and a morph that glides between two versions of every sound. This is **DUELL 1.3.3**.
+**Two synths in one small box.** DUELL is firmware for the M-VAVE FM-1 and the M-VAVE SMK-37 (Pro, Elite and MKE-P37): two complete parts, three ways to play them together, and a morph that glides between two versions of every sound. This is **DUELL 1.3.5**.
 
 **Try it in your browser, no FM-1 needed:** <https://oscillr.github.io/DUELL/emu/>
 
 <p align="left"><img src="docs/duell-deck.png" alt="DUELL" width="720"></p>
 
-> **Install at your own risk.** DUELL has run on **two FM-1 units, the author's**, and more than 100 people have installed it through the Firmware Hub. The way back to the official firmware (V15 or V16) has worked for the author. The FM-1 has a single copy of its firmware and no known rollback. Back up first. Read [docs/RECOVERY.md](docs/RECOVERY.md) and [docs/KNOWN_LIMITS.md](docs/KNOWN_LIMITS.md). No warranty. DUELL is not affiliated with M-VAVE.
+> **Install at your own risk.** Back up first. If something goes wrong: [docs/RECOVERY.md](docs/RECOVERY.md). DUELL is not affiliated with M-VAVE.
 
 ## Install and update
 
-1. Use **Chrome or Edge** on a computer (the installer needs WebMIDI with SysEx), a **data** USB cable straight into the computer (no hub), and an FM-1.
+1. Use **Chrome or Edge** on a computer (the installer needs WebMIDI with SysEx), a **data** USB cable straight into the computer (no hub), and an FM-1 or an SMK-37.
 2. Open the installer page: <https://oscillr.github.io/DUELL/install/>. Save a backup, press Install, wait for Done, then switch the unit off and on once.
 3. While the new firmware is written, the unit shows the **update screen**: the DUELL word over moving wave lines, WRITING, a percent number, a bar of 20 segments and DO NOT SWITCH OFF. Do not unplug until it is done. If the screen stays dark the write may still be running: wait for the installer to say Done.
 4. Details, the checklist and the way back to the official firmware: [docs/INSTALL.md](docs/INSTALL.md). If something goes wrong: [docs/RECOVERY.md](docs/RECOVERY.md).
 
-The package is `duell-1.3.3.fwsc` (compare its SHA-256 with `SHA256SUMS` on the release page).
+The FM-1 package is `duell-1.3.5.fwsc` (compare its SHA-256 with `SHA256SUMS` on the release page).
+
+## DUELL on the SMK-37
+
+The same DUELL runs on the M-VAVE SMK-37 Pro, SMK-37 Elite and MKE-P37, one package for each model (`duell-1.3.5-smk37-pro.fwsc`, `duell-1.3.5-smk37-elite.fwsc`, `duell-1.3.5-smk37-mke.fwsc`). The installer page above picks the right one for the keyboard you connect. SMK-37 Cheat Sheet: <https://oscillr.github.io/DUELL/cheatsheet/smk37/>
+
+- **Both parts on one screen.** KNOB 1 to 4 set part 1, KNOB 5 to 8 set part 2, on every page.
+- **Faders:** FADER 1 and 2 set each part's LEVEL, FADER 3 and 4 each part's MORPH.
+- **Pads:** the 16 pads are PERFORM's effects; hold one, press harder for more. NOTE REPEAT opens PERFORM.
+- **Keys:** in STEREO and DUEL, part 1 plays the low keys and part 2 the high keys, from F#4 (MENU > PLAYING > SPLIT moves it). GLOBE + CHN 1 or CHN 2 plays one part alone.
+- **Buttons:** KNOB BANK = LFO, FADER BANK = ENVELOPE, both together = MOD MATRIX, BT = MENU, PATCH = MORPH, MACROS, PATCHES, PATTERNS, MULTIS and TOOLS.
+- **A start-up guide** on the unit shows all of this after a fresh install.
+
+> **SMK-37, the way back:** the installer page takes the SMK-37 Elite's official `SMK37-Elite-V16.fwsc`; for the Pro and the MKE-P37 use M-VAVE's own updater.
 
 ## What is in it
+
+The same on both units. Button names below are the FM-1's; the SMK-37's are in the section above.
 
 ### Two parts, three modes
 Part 1 and Part 2 each have their own sound, effects, EQ, ducker and arp.
@@ -168,7 +183,7 @@ One map for the whole unit. A CC on a part's channel moves that part; "both part
 
 **Learn-only parameters** have no CC of their own: the matrix choices and amounts, EQ, ARP and SEQ set-up, DUCK, the LFOs beyond the vibrato rows, the voice set-up, the master settings, UNDO, the four MORPH switches (TARGET, SMART, ARP, PITCH) and the settings that belong to both parts (BALANCE, XFADE, SPLIT, MODE). Teach a CC to one with SETTINGS > MIDI > MIDI LEARN on the unit.
 
-## What is not in 1.3.3
+## What is not in 1.3.5
 The editor's MIDI MAP tab, switching multis with preset changes, the SUB HARMONICS card (switched off). The full list is in [docs/KNOWN_LIMITS.md](docs/KNOWN_LIMITS.md).
 
 ## Build and test
@@ -181,7 +196,7 @@ Building a device image is described in [duell/BUILDING.md](duell/BUILDING.md); 
 |---|---|
 | Install or update | [docs/INSTALL.md](docs/INSTALL.md) |
 | Play it | [docs/QUICKSTART.md](docs/QUICKSTART.md) |
-| Keep one page beside the unit | the [cheat sheet](https://oscillr.github.io/DUELL/cheatsheet/) |
+| Keep one page beside the unit | the [FM-1 Cheat Sheet](https://oscillr.github.io/DUELL/cheatsheet/) or the [SMK-37 Cheat Sheet](https://oscillr.github.io/DUELL/cheatsheet/smk37/) |
 | Fix a problem | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) |
 | Recover from a failed flash | [docs/RECOVERY.md](docs/RECOVERY.md) |
 | Know the limits | [docs/KNOWN_LIMITS.md](docs/KNOWN_LIMITS.md), [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md) |

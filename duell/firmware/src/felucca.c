@@ -47,6 +47,9 @@
 #ifndef DUELL_VELO_CAPTURE
 #define DUELL_VELO_CAPTURE 0     /* DUELL developer build ONLY (tools/build.py: env DUELL_VELO_CAPTURE=1 with FELUCCA_CDC=1; never with --release): the raw key readings over the USB serial console (velocap.h, velocap.c, docs/VELO_CSV.md) */
 #endif
+#if BOARD_SMK37 && DUELL_VELO
+#error "BOARD_SMK37: the FM-1's key sensing (DUELL_VELO) does not apply; the SMK's keys have their own velocity (smk_input.h)"
+#endif
 #if DUELL_VELO_CAPTURE && !(DUELL_VELO && FELUCCA_CDC)
 #error "DUELL_VELO_CAPTURE is a developer build: it needs DUELL_VELO and the USB serial console (FELUCCA_CDC=1, which no release build has)"
 #endif
@@ -64,10 +67,16 @@
 #include "fm1_sys.h"
 #include "fm1_irq.h"
 #include "fm1_guard.h"
+#if BOARD_SMK37
+#include "smk_input.h"            /* the SMK-37's keys, buttons, encoders, pads, faders, wheels and button LEDs (fm1_adc.h's names too) */
+#include "fm1_timer.h"
+#include "fm1_audio.h"
+#else
 #include "fm1_input.h"
 #include "fm1_timer.h"
 #include "fm1_audio.h"
 #include "fm1_adc.h"
+#endif
 #define FM1_LCD_BL_LATE 1        /* item 163: the backlight on only after the panel's first black frame (lcd.c lcd_init); the loader keeps 0 */
 #include "fm1_lcd_hw.h"
 #if DUELL_TWOCORE
@@ -137,10 +146,13 @@ static int ann_wire_send(const uint8_t *p, uint32_t n)   /* one whole message, n
 #include "ui_menu.c"
 #include "ui_input.c"
 #include "ui_layer.c"              /* the quick layers (FX GLO SCL EDIT REC held; SEQ TOOLS: ui_tools.c) */
+#if BOARD_SMK37
+#include "smk_ui.c"                /* the SMK-37's controls: K1..K8, PATCH, < >, CHORD, KNOB BANK, faders, button and pad LEDs */
+#endif
 
 /* --------------------------------------------- storage, update, editor --- */
 #if FELUCCA_FLASH
-#if defined(DUELL_RAMPLACE) && DUELL_RAMPLACE
+#if defined(DUELL_RAMPLACE) && DUELL_RAMPLACE && !BOARD_SMK37   /* (the SMK-37: no key LEDs to keep through an erase) */
 #define FL_LED_STEPS 1                  /* (2026-11-07) the LEDs keep their picture through an erase (hal/fm1_flash.h fl_erase4k_led; in range Z, tools/ram_fns_z.py) */
 #endif
 #include "fm1_flash.h"

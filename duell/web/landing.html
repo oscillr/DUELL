@@ -26,32 +26,27 @@
 <link rel="stylesheet" href="brand.css">
 </head>
 <body>
+<nav class="sitenav"><a href="emu/">Web Emulator</a><a href="install/">Installer</a><a href="editor/">Editor</a><a href="cheatsheet/">FM-1 Cheat Sheet</a><a href="cheatsheet/smk37/">SMK-37 Cheat Sheet</a></nav>
+<style>.sitenav{display:flex;flex-wrap:wrap;gap:6px 18px;padding:10px 16px;background:#000;border-bottom:1px solid #35343a;font:600 15px/1.3 "Barlow Semi Condensed",-apple-system,"Helvetica Neue",Arial,sans-serif;position:relative;z-index:50}.sitenav a{color:#fffbff;text-decoration:none;letter-spacing:.02em}.sitenav a:hover{color:#de38ff}.sitenav a[aria-current]{color:#de38ff}.sitenav a{display:flex;align-items:center}@media print{.sitenav{display:none}}</style>
+
 <header class="brandhead"><img class="logo" src="editor/img/duell-logo-white.png" alt="DUELL"><img class="desc" src="editor/img/multimorphing-bitimbral-white.png" alt="MultiMorphing Bitimbral Synthesizer by OSCILL/R"></header>
 <main>
-  <p><b>Two synths in one small box.</b> DUELL is free, open-source firmware for the M-VAVE FM-1. It turns the FM-1 into a bitimbral instrument: two complete parts, three ways to play them together (LAYER, DUEL, STEREO), and a morph that glides between two versions of every sound.</p>
-
-  <p><b>Web emulator: <a href="emu/">open it in your browser</a></b></p>
-
-  <div class="box">
-    <p><b>DUELL 1.3: the firmware for the FM-1 and the web editor are available now. Web emulator: <a href="emu/">open it in your browser</a>.</b></p>
-    <p>DUELL has run on two FM-1 units, the author's, and more than 100 people have installed it through the Firmware Hub. The way back to the official firmware (V15 or V16) has worked for the author. Installing is at your own risk: read the install guide and the recovery notes first.</p>
-  </div>
+  <p><b>Two synths in one small box.</b></p>
+  <p class="box"><b>Install at your own risk.</b></p>
 
   <ul class="links">
-    <li><a href="emu/">Web emulator</a><span>DUELL in your browser, no FM-1 needed.</span></li>
-    <li><a href="install/">Installer</a><span>Flash DUELL to an FM-1, or go back to the official firmware. At your own risk.</span></li>
-    <li><a href="editor/">Editor</a><span>Edit both parts live, browse and save patches and multis, and (Backup page) save everything to a file and restore it. Chrome or Edge.</span></li>
-    <li><a href="cheatsheet/">Cheat sheet</a><span>One printable page: the buttons, the pages and the shortcuts at a glance.</span></li>
-    <li><a href="https://github.com/oscillr/DUELL/blob/main/docs/QUICKSTART.md">Quick start</a><span>The short tour. More guides are in the <a href="https://github.com/oscillr/DUELL/tree/main/docs">docs folder</a>: install, recovery, troubleshooting, known issues, testing.</span></li>
-    <li><a href="https://github.com/oscillr/DUELL/issues/new/choose">Report a bug</a><span>Found something? Please open an issue with the bug report form.</span></li>
-    <li><a href="https://github.com/oscillr/DUELL/releases">Releases</a><span>The firmware package and the release notes.</span></li>
-    <li><a href="https://github.com/oscillr/DUELL">Source code on GitHub</a><span>The full design (SPEC.md) is there too.</span></li>
+    <li><a href="emu/">Web Emulator</a><span>Play DUELL in your browser.</span></li>
+    <li><a href="install/">Installer</a><span>Install DUELL on the FM-1 or the SMK-37, or go back to the official firmware.</span></li>
+    <li><a href="editor/">Editor</a><span>Edit both parts live, manage your patches, back up and restore.</span></li>
+    <li><a href="cheatsheet/">FM-1 Cheat Sheet</a><span>The FM-1's controls on one printable page.</span></li>
+    <li><a href="cheatsheet/smk37/">SMK-37 Cheat Sheet</a><span>The SMK-37's controls on one printable page.</span></li>
+    <li><a href="https://github.com/oscillr/DUELL/blob/main/docs/QUICKSTART.md">Quick Start</a><span>The short tour.</span></li>
+    <li><a href="https://github.com/oscillr/DUELL/issues/new/choose">Report a Bug</a></li>
+    <li><a href="https://github.com/oscillr/DUELL/releases">Releases</a><span>The firmware files and what changed.</span></li>
+    <li><a href="https://github.com/oscillr/DUELL">Source Code</a></li>
   </ul>
 
-  <p class="small">DUELL is free software under the GPL-3.0, with <b>no warranty</b>. It is a modified version of
-    <a href="https://github.com/hugelton/Felucca">Felucca</a> by Leo Kuroshita, Hügelton Instruments, with the SHIM and RESO reverbs from JIANT.
-    See <a href="https://github.com/oscillr/DUELL/blob/main/NOTICE.md">NOTICE</a>.
-    DUELL is independent and not affiliated with M-VAVE. M-VAVE and FM-1 are trademarks of their respective owners.</p>
+  <p class="small">Based on <a href="https://github.com/hugelton/Felucca">Felucca</a> by Leo Kuroshita, Hügelton Instruments. GPL-3.0, no warranty. Not affiliated with M-VAVE.</p>
 </main>
 </body>
 </html>

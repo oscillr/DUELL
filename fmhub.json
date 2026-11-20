@@ -9,5 +9,11 @@
   "editor": "https://oscillr.github.io/DUELL/editor/",
   "cheat": "https://oscillr.github.io/DUELL/cheatsheet/",
   "color": "#8B5CF6",
-  "sounds": "own: the patches and multis made for DUELL"
+  "sounds": "own: the patches and multis made for DUELL",
+  "smk37": {
+    "what": "DUELL on the SMK-37: two complete parts on one screen, KNOB 1 to 4 for part 1 and KNOB 5 to 8 for part 2. The faders set each part's level and morph, the 16 pads play PERFORM effects, and the keys split between the parts. One build for each model: Pro, Elite and MKE-P37.",
+    "image": "docs/duell-smk37-card.jpg",
+    "install": "https://oscillr.github.io/DUELL/install/",
+    "guide": "https://oscillr.github.io/DUELL/cheatsheet/smk37/"
+  }
 }

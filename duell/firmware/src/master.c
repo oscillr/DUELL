@@ -5,6 +5,18 @@
  * the keys, live from the audio ISR at once, sounded loud under the splash with the knob turned down).
  * master_knob: the pot x16, smoothed per UI frame (master_poll) */
 static int32_t master_knob = 512 * 16;
+#if BOARD_SMK37
+/* The SMK-37 has no MASTER knob: GLOBAL > MASTER's VOLUME (owner 2026-11-18; a unit setting, ui.c smk_volume) is the level of the DAC (headphones, line out), the knob's law over
+ * 0 .. 100 %, 100 % the level the SMK always played at (unity, MASTER_TOP: no boost). USB audio is tapped before it (audio.c uac_tap): unchanged */
+static void master_poll(void)
+{
+    uint32_t v = smk_volume(), g = v >= 100u ? MASTER_TOP * 16u : master_of_knob16(v * 1016u * 16u / 100u);
+    (void)master_knob;
+    master_g16 = g;                                     /* (first: master_dac reads the pair only while they agree) */
+    song.master_q12 = g >> 4;
+}
+static void master_boot(void) { master_poll(); }
+#else
 static void master_poll(void)
 {
 #if DUELL_VELO
@@ -36,3 +48,4 @@ static void master_boot(void)
         }
     }                                                   /* (no reading: felucca_init's level, the loop glides on) */
 }
+#endif

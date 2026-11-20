@@ -5,7 +5,7 @@ no VOICE CAP, no shedding, no LIGHT FX), the same suite on the 1.1 code and on t
 
   python3 tools/gen_maxvoice_suite.py [M1 "NAME1" M2 "NAME2" M3 "NAME3"]     writes tools/bench_suites/MAX-VOICES.txt
 
-The test sounds are made by bench words in the unit's working memory only (nothing saved, no slot used): the engine's dearest default sound with
+The test sounds are made by bench words in the unit's working memory only (nothing saved, no slot used): the engine's dearest factory sound with
 everything on and MOVING: MULTI filter 24 dB, TWIN filter LP in PARALLEL (BLEND BOTH), SUB, the CYCLE envelope, both LFOs running smooth
 (SIN, TRI) on pitch / filter / shape, ENV 2 on filter / pitch / shape, all 8 matrix slots from LFO 1, LFO 2, CYCLE and ENV 2 to PITCH, MULTI CUTOFF,
 TIMBRE, AMP, PAN, SATURATION, TWIN CUTOFF, TWIN RES; SAT, an INSERT, SPREAD, the three sends; MORPH rolled to an End B, measured at A and at B.

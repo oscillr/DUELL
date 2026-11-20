@@ -4,12 +4,12 @@
 MultiMorphing Bitimbral Synthesizer
 by OSCILL/R
 
-> **Install DUELL 1.3 at your own risk.** DUELL has run on **two FM-1 units, the author's**, and more than 100 people have installed it through the Firmware Hub. The way back to the official firmware (V15 or V16) has worked for the author. The FM-1 has a single-bank layout and there is no known rollback. No warranty. DUELL is not affiliated with M-VAVE, and M-VAVE's firmware is not distributed here. Read [RECOVERY.md](RECOVERY.md), [KNOWN_LIMITS.md](KNOWN_LIMITS.md) and [KNOWN_ISSUES.md](KNOWN_ISSUES.md) first.
+> **Install DUELL at your own risk.** Back up first. No warranty. DUELL is not affiliated with M-VAVE, and M-VAVE's firmware is not distributed here. Read [RECOVERY.md](RECOVERY.md) first.
 >
 > The installer page is <https://oscillr.github.io/DUELL/install/>; the package `duell-1.3.fwsc` is attached to the [release](https://github.com/oscillr/DUELL/releases) (compare its SHA-256 with the `SHA256SUMS` file there). If the page ever shows "DUELL firmware is not yet released", no package was found and the install flow stays hidden.
 
 ## What you need
-- An M-VAVE FM-1.
+- An M-VAVE FM-1, or an M-VAVE SMK-37 (Pro, Elite or MKE-P37).
 - A computer with **Chrome or Edge** (the installer uses WebMIDI with SysEx; Safari and Firefox will not work).
 - A **data** USB cable. Some cables only charge.
 - Nothing to download for DUELL: the installer page loads the package itself (see "The file" below). Only for the way back you need M-VAVE's official file (V15 or V16).
@@ -69,3 +69,10 @@ If anything stops: replug the cable and press Install again. The device stays in
 
 Your DUELL data cannot be opened by the official firmware. This path is the same method as for installing. It has worked on the author's unit about three times; it is untested on other units.
 
+## SMK-37 (Pro, Elite, MKE-P37)
+
+DUELL 1.3.5 also runs on the M-VAVE SMK-37. Each model has its own package (`duell-1.3.5-smk37-pro.fwsc`, `duell-1.3.5-smk37-elite.fwsc`, `duell-1.3.5-smk37-mke.fwsc`), and the same installer page picks the one for the keyboard you connect: it asks the unit (or its update mode) which model it is.
+
+- **Install:** the same steps as above, with the SMK-37 connected. After a clean install the unit shows a start-up guide for its buttons.
+- **Back to the official firmware:** on the installer page, the SMK-37 Elite's official `SMK37-Elite-V16.fwsc` from M-VAVE (<https://open.m-vave.com>) is accepted under "Return to the official firmware". For the SMK-37 Pro and the MKE-P37 use M-VAVE's own updater: DUELL's update mode answers to it with the keyboard's own name.
+- **SMK-37 Cheat Sheet:** <https://oscillr.github.io/DUELL/cheatsheet/smk37/>

@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>DUELL SMK-37 Cheat Sheet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,600;0,700;1,400;1,700&family=Krona+One&family=Oswald:wght@600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0e0c1b;--panel:#1e1330;--fg:#f2eefa;--mute:#b9b0d0;--line:#2e1b4e;--pink:#fe8cc1;--vio:#8a3ebf;--vio2:#6545b7;--acc:#fe8cc1;--chip:#2e1b4e;--chipfg:#f2eefa}
+*{box-sizing:border-box}
+body{margin:0;background:radial-gradient(1200px 600px at 85% -10%,#2a1650 0,transparent 60%),var(--bg);color:var(--fg);font:14px/1.45 "DM Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:1100px;margin:0 auto;padding:20px 16px}
+header{padding:18px 0 10px;border-bottom:2px solid var(--vio2)}
+header h1{margin:0;font:400 clamp(40px,9vw,72px)/1 "Krona One","DM Sans",sans-serif;letter-spacing:.01em;color:var(--fg)}
+header .tag{margin:10px 0 0;font-size:clamp(16px,3.4vw,22px);text-transform:uppercase;color:var(--fg)}
+header .tag i{font-weight:400}header .tag b{font-weight:700}
+header .by{margin:6px 0 0;font-size:clamp(15px,3vw,18px);letter-spacing:.22em;color:var(--pink)}
+header .sub{margin:8px 0 0;color:var(--mute)}
+header .stamp{margin:4px 0 0;font-size:12px;color:var(--mute)}
+.bar{margin:12px 0 4px}
+button{font:inherit;font-family:"Oswald","DM Sans",sans-serif;font-weight:600;letter-spacing:.08em;padding:6px 18px;border:0;background:var(--pink);color:#0e0c1b;border-radius:10px;cursor:pointer}
+button:hover{background:#ffa6d0}
+.cols{columns:2 420px;column-gap:24px}
+section{break-inside:avoid;margin:0 0 14px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:4px 14px 10px}
+h2{font:600 16px/1.2 "Oswald","DM Sans",sans-serif;margin:10px 0 4px;padding-bottom:3px;border-bottom:2px solid var(--vio);color:var(--pink);text-transform:uppercase;letter-spacing:.1em}
+.row{display:grid;grid-template-columns:42% 1fr;gap:8px;padding:4px 0;border-bottom:1px solid var(--line);break-inside:avoid}
+.g{font-weight:600}
+.g b{display:inline-block;padding:0 6px;border-radius:5px;background:var(--chip);color:var(--chipfg);border:1px solid var(--vio2);font-size:.92em}
+.e{color:var(--fg)}
+ul{margin:4px 0 0;padding-left:18px}
+li{margin:3px 0;break-inside:avoid}
+li::marker{color:var(--pink)}
+.dg{display:grid;gap:5px;margin:6px 0 4px;font-size:.85em;text-align:center}
+.dg .r{display:flex;gap:5px;align-items:stretch}
+.dg .r>div{flex:1;border:1px solid var(--vio2);border-radius:6px;padding:3px 2px;background:var(--chip)}
+.dg .scr{flex:1.6;color:var(--mute)}
+.dg .keys{border-style:dashed}
+footer{margin-top:10px;font-size:12px;color:var(--mute)}
+@media (max-width:560px){.row{grid-template-columns:1fr;gap:2px}section{padding:4px 12px 10px}}
+header .logo{display:block;width:300px;max-width:100%;height:auto}
+header .desc{display:block;width:210px;max-width:100%;height:auto;margin:22px 0 6px}
+@media print{
+ header .logo,header .desc{filter:invert(1)}
+ header .logo{width:200px} header .desc{width:150px;margin:10px 0 4px}
+ @page{size:A4;margin:8mm}
+ :root{--bg:#fff;--panel:#fff;--fg:#000;--mute:#333;--line:#bbb;--acc:#b0206a;--pink:#d6247f;--vio:#6a2c9a;--vio2:#6a2c9a;--chip:#fff;--chipfg:#000}
+ body{font-size:9pt;line-height:1.15;background:#fff;color:#000}
+ main{max-width:none;padding:0}
+ header{padding:0 0 1.5mm;border-bottom:1.5px solid var(--vio)}
+ header h1{font-size:20pt;color:#000}
+ header .tag{font-size:10pt;margin-top:1mm;color:#000}
+ header .by{font-size:9pt;margin-top:.5mm;color:var(--pink)}
+ header .sub{margin-top:1mm}
+ header .sub,header .stamp,footer{font-size:9pt}
+ .bar{display:none}
+ footer{display:none}
+ .cols{columns:2;column-gap:5mm}
+ section{break-inside:auto;margin:0 0 1.2mm;border:0;border-radius:0;padding:0;background:#fff}
+ h2{font-size:10pt;margin:2mm 0 1mm;color:var(--vio);border-bottom-color:var(--pink)}
+ .row{padding:.3px 0;gap:4px;grid-template-columns:34% 1fr}
+ .g b{border-color:var(--vio)}
+ li{margin:0}
+}
+</style>
+</head>
+<body>
+<nav class="sitenav"><a href="../../emu/">Web Emulator</a><a href="../../install/">Installer</a><a href="../../editor/">Editor</a><a href="../../cheatsheet/">FM-1 Cheat Sheet</a><a href="../../cheatsheet/smk37/" aria-current="page">SMK-37 Cheat Sheet</a></nav>
+<style>.sitenav{display:flex;flex-wrap:wrap;gap:6px 18px;padding:10px 16px;background:#000;border-bottom:1px solid #35343a;font:600 15px/1.3 "Barlow Semi Condensed",-apple-system,"Helvetica Neue",Arial,sans-serif;position:relative;z-index:50}.sitenav a{color:#fffbff;text-decoration:none;letter-spacing:.02em}.sitenav a:hover{color:#de38ff}.sitenav a[aria-current]{color:#de38ff}.sitenav a{display:flex;align-items:center}@media print{.sitenav{display:none}}</style>
+
+<main>
+<header>
+ <h1><a href="../../"><img class="logo" src="../../editor/img/duell-logo-white.png" alt="DUELL"></a></h1>
+ <p class="tag"><img class="desc" src="../../editor/img/multimorphing-bitimbral-white.png" alt="MultiMorphing Bitimbral Synthesizer"></p>
+ <p class="by">by OSCILL/R</p>
+ <p class="sub">SMK-37 Cheat Sheet</p>
+ <p class="stamp">DUELL 1.3.5 &middot; <a href="../" style="color:var(--pink)">FM-1 Cheat Sheet</a></p>
+ <p class="bar"><button type="button" onclick="window.print()">Print</button></p>
+</header>
+
+<div class="cols">
+
+<section>
+<h2>Two parts</h2>
+<div class="row"><div class="g">Knobs <b>1</b> to <b>4</b></div><div class="e">Part 1, on every page.</div></div>
+<div class="row"><div class="g">Knobs <b>5</b> to <b>8</b></div><div class="e">Part 2, on every page. On a page for the whole unit they do what knobs 1 to 4 do.</div></div>
+<div class="row"><div class="g">Three colours</div><div class="e">Part 1 and part 2 each have their colour; a third colour marks what sets the whole unit.</div></div>
+</section>
+
+<section>
+<h2>Switch parts</h2>
+<div class="row"><div class="g"><b>GLOBE</b> + <b>CHN 1</b> (C3)</div><div class="e">Part 1 only.</div></div>
+<div class="row"><div class="g"><b>GLOBE</b> + <b>CHN 2</b> (C#3)</div><div class="e">Part 2 only.</div></div>
+<div class="row"><div class="g"><b>GLOBE</b> + <b>CHN 1</b> <b>CHN 2</b></div><div class="e">Both parts.</div></div>
+<div class="row"><div class="g">Key split</div><div class="e">In STEREO and DUEL part 1 plays the low keys and part 2 the high keys, from F#4. Move it: <b>BT</b> MENU &gt; PLAYING &gt; SPLIT.</div></div>
+</section>
+
+<section>
+<h2>Faders</h2>
+<div class="row"><div class="g"><b>FADER 1</b> / <b>FADER 2</b></div><div class="e">LEVEL of part 1 / part 2.</div></div>
+<div class="row"><div class="g"><b>FADER 3</b> / <b>FADER 4</b></div><div class="e">MORPH of part 1 / part 2.</div></div>
+</section>
+
+<section>
+<h2>Buttons</h2>
+<div class="row"><div class="g"><b>&lt;</b> / <b>&gt;</b></div><div class="e">The pages of a module.</div></div>
+<div class="row"><div class="g"><b>PATCH</b></div><div class="e">MORPH, MACROS 1/2 and 2/2, PATCHES, PATTERNS, MULTIS, TOOLS, in turn.</div></div>
+<div class="row"><div class="g"><b>KNOB BANK</b></div><div class="e">LFO.</div></div>
+<div class="row"><div class="g"><b>FADER BANK</b></div><div class="e">ENVELOPE.</div></div>
+<div class="row"><div class="g"><b>KNOB BANK</b> + <b>FADER BANK</b></div><div class="e">MOD MATRIX.</div></div>
+<div class="row"><div class="g"><b>PARA</b> / <b>SCALE</b> / <b>FX</b> / <b>GLOBE</b> / <b>ARP</b> / <b>SEQ</b></div><div class="e">EDIT, SCALE, FX, the global pages, ARP and the sequencer.</div></div>
+<div class="row"><div class="g"><b>BT</b></div><div class="e">MENU.</div></div>
+<div class="row"><div class="g"><b>SEQ PLAY</b> / <b>SEQ REC</b></div><div class="e">PLAY/STOP and REC, as on the FM-1: <b>SEQ REC</b> is HOLD, and records on the sequencer pages. <b>SEQ PLAY</b> twice: STOP ALL.</div></div>
+</section>
+
+<section>
+<h2>Pads and PERFORM</h2>
+<div class="row"><div class="g">Hold a pad</div><div class="e">An effect. Press harder for more of it.</div></div>
+<div class="row"><div class="g"><b>NOTE REPEAT</b></div><div class="e">PERFORM: your eight knobs.</div></div>
+<div class="row"><div class="g">Hold <b>NOTE REPEAT</b> + turn a knob</div><div class="e">On a control's page: puts that control on PERFORM.</div></div>
+</section>
+
+<section>
+<h2>Quick edits</h2>
+<div class="row"><div class="g">Hold <b>PARA</b> / <b>SCALE</b> / <b>GLOBE</b> / <b>ARP</b> / <b>SEQ</b> / <b>SEQ REC</b></div><div class="e">The main knobs over the page you are on. Let go to go back.</div></div>
+<div class="row"><div class="g"><b>ARP</b> + <b>1/4</b> .. <b>1/32T</b></div><div class="e">ARP RATE, from the printed keys.</div></div>
+<div class="row"><div class="g"><b>GLOBE</b> + <b>C</b> .. <b>B</b></div><div class="e">SCALE ROOT, from the printed keys.</div></div>
+<div class="row"><div class="g">Hold <b>OCT-</b> + turn a knob</div><div class="e">Resets that knob to its default.</div></div>
+<div class="row"><div class="g">Hold a step's key + <b>OCT+</b> + turn a knob</div><div class="e">PARAMETER LOCK: the step's own value.</div></div>
+</section>
+
+<section>
+<h2>Install</h2>
+<div class="row"><div class="g"><a href="https://oscillr.github.io/DUELL/install/" style="color:var(--pink)">Installer</a></div><div class="e">Picks the package for your model.</div></div>
+</section>
+
+</div>
+<footer>DUELL 1.3.5</footer>
+</main>
+</body>
+</html>

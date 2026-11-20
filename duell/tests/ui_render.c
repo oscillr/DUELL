@@ -1331,7 +1331,13 @@ static void setup(int s)
     case S_MENU_LIST: ui.menu = 6; ui.menu_sel = MI_MIDIPRE; ui.menu_row[MTAB_MIDI] = MI_MIDIPRE - MI_P1CH; break;   /* (MIDI picked, as the drawing) */
     case S_MENU_SEC_DISPLAY: ui.menu = 1; ui.menu_sel = MI_COLOR; break;
     case S_MENU_SEC_CONTROL: ui.menu = 1; ui.menu_sel = MI_HOMEPG; break;
-    case S_MENU_SEC_PERFORM: ui.menu = 1; ui.menu_sel = MI_PERFK2; mac_pick_put(1, 0); mac_pick_put(2, 6); mac_pick_put(3, 7); mac_pick_put(4, 1); mac_pick_put(5, 3); break;   /* (the drawing's: MORPH SPACE KILL, TIMBRE, FILTER MACRO) */
+    case S_MENU_SEC_PERFORM: ui.menu = 1; ui.menu_sel =
+#if SMK_SCREEN
+        MI_PK1; smk_pf_put(2, SPK_TRACK, 1, P_E2FLT); smk_pf_put(3, SPK_TRACK, 0, P_E2REL);
+#else
+        MI_PERFK2;
+#endif
+    mac_pick_put(1, 0); mac_pick_put(2, 6); mac_pick_put(3, 7); mac_pick_put(4, 1); mac_pick_put(5, 3); break;   /* (the drawing's: MORPH SPACE KILL, TIMBRE, FILTER MACRO) */
     case S_MENU_SEC_PERFORM2: ui.menu = 1; ui.menu_sel = MI_QMAC4; break;
     case S_MENU_SEC_MIDI: ui.menu = 1; ui.menu_sel = MI_MIDIPRE; break;
     case S_MENU_SEC_MODULES: ui.menu = 1; ui.menu_sel = MI_SEQ; mods_run_put(1, 2); break;   /* (SEQ KEEPS RUNNING: the longest value) */
@@ -2463,6 +2469,247 @@ int main(int argc, char **argv)
         fprintf(stderr, "v14 sweep: %u ellipsised texts\n", bad);
         return 0;
     }
+#if SMK_SCREEN
+    if (getenv("UI_RENDER_SMK")) {   /* the SMK-37's two-part screen (firmware/src/smk_screen.c; build with -DSMK_SCREEN=1): named pages in VIOLET, part 1 ANALOG, part 2 FM6, part 1's K2 and part 2's K7 just turned,
+                                      * as OUTDIR/ppm/VIOLET_smk_*.ppm with the lint; then every part page for every pair of engines (the lint, no pictures). UI_RENDER_SMK=OUTDIR; then exit */
+        static const char *const SP0[] = {"AMP ENV", "LFO 1", "MULTI FILTER 1/2", "ENGINE", "CHORD", "FX", "ARP 1/3", "ENV 2", "LFO 2", "EDIT 1", "TWIN FILTER", "EQ 1/2", "CYCLE ENV 1/2", "VOICE 1/2", "MORPH"};
+        const char *SPX[64];
+        const char *const *SP = SP0;
+        uint32_t nsp = sizeof SP0 / sizeof SP0[0];
+        if (getenv("SMK_PAGES")) {                       /* (SMK_PAGES="A,B,C": these pages instead) */
+            static char spb[1024];
+            char *q2;
+            nsp = 0;
+            strncpy(spb, getenv("SMK_PAGES"), sizeof spb - 1);
+            for (q2 = strtok(spb, ","); q2 && nsp < 64u; q2 = strtok(0, ","))
+                SPX[nsp++] = q2;
+            SP = SPX;
+        }
+        const char *sout = getenv("UI_RENDER_SMK");
+        uint32_t k, e0, e1, pi, an = 0, f0 = nfind;
+        for (k = 0; k < NENGINES; k++) if (ENGINES[k] == &ENG_ANALOG) an = k;
+        for (k = 0; k < nsp; k++) {
+            char nm[64], *q;
+            uint32_t f1 = nfind;
+            setup(S_HOME);
+            pal(getenv("SMK_PAL") ? (uint32_t)atoi(getenv("SMK_PAL")) : UI_DEFAULT_INDEX);   /* (SMK_PAL=n: the pictures in theme n) */
+#ifdef SMK_GCOL_TEST
+            if (getenv("SMK_GCOL")) { unsigned long cg = strtoul(getenv("SMK_GCOL"), 0, 16); smk_gtest = RGB((cg >> 16) & 255u, (cg >> 8) & 255u, cg & 255u); }   /* (SMK_GCOL=RRGGBB: the global colour tried) */
+#endif
+            song.rec = 0; usb.config = 0; song.octave = 0;
+            song.sel = 0;
+            set_engine_of(&trk[0], an);
+            set_engine_of(&trk[1], ENGI_FM6);
+            trk[0].p[P_ATK] = 20; trk[0].p[P_DEC] = 70; trk[0].p[P_SUS] = 100; trk[0].p[P_REL] = 60;
+            trk[1].p[P_ATK] = 5; trk[1].p[P_DEC] = 40; trk[1].p[P_SUS] = 80; trk[1].p[P_REL] = 30;
+            trk[0].p[P_E2ATK] = 10; trk[0].p[P_E2DEC] = 80; trk[1].p[P_E2ATK] = 40; trk[1].p[P_E2DEC] = 60;
+            trk[0].p[P_LWAVE] = 1; trk[0].p[P_LRATE] = 70; trk[1].p[P_LWAVE] = 0; trk[1].p[P_LRATE] = 45;
+            trk[0].p[P_FREEA] = 60; trk[0].p[P_FREEB] = 70; trk[1].p[P_FREEA] = 100; trk[1].p[P_FREEB] = 20; trk[1].p[P_FREEC] = 90;
+            trk[0].p[P_EQLG] = 6; trk[1].p[P_EQMG] = -5;
+            trk[1].p[P_TWTYPE] = 1;
+            trk[0].p[P_CHRD] = 3; trk[1].p[P_AMODE] = 2;
+            if (getenv("SMK_SEL")) song.sel = (uint8_t)atoi(getenv("SMK_SEL"));
+            if (getenv("SMK_STEREO")) duell_mode_req = duell_mode = DM_STEREO;
+            if (getenv("SMK_ENG1")) set_engine_of(&trk[1], (uint32_t)atoi(getenv("SMK_ENG1")));
+            if (getenv("SMK_ENG0")) set_engine_of(&trk[0], (uint32_t)atoi(getenv("SMK_ENG0")));
+            if (getenv("SMK_P")) {                       /* SMK_P="part:id:value;...": values set before the picture */
+                static const struct { const char *n; int id; } ID3[] = {{"DKSRC", P_DKSRC}, {"ITYPE", P_ITYPE}, {"DIST", P_DIST}, {"TWTYPE", P_TWTYPE}, {"CHRD", P_CHRD}, {"VOICE", P_VOICE}, {"AMODE", P_AMODE}, {"PAN", P_PAN}};
+                const char *q3 = getenv("SMK_P");
+                int a3, c3, n3, b3;
+                char nm3[16];
+                while (sscanf(q3, "%d:%15[A-Z0-9]:%d%n", &a3, nm3, &c3, &n3) == 3) {
+                    uint32_t z3;
+                    b3 = -1;
+                    for (z3 = 0; z3 < sizeof ID3 / sizeof ID3[0]; z3++) if (!strcmp(ID3[z3].n, nm3)) b3 = ID3[z3].id;
+                    if (b3 >= 0) trk[a3 & 1].p[b3] = (int16_t)c3;
+                    q3 += n3;
+                    if (*q3 == ';') q3++;
+                }
+            }
+            {   /* "@PERFORM", "@LEVEL1", "@LEVEL2", "@MORPH": PERFORM with pad 7 held, a LEVEL fader's or a MORPH fader's picture over AMP ENV */
+                const char *want = SP[k][0] == '@' ? "AMP ENV" : SP[k];
+                for (pi = 0; pi < NPAGES && strcmp(PAGES[pi].title, want); pi++) ;
+            }
+            if (pi == NPAGES) { fprintf(stderr, "smk: no page %s\n", SP[k]); continue; }
+            ui.page = (uint8_t)pi; ui.perf = 0; ui.layer = 0; ui.menu = 0;
+            smk_ov = 0; perf_held = 0;
+            if (!strncmp(SP[k], "@GUIDE", 6)) { guide_open(0); ui.guide = (uint8_t)atoi(SP[k] + 6); }   /* ("@GUIDE4": the guide's page 4) */
+            if (!strncmp(SP[k], "@PERFORM", 8)) { ui.perf = 1; perf_held = SP[k][8] == '0' ? 0u : 1u << 6; perf_depth = 72; }   /* ("@PERFORM0": no pad held) */
+            draw(S_HOME);                                /* (a first frame: the values the dots compare with) */
+            fm1_ms += 2000u;
+            if (!strncmp(SP[k], "@LEVEL", 6)) { trk[SP[k][6] - '1'].p[P_LEVEL] = 100; smk_fader_moved((uint32_t)(SP[k][6] - '1')); }
+            if (!strcmp(SP[k], "@MORPH")) smk_fader_moved(2u);
+            memset(smk_turn_on, 0, sizeof smk_turn_on);
+            smk_turn_mark(0, 1); smk_turn_mark(1, 2);
+            snprintf(nm, sizeof nm, "smk_%s", SP[k]);
+            for (q = nm; *q; q++) if (*q == ' ' || *q == '/' || *q == '|' || *q == '@') *q = *q == '/' ? '-' : '_';
+            cur_name = nm;
+            if (getenv("SMK_HOLES")) lcd_fill(0, 0, 240, 240, 0xF81Fu);   /* (SMK_HOLES=1: magenta under the picture; a magenta pixel left = a hole) */
+            if (getenv("SMK_NOFILL")) smk_nofill = 1;   /* (SMK_NOFILL=1: and no blank fill before the page: what the page itself leaves uncovered) */
+            draw(S_HOME);
+            smk_nofill = 0;
+            lint();
+            write_ppm(sout, "VIOLET", nm);
+            fprintf(stderr, "smk %-22s lint findings %u\n", nm, nfind - f1);
+        }
+        smk_ov = 0; perf_held = 0;
+        fprintf(stderr, "smk pictures: %u findings\n", nfind - f0);
+        f0 = nfind;
+        for (e0 = 0; e0 < NENGINES; e0++)
+            for (e1 = 0; e1 < NENGINES; e1++) {
+                if (!eng_ok(e0) || !eng_ok(e1)) continue;
+                for (pi = 0; pi < NPAGES; pi++) {
+                    char nm[64];
+                    uint32_t tw;
+                    for (tw = 0; tw < 2u; tw++) {
+                        setup(S_HOME);
+                        pal(UI_DEFAULT_INDEX);
+                        song.rec = 0; usb.config = 0; song.sel = 0;
+                        set_engine_of(&trk[0], e0);
+                        set_engine_of(&trk[1], e1);
+                        trk[0].p[P_TWTYPE] = (int16_t)tw; trk[1].p[P_TWTYPE] = (int16_t)(1u - tw);
+                        if (!page_visible(pi)) continue;
+                        ui.page = (uint8_t)pi; ui.perf = 0; ui.layer = 0; ui.menu = 0;
+                        if (!smk_twin_page(&PAGES[pi])) continue;   /* (only the TWIN TABLE pages: the others are the FM-1's, linted by the normal run) */
+                        snprintf(nm, sizeof nm, "smk %s e%u/%u t%u", PAGES[pi].title, e0, e1, tw);
+                        cur_name = nm;
+                        draw(S_HOME);
+                        if (grid_on != SMK_GRID) continue;
+                        if (getenv("SMK_DBG")) fprintf(stderr, "drawn %s as %s\n", nm, cur_page()->title);
+                        lint();
+                    }
+                }
+            }
+        fprintf(stderr, "smk page sweep (every part page, every pair of engines): %u findings\n", nfind - f0);
+        f0 = nfind;
+        {   /* every page of the table (G1, MORPH, the lists ..) in DUEL and STEREO, two engine pairs; PERFORM with each pad held; the faders' pictures; every value of every G1 cell */
+            uint32_t md, ep, nd = 0, pd, gk, ix, nfm1 = 0;
+            for (md = 0; md < 2u; md++)
+                for (ep = 0; ep < 2u; ep++)
+                    for (pi = 0; pi <= NPAGES + 19u; pi++) {
+                        char nm[64];
+                        setup(S_HOME);
+                        pal(UI_DEFAULT_INDEX);
+                        song.rec = 0; usb.config = 0; song.sel = 0;
+                        duell_mode_req = duell_mode = md ? DM_STEREO : DM_SPLIT;
+                        set_engine_of(&trk[0], ep ? ENGI_FM6 : 0u);
+                        set_engine_of(&trk[1], ep ? 0u : ENGI_FM6);
+                        trk[0].p[P_TWTYPE] = 1;
+                        smk_ov = 0; perf_held = 0; ui.perf = 0; ui.layer = 0; ui.menu = 0;
+                        if (pi < NPAGES) {
+                            if (!page_visible(pi)) continue;
+                            ui.page = (uint8_t)pi;
+                            snprintf(nm, sizeof nm, "smka %s m%u e%u", PAGES[pi].title, md, ep);
+                        } else if (pi < NPAGES + 17u) {
+                            ui.perf = 1;
+                            perf_held = pi - NPAGES < 16u ? 1u << (pi - NPAGES) : 0u;
+                            snprintf(nm, sizeof nm, "smka PERFORM pad %u m%u e%u", pi - NPAGES, md, ep);
+                        } else {
+                            ui.page = 0;
+                            draw(S_HOME);
+                            if (pi == NPAGES + 17u) trk[0].p[P_LEVEL] = 0;
+                            smk_fader_moved(pi - NPAGES - 17u);
+                            snprintf(nm, sizeof nm, "smka fader %u m%u e%u", pi - NPAGES - 17u, md, ep);
+                        }
+                        cur_name = nm;
+                        {
+                        uint32_t f1 = nfind;
+                        if (getenv("SMK_NOFILL")) { smk_nofill = 1; lcd_fill(0, 0, 240, 240, 0xF81Fu); ui.force = 1; }
+                        draw(S_HOME);
+                        if (getenv("SMK_NOFILL")) {
+                            uint32_t z, mg = 0;
+                            smk_nofill = 0;
+                            for (z = 0; z < 240u * 240u; z++) mg += swap16(host_screen[z]) == 0xF81Fu;
+                            if (mg) fprintf(stderr, "HOLES %5u  %s grid %u\n", mg, nm, (unsigned)grid_on);
+                        }
+                        if (pi < NPAGES && !smk_twin_page(&PAGES[pi]) && !smk_stack_page(&PAGES[pi]) && !PAGES[pi].g8 && PAGES[pi].scope != SC_MORPH) {
+                            /* (a page the SMK draws as the FM-1 does: its findings are the FM-1's, counted apart) */
+                            lint();
+                            nfm1 += nfind - f1;
+                            nfind = f1;
+                        } else
+                            lint();
+                        }
+                        nd++;
+                    }
+            for (pi = 0; pi < NPAGES; pi++) {
+                if (!PAGES[pi].g8) continue;
+                for (gk = 0; gk < 8u; gk++)
+                    for (pd = 0; pd < 3u; pd++) {   /* (the reverb TYPE SHIM, the delay MODEs: the cells they show) */
+                        uint32_t id = gk < 4u ? PAGES[pi].id[gk] : PAGES[pi].id2[gk & 3u];
+                        const param_desc_t *d;
+                        int32_t v, lo, hi, st;
+                        if (id == 0xFFu || SG_SPECIAL(id)) continue;
+                        d = glob_desc(id);
+                        if (!d) continue;
+                        lo = d->min; hi = d->max; st = hi - lo > 60 ? (hi - lo) / 60 : 1;
+                        for (v = lo, ix = 0; v <= hi; v += (v + st > hi && v < hi) ? hi - v : st, ix++) {
+                            char nm[64];
+                            setup(S_HOME);
+                            pal(UI_DEFAULT_INDEX);
+                            song.rec = 0; usb.config = 0; song.sel = 0;
+                            duell_mode_req = duell_mode = DM_STEREO;
+                            smk_ov = 0; perf_held = 0; ui.perf = 0; ui.layer = 0; ui.menu = 0;
+                            song.g[G_RTYPE] = 3;
+                            song.g[G_DMODE] = (int16_t)pd;
+                            song.cp[1] = 4;
+                            ui.page = (uint8_t)pi;
+                            *smk_gvp(id) = (int16_t)v;
+                            snprintf(nm, sizeof nm, "smkg %s k%u v%d d%u", PAGES[pi].title, gk + 1u, (int)v, pd);
+                            cur_name = nm;
+                            draw(S_HOME);
+                            lint();
+                            nd++;
+                            if (v == hi) break;
+                        }
+                    }
+            }
+            fprintf(stderr, "smk all pages, PERFORM, faders, G1 values (%u screens): %u findings (the pages drawn as on the FM-1: %u, the FM-1's own)\n", nd, nfind - f0, nfm1);
+        }
+        f0 = nfind;
+        {   /* every value of every card, on both parts at once (the widest values beside the label), every engine against itself and against FM6 */
+            uint32_t nd = 0;
+            for (e0 = 0; e0 < NENGINES; e0++)
+                for (e1 = 0; e1 < 2u; e1++) {
+                    uint32_t ee = e1 ? ENGI_FM6 : e0, sl, tw;
+                    if (!eng_ok(e0)) continue;
+                    for (tw = 0; tw < 2u; tw++)
+                    for (pi = 0; pi < NPAGES; pi++)
+                        for (sl = 0; sl < 4u; sl++) {
+                            int32_t v, lo, hi, st;
+                            int16_t *vp0, *vp1;
+                            const param_desc_t *d;
+                            setup(S_HOME);
+                            pal(UI_DEFAULT_INDEX);
+                            song.rec = 0; usb.config = 0; song.sel = 0;
+                            set_engine_of(&trk[0], e0);
+                            set_engine_of(&trk[1], ee);
+                            trk[0].p[P_TWTYPE] = trk[1].p[P_TWTYPE] = (int16_t)(tw ? 4 : 1);
+                            if (!page_visible(pi)) continue;
+                            ui.page = (uint8_t)pi; ui.perf = 0; ui.layer = 0; ui.menu = 0;
+                            if (!smk_twin_page(&PAGES[pi])) continue;
+                            d = smk_desc(&PAGES[pi], sl, &trk[0], &vp0);
+                            (void)smk_desc(&PAGES[pi], sl, &trk[1], &vp1);
+                            if (!d || !vp0) continue;
+                            lo = d->min; hi = d->max; st = hi - lo > 40 ? (hi - lo) / 40 : 1;
+                            for (v = lo; v <= hi; v += (v + st > hi && v < hi) ? hi - v : st) {
+                                char nm[64];
+                                *vp0 = (int16_t)v;
+                                if (vp1) *vp1 = (int16_t)v;
+                                snprintf(nm, sizeof nm, "smkv %s s%u e%u/%u v%d", PAGES[pi].title, sl, e0, ee, (int)v);
+                                cur_name = nm;
+                                draw(S_HOME);
+                                if (grid_on == SMK_GRID) { lint(); nd++; }
+                                if (v == hi) break;
+                            }
+                        }
+                }
+            fprintf(stderr, "smk value sweep (%u screens): %u findings\n", nd, nfind - f0);
+        }
+        fclose(rep);
+        return 0;
+    }
+#endif
     if (getenv("UI_RENDER_PAGES")) {   /* DUELL 1.1 source check: EVERY page of the page table, rendered one after the other (VIOLET), captions in out/pages.txt */
         uint32_t pi;
         FILE *cf = fopen("/tmp/pages_list.txt", "w");

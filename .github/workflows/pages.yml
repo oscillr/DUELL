@@ -3,7 +3,8 @@
 # Nothing generated is committed. The workflow builds the site from the committed sources with
 # duell/web/make_site.py. The two build products that need the firmware toolchain or Emscripten
 # are NOT built here; they are taken from the newest release (pre-releases count, drafts do not), if it has them:
-#   duell-*.fwsc            the firmware package, any version in the name (duell-0.2.1-beta.fwsc) -> /install/ (+ duell-latest.fwsc, duell-version.json)
+#   duell-*.fwsc            the FM-1 package, any version in the name (duell-0.2.1-beta.fwsc) -> /install/ (+ duell-latest.fwsc, duell-version.json)
+#   duell-*-smk37-*.fwsc    the SMK-37 packages (pro, elite, mke) -> /install/ (+ duell-latest-smk37-<model>.fwsc)
 #   duell-emulator*.zip     the emulator, any version in the name (duell-emulator-0.2.1-beta.zip) (the contents of duell/build/emu, zipped) -> /emu/
 # The emulator itself is built from the committed sources (step below); a release zip is used only if that build leaves nothing.
 # An emulator-only release is fine: without the .fwsc the installer page shows "DUELL firmware is not yet released"
@@ -74,8 +75,10 @@ jobs:
           args=""
           # any version in the name (duell-0.2.1-beta.fwsc); if a release carries several, the highest version wins.
           # make_site.py reads the version from the file name and writes duell-latest.fwsc and duell-version.json.
-          pkg=$(ls dl/duell-[0-9]*.fwsc 2>/dev/null | sort -V | tail -n 1 || true)
+          # the FM-1 package only: the SMK-37 packages (duell-<version>-smk37-<model>.fwsc) go in with --smk (DUELL 1.3.5)
+          pkg=$(ls dl/duell-[0-9]*.fwsc 2>/dev/null | grep -v -- '-smk37-' | sort -V | tail -n 1 || true)
           if [ -n "$pkg" ]; then args="$args --pkg $pkg"; fi
+          for s in $(ls dl/duell-[0-9]*-smk37-*.fwsc 2>/dev/null || true); do args="$args --smk $s"; done
           # the emulator built above from the sources wins over a release zip
           if [ -f duell/build/emu/index.html ]; then args="$args --emu duell/build/emu"
           elif [ -f dl/emu/index.html ]; then args="$args --emu dl/emu"; fi

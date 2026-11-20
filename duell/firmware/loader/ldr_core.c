@@ -29,11 +29,24 @@
  *   ldr_progress(done, total)
  * plus the ota.c hooks (frames, time, idle). */
 #define LDR_APP_LO 0x4000u
+#if BOARD_SMK37
+/* the SMK-37 (after OberVave's ldr_core.c, genkigenki/sloop-fm1 smk37, GPL-3.0): the app area up to the stock PRCT end;
+ * records only in the stock VM below 0xC0000, so dropping them never reaches the Bluetooth pairing or the calibration;
+ * DUELL's store in the VM (0x9D000..0xBAFFF, hal/smk_flash_map.h) is skipped like the FM-1's */
+#define LDR_APP_HI 0x9D000u
+#define LDR_REC_LO 0x9D000u
+#define LDR_REC_HI 0xC0000u
+#define LDR_DATA_LO 0x9D000u
+#define LDR_DATA_HI 0xBB000u
+_Static_assert(LDR_APP_HI <= LDR_REC_LO && LDR_REC_HI <= 0xC0000u && LDR_DATA_HI <= LDR_REC_HI,
+               "SMK loader windows must stay below the Bluetooth pairing and calibration");
+#else
 #define LDR_APP_HI 0x93000u
 #define LDR_REC_LO 0x93000u                     /* update records live above the app ... */
 #define LDR_REC_HI 0xFC000u                     /* ... and below Felucca's globals (Felucca's records: 0xE4F00, */
 #define LDR_DATA_LO 0x97000u                    /* the stock firmware's: 0xE8F00), never in Felucca's store, whose */
 #define LDR_DATA_HI 0xE0000u                    /* bytes (user samples) the host writes */
+#endif
 #define LDR_NSEC ((LDR_APP_HI - LDR_APP_LO) >> 12)
 #define LDR_FL_MAX 0x100000u                    /* flash.bin: at most the 1 MiB part */
 

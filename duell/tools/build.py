@@ -85,6 +85,17 @@ SDK_SHA256 = {
 }
 
 PRODUCT = "FM-1_900"                # package identity; release builds are FM-1_9XY
+# DUELL on the M-Vave SMK-37 (after OberVave's build.py, GPL-3.0): BOARD=smk37 (or --board smk37) builds -DBOARD_SMK37=1 for
+# the app and the loader, the SMK flash layout (fm1pkg_make.set_board, app slot 0x97400), key sensing off (the SMK's keys
+# have their own velocity), identity "<model>_901" and the package duell-<VERSION>-smk37-<model>.fwsc. MODEL=elite (default),
+# pro or mke: one keyboard, three names; M-Vave's updater takes only a unit's own. The FM-1 build gets no new flag.
+BOARD = "fm1"
+MODELS = {"pro": "SMK-37 Pro", "elite": "SMK-37 Elite", "mke": "MKE-P37"}
+BOARD_DEFS = []
+
+
+def board_defs():
+    return list(BOARD_DEFS)
 VERSION = None                      # unused: the version string comes from build/gen/duell_version.h (the VERSION file)
 
 
@@ -207,7 +218,9 @@ def ldr_screen():
 def build_loader():
     LDR.mkdir(parents=True, exist_ok=True)
     src = FW / "loader"
-    flags = [*CFLAGS, "-Ifirmware/hal", "-Ifirmware/src", f"-DLDR_SCREEN={1 if ldr_screen() else 0}"]
+    flags = [*CFLAGS, *board_defs(), "-Ifirmware/hal", "-Ifirmware/src"]
+    if BOARD == "fm1":
+        flags.append(f"-DLDR_SCREEN={1 if ldr_screen() else 0}")   # (the SMK-37's loader: dark, loader.c)
     tc_all(("cc", "-c", src / "crt0_ldr.S", "-o", LDR / "crt0_ldr.o"),
            ("cc", *flags, "-c", src / "loader.c", "-o", LDR / "loader.o"))
     elf = LDR / "loader.elf"
@@ -254,9 +267,16 @@ def ramplace():
 
 def app_ld():
     """the app's linker script: app.ld, or app_hot.ld for a DUELL_HOTRAM build, app_ram.ld for DUELL_RAMPLACE=1"""
-    if ramplace():
-        return FW / "app_ram.ld"
-    return FW / ("app_hot.ld" if hotram() else "app.ld")
+    ld = FW / "app_ram.ld" if ramplace() else FW / ("app_hot.ld" if hotram() else "app.ld")
+    if BOARD != "fm1":              # another board's app slot (SMK-37): the same script with its XIP length
+        txt = ld.read_text()
+        if txt.count("LENGTH = 0x8DFBC") != 1:
+            raise SystemExit(f"{ld.name}: the XIP LENGTH line was not found")
+        out = OUT / ld.name
+        OUT.mkdir(parents=True, exist_ok=True)
+        out.write_text(txt.replace("LENGTH = 0x8DFBC", f"LENGTH = {APP_SLOT:#x}"))
+        return out
+    return ld
 
 
 def ld_regions():
@@ -301,7 +321,7 @@ def build_app():
     opt, llvm = opt_flags()
     lto = "-flto" in opt
     base = [g for f in CFLAGS for g in (opt if f == "-Os" else [f])] + [a for o in ([] if lto else llvm) for a in ("-mllvm", o)]
-    flags = [*base, "-Ifirmware/hal", "-Ifirmware/src", "-Ibuild/gen"]
+    flags = [*base, *board_defs(), "-Ifirmware/hal", "-Ifirmware/src", "-Ibuild/gen"]
     tag = bench_tag()
     if tag:
         flags += [f'-DBENCH_TAG="{tag}"', f'-DBENCH_FLAGS="{" ".join(opt + llvm)}"',
@@ -324,7 +344,7 @@ def build_app():
         v = os.environ.get(flag)    # unset: the default in firmware/src/felucca.c (DUELL_TEST_MODE: core.h, 0 = release: no TEST screen, no M13..M16)
         if v in ("0", "1"):
             flags.append(f"-D{flag}={v}")
-    v = os.environ.get("DUELL_VELO", "1")   # KEY SENSE (key velocity and aftertouch, sense.c): ON in every build since 0.2.30 (owner, 2026-10-21; before: developer builds only, build.py passed nothing and felucca.c's default 0 held).
+    v = os.environ.get("DUELL_VELO", "1" if BOARD == "fm1" else "0")   # (the SMK-37: off, its keys have their own velocity) KEY SENSE (key velocity and aftertouch, sense.c): ON in every build since 0.2.30 (owner, 2026-10-21; before: developer builds only, build.py passed nothing and felucca.c's default 0 held).
     if v in ("0", "1"):                     # DUELL_VELO=0 in the environment builds the old velocity-free shape (host tests compile without the switch: felucca.c's default stays 0)
         flags.append(f"-DDUELL_VELO={v}")
     if os.environ.get("DUELL_VELO_CAPTURE") == "1":   # the raw key readings over the USB serial console (src/velocap.h, velocap.c): a developer build ONLY
@@ -360,6 +380,11 @@ def build_app():
               (f"; inlined on the device (no section, they go with their callers): {', '.join(missing)}" if missing else ""))
     if ramplace():                  # DUELL_RAMPLACE: ranges X and Z (tools/ram_place.py), after the hot set
         data, done, missing = ram_place.place(obj.read_bytes())
+        if missing and BOARD != "fm1":     # the SMK-37: the FM-1's key sensing, key LEDs and scan are not in its build (hal/smk_input.h),
+            fm1_only = [n for n in missing if re.fullmatch(r"sense_\w+|sk_\w+|sc_\w+|velo_at_block|fm1__\w+|fm1_input_tick|fl_erase4k_led|fl_led_col", n)]
+            print(f"ramplace: {BOARD}: not in this build (FM-1 only, or inlined into the SMK's own): {', '.join(fm1_only)}")
+            missing = [n for n in missing if n not in fm1_only]
+            elfcheck.ABSENT = set(fm1_only)
         if missing:
             raise SystemExit(f"ramplace: no section of their own (inlined on the device; take them off the lists): {', '.join(missing)}")
         perr, pnotes = ram_place.check_object(data, hot_fns.names(hotram()))
@@ -528,11 +553,28 @@ def mmio_check():
 
 
 def main():
-    global PRODUCT
+    global PRODUCT, BOARD, BOARD_DEFS, APP_SLOT, OUT, LDR
     ap = argparse.ArgumentParser()
+    ap.add_argument("--board", choices=("fm1", "smk37"), default=None, help="fm1 (default) or smk37 (default: $BOARD, else fm1)")
+    ap.add_argument("--model", choices=sorted(MODELS), default=None, help="smk37: elite (default), pro or mke (default: $MODEL)")
     ap.add_argument("--release", nargs="?", const="", metavar="X.Y", help="release build: a folder release-<VERSION>-beta/ too. The version is always the VERSION file; an X.Y given here is ignored")
     ap.add_argument("--sdk", type=Path, help="JieLi AC79 SDK checkout (default: $AC79_SDK)")
     a = ap.parse_args()
+    BOARD = (a.board or os.environ.get("BOARD") or "fm1").lower().replace("-", "")
+    if BOARD not in ("fm1", "smk37"):
+        raise SystemExit(f"BOARD={BOARD}: fm1 or smk37")
+    model = (a.model or os.environ.get("MODEL") or "elite").lower()
+    if model not in MODELS:
+        raise SystemExit(f"MODEL={model}: elite, pro or mke")
+    if BOARD == "smk37":
+        if os.environ.get("DUELL_VELO") == "1":
+            raise SystemExit("build: BOARD=smk37 has no FM-1 key sensing (DUELL_VELO=1)")
+        BOARD_DEFS = ["-DBOARD_SMK37=1", f'-DSMK_MODEL="{MODELS[model]}"']
+        fm1pkg_make.set_board("smk37")
+        APP_SLOT = fm1pkg_make.APP_SLOT
+        elfcheck.APP_SLOT = APP_SLOT
+        OUT = SRC / "build" / "smk37"   # its own outputs: the FM-1's in build/ stay as they are (build/gen is shared: the same files)
+        LDR = OUT / "loader"
     ver = read_version()
     tag = f"{ver}-beta" if ver.startswith("0.") else ver    # 1.0 and later: duell-1.0.fwsc, no -beta
     if a.release:
@@ -544,6 +586,9 @@ def main():
     if not ldr_screen():
         name = name.replace(".fwsc", "-noscreen.fwsc")
     PRODUCT = "FM-1_901"                        # package identity (one digit each: the identity has room for two)
+    if BOARD == "smk37":
+        PRODUCT = MODELS[model] + "_901"
+        name = name.replace(".fwsc", f"-smk37-{model}.fwsc")
     fm1pkg_make.SDK = a.sdk
     for rel, sha in SDK_SHA256.items():          # fail early without the SDK
         if hashlib.sha256(fm1pkg_make.sdk_file(rel)).hexdigest() != sha:
@@ -583,7 +628,7 @@ def main():
         raise SystemExit("build: checks failed")
     pkg = fm1pkg_make.ufw(fm1pkg_make.flash_image(img, fm1pkg_make.KEY), ota, PRODUCT)
     (OUT / name).write_bytes(pkg)
-    if not btag:
+    if not btag and BOARD == "fm1":
         (OUT / "duell-latest.fwsc").write_bytes(pkg)                  # stable name for the installer page
         (OUT / "duell-version.json").write_text(json.dumps({"version": ver}) + "\n")
     opt, llvm = opt_flags()

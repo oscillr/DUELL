@@ -136,6 +136,7 @@ static struct {
     int32_t dhp[2], ddc[2];            /* the low cut in front and the DC blocker after, L R (Q8) */
     int32_t dlp[2];                    /* TUBE, FUZZ: the tone's low-pass; CRUSH: the sample held, L R */
     uint32_t dph;                      /* CRUSH: the reduced rate's phase, Q16 */
+    int32_t den, wen, dk;              /* (owner 2026-11-20: DRIVE drives, never louder) the dry's and the driven sound's level (the mean |x| x 16 of a block, ~23 ms), the gain that matches them (Q15) */
     /* PUMP */
     int32_t pdn;                       /* the duck now, Q16 (0: none) */
     uint8_t pph, pbeat;                /* 0 at rest, 1 the attack, 3 the release; the beats seen (perf_beat) */
@@ -936,6 +937,17 @@ static __attribute__((noinline)) void perf_pump(int32_t *bl, int32_t *br, uint32
 #define DV_K 7                                /* CRUSH: 1x .. 2x */
 #define DV_OG {32768, 32950, 28320, 23610, 18960}
 #endif
+/* DRIVE's level match (owner 2026-11-20: the drive made a quiet sound up to 21 dB louder, its clip's level being fixed): the block's mean |dry| and
+ * |driven| (~23 ms over CTL blocks of 32), the gain that brings the driven sound to the dry's level, never above 1x; down within ~20 ms, up over ~90 ms.
+ * Once a block, kept out of the hot RAM code (tools/hot_fns.py) */
+static __attribute__((noinline)) void perf_drive_level(uint32_t ax, uint32_t ay)
+{
+    int32_t dt;
+    pf.den += ((int32_t)(ax << 4) - pf.den) >> 5;
+    pf.wen += ((int32_t)(ay << 4) - pf.wen) >> 5;
+    dt = pf.wen > 256 ? (int32_t)((int64_t)pf.den * 32768 / pf.wen) : 32768;
+    pf.dk += clamp((dt > 32768 ? 32768 : dt) - pf.dk, -1024, 256);
+}
 static __attribute__((noinline)) void perf_drive(int32_t *bl, int32_t *br, uint32_t n)
 {
     uint32_t i, c;
@@ -952,7 +964,10 @@ static __attribute__((noinline)) void perf_drive(int32_t *bl, int32_t *br, uint3
     int32_t a = DV_A0 - (DV_A0 - DV_A1) * perf_depth / 100;
 #endif
 #endif
+    uint32_t sx = 0, sy = 0;                            /* .. this block's sums of |dry| and |driven| */
     if (!pf.dw) {                                       /* starting: from rest, the drive at K4's at once */
+        pf.den = pf.wen = 0;
+        pf.dk = 8192;                                   /* (a quarter until the levels are known: no loud first block) */
         pf.dhp[0] = pf.dhp[1] = pf.ddc[0] = pf.ddc[1] = pf.dlp[0] = pf.dlp[1] = 0;
         pf.dph = 1u << 16;
         pf.dg = gt;
@@ -998,9 +1013,14 @@ static __attribute__((noinline)) void perf_drive(int32_t *bl, int32_t *br, uint3
 #endif
             pf.ddc[c] += ((y << 8) - pf.ddc[c]) >> 9;   /* DC blocker, ~14 Hz */
             y -= pf.ddc[c] >> 8;
+            sx += (uint32_t)(x < 0 ? -x : x);           /* (owner 2026-11-20: the drive made a quiet sound up to 21 dB louder, its clip's level being fixed:
+                                                         * the driven sound is brought to the dry's level, never above 1x) */
+            sy += (uint32_t)(y < 0 ? -y : y);
+            y = (y * pf.dk) >> 15;                      /* (|y| < 2^15 after the level: no overflow) */
             b[c][i] = pf_mix(x, y, pf.dw);
         }
     }
+    perf_drive_level(sx / (2u * n), sy / (2u * n));
 }
 
 /* after the master level, before master_out: the buffer effect (stereo: L and R apart, in DUEL part 1 and part 2 each their own) */

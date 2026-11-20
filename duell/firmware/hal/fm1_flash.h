@@ -35,6 +35,19 @@ static inline void *fl_far(void *p) { void *volatile q = p; return q; }
 #define T4_CNT          REG32(0x10804u)            /* TIMER4, 24 MHz free-running */
 
 #define FL_XIP(off)     FM1_XIP(off)              /* fm1_xip.h */
+#if BOARD_SMK37
+#include "smk_flash_map.h"                         /* DUELL's SMK-37 flash map: windows, objects, protected ranges */
+#define FL_PLAIN_LO     SMK_VM_LO                  /* the plain (unencrypted) XIP window from the end of the app area */
+#define FL_OTA_LO       SMK_OTA_LO                 /* update staging, ota.c */
+#define FL_OTA_HI       SMK_OTA_HI
+#define FL_IN(off, n, lo, hi) SMK_IN(off, n, lo, hi)
+/* the app's allow-list: DUELL's own sectors and the update staging only; smk_flash_map.h proves at compile time that none of
+ * them touches a protected range (the RAM driver has no room for a second check at run time; the update loader keeps one) */
+#define FL_STORE_OK(off, n) SMK_STORE_OK(off, n)
+#ifndef FL_RANGE_OK
+#define FL_RANGE_OK(off, n) (SMK_STORE_OK(off, n) || SMK_IN(off, n, SMK_OTA_LO, SMK_OTA_HI))
+#endif
+#else /* FM-1 */
 #define FL_DATA_LO      0x00097000u                /* Felucca main store */
 #define FL_DATA_HI      0x000E0000u
 #define FL_GLOB_LO      0x000FC000u                /* Felucca superblock / globals */
@@ -64,6 +77,7 @@ static inline void *fl_far(void *p) { void *volatile q = p; return q; }
 #ifndef FL_RANGE_OK
 #define FL_RANGE_OK(off, n) (FL_STORE_OK(off, n) || FL_IN(off, n, FL_OTA_LO, FL_OTA_HI))
 #endif
+#endif /* BOARD_SMK37 */
 
 typedef struct { uint32_t sfc_con, spi_con; } fl_saved_t;
 
@@ -297,11 +311,19 @@ static RAMFN int fl_read_ram(uint32_t off, uint8_t *dst, uint32_t n)   /* 0x0B f
 static void fl_plain_window_init(void)
 {
     SFCENC_CON &= (uint8_t)~2u;
+#if BOARD_SMK37
+    SFCENC_UNENC_L = FL_XIP(FL_PLAIN_LO);
+    SFCENC_UNENC_H = 0x07FFFFFFu;
+    SFCENC_CON |= 2u;
+    __asm__ volatile("cli" ::: "memory");
+    fl_inval(FL_PLAIN_LO, 0x100000u - FL_PLAIN_LO); /* drop any decrypted lines */
+#else
     SFCENC_UNENC_L = FL_XIP(0x93000u);            /* 0x0208F000 */
     SFCENC_UNENC_H = 0x07FFFFFFu;
     SFCENC_CON |= 2u;
     __asm__ volatile("cli" ::: "memory");
     fl_inval(0x93000u, 0x100000u - 0x93000u);     /* drop any decrypted lines */
+#endif
     __asm__ volatile("csync\n\tsti" ::: "memory");
 }
 

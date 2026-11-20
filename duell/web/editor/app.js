@@ -943,12 +943,29 @@ function wire(u) {
 }
 
 // ---- connect
+// the connected unit's model from the installer's identity question (fm1ota.js, read-only), asked of this one port pair only;
+// "FM-1", "SMK-37 Pro", "SMK-37 Elite", "MKE-P37", or null when it does not answer (then the cheat sheet stays the FM-1's)
+async function unitModel(input, output) {
+  try {
+    const { Updater } = await import("../fm1ota.js");
+    const one = { inputs: new Map([[input.id, input]]), outputs: new Map([[output.id, output]]) };
+    const dev = await new Updater(one).find((id) => !/^ota-/i.test(id.model));
+    if (!dev) return null;
+    dev.link.close();
+    return dev.id.model;
+  } catch { return null; }
+}
+function setCheat(model) {
+  const smk = /^(SMK-37|MKE-P37)/.test(model || "");
+  $("cheatlink").href = smk ? "../cheatsheet/smk37/" : "../cheatsheet/";
+  $("cheatlink").textContent = smk ? "SMK-37 Cheat Sheet" : "FM-1 Cheat Sheet";
+}
 function setStatus(text, cls = "") { const e = $("unit"); e.textContent = text; e.className = "unit " + cls; }
 let connecting = false, auto = false;   // auto: connect by itself when the unit appears (MIDI already allowed; off after the user's Disconnect)
 async function connect() {
   if (connecting || app.unit) return;
   connecting = true; auto = true;
-  $("connect").disabled = true; setStatus("Looking for the FM-1 ..");
+  $("connect").disabled = true; setStatus("Looking for the unit ..");
   try {
     let link;
     if (MOCK) {
@@ -963,10 +980,11 @@ async function connect() {
       const input = [...midi.inputs.values()].find(named), output = [...midi.outputs.values()].find(named);
       if (app.midi !== midi) {   // (the unit may come later: watched from here on)
         app.midi = midi;
-        midi.onstatechange = (e) => { if (e.port.state === "disconnected" && app.ports?.includes(e.port) && app.unit) lost("The FM-1 was disconnected."); };
+        midi.onstatechange = (e) => { if (e.port.state === "disconnected" && app.ports?.includes(e.port) && app.unit) lost("The unit was disconnected."); };
         watchUnit(midi, { wanted: () => auto && !app.unit && !connecting, go: connect });
       }
-      if (!input || !output) { setStatus("No FM-1 found. Connect it by USB, close other programs that use it (the installer, another editor) and press Connect again.", "warn"); return; }
+      if (!input || !output) { setStatus("No FM-1 or SMK-37 found. Connect it by USB, close other programs that use it (the installer, another editor) and press Connect again.", "warn"); return; }
+      setCheat(await unitModel(input, output));   // (DUELL 1.3.5, owner 2026-11-20: the cheat sheet of the connected unit, FM-1 or SMK-37)
       link = new Link(input, output);
       app.ports = [input, output];
     }
@@ -988,7 +1006,7 @@ async function connect() {
     if (u.compat) say(u.compat, "warn");
     else say("");
   } catch (e) {
-    setStatus(`The unit did not answer (${e.message}). Check the USB cable and that no other page uses the FM-1.`, "warn");
+    setStatus(`The unit did not answer (${e.message}). Check the USB cable and that no other page uses the unit.`, "warn");
     app.unit?.disconnect?.(); app.unit = null; $("connect").hidden = false; $("disconnect").hidden = true;
   } finally { connecting = false; $("connect").disabled = false; }
 }
@@ -1013,7 +1031,7 @@ if (MOCK) {
   });
   $("mockselect").addEventListener("click", () => { const m = app.mock; if (m) m.deviceSelect(1 - m.selected); });
   $("mockcolor").addEventListener("click", () => { const m = app.mock; if (!m) return; const n = L.PALETTES.LIST.length, i = ((app.pal ?? 0) + 1) % n; m.devicePalette(i); say(`Simulated SETTINGS > SYSTEM > COLOR on the unit: ${paletteName(i)} (the page follows within 2 s).`); });
-} else if (!navigator.requestMIDIAccess) { setStatus("This browser cannot talk to the FM-1. Open this page in Chrome or Edge on a computer.", "warn"); $("connect").disabled = true; }
+} else if (!navigator.requestMIDIAccess) { setStatus("This browser cannot talk to the unit. Open this page in Chrome or Edge on a computer.", "warn"); $("connect").disabled = true; }
 if (!MOCK && navigator.requestMIDIAccess) sysexGranted().then((ok) => { if (ok) connect(); else setStatus(HINT); });   // MIDI already allowed: connect by itself
 if ($("backuplink")) $("backuplink").href = "./backup.html" + location.search;
 setView("parts"); renderMain();

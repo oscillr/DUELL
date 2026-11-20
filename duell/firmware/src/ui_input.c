@@ -7,6 +7,17 @@
  * and relighting would let the 10 kHz scan catch the dark gap and flicker. */
 static uint8_t led_pos[41];                        /* (col << 3) | row bit, 0xFF = none */
 
+#if BOARD_SMK37
+static void smk_leds(const uint8_t *lit, int playing);   /* (smk_ui.c) */
+static uint32_t smk_buttons(uint32_t pressed);
+static void smk_ui_poll(void);
+static void led_pos_init(void)                     /* the SMK-37: LED i = button i, a bit each in the picture */
+{
+    uint32_t id;
+    for (id = 0; id < 41u; id++)
+        led_pos[id] = id < SMK_NLED ? (uint8_t)id : 0xFFu;
+}
+#else
 static void led_pos_init(void)
 {
     uint32_t id, p, r;
@@ -18,6 +29,7 @@ static void led_pos_init(void)
                     led_pos[id] = (uint8_t)((p << 3) | r);
     }
 }
+#endif
 
 static void led_put(uint8_t *nl, uint32_t id, int on)
 {
@@ -299,7 +311,7 @@ static void ui_leds(void)
     sc = keys_map ? 0u : scale_leds(&sr);               /* SCALE LEDS: the scale's keys glow, the root's brighter */
     if (perf_leds_on())
         (void)perf_key_leds(&pmid);                     /* PERFORM: the row markers (steady, the in-scale level); lit: held */
-    for (k = 0; k < 27u; k++) {
+    for (k = 0; k < 27u && !BOARD_SMK37; k++) {     /* (the SMK-37 has no key LEDs: its ids 14..17 are buttons) */
         uint32_t in = (sc >> k) & 1u, rt = (sr >> k) & 1u, idle = !((c >> k) & 1u);
         led_put(keys_map ? own : pk, 14u + k, (int)((c >> k) & 1u));   /* (held / playing: the mode's held level, below) */
         led_put(nd, 14u + k, !keys_map && !sc);   /* (the scale display: no glow) */
@@ -335,6 +347,12 @@ static void ui_leds(void)
     }
     /* PLAY / STOP (DUELL 0.2.10, owner): GREEN while stopped (a press plays), RED while playing, and while counting in on each beat (a press
      * stops). Two LEDs in the button, each lit or dark only (no dimmer in the hardware picture); in every LEDS mode, MAX too */
+#if BOARD_SMK37
+    led_clear(nl, panel.btn[B_PLAY]);
+    smk_leds(nl, song.playing || (seq_counting() && cin_pos < click_beat_len() / 4u));
+    (void)nb; (void)nd; (void)nm; (void)sh; (void)sl; (void)rl; (void)nt;
+    return;
+#endif
     if (song.playing || (seq_counting() && cin_pos < click_beat_len() / 4u))
         led_put(nl, panel.btn[B_PLAY], 1);
     else if (!seq_counting())
@@ -1094,6 +1112,36 @@ static int32_t dst_turn(const param_desc_t *d, int32_t was, int32_t v)
     return mod_dst_offered(TSEL, v) ? v : was;
 }
 
+#if SMK_SCREEN
+/* the SMK-37's G1 cells that are no stored global (params.c SG_*): VOLUME (0 .. 100 %, a unit setting: ui.c smk_volume), CLICK, COUNT-IN, CLICK LEVEL (MENU's three, ui.c rp_*);
+ * reset: OCTAVE- held + the knob (their defaults: 100 %, CLICK REC, COUNT-IN OFF, LEVEL MID). 1: the knob was such a cell (an empty one does nothing) */
+static int reset_say(const char *name);
+static int smk_g1_knob(const page_t *pg, uint32_t slot, int32_t steps, int reset)
+{
+    uint32_t id = pg->id[slot & 3u], f, v;
+    if (!pg->g8 || !SG_SPECIAL(id))
+        return 0;
+    if (id == SG_VOL) {
+        v = reset ? 100u : (uint32_t)clamp((int32_t)smk_volume() + accel(EN_K1 + (slot & 3u), steps, 100), 0, 100);
+        if (v != smk_volume())
+            smk_volume_put(v);
+        if (reset)
+            reset_say("MASTER VOLUME");
+        return 1;
+    }
+    if (id == SG_NONE || (!steps && !reset))
+        return 1;
+    f = id == SG_CLICK ? RP_CLICK : id == SG_CIN ? RP_COUNTIN : RP_LEVEL;
+    v = reset ? (f == RP_CLICK ? 1u : f == RP_LEVEL ? 1u : 0u) : (uint32_t)clamp((int32_t)rp_get(f) + (steps > 0 ? 1 : -1), 0, 2);
+    if (v != rp_get(f)) {
+        rp_put(f, v);
+        smk_set_dirty();
+    }
+    if (reset)
+        reset_say(id == SG_CLICK ? "CLICK" : id == SG_CIN ? "COUNT-IN" : "CLICK LEVEL");
+    return 1;
+}
+#endif
 static void edit_param(uint32_t slot, int32_t steps)
 {
     int16_t *vp;
@@ -1130,6 +1178,10 @@ static void edit_param(uint32_t slot, int32_t steps)
         glo_knob(slot, steps);
         return;
     }
+#if SMK_SCREEN
+    if (smk_g1_knob(pg, slot, steps, 0))                  /* (the SMK-37's G1 cells VOLUME, CLICK, COUNT-IN, CLICK LEVEL) */
+        return;
+#endif
     uint32_t knob = slot;                                 /* (the knob turned; slot: the page's card it addresses) */
     if (page_compacts(pg)) {                              /* T0227 (owner): the cards that show moved left: knob k is the k-th of them (ui_draw.c page_cards) */
         slot = knob_slot(pg, slot);
@@ -1154,7 +1206,7 @@ static void edit_param(uint32_t slot, int32_t steps)
         fxsum_knob(slot, steps);
         return;
     }
-    if (slot == 3u && duck_midi_page(pg)) {               /* 0.2.22 DUCK 1/2 with SRC MIDI: K4 jumps to MENU > MIDI > SIDECHAIN (the MIDI setup lives there; DUELL 1.3: was GLO > SIDECHAIN) */
+    if (slot == DUCK_LINK_SLOT && duck_midi_page(pg)) {   /* 0.2.22 DUCK 1/2 with SRC MIDI: K4 jumps to MENU > MIDI > SIDECHAIN (the MIDI setup lives there; DUELL 1.3: was GLO > SIDECHAIN) */
         schain_jump(knob, steps);
         return;
     }
@@ -1382,6 +1434,12 @@ static int knob_reset(uint32_t k)
     const param_desc_t *d;
     if (act_cols())
         return 0;
+#if BOARD_SMK37
+    if (pg->graph == GR_EVENTS) {                       /* PARAMETER LOCKS: OCTAVE- held + a knob deletes the row's record (PARA never deletes) */
+        ev_delete();
+        return 1;
+    }
+#endif
     switch (pg->scope) {
     case SC_MORPH:
         if (pg->graph == GR_MORPHSET)
@@ -1414,13 +1472,26 @@ static int knob_reset(uint32_t k)
         }
         return 0;
     case SC_MIDI:                                       /* (MIDI LEARN: nothing to reset) */
+#if BOARD_SMK37
+        return 0;
+    case SC_STEP:                                       /* SMK-37 (owner 2026-11-18): OCTAVE- held + a knob clears the step, its locks with it (a step's default is empty; PARA never deletes) */
+        step_clear(&TSEL->step[ui.cursor]);
+        (void)motion_clear_locks(TSEL, ui.cursor);
+        ui_message("STEP CLEARED");
+        return 1;
+#else
     case SC_STEP:
+#endif
     case SC_TEST:
     case SC_FXSUM:                                      /* (0.2.21: nothing to reset; the knob only jumps) */
         return 0;
     default:
         break;
     }
+#if SMK_SCREEN
+    if (smk_g1_knob(pg, k, 0, 1))                       /* (the SMK-37's G1 cells VOLUME, CLICK, COUNT-IN, CLICK LEVEL) */
+        return 1;
+#endif
     if (pg->graph == GR_GLO) {                          /* GLO's MIXER (0.2.25; the knobs as QUICK GLO's, 0.2.24; item 117, TEMPLATE 4): K1 LEVEL 1, K2 LEVEL 2, K3 PAN 1, K4 PAN 2 (PAN in DUEL: no card, no reset) */
         static const char *const GN[4] = {"LEVEL 1", "LEVEL 2", "PAN 1", "PAN 2"};
         uint32_t id = (k >> 1) & 1u ? P_PAN : P_LEVEL;
@@ -1780,6 +1851,7 @@ static int leave_pressed(uint32_t pressed)
 static int page_tap(uint32_t b)
 {
     uint32_t f;
+#if !BOARD_SMK37                                        /* (the SMK-37: OCTAVE- held + a knob, knob_reset) */
     if (b == B_EDIT && song.seq_mode && cur_page()->graph == GR_ROLL) {   /* STEP: EDIT clears the step (its locks with it) */
         step_clear(&TSEL->step[ui.cursor]);
         (void)motion_clear_locks(TSEL, ui.cursor);
@@ -1791,6 +1863,7 @@ static int page_tap(uint32_t b)
         ev_delete();
         return 1;
     }
+#endif
     /* (SAVE > PATCHES / MULTIS: EDIT used to rename; it said NOT STORED / EMPTY PLACE and stayed, so the SAVE pages could not
      * be left with EDIT. Every page button leaves them now, saving nothing.) */
     for (f = FAM_HOME + 1u; f < FAM_COUNT; f++)        /* (GLO SEQ SAVE ..: HOME is ui_input's, home_tap) */
@@ -1891,6 +1964,10 @@ static void first_boot_poll(void)
 static void ui_input(void)
 {
     uint32_t pressed = fm1_input_edges(0), notes = fm1_input_note_edges(), now = fm1_ticks(), id, b, k;
+#if BOARD_SMK37
+    smk_ui_poll();                                      /* the faders, the pads' LEDs (smk_ui.c) */
+    pressed = smk_buttons(pressed);                     /* KNOB BANK, < >, CHORD: theirs, not the FM-1 labels' */
+#endif
     uint32_t home, rec, save;
     uint32_t oct;
     uint32_t lay, combo = 0, lytap, lkeys, kq = 0;
@@ -1938,7 +2015,11 @@ static void ui_input(void)
         return;
     }
     play_hold(now);
+#if BOARD_SMK37
+    home = btn_hold(&ui.home_t0, B_HOME, now, 0);      /* (PATCH held opens no MENU: BT does, smk_ui.c) */
+#else
     home = btn_hold(&ui.home_t0, B_HOME, now, 1);
+#endif
     rec = btn_hold(&ui.rec_t0, B_REC, now, 0);          /* (a tap; held, the REC layer: ui_layer.c) */
     if (ui.guide && guide_input(pressed, rec, now))     /* DUELL 0.2.11: the GUIDE takes the frame (ui_guide.c); a page button or SAVE */
         return;                                         /* closed it and goes on below to its job, as from the MENU */
@@ -2152,7 +2233,7 @@ static void ui_input(void)
     if (home == BT_TAP)                                 /* HOME acts on release: a hold opens the menu */
         home_tap();
     cursor_fix();                                       /* LEN may have changed (knob, editor, load) */
-    for (id = 0; id < 14u; id++) {
+    for (id = 0; id < PANEL_NBTN; id++) {
         if (!((pressed >> id) & 1u))
             continue;
         b = panel_btn_of(id);
@@ -2273,7 +2354,7 @@ static void ui_input(void)
         }
         if (pg->scope == SC_STEP || page_desc(pg, k, &hv) ||
             (pg->scope == SC_MORPH && !(pg->graph == GR_MORPHSET && k == 3u)) || pg->scope == SC_MODE || pg->scope == SC_MIDI || pg->scope == SC_TEST || pg->scope == SC_PERF || pg->scope == SC_MODS || pg->scope == SC_MACRO || pg->graph == GR_GLO ||
-            (k == 3u && duck_midi_page(pg)) || (pg->scope == SC_SCALE && k < 3u) || (pg->scope == SC_FXSUM && k < 3u) ||            /* (SCALE: K1 SCALE, K2 ROOT, K3 OFF-SCALE; K4 is an empty column) */
+            (k == DUCK_LINK_SLOT && duck_midi_page(pg)) || (pg->scope == SC_SCALE && k < 3u) || (pg->scope == SC_FXSUM && k < 3u) ||            /* (SCALE: K1 SCALE, K2 ROOT, K3 OFF-SCALE; K4 is an empty column) */
             (pg->graph == GR_TEMPO && k == TEMPO_TAP_SLOT) ||
             ((pg->graph == GR_MOD || pg->graph == GR_PATS) && k == 0u)
             || fop_page(pg->graph)) {   /* (not an empty

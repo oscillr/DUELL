@@ -29,6 +29,34 @@ from pathlib import Path
 
 APP_SLOT = 0x8DFBC
 FLASH_SIZE = 0x93000
+# DUELL on the SMK-37 (after OberVave's fm1pkg_make.py, genkigenki/sloop-fm1 smk37, GPL-3.0): another flash layout,
+# selected by set_board("smk37"); the FM-1's stays the default, byte for byte. Region descriptors after app.bin /
+# cfg_tool.bin: (offset, size, flags, resvd, index, name16 or name), ABSOLUTE flash offsets; None = FLASH_SIZE.
+BOARD = "fm1"
+REGIONS = {
+    "fm1": [(0x93000, 352256, 0x12, 0x80, 0, bytes.fromhex("564d00ffffffffffffffffff00800000")),     # VM
+            (0, None, 0x92, 0x82, 0, bytes.fromhex("5052435400ffffffffffffff434f4445")),         # PRCT = FLASH_SIZE
+            (0xE9000, 0x1000, 0x92, 0x80, 0, bytes.fromhex("4254494600ffffffffffffff4155544f")),  # BTIF
+            (0xEA000, 0x12000, 0x92, 0x81, 1, "USR")],
+    # SMK-37 v016, exactly as the stock package (OberVave: decrypted flash 0x4060..0x4100)
+    "smk37": [(0x9D000, 0x23000, 0x12, 0x81, 0, bytes.fromhex("564d00ffffffffffffffffff00800000")),    # VM
+              (0, None, 0x92, 0x82, 0, bytes.fromhex("5052435400ffffffffffffff434f4445")),        # PRCT = FLASH_SIZE
+              (0xC0000, 0x1000, 0x92, 0x82, 0, bytes.fromhex("4254494600ffffffffffffff4155544f")), # BTIF
+              (0xC1000, 0x1000, 0x92, 0x81, 0, bytes.fromhex("5553525452494d00ffffffffffffffff")), # USRTRIM
+              (0xC2000, 0x29000, 0x92, 0x81, 0, bytes.fromhex("555352464c41534800ffffffffffffff")), # USRFLASH
+              (0xF4000, 0xA000, 0x92, 0x81, 1, "USR")],
+}
+# per board: (FLASH_SIZE = PRCT = the end of what the update loader writes, APP_SLOT)
+BOARDS = {"fm1": (0x93000, 0x8DFBC), "smk37": (0x9D000, 0x97400)}   # SMK: the stock app is 0x974B8
+
+
+def set_board(board):
+    """the flash layout of a board ("fm1" default, "smk37")"""
+    global BOARD, FLASH_SIZE, APP_SLOT
+    if board not in BOARDS:
+        raise SystemExit(f"fm1pkg_make: unknown board {board!r} (fm1, smk37)")
+    BOARD = board
+    FLASH_SIZE, APP_SLOT = BOARDS[board]
 KEY = 0x980F
 # flash header: JieLi SDK defaults (burner_size 544, VID "0.01", flash_size 0xFF000,
 # fs_ver 0x10, PID "AC791N_STORY"), plain, without its CRC
@@ -136,10 +164,8 @@ def flash_image(app, key):
     ents = [entry(crc16(app), 0x120, APP_SLOT, 0x82, 0xFF, 0, "app.bin"),
             entry(crc16(cfg_tool), 0x120 + APP_SLOT, len(cfg_tool), 0x82, 0xFF, 0, "cfg_tool.bin"),
             # region descriptors; the bytes after the names are SDK packer fields (VM size, "CODE", "AUTO")
-            entry(0xFFFF, 0x93000, 352256, 0x12, 0x80, 0, bytes.fromhex("564d00ffffffffffffffffff00800000")),
-            entry(0xFFFF, 0, FLASH_SIZE, 0x92, 0x82, 0, bytes.fromhex("5052435400ffffffffffffff434f4445")),
-            entry(0xFFFF, 0xE9000, 0x1000, 0x92, 0x80, 0, bytes.fromhex("4254494600ffffffffffffff4155544f")),
-            entry(0xFFFF, 0xEA000, 0x12000, 0x92, 0x81, 1, "USR")]
+            *(entry(0xFFFF, o, FLASH_SIZE if sz is None else sz, fl, rs, ix, nm)
+              for o, sz, fl, rs, ix, nm in REGIONS[BOARD])]
     area[32:32 + len(b"".join(ents))] = b"".join(ents)
     area[0:32] = entry(crc16(area[32:blk]), 0x02000120, blk, 0x83, 0xFF, 0, "app_area_head")
     # nested cfg directory right after the block: SDK default EQ table
@@ -147,6 +173,8 @@ def flash_image(app, key):
     cfg_body = eq_e + eq
     cfg = entry(crc16(cfg_body), 0x20, 0x20 + len(cfg_body), 0x83, 0xFF, 1, "cfg") + cfg_body
     region = bytearray(area + cfg)
+    if 0x4000 + len(region) > FLASH_SIZE:          # (the update loader writes up to FLASH_SIZE only)
+        raise SystemExit(f"app area too large: ends at 0x{0x4000 + len(region):x}, past 0x{FLASH_SIZE:x}")
     sfc(region, 0, len(region), 0, key)
     f[0x4000:0x4000 + len(region)] = region
     return bytes(f)
@@ -198,9 +226,11 @@ def main():
     ap.add_argument("ota", type=Path)
     ap.add_argument("out", type=Path)
     ap.add_argument("--product", default="FM-1_900")
+    ap.add_argument("--board", choices=sorted(BOARDS), default="fm1")
     ap.add_argument("--key", type=lambda s: int(s, 0), default=KEY)
     ap.add_argument("--sdk", type=Path, help="JieLi AC79 SDK checkout (default: $AC79_SDK)")
     a = ap.parse_args()
+    set_board(a.board)
     global SDK
     SDK = a.sdk
     pkg = ufw(flash_image(a.app.read_bytes(), a.key), a.ota.read_bytes(), a.product)
