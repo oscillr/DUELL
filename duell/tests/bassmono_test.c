@@ -13,7 +13,7 @@
  *    the mode clears its state.
  * 5. the control: the master-stage page (GLO family, after REVERB / SHIMMER and before MODULES (0.2.21), title BASS MONO; K1 BASS MONO, OFF the default, OFF + 11 corners 40 .. 400 Hz), no MENU row (AUDIO back to its six
  *    rows), not in DUEL (the page is skipped, the card hidden), the knob; not in the settings record ([15][29] ignored, any byte); the multis carry it (a multi saved
- *    with 100 Hz restores it, a factory multi loads OFF, a code past 11 reads OFF), the project (byte 65); the editor's id 33 is editor_test's.
+ *    with 100 Hz restores it, a default multi loads OFF, a code past 11 reads OFF), the project (byte 65); the editor's id 33 is editor_test's.
  * 6. cost, host instructions per sample (steady, gliding), and the mix_block gate when OFF. */
 #define UI_TEST_NO_MAIN 1
 #define FELUCCA_FLASH 1
@@ -655,17 +655,17 @@ static void test_control(void)
     flush();
     {
         static persist_t p;
-        ok = st_load(OBJ_SETTINGS, &p, sizeof p) > 0 && p.favorites.factory[15][18] == 0xB7u && p.favorites.factory[15][21] == 6u && p.favorites.factory[15][29] == 0u;
+        ok = st_load(OBJ_SETTINGS, &p, sizeof p) > 0 && p.favorites.defaults[15][18] == 0xB7u && p.favorites.defaults[15][21] == 6u && p.favorites.defaults[15][29] == 0u;
         expect("a change is saved ~2 s later in the settings record: byte [15][21] = setting + 1 (6 = 100 Hz), under the WIDTH / DRIVE tag; [15][29] (the retired STYLE) stays 0", ok);
         boot();
         expect("  .. a restart reads it back (100 Hz), the audio side follows", song.bm == 5 && bm_sel == 5u);
-        p.favorites.factory[15][21] = 1u;
+        p.favorites.defaults[15][21] = 1u;
         st_save(OBJ_SETTINGS, &p, sizeof p);
         boot();
         expect("  .. stored 1 is OFF (the user's own choice stays OFF, it is not the default)", song.bm == 0 && bm_sel == 0u);
         ok = 1;
         for (v = 0; v < 256u; v++) {                    /* every byte value: in range; 0 and past BM_N + 1 are the default */
-            p.favorites.factory[15][21] = (uint8_t)v;
+            p.favorites.defaults[15][21] = (uint8_t)v;
             st_save(OBJ_SETTINGS, &p, sizeof p);
             boot();
             ok &= song.bm >= 0 && song.bm <= (int16_t)BM_N && bm_sel <= BM_N && song.bm == (v >= 1u && v <= BM_N + 1u ? (int16_t)v - 1 : (int16_t)BM_DEF);
@@ -674,15 +674,15 @@ static void test_control(void)
         memset(&p, 0, sizeof p);
         ok = st_load(OBJ_SETTINGS, &p, sizeof p) > 0;
         for (v = 0; v < 256u; v++) {                    /* whatever an early 0.2.19 build left in [15][29] is ignored */
-            p.favorites.factory[15][21] = 0;
-            p.favorites.factory[15][29] = (uint8_t)v;
+            p.favorites.defaults[15][21] = 0;
+            p.favorites.defaults[15][29] = (uint8_t)v;
             st_save(OBJ_SETTINGS, &p, sizeof p);
             boot();
             ok &= song.bm == (int16_t)BM_DEF && bm_sel == (uint8_t)BM_DEF;
         }
         expect("every byte value 0..255 in [15][29] (STYLE's 0 and 1, an early build's 0x80 + n): ignored, the default", ok);
         memset(&p, 0, sizeof p);
-        p.favorites.factory[15][21] = 3;                /* a record with the byte set but no tag: the tag decides (an older key map left bytes there) */
+        p.favorites.defaults[15][21] = 3;                /* a record with the byte set but no tag: the tag decides (an older key map left bytes there) */
         st_save(OBJ_SETTINGS, &p, sizeof p);
         boot();
         expect("  .. a byte [15][21] without the tag byte [15][18] is no setting: the default", song.bm == (int16_t)BM_DEF);
@@ -695,7 +695,7 @@ static void test_control(void)
     boot();
     duell_mode_force(DM_STEREO);
     song.bm = 5;
-    project_save_as(10, "BM TEST");                     /* M11 (saved over its factory multi) */
+    project_save_as(10, "BM TEST");                     /* M11 (saved over its default multi) */
     song.bm = 0;
     project_load(10);
     expect("a multi saved with BASS MONO 100 Hz does not bring it back on load (song.bm stays 0, as the unit has it)", song.bm == 0);
@@ -733,7 +733,7 @@ static void test_control(void)
     project_load(11);
     expect("a multi saved with OFF leaves the 400 Hz that was set", song.bm == 9);
     ok = 1;
-    for (v = 0; v < DF_N; v++) {                        /* the factory multis: byte 5 holds no BASS MONO bit */
+    for (v = 0; v < DF_N; v++) {                        /* the default multis: byte 5 holds no BASS MONO bit */
         ok &= (DM_REC[DM_AT[v] + 5u] >> 1) == 0u;
     }
     {
@@ -746,7 +746,7 @@ static void test_control(void)
             ok &= song.bm == 7;
         }
     }
-    expect("every factory multi (M01.., byte 5 bits 1..4 clear) leaves BASS MONO as it is", ok);
+    expect("every default multi (M01.., byte 5 bits 1..4 clear) leaves BASS MONO as it is", ok);
 
     /* the project: byte 65 is written 0 and not read (the format keeps its size): BASS MONO is the unit's (0.2.24) */
     boot();

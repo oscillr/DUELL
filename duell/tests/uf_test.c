@@ -303,7 +303,7 @@ static uint32_t ftype_page(void)
             return i;
     return NPAGES;
 }
-/* DUELL 1.0: a power-on part holds the engine's first factory sound, which is the owner's now (its own filter 1 settings, filter 2, SUB, LFOs on the filter). These page tests start from the plain
+/* DUELL 1.0: a power-on part holds the engine's first default sound, which is the owner's now (its own filter 1 settings, filter 2, SUB, LFOs on the filter). These page tests start from the plain
  * filter state: filter 1 open and 12 dB, MODE LP, no depths on it, filter 2 off. */
 static void plain_filter(track_t *t)
 {

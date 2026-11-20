@@ -831,7 +831,7 @@ enum { S_HOME, S_HOME_IDLE, S_MESSAGE, S_MESSAGE_KEY, S_MESSAGE_NOFILE, S_PRESET
        S_ENV_DEST_SYNC, S_FILTER, S_FILTER_UF, S_FILTER_UF_OFF, S_FILTER_UF2, S_LEARN_WAIT, S_LEARN_PICK, S_LEARN_SET, S_LEARN_LONG, S_GLO_LEARN,
        S_MENU_INFO_ROW, S_MENU_ABOUT_ROW, S_ENGINE, S_ENGINE_FM6, S_ENGINE_FAV, S_ENGINE_USER, S_ENGINE_INIT, S_MORPH, S_MORPH_ROLLED,
        S_MORPH_BOTH, S_MORPH_TWIST, S_MORPH_SET, S_MORPH_SET_BOTH, S_MORPH_SET_WILD, S_MORPH_SAVE, S_MORPH_MID, S_MORPH_B,
-       S_MORPH_BOTH_MID, S_MODE, S_MODE_STEREO, S_MODE_LAYER, S_MIXER_SPLIT, S_MIXER_SPLIT_TURNED, S_PATCH_FACTORY, S_PATCH_ENGINE,
+       S_MORPH_BOTH_MID, S_MODE, S_MODE_STEREO, S_MODE_LAYER, S_MIXER_SPLIT, S_MIXER_SPLIT_TURNED, S_PATCH_DEFAULT, S_PATCH_ENGINE,
        S_PATCH_RESTORE, S_PATCH_SAVE, S_GLO_METERS, S_GLO_CLIP, S_MIDI, S_MIDI_DUCK, S_MIDI_LAYER, S_MIDI_SEL, S_MIDI_LEARN_OFF,
        S_MIDI_LEARN_ON, S_MIDI_LEARN_PICK, S_MIDI_LEARN_CC, S_ABOUT_SCROLL, S_TEST, S_TEST_ALARM, S_SCL_CHROM, S_SCL_CHROM_PLAY,
        S_CHORD_NOSCALE, S_CHORD_NOSCALE7, S_PERFORM, S_PERFORM_HELD, S_PERFORM_SLOW, S_PERFORM_NOCLK, S_PERFORM_LAYER, S_MOD_WAVE,
@@ -863,7 +863,7 @@ static const char *const S_NAME[S_COUNT] = {"home", "home_idle", "message", "mes
     "filter", "filter_uf", "filter_uf_off", "filter_uf2", "learn_wait", "learn_pick", "learn_set", "learn_long", "glo_learn_on", "menu_info_row",
     "menu_about_row", "engine", "engine_fm6", "engine_fav", "engine_user", "engine_init", "morph_from_home", "morph_rolled",
     "morph_both", "morph_twist", "morph_set", "morph_set_both", "morph_set_wild", "morph_save", "morph_mid", "morph_b",
-    "morph_both_mid", "mode_from_home", "mode_stereo", "mode_layer", "mixer_split", "mixer_split_turned", "patches_factory",
+    "morph_both_mid", "mode_from_home", "mode_stereo", "mode_layer", "mixer_split", "mixer_split_turned", "patches_default",
     "patches_engine", "patches_restore", "patches_save", "glo_meters", "glo_clip", "midi", "midi_duck", "midi_layer", "midi_sel",
     "midi_learn_off", "midi_learn_on", "midi_learn_pick", "midi_learn_cc", "about_scroll", "test", "test_alarm", "scl_chromatic",
     "scl_chromatic_play", "chord_noscale", "chord_noscale7", "perform", "perform_held", "perform_slow", "perform_noclock",
@@ -997,7 +997,7 @@ static void setup(int s)
     case S_PRESETS: favorite_set(NENGINES, 4, 1); favorite_set(NENGINES, 5, 1); go_page(GR_BROWSE); break;
     case S_PRESETS_NOFAV: favorites.filter = 1; go_page(GR_BROWSE); break;
     case S_USER: song.playing = 0; up_store(3, "MY LONG BASS NAME"); up_store(4, "PAD"); up_load(3); go_page(GR_BROWSE); break;   /* (PATCHES: two slots saved over, one loaded) */
-    case S_PATCH_FACTORY: song.playing = 0; up_store(3, "MY LONG BASS NAME"); sl_load(7); go_page(GR_BROWSE); break;   /* a slot with its factory sound: RESTORE not drawn */
+    case S_PATCH_DEFAULT: song.playing = 0; up_store(3, "MY LONG BASS NAME"); sl_load(7); go_page(GR_BROWSE); break;   /* a slot with its default sound: RESTORE not drawn */
     case S_PATCH_ENGINE: eng(0); apply_preset(1); list_set(1u + CAT_N + 1u); go_page(GR_BROWSE); break;            /* TYPE: one engine (FM6) */
     case S_PATCH_RESTORE: song.playing = 0; up_store(3, "MY LONG BASS NAME"); up_load(3); go_page(GR_BROWSE); confirm_open(CF_RESTORE, 3); break;
     case S_PATCH_SAVE: song.playing = 0; up_store(5, "A VERY LONG SOUND NAME"); sl_load(2); go_page(GR_BROWSE); ui.svs = 5; confirm_open(CF_SAVE_OVER, 0); break;   /* SAVE held: OVERWRITE #6 over a saved slot, the K1 hint */
@@ -1280,7 +1280,7 @@ static void setup(int s)
     case S_QUICK_LFO: go_title("AMP ENV"); TSEL->p[P_L2SYNC] = 5; ui.layer = LAYER_LFO; ui.hot_col = 1; ui.hot_t = 40; break;
     case S_QUICK_FILTER: go_title("AMP ENV"); ui.layer = LAYER_EDIT; ui.hot_col = 0; ui.hot_t = 30; break;   /* EDIT held: QUICK FILTER (0.2.9) */
     case S_QUICK_GLO: go_title("AMP ENV"); ui.layer = LAYER_GLO; trk[0].peak = 11000; trk[1].peak = 4000; break;   /* 0.2.13 deck: GLO held, QUICK GLO (0.2.11) */
-    case S_MULTIS: case S_MULTIS2:                /* 0.2.13 deck: SAVE > MULTIS, the factory multis in their 0.2.13 order (M01 REESE SWAMP loaded) */
+    case S_MULTIS: case S_MULTIS2:                /* 0.2.13 deck: SAVE > MULTIS, the default multis in their 0.2.13 order (M01 REESE SWAMP loaded) */
         song.playing = 0; project_load(0); song.g[G_SLOT] = s == S_MULTIS ? 1 : 7; go_page(GR_SLOTS); ui.act = 2; ui.msg_t = 0; break;
     case S_QUICK_ENV: go_title("LFO 1"); ui.layer = LAYER_ENV; break;
     /* DUELL 0.2.14 GLO > MODULES: the page (all ON; all OFF, its K2 just turned) and the cards a module OFF fades, with the footer's line */
@@ -1437,7 +1437,7 @@ static void setup(int s)
         song.playing = 0; project_save_as(0, "LOFI JAM"); project_save_as(1, "MWMWMWMWMWMW"); project_save_as(2, "");
         song.g[G_SLOT] = 2; go_page(GR_SLOTS); ui.act = 4; ui.msg_t = 0;
         break;
-    /* 1.2 (Discussion #90): PRESETS > LIST BASS (factory basses and a user one); OTHER with none; NAME's category
+    /* 1.2 (Discussion #90): PRESETS > LIST BASS (default basses and a user one); OTHER with none; NAME's category
      * (the widest, PLUCK) on a rename of a long name; PROJECT's random name */
     case S_PRESETS_CAT:
         song.playing = 0; up_store_cat(3, "MY DEEP BASS", CAT_BASS);
@@ -1448,7 +1448,7 @@ static void setup(int s)
         song.playing = 0; up_store_cat(4, "MWMWMWMWMWMW", CAT_PLUCK); go_page(GR_BROWSE); name_open(NK_USER_RENAME, 4);
         break;
     case S_NAME_RANDOM: song.playing = 0; go_page(GR_SLOTS); name_open(NK_PROJ_SAVE, 1); nm.rnd = 12345u; nm_random(); break;
-    case S_SONG_NAMED: pslot_scene(1); ui.ppick = 0; break;   /* (the list's top: the factory patterns) */
+    case S_SONG_NAMED: pslot_scene(1); ui.ppick = 0; break;   /* (the list's top: the default patterns) */
     case S_SONG_LONG: pslot_scene(6); break;
     case S_SONG_LONG_PLAYING: pslot_scene(5); ui.ppick = 3; break;
     case S_SONG_PLAYING: pslot_scene(5); break;
@@ -2080,7 +2080,7 @@ static void target_prelude(void)
     pal(UI_DEFAULT_INDEX);
     song.sel = 0; song.playing = 0; song.rec = 0; usb.config = 0; usb.suspended = 0; song.batt_raw = 500;
     duell_mode_req = DM_STEREO; ui_mode_set = DM_STEREO;
-    sl_load(4);                                      /* patch #5 SQUELCH (slot 4: ANALOG's factory sound 5) */
+    sl_load(4);                                      /* patch #5 SQUELCH (slot 4: ANALOG's default sound 5) */
     ui.msg_t = 0;
 }
 static void target_draw(void)
@@ -2520,7 +2520,7 @@ int main(int argc, char **argv)
             write_ppm(out, "VIOLET", nm);
         }
     }
-    if (getenv("UI_RENDER_WAVE")) {   /* DUELL 1.1 source check: the WAVE engine page for every factory table, built the way the main loop builds it, and the picture's signature before and after the build */
+    if (getenv("UI_RENDER_WAVE")) {   /* DUELL 1.1 source check: the WAVE engine page for every default table, built the way the main loop builds it, and the picture's signature before and after the build */
         uint32_t tb;
         for (tb = 0; tb < WV_NTF; tb++) {
             wv_mem_t *wm;
@@ -2578,7 +2578,7 @@ int main(int argc, char **argv)
                 static const char *const DECK[] = {"home", "fx", "dly", "env", "lfo2", "mod", "glo_page", "midi", "midi_duck", "midi_layer", "mixer_split", "mode_layer",
                                                    "morph_rolled", "patches_save", "layer_edit_active", "layer_quick_filter", "layer_quick_lfo", "perform", "splash",
                                                    "quick_glo", "multis", "multis_2", "guide_1", "guide_2", "guide_3", "guide_4", "guide_5", "guide_6",   /* (0.2.13 deck: + these) */
-                                                   "user", "patches_factory", "patches_restore", "patches_save", "patches_save_both", "tools", "tools_restore", "confirm_restore_all"};   /* (0.2.17: the one list of patch slots) */
+                                                   "user", "patches_default", "patches_restore", "patches_save", "patches_save_both", "tools", "tools_restore", "confirm_restore_all"};   /* (0.2.17: the one list of patch slots) */
                 for (k = 0; k < sizeof DECK / sizeof DECK[0]; k++)
                     if (!strcmp(S_NAME[s], DECK[k])) write_ppm(out, "VIOLET", S_NAME[s]);
                 if (getenv("UI_RENDER_ALL"))                 /* DUELL 1.1 source check: every screen of VIOLET (the host render next to the approved pictures) */

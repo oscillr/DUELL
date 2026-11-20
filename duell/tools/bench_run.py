@@ -587,7 +587,7 @@ HIST_EDGES = {"hsd": ["<2", "<5", "<10", "<25", "<50", "<100", "<250", ">=250"],
 SH_COLS = ["sh_posts", "sh_done", "sh_late", "sh_freeze", "sh_drop", "sh_skip", "sh_none", "sh_fault", "sh_hold"]   # (VOICE SHARE counters, last in the BT line; appended at the END of results.csv so the older columns keep their place)
 TC_COLS = ["tc", "tcwhy", "tcblocks", "tcintime", "tclate", "tcvlate", "tcsilent", "tcwait", "tcown", "tcrefused", "tcnoans", "tcpauses",
            "tcresumes", "tctrims", "tcparks", "tcvlok", "tcpfault", "tcprun", "tcpwin", "tcplate", "c1stack"]
-TC_WHY = {"OK": "core 1 plays part 2",
+TC_WHY = {"OK": "the voices are shared between both cores",
           "NOANSWER": "core 1 did not answer at the start (the unit plays on one core)",
           "NOTARMED": "the start was not armed",
           "SKIPBOOT": "the boot guard skipped the start (the last start died within 30 s)",
@@ -613,7 +613,7 @@ def parse_cores(info_line):
 def cores_line(mode, why):
     """the line at the top of the summary and printed at the start of a run"""
     if mode == "2":
-        return "CORES: two cores active (core 1 plays part 2)"
+        return "CORES: two cores active (the voice split: every voice on the less busy core)"
     if mode == "1":
         return f"CORES: one core, reason {why} ({why_text(why)})"
     if mode == "-":
@@ -634,7 +634,7 @@ def tc_info(r):
         return ""
     bits = []
     if r.get("tcwhy") == "CORE1OFF":
-        bits.append("core 1 switched off by the test (tune core1 off): core 0 plays part 2, one-core budget")
+        bits.append("core 1 switched off by the test (tune core1 off): core 0 plays every voice, one-core budget")
     if tc_int(r, "tcown"):
         bits.append(f"own {r['tcown']} (core 0 played part 2 itself)")
         if r.get("tmjobs", "") != "":
@@ -1271,9 +1271,15 @@ def main(argv=None):
     caf = None
     if not a.no_caffeinate and not a.sim and shutil_which("caffeinate"):
         caf = subprocess.Popen(["caffeinate", "-i", "-w", str(os.getpid())])
+    m16_before = None
+    if not a.sim and any(st[:2] == ("multi", 16) and st[2].upper() == "STRESS TEST" for t in sel for st in t.setup):
+        import bench_m16                                 # (owner 2026-11-18: M16 is SLOW THAW; the stress multi is in M16 only for this run)
+        m16_before = bench_m16.put_stress(tmp_out)
     try:
         return run_all(a, link, log, sname, sel, text, tmp_out)
     finally:
+        if m16_before is not None:
+            bench_m16.put_back(m16_before)               # (fails loudly: then tools/bench_m16.py --restore <out>/m16-before.bin)
         log.close()
         if caf:
             caf.terminate()

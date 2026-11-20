@@ -9,7 +9,7 @@
  * The panel: OPERATOR and OPERATOR 2 the algorithm chart (ui_graph.c graph_fm6) with the operator picked in the accent
  * and its frequency top right ("x1.50", "440HZ"); OP ENV its envelope (graph_fm6env), the stage picked in the accent.
  * A detent writes one byte of the patch (fm6_set_patch: the audio ISR takes it at its next block) and makes the patch
- * the track's own: SLOT OWN (as a patch from the editor; a factory F n edited is OWN from then on). Each knob gesture is
+ * the track's own: SLOT OWN (as a patch from the editor; a default F n edited is OWN from then on). Each knob gesture is
  * one undo (SAVE held: the sound before it, the patch and SLOT with it; ui.c edit_undo_take). The patch is saved with
  * projects and user presets as before (no new format, no new parameter ids: nothing here is automatable or lockable).
  * The values shown are the patch's own: EDIT 1 / 2's macros still apply on top of it as before (MLVL moves the

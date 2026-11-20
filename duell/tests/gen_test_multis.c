@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
-/* DUELL: builds the four CPU TEST multis with the real firmware code (until 0.2.22 tools/factory_multis/M13.bin..M16.bin; since 0.2.23 the
+/* DUELL: builds the four CPU TEST multis with the real firmware code (until 0.2.22 tools/default_multis/M13.bin..M16.bin; since 0.2.23 the
  * test scenes tests/scenes/M13_TEST_1_BASE.bin .. M16_TEST_4_MIX.bin, tests/scenes.h, kept byte for byte: rebuilding them changes them only if the
  * sounds or the packer changed): each part's sound loaded
  * by the sound loader (set_engine_of + apply_preset_to), the arp, chords, VOICE, REL, effects, EQ, ducker, MODE and tempo set through
@@ -20,7 +20,7 @@ typedef struct {
     uint8_t sends[3];                            /* CHO DLY REV of both parts */
     uint8_t rate;                                /* the arp's RATE (N_DIV index) */
 } scn_t;
-/* sound indexes: duell_sounds.py (engine, factory index): WHEEL 3 JAZZ CLUB, ANALOG 9 SILK CHORUS, PHASE 5 CRYSTAL CAVE, FM6 4 TINE ROOM,
+/* sound indexes: duell_sounds.py (engine, default index): WHEEL 3 JAZZ CLUB, ANALOG 9 SILK CHORUS, PHASE 5 CRYSTAL CAVE, FM6 4 TINE ROOM,
  * NOISE 2 SEA ORGAN, LOFI 2 WOW FLUTTER (PHYS has 3 voices per part: it cannot fill the 8) */
 static const scn_t SC[4] = {
     {"TEST 1 BASE",  {E_WHEEL, E_ANALOG}, {3, 9}, DM_LAYER, 2, 0, {6, 8}, {40, 40, 40}, 2},

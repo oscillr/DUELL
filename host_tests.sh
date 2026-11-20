@@ -89,13 +89,13 @@
 # polylimits: tests/poly_limits_test.c (DUELL 1.1 item 90): the NOTES limits per engine, one core and two cores, the counter, each part its own voices, the instant fall-back.
 # deadline (REWRITTEN 2026-11-05 for the voice split's one-block order; the text below is the old test's, kept for the history of items 132 / 137 / 142): the runner's deal (every voice to the less full core), its take-back deadline (the half's end - core 1's share - the blocks still to come - the slack) and its wait limit (from the blocks still to come only: the sends and the master of this block are done before the wait), each worked out by the test on its own for every setup, rule, block and voice count; the posted deadline's SAME / LATER / INSIDE / TRUE / KEPT; the hashes DL_REF / DL_REF2 of 2026-11-05. See the file's header
 # deadline: tests/deadline_test.c (DUELL 1.1 item 132): the two-core runner's deadline and wait limit (twocore_run.c tcr_deadline) are bit for bit the values before item 132 raised BUDGET_LIMIT
-#   to 90 and stopped charging the hand-over: every engine pair x filter x MODE x SENDS / PART FX, every factory sound, the 16 multis, both rules, every block and voice count, one hash
+#   to 90 and stopped charging the hand-over: every engine pair x filter x MODE x SENDS / PART FX, every default sound, the 16 multis, both rules, every block and voice count, one hash
 #   (item 137: margin 1.00 for the caps, item 142: limit 84 (was 81); the deadline keeps 1.15: the same hash; the posted deadline's true-cost take-over when the 1.15 one is past, checked at 16 post moments;
 #   core 1's block-0 job + 6 points before the wait limit at the caps in every setup)
 # polycalib: tests/poly_calib.c (report only, macOS): the measured cost of one more note per engine and filter (the budget table's source; writes nothing unless given a CSV path).
 # budget: tests/budget_test.c (job 4, branch cloud/notes), the NOTES budget (firmware/src/budget.c, docs/MIXSPLIT_NOTES.md section 8): how many notes each part may play, from the settings, one core, 84 % of the time with a margin of 1.00 (item 132: was 80 %, owner chose 88 over 90 at 1.15; item 137: margin 1.00, limit 81; item 142: limit 84).
 #   (a) the cost table reproduces tests/bench_baseline.txt (the bench's figures; no counter needed): every engine's voice, INSERT type, SAT, EQ, DUCK, bus effect in STEREO and DUEL, master stage within 5 %, the worst-case scene of each MODE (fixed part within 5 %,
-#   totals never below the bench and within 12 %); (b) the 16 factory multis: NOTES a part, what limits it, the VOICE CAP of 0.2.11 beside it (printed, as loaded and in cpuscen's MORPH state); (c) switching on an INSERT, 24 dB, SAT, an EQ band, the ducker, a matrix slot,
+#   totals never below the bench and within 12 %); (b) the 16 default multis: NOTES a part, what limits it, the VOICE CAP of 0.2.11 beside it (printed, as loaded and in cpuscen's MORPH state); (c) switching on an INSERT, 24 dB, SAT, an EQ band, the ducker, a matrix slot,
 #   RANDOM, SHIM DOWN, COMP, WIDTH or the chorus never raises that part's number (16 multis and 5000 random settings); (d) 12 note-ons on a part with a budget of 4 (also 1, and one worked out from settings): at most that many voices, no step at a steal over 1.5 x
 #   the calm before it; 8 notes held, the number dropped to 3: the next note-on fades the rest out; (e) the same settings give the same numbers in any order of calls and after any history; bit for bit: a multi with the notes its budget allows is the same with the
 #   budget on and off (every render in a child process: the firmware keeps generator states a load does not reset)
@@ -107,7 +107,7 @@
 #   STRESS row, the model header firmware/src/bench_model.h current (BENCH_MODEL_UPDATE=1 build/host/bench_sim rewrites it). The normal build has none of it
 #   Bench suite stage 1 (also in benchsim): the console words (`bench reset | load | mode | set | scene | ev | measure | run | stop | end | save-test`, their replies and errors, every
 #   line under the console's 64 characters), the timeline player (an event plays at the half it falls in, the CPU window, the ramps, the flash event, 256 events streamed while a test
-#   runs) and the per-test reset list: every factory patch, every factory multi and every row of the bench list gives the same samples when it is played after others (forward, then
+#   runs) and the per-test reset list: every default patch, every default multi and every row of the bench list gives the same samples when it is played after others (forward, then
 #   backward), and with the reset switched off most do not (the check can fail). `build/host/bench_sim --serve` is the twin as the unit for the next test
 # benchrun: tests/bench_run_test.py, the Mac's runner tools/bench_run.py (bench suite stage 1): the suite parser and the suite OWNER-1 (tools/bench_suites; every patch number and name
 #   against docs/PATCH_NUMBERS.md), the runner against the twin (a whole short suite: the result files, a wrong name SKIPPED, the CPU window, the flash test, the soak's checks, a unit that
@@ -130,7 +130,7 @@
 # A test that does not compile counts as a failure (it used to be skipped silently).
 # DUELL_TEST_MODE: the release default is OFF (no MENU > SYSTEM > TEST). Every firmware test below is built WITH it on (-DDUELL_TEST_MODE=1 and
 # build/gen_test/duell_multis.h) so it can exercise the TEST screen; "release" is built with it off and checks it is gone. Since 0.2.23 both headers hold the same sixteen
-# factory multis (tools/factory_multis.py); the CPU TEST multis of before are test scenes (tests/scenes/, tests/scenes.h).
+# default multis (tools/default_multis.py); the CPU TEST multis of before are test scenes (tests/scenes/, tests/scenes.h).
 # The default build/gen/duell_multis.h is regenerated here with the switch off (the emulator step builds the release).
 # uitest: tests/ui_test.c (also the helper library the other UI tests include); its Felucca-era groups are parked under -DUI_TEST_STALE (not run)
 # motion: tests/motion_test.c, its DRUM-grid / SAVE-held-undo groups are parked under -DMOTION_TEST_STALE (not run)
@@ -138,14 +138,14 @@
 #   SEQ OFF's PLAY / Start / count-in, SENDS OFF and PART FX OFF bit for bit after their fades, PERFORM with all OFF, the faded cards and the footer's line
 # wtab: tests/wtab_test.c, 0.2.14's USER WAVETABLES USR1..USR3 (wtab.c, editor_wtab.c, backup ids 24..26) on simulated NOR: the flash places (0xA0000..0xA5FFF, nothing else written), the commit record and
 #   CRC, power-on, a damaged copy, a failing write, refusal while the sequencer plays, stale / malformed transfers, erase, ERASE DATA, the backup round trip
-# wavetable: tests/wavetable_fixture.c (the factory tables as played and as encoded bytes: web/fixtures/wavetable_factory.json must equal a fresh run), then web/test_wavetable.mjs (the WAV converter
-#   web/editor/wavetable.js: WAV parsing, FFT, saw / square / sine sweeps, a Serum-like 2048 x 256 file, a factory render converted back, the protocol client against the mock unit)
-# mrender: tests/multi_render_test.c (0.2.17), every factory multi (0.2.23: M01..M16) and the 14 test scenes (tests/scenes.h: 0.2.22's multis, their 0.2.22 hashes) rendered at fader 0 / 63 / 127 and hashed (tests/multi_render_golden.txt)
+# wavetable: tests/wavetable_fixture.c (the default tables as played and as encoded bytes: web/fixtures/wavetable_default.json must equal a fresh run), then web/test_wavetable.mjs (the WAV converter
+#   web/editor/wavetable.js: WAV parsing, FFT, saw / square / sine sweeps, a Serum-like 2048 x 256 file, a default render converted back, the protocol client against the mock unit)
+# mrender: tests/multi_render_test.c (0.2.17), every default multi (0.2.23: M01..M16) and the 14 test scenes (tests/scenes.h: 0.2.22's multis, their 0.2.22 hashes) rendered at fader 0 / 63 / 127 and hashed (tests/multi_render_golden.txt)
 # converttwin: tests/convert_twin_test.py (cloud job J): the conversion tool's table test, idempotence guard and the committed sounds and multis == its output
-# ownerimport: tests/owner_import_test.py (0.2.24), tools/import_owner_edits.py on a synthetic PATCHES export made by the firmware's own code (tests/owner_export_gen.c): the 128 factory sounds saved and read back import as equal to the recipes; three turned knobs change exactly three sounds; twice = the same files; the unchanged export undoes it; a changed multi in a backup file is kept byte for byte; a changed engine and a taken name are refused; the editor's parser reads the file
+# ownerimport: tests/owner_import_test.py (0.2.24), tools/import_owner_edits.py on a synthetic PATCHES export made by the firmware's own code (tests/owner_export_gen.c): the 128 default sounds saved and read back import as equal to the recipes; three turned knobs change exactly three sounds; twice = the same files; the unchanged export undoes it; a changed multi in a backup file is kept byte for byte; a changed engine and a taken name are refused; the editor's parser reads the file
 # fm6: tests/fm6_test.c (the 6-operator engine; 0.2.17: the SLOT list with F9..F11 behind the bank)
-# patch: tests/patch_test.c (0.2.17: ONE list of 128 patch slots, a slot = its saved record or else the factory sound at that browse position): the store (sparse records, 16 chunks, a power cut in a write, the 128-slot limit with no 'full', RAM directory), a fresh unit shows the factory sounds in all 128 slots, SAVE then reload, RESTORE bit for bit, RESTORE ALL, MIDI program change = slot, FAV by slot, a power cut at every step of a SAVE / RESTORE / RESTORE ALL, the PATCHES page and its dialogs
-# bank: tests/bank_test.c (DUELL 1.0): the 128 factory patches are the owner's bank (tools/factory_bank.duell-patches.json via tools/import_bank.py, tests/factory_bank_records.txt): each factory slot loaded and saved through the firmware equals the file's record in every field (TRIM the balanced one), the arp OFF written; the arp recall (a patch restores its own arp and chord keys, OFF too; an old record without the block = OFF)
+# patch: tests/patch_test.c (0.2.17: ONE list of 128 patch slots, a slot = its saved record or else the default sound at that browse position): the store (sparse records, 16 chunks, a power cut in a write, the 128-slot limit with no 'full', RAM directory), a fresh unit shows the default sounds in all 128 slots, SAVE then reload, RESTORE bit for bit, RESTORE ALL, MIDI program change = slot, FAV by slot, a power cut at every step of a SAVE / RESTORE / RESTORE ALL, the PATCHES page and its dialogs
+# bank: tests/bank_test.c (DUELL 1.0): the 128 default patches are the owner's bank (tools/default_bank.duell-patches.json via tools/import_bank.py, tests/default_bank_records.txt): each default slot loaded and saved through the firmware equals the file's record in every field (TRIM the balanced one), the arp OFF written; the arp recall (a patch restores its own arp and chord keys, OFF too; an old record without the block = OFF)
 # patchraw: tests/patchraw_test.c (0.2.19), PATCH_RAW (cmd 84, editor_patchraw.c): a slot's stored record read and written whole: the worst record round trip bit for bit into another slot (decodes and loads the same), only the chunk's sectors written, a rename through the bytes,
 #   refusal while playing (nothing written), malformed / stale transfers, records the store would not read, a flash failure, a power cut at every step of a write (old or new whole, the neighbours untouched), all 128 slots filled with the worst record
 # dx7import: tests/dx7_import_test.c (0.2.19) + web/test_librarian.mjs: the editor converts the 63 voices of two SYNTHETIC DX7 banks (web/test_dx7_synth.mjs, generated in the test; DX7_BANKS=dir adds real ones) into FM6 patch records; the firmware stores them (up_put_raw), loads them (up_load) and the part renders bit for bit what the FM6 engine
@@ -155,8 +155,8 @@
 # guide: tests/guide_test.c, 0.2.11's first-start GUIDE: the settings bit (fresh, seen, an older record, MENU's replay), its keys, playing under it, no stuck state
 #   (DUELL 1.1, item 127: the five pages SETUP 1/5, GUIDE 2/5 .. 4/5, SETUP 5/5 read from the texts drawn; the first start's splash waits for OCT+ or HOME)
 # guidesetup: tests/guide_setup_test.c, the SETUP questions (K1..K4 and SELECT pick the option, no HOME message on a turn, the key legend)
-# level: tests/level_test.c (0.2.19, the level split: PATCH TRIM P_TRIM, stored with a patch, and MIXER LEVEL P_LEVEL, the player's, kept with a multi and the project): a sound load (factory, stored, engine change, INIT, UNDO) keeps the mixer level, SAVE stores the
-#   trim only, RESTORE brings the factory trim, a record of before the split reads its LEVEL as the trim, a multi / the project hold both (revisions), the factory multis' mixer is unity, CC7 is the mixer, the audio gain is trim x mixer
+# level: tests/level_test.c (0.2.19, the level split: PATCH TRIM P_TRIM, stored with a patch, and MIXER LEVEL P_LEVEL, the player's, kept with a multi and the project): a sound load (default, stored, engine change, INIT, UNDO) keeps the mixer level, SAVE stores the
+#   trim only, RESTORE brings the default trim, a record of before the split reads its LEVEL as the trim, a multi / the project hold both (revisions), the default multis' mixer is unity, CC7 is the mixer, the audio gain is trim x mixer
 #   (bit for bit across splits of one product, silence at 0, the +7.5 dB ceiling), VOICE 2/2 K4 TRIM / MIXER K4 LEVEL
 # reset: tests/reset_test.c, 0.2.9's OCT- held + a knob = that card's default (once, no creeping) and OCT-/OCT+ moving the octave on release
 # pan: tests/pan_test.c (0.2.24), PAN without a zipper (fx.c pan_follow): the gain of the plain mix ramps within the block (a step of the knob or the editor: no gain jump over 1 % a sample), the spread mix steps 1/8 of what is left a block;
@@ -176,13 +176,13 @@
 #   0.2.7's tables 14..25: the list, the 14 older tables' fingerprint, a fade into each new one, their aliasing, every table's build cost
 # uf: tests/uf_test.c, the per-voice multimode filter (0.2.9; 0.2.2's universal filter: CUT RES MODE SLOPE on the engines with no filter of their own): the bypass bit for bit,
 #   the response table (UF_TABLE=1: RES 80 % too), 0.2.8's low-pass bit for bit, click-free sweeps, routes, CC74 / CC71, stability, records of today kept (0.2.14: no conversion of old ones), roll, cost
-# cpuscen: tests/cpu_scenarios_test.c (0.2.11), the STEADY-STATE load of held notes in the loadcost scale: the factory multis with the MORPH fader at 0 / 63 / 127 (guards on 63);
+# cpuscen: tests/cpu_scenarios_test.c (0.2.11), the STEADY-STATE load of held notes in the loadcost scale: the default multis with the MORPH fader at 0 / 63 / 127 (guards on 63);
 #   C the VOICE CAP (voice.c vcap: the caps of heavy pairs, measured, never below 4, new notes only); CPU_SCEN=QCPEMXWKF for more (P the cap's per-voice
 #   table, engine pairs x rolls, what End B moves, the stages a move wakes, WAVE, fades, bursts); build -O1 -fno-builtin
 # loadcost: tests/loadcost_test.c, the cost of a CHANGE (a patch / multi load, a reverb or mode switch) in the audio half buffer, counted with the device's word-wise memset (build: -O1 -fno-builtin); LOADCOST_FULL=1 prints the whole table
-# sounds: the factory sound audit (tests/sound_audit.c: 10 s hold, level at 1 s / 3 s, sustained median, rise time, tap, hit peak; FAIL silent / clipping / NaN / quiet / slow / falls away / End B); SOUND_TRIM=1 adds the
+# sounds: the default sound audit (tests/sound_audit.c: 10 s hold, level at 1 s / 3 s, sustained median, rise time, tap, hit peak; FAIL silent / clipping / NaN / quiet / slow / falls away / End B); SOUND_TRIM=1 adds the
 # suggested LEVEL per sound (copy into duell/tools/duell_sounds.py). Needs build/gen/duell_sounds.h (DUELL/gen_only.py)
-#   0.2.23: then the factory multis (tools/factory_multis.py check: the sixteen records against the list, version, names, sounds, MODE, split, LOW CUT, and the multi
+#   0.2.23: then the default multis (tools/default_multis.py check: the sixteen records against the list, version, names, sounds, MODE, split, LOW CUT, and the multi
 #   similarity check: no two multis with the same two sounds, or one sound in the same place with the same MODE and split; selftest: the check catches such pairs)
 # ldrscreen: tests/ldr_test.c (the update loader against a fake host and flash) built twice, plain and with -DLDR_SCREEN_TEST=1 (the loader's screen, firmware/loader/ldr_screen.c, drawing on a fake
 #   ST7789): the same checks pass both ways, the flash after the whole test hashes the same (the write is bit for bit the same with the screen on and off), the percent goes 0 -> 100 without
@@ -328,10 +328,10 @@ for t in $want; do case $t in
   hang)    $CC -O1 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/hang_test tests/hang_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run hang $OUT/hang_test ;;
   atgt)    $CC -o $OUT/atgt_test tests/atgt_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run atgt $OUT/atgt_test ;;
   patslot) $CC -O1 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/patslot_test tests/patslot_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run patslot $OUT/patslot_test ;;
-  sounds)  $CC -o $OUT/sound_audit tests/sound_audit.c -lm || { echo "== sounds"; echo "   FAIL (does not compile)"; fail=1; false; } && { echo "== sounds"; $OUT/sound_audit || fail=1; python3 tools/factory_multis.py check || fail=1; python3 tools/factory_multis.py selftest || fail=1; } ;;
+  sounds)  $CC -o $OUT/sound_audit tests/sound_audit.c -lm || { echo "== sounds"; echo "   FAIL (does not compile)"; fail=1; false; } && { echo "== sounds"; $OUT/sound_audit || fail=1; python3 tools/default_multis.py check || fail=1; python3 tools/default_multis.py selftest || fail=1; } ;;
   release) $CCR -O1 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/release_test tests/release_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run release $OUT/release_test ;;
   menuproduct) $CC -O1 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/menu_product_test tests/menu_product_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run menuproduct $OUT/menu_product_test ;;
-  bank)    $CC -O1 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/bank_test tests/bank_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run bank $OUT/bank_test tests/factory_bank_records.txt ;;
+  bank)    $CC -O1 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/bank_test tests/bank_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run bank $OUT/bank_test tests/default_bank_records.txt ;;
   patchraw) $CC -O1 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/patchraw_test tests/patchraw_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run patchraw $OUT/patchraw_test ;;
   dx7import) NODE=node; for n in "$HOME"/emsdk/node/*/bin/node; do [ -x "$n" ] && NODE=$n; done
            $CC -O1 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/dx7_import_test tests/dx7_import_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } &&
@@ -347,7 +347,7 @@ for t in $want; do case $t in
   converttwin) run converttwin python3 -I tests/convert_twin_test.py ;;   # cloud job J: tools/convert_twin.py against the 43 rows of docs/design/TWIN_FILTER_DESIGN_2.md 1.5, the committed data == the tool's output, the guards
   mrender) $CC -O1 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/multi_render_test tests/multi_render_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run mrender $OUT/multi_render_test tests/multi_render_golden.txt ;;
   uf)      $CC -O1 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/uf_test tests/uf_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run uf $OUT/uf_test ;;
-  velaccent) # the velocity ACCENT LIFT is smooth (tests/velaccent_test.c, core.h accent_lift; working docs/VELOCITY_AFTERTOUCH_V1.md): 127 sounds (presets + factory sounds of every engine but LOFI) x velocity 1..127, no sound quieter at a harder velocity beyond the lift-free floor (1.5 dB)
+  velaccent) # the velocity ACCENT LIFT is smooth (tests/velaccent_test.c, core.h accent_lift; working docs/VELOCITY_AFTERTOUCH_V1.md): 127 sounds (presets + default sounds of every engine but LOFI) x velocity 1..127, no sound quieter at a harder velocity beyond the lift-free floor (1.5 dB)
            $CC -O1 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/velaccent_test tests/velaccent_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run velaccent $OUT/velaccent_test ;;
   level)   $CC -O1 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/level_test tests/level_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run level $OUT/level_test ;;
   reset)   $CC -O1 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/reset_test tests/reset_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run reset $OUT/reset_test ;;
@@ -448,7 +448,7 @@ for t in $want; do case $t in
   persist) $CC -O1 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/persistence_test tests/persistence_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run persist $OUT/persistence_test ;;
   erase)   $CC -O1 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/erase_test tests/erase_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run erase $OUT/erase_test ;;
   wtab)    $CC -O1 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/wtab_test tests/wtab_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run wtab $OUT/wtab_test ;;
-  wavetable) $CC -o $OUT/wavetable_fixture tests/wavetable_fixture.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run wavetable-fixture sh -c "$OUT/wavetable_fixture $OUT/wavetable_factory.json && cmp $OUT/wavetable_factory.json web/fixtures/wavetable_factory.json"
+  wavetable) $CC -o $OUT/wavetable_fixture tests/wavetable_fixture.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run wavetable-fixture sh -c "$OUT/wavetable_fixture $OUT/wavetable_default.json && cmp $OUT/wavetable_default.json web/fixtures/wavetable_default.json"
              NODE=node; for n in "$HOME"/emsdk/node/*/bin/node; do [ -x "$n" ] && NODE=$n; done
              run wavetable-js "$NODE" web/test_wavetable.mjs ;;
   backup)  $CC -O1 "-DFELUCCA_VERSION=\"$FV\"" -o $OUT/backup_test tests/backup_test.c -lm || { echo "== compile"; echo "   FAIL (does not compile)"; fail=1; false; } && run backup $OUT/backup_test ;;
@@ -526,7 +526,7 @@ EOF2
            { ASAN_OPTIONS=detect_leaks=0 run "fuzz_ed: SysEx, raw packets, patch record sessions (60000, seed 7)" $OUT/fuzz_ed 60000 7
              ASAN_OPTIONS=detect_leaks=0 run "fuzz_ed: only patch record sessions through PATCH_RAW and the backup's object 40 (30000, seed 11)" $OUT/fuzz_ed 30000 11 1
              ASAN_OPTIONS=detect_leaks=0 run "fuzz_proj: project stores and multi records with the slots and the edit list (8000, seed 13)" $OUT/fuzz_proj 8000 13; } ;;
-  xvalues) # cloud job B (the values, the extension slots, the chain stub): tests/xvalues_test.c at the default XH and at XH 3; the loader: tools/gen_duell_sounds.py makes a header from the factory list plus one sound that names slots (build/gen_xv), the test reads it back
+  xvalues) # cloud job B (the values, the extension slots, the chain stub): tests/xvalues_test.c at the default XH and at XH 3; the loader: tools/gen_duell_sounds.py makes a header from the default list plus one sound that names slots (build/gen_xv), the test reads it back
            echo "== xvalues"; xb=0
            mkdir -p build/gen_xv
            python3 -I - <<'PY' || { echo "   FAIL (loader: gen_duell_sounds)"; xb=1; }

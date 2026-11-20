@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 /* DUELL 1.1 POLYPHONY CALIBRATION (HANDOFF_V2 item 90): the cost of ONE MORE note, per engine, with and without the MULTI and TWIN filters, measured with the load bench's
  * counter (tests/cpu_bench.c: host instructions a sample, -O1 -fno-builtin, 3281.25 = 100 % of a half; the unit read 0.90 .. 1.08 x of the same model in the one-core bench B2 of
- * 2026-10-18, release_drafts/bench_results/bench_B2_run1_core1off_2026-10-18.csv). Every factory sound of the engine, cleaned (no TWIN, no SUB, no matrix slot, no CYCLE, POLY,
+ * 2026-10-18, release_drafts/bench_results/bench_B2_run1_core1off_2026-10-18.csv). Every default sound of the engine, cleaned (no TWIN, no SUB, no matrix slot, no CYCLE, POLY,
  * INSERT / SAT / EQ / DUCK / sends off), then the variant: MULTI off (bypassed), MULTI 12 dB, MULTI 24 dB, TWIN LP / LADDER / COMB after a 12 dB MULTI, TWIN with DRIVE + PARALLEL.
  * A note's cost = (cost with n notes - cost with 1 note) / (n - 1), n = 5 or the engine's own limit: the part's own work that runs once whatever plays is not charged per
  * note (it is in "first", the first note's extra). Prints the dearest and the mean sound per engine and variant, and the budget's figure for the same settings (budget.c
@@ -237,7 +237,7 @@ int main(int argc, char **argv)
     tweak = clean;
     s = blank(DM_STEREO);
     idle = run(&s);
-    printf("polycalib: host instructions a sample (3281 = 100 %%), one more note on one part (marginal), every factory sound cleaned; the dearest sound per engine\n");
+    printf("polycalib: host instructions a sample (3281 = 100 %%), one more note on one part (marginal), every default sound cleaned; the dearest sound per engine\n");
     printf("polycalib: idle (STEREO, power-on sends, nothing playing) %.0f = %.1f %%\n", idle, idle * 100.0 / FULL);
     {
         double a, b, c;
@@ -248,7 +248,7 @@ int main(int argc, char **argv)
         if (getenv("POLYCALIB_IDLE_ONLY"))
             return 0;
     }
-    if (getenv("POLYCALIB_MULTIS")) {                   /* the factory multis as loaded: one more note on each part alone (the other muted), against the budget's figure */
+    if (getenv("POLYCALIB_MULTIS")) {                   /* the default multis as loaded: one more note on each part alone (the other muted), against the budget's figure */
         uint32_t m, p, n, i;
         for (m = 1; m <= 16u; m++)
             for (p = 0; p < 2u; p++) {

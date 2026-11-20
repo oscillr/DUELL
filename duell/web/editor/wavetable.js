@@ -4,7 +4,7 @@
 // (EDITOR_PROTOCOL.md "User wavetables (81-83)"). No DOM here (wavetable_demo.html and the editor page apply it; test_wavetable.mjs runs it).
 //
 // What the unit stores (firmware eng_wave.c, wtab.c): per slot 19 frames x 64 harmonics, ONE BYTE each, and an 8 character name. The engine
-// builds a user table like a factory recipe: every harmonic is a sine, the same phase in every frame, so a mix of two frames is a mix of their
+// builds a user table like a default recipe: every harmonic is a sine, the same phase in every frame, so a mix of two frames is a mix of their
 // spectra; each frame's harmonic levels are scaled so its strongest is 1, then the engine gives every frame the same loudness (WV_RMS).
 //
 // The byte is a LOG amplitude, relative to the strongest harmonic of its frame (which is 255), 16 steps to an octave (0.376 dB a step):
@@ -19,7 +19,7 @@ import { bkU32, bkR32, bkPack, bkUnpack, bkCrc } from "../fm1backup.js";
 
 export const WT = {
   FRAMES: 19, HARMONICS: 64, BYTES: 19 * 64, NAME: 8, SLOTS: 3, HDR: 12, OBJ: 12 + 19 * 64, VERSION: 1,
-  FIRST_TABLE: 26,                 // TABLE value of USR1 (the 26 factory tables come first)
+  FIRST_TABLE: 26,                 // TABLE value of USR1 (the 26 default tables come first)
   CMD: { LIST: 81, GET: 82, PUT: 83 }, BACKUP_IDS: [24, 25, 26], CAPS_BIT: 8,   // INFO 42 01 caps bit 3
   CHUNK: 112,                      // bytes of table data a GET / PUT piece carries (16 pack7 groups)
 };

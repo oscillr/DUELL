@@ -3,8 +3,8 @@
  * (owner 2026-11-05). REWRITTEN 2026-11-05: the test of items 132 / 137 / 142 pinned the old runner's numbers (part 1 on core 0, part 2 the job, the sends and the master after the wait: DL_REF
  * 0xb8db0653a8dfc654, DL_REF2 0x40924773c6c4fbf0, DL_REF3 0x70d45c7084c0d110). Those formulas are gone: on the unit (BENCHVB) they dropped a block at every chord start, because core 0 now runs
  * the sends and the master BEFORE its wait (working docs/reports/voice-split-bench_2026-11-05.md). The grid is the old test's.
- *   GRID     LAYER / STEREO / DUEL x SENDS on / off x PART FX on / off x every engine on part 1 x every engine on part 2 (each its first factory sound, cleaned) x the multimode
- *            filter of each part OFF / 12 dB / 24 dB / 12 dB + TWIN LP; every factory sound of every engine as stored, on both parts, LAYER and DUEL; the 16 factory multis
+ *   GRID     LAYER / STEREO / DUEL x SENDS on / off x PART FX on / off x every engine on part 1 x every engine on part 2 (each its first default sound, cleaned) x the multimode
+ *            filter of each part OFF / 12 dB / 24 dB / 12 dB + TWIN LP; every default sound of every engine as stored, on both parts, LAYER and DUEL; the 16 default multis
  *   VALUES   for each setup, both NOTES rules (core 1 up / jobs paused), each block of the half 0..3 and the listed voices of each part 0, 1, 2, 3, 4, 6, 8
  * What must hold, each worked out here on its own from the table's five items (c1f c1v c2f c2v g, which the firmware reads from budget.c):
  *   DEAL     the sets and the two running numbers are those of "each voice, in voice order over the parts, to the core that is less full at that moment" (core 0 starts with the sends and the
@@ -275,7 +275,7 @@ int main(void)
                         }
                 mods_off = 0;
             }
-    for (m = 0; m < 2u; m++)                            /* every factory sound as stored (inserts, SAT, EQ, matrix, SUB, TWIN, morph-free), both parts */
+    for (m = 0; m < 2u; m++)                            /* every default sound as stored (inserts, SAT, EQ, matrix, SUB, TWIN, morph-free), both parts */
         for (e1 = 0; e1 < NENG_SHOWN; e1++) {
             uint32_t en = ENGINE_ORDER[e1], n = ds_count(en);
             boot();
@@ -289,7 +289,7 @@ int main(void)
                 sweep();
             }
         }
-    for (i = 1; i <= 16u; i++) {                        /* the 16 factory multis as loaded (MODE RECALL), morphs included */
+    for (i = 1; i <= 16u; i++) {                        /* the 16 default multis as loaded (MODE RECALL), morphs included */
         boot();
         ui_prefs2 |= PREF_MODE_RECALL >> 16;
         project_load((int)i);

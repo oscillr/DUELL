@@ -4,7 +4,7 @@
  *
  * What goes (flash objects, storage.c; a stored object is the A/B pair of sectors, both erased by st_wipe):
  *   the autosave (OBJ_AUTOSAVE), the pattern slots (OBJ_PATSLOT0..2), the multis (OBJ_MULTI0..7: M01..M16 are
- *   the factory ones again, ROM), the patch store (OBJ_PATCH0..5 and, DUELL 0.2.15, OBJ_PATCHX0..9, the cloud plan's job A: OBJ_PATCHX0..15 (chunks 6..21): every stored patch and every factory sound's shadow copy),
+ *   the default ones again, ROM), the patch store (OBJ_PATCH0..5 and, DUELL 0.2.15, OBJ_PATCHX0..9, the cloud plan's job A: OBJ_PATCHX0..15 (chunks 6..21): every stored patch and every default sound's shadow copy),
  *   the user wavetables (OBJ_WTAB0..2, DUELL 0.2.14: USR1..USR3 are EMPTY again), DUELL 1.1 (item 91, owner: erase EVERYTHING the user stored) the FM6
  *   voice bank (0xE7000), and the settings (OBJ_SETTINGS: theme, scale, MIDI channels and MIDI MAP / LEARN, the favourites, the preferences). The theme's RAM
  *   copy (`settings`, .noinit, survives the restart) is reset by persist_boot when no record is found (project.c).
@@ -16,7 +16,7 @@
  * copy that is not the current one first), so a cut at any point leaves each object either whole as it was or empty; nothing
  * older comes back. The settings being last matters at boot: the unit starts as a NEW unit (VIOLET, LAYER, M01: persist_boot
  * finds no valid settings, ui_input.c first_boot_poll) only once everything else is gone. A cut before that boots as the
- * unit was left, with less of its data (the autosave, patterns, multis or patches already erased, the factory ones in
+ * unit was left, with less of its data (the autosave, patterns, multis or patches already erased, the default ones in
  * their place), and ERASE DATA can simply be run again; a cut after the settings' first sector leaves the other, whole copy
  * of them and is the same case. Nothing is half-valid: a commit record is valid or the object is empty.
  *

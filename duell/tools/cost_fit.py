@@ -422,7 +422,7 @@ def fit_table(rows, model, agg="max"):
         if o:
             checks.append((label, o["mean"], o["se_mean"], o["n"], txt))
     T["checks"] = checks
-    # ---------------------------------------------------------- the factory sounds
+    # ---------------------------------------------------------- the default sounds
     T["sounds"] = {}
     for e, n in D.sound_counts().items():
         L = F.lines.get((e, 1))
@@ -551,7 +551,7 @@ def report(F, T, model, bad, nrows, path_csv, rows=None):
             P(f"  {lab[:56]:56s} {v:8.1f} +-{se:5.1f} (n {n})  {txt}")
     if T["sounds"]:
         P("")
-        P("== the engines' factory sounds (one voice, cleaned, MULTI bypassed; the engine row in use is the dearest sound's)")
+        P("== the engines' default sounds (one voice, cleaned, MULTI bypassed; the engine row in use is the dearest sound's)")
         for e, s in T["sounds"].items():
             P(f"  {e:7s} {s['n']:3d} sounds   min {s['min']:6.0f}   mean {s['mean']:6.0f}   max {s['max']:6.0f} (sound {s['dear']})   engine row {'' if s['row'] is None else format(s['row'], '.0f')}")
     P("")
@@ -742,7 +742,7 @@ def validate(rows, T, margin=1.00, limit=81.0, polymax=None, assume=(), out=prin
             out(f"  {e:7s} {v:6s} {c}: unit {best:2d} keys, table {pm:2d} keys ({pm - best:+d})   CPU predicted less measured: mean {mean(errs2) if errs2 else 0:+.2f} points over {len(errs2)} counts")
         if diffs:
             out(f"  {len(diffs)} settings: table = unit in {sum(1 for d in diffs if d == 0)}, table gives more in {sum(1 for d in diffs if d > 0)}, fewer in {sum(1 for d in diffs if d < 0)}. "
-                f"(The unit's most keys is where a half is missed, the table's is the {limit:.0f} % budget with the margin: the table should give FEWER by design; the factory sounds also run what --assume names.)")
+                f"(The unit's most keys is where a half is missed, the table's is the {limit:.0f} % budget with the margin: the table should give FEWER by design; the default sounds also run what --assume names.)")
     return stats
 
 
@@ -953,7 +953,7 @@ def main(argv=None):
     v.add_argument("csv")
     v.add_argument("--table", required=True)
     v.add_argument("--polymax")
-    v.add_argument("--assume", default="", help="what the POLY-MAX factory sounds also run: sends,morph,cho")
+    v.add_argument("--assume", default="", help="what the POLY-MAX default sounds also run: sends,morph,cho")
     v.add_argument("--limit", type=float, default=budget_h_define("BUDGET_LIMIT", 81.0), help="default: BUDGET_LIMIT of firmware/src/budget.h (item 137: 81)")
     v.add_argument("--margin", type=float, default=budget_h_define("BUDGET_MARGIN", 100.0) / 100.0, help="default: BUDGET_MARGIN / 100 of firmware/src/budget.h (item 137: 1.00)")
     s = sub.add_parser("selftest")

@@ -8,7 +8,7 @@ static int project_save(uint32_t slot);
 static void panel_setup(void);
 static void project_load(uint32_t slot);
 static int project_used(uint32_t slot);
-static int up_used(uint32_t k);              /* a SAVED record in slot k: upreset.c (no record: the slot is its factory sound, sl_*) */
+static int up_used(uint32_t k);              /* a SAVED record in slot k: upreset.c (no record: the slot is its default sound, sl_*) */
 static int up_load(uint32_t k);
 static uint32_t up_count(void);
 static uint32_t up_engine(uint32_t k);
@@ -30,28 +30,31 @@ static int project_info(uint32_t slot, char *b);
 static int project_rename(uint32_t slot, const char *name);
 static void project_cur_name(char *b);
 static uint32_t project_cur_slot(void);           /* .. the multi the music came from (0..15; 0xFF none) */
-static int project_factory(uint32_t slot);         /* .. M01..M10 not overwritten: shows its factory multi */
+static int project_default(uint32_t slot);         /* .. M01..M10 not overwritten: shows its default multi */
 static int erase_data_run(void);                   /* DUELL 0.2.2: MENU > SYSTEM > ERASE DATA (erase_data.c) */
 static void mu_label(char *b, uint32_t k);         /* .. "M01" .. "M16" */
-/* The PATCH SLOTS (upreset.c, the slot layer): ONE list of UP_SLOTS (128), slot k = its saved record, else the factory sound at browse position k */
+/* The PATCH SLOTS (upreset.c, the slot layer): ONE list of UP_SLOTS (128), slot k = its saved record, else the default sound at browse position k */
 static uint32_t slot_of(const track_t *t);         /* the slot t's sound is in, UP_SLOTS = none */
+static void sl_values(uint32_t k, int16_t *v);      /* (upreset.c) a slot's stored values, EXT_P_LEN of them: the footer's edited mark (ui_draw.c foot_edited) */
 static uint32_t slot_home(const track_t *t);       /* .. where SAVE offers to write it */
-static uint32_t sl_engine(uint32_t k);             /* slot k's engine, name, category: its record's, else its factory sound's */
+static uint32_t sl_engine(uint32_t k);             /* slot k's engine, name, category: its record's, else its default sound's */
 static void sl_name(uint32_t k, char *b);
 static uint32_t sl_cat(uint32_t k);
-static int sl_fac(uint32_t k, uint32_t *e, uint32_t *fk);   /* the factory sound slot k falls back to (1: it has one) */
+static int sl_fac(uint32_t k, uint32_t *e, uint32_t *fk);   /* the default sound slot k falls back to (1: it has one) */
 static int sl_load(uint32_t k);                    /* slot k -> the selected part (1 = loaded) */
 static uint32_t up_gen;                      /* bumped on every patch store change (redraws) */
 static void patch_save_do(uint32_t both);    /* SAVE held, OCT+: the sound over its slot (upreset.c) */
 static char save_nm[13] __attribute__((section(".pool")));   /* 0.2.21: the SAVE dialog's RENAME (K2, ui_name.c NK_SAVE_NAME): the name the saved record gets; "" = the sound's own (cleared when SAVE is held, and after the save) */
 static void patch_restore_do(uint32_t k);
+static uint8_t foot_mu;                    /* DUELL 1.3.x (owner 2026-11-18): bit i: part i plays the multi's own sound, no exact patch: the footer shows the multi's name in the patch's
+                                            * place (multi.c foot_mu_check at a multi load and the session's restore; cleared by a sound load or a SAVE of the part's sound) */
 static void patch_restore_all_do(void);      /* SAVE > TOOLS: RESTORE ALL */
 #include "favorites.c"
 #include "category.c"                   /* sound categories (Discussion #90): PRESETS > LIST */
 /* MENU's two-valued settings (ui_menu.c MENU_FLAGS), a bit each in a byte no engine uses (as ui_layer.c layer_seen):
  * saved with the settings; 0 in older ones = every setting's default (append-only: a new setting takes a new bit,
  * its default is 0) */
-#define ui_prefs (favorites.factory[15][30])
+#define ui_prefs (favorites.defaults[15][30])
 /* DUELL 0.2.19 BASS MONO (fx.c bass_mono) is a sound setting of the music, the page MASTER's: song.bm (core.h G_BM), kept in the autosave, the project and the multis
  * (project.c byte 65, multi.c byte 5), not in the settings record. [15][29], the retired STYLE byte, is unused again (it held BASS MONO in an early 0.2.19 build; whatever it
  * holds is ignored). ui_input copies song.bm to fx.c bm_sel every frame */
@@ -72,7 +75,7 @@ static void patch_restore_all_do(void);      /* SAVE > TOOLS: RESTORE ALL */
  * not; 3 (unknown) reads as 0 (settings_persist.c puts it back). Bit 6 (1.2): was MENU > SCALE LEDS ON (Discussion #127):
  * retired in 0.2.5, whatever it holds is ignored, never reused. Bit 7 (0.2.5): MENU > SCALE LEDS OFF (ui_input.c scale_leds); clear in every
  * older setting and a new unit = AUTO, so the scale shows by itself (an old ON or OFF alike) */
-#define ui_rec_prefs (favorites.factory[15][28])
+#define ui_rec_prefs (favorites.defaults[15][28])
 #define PREF_REC 0xFF00u                       /* (menu_items.c MENU_FLAGS: a bit of ui_rec_prefs, << 8) */
 #define PREF_SCALE_LEDS_OFF (0x80u << 8)
 /* 1.2: three more two-valued MENU settings, bits of another byte no engine uses, saved with the settings; 0 in older
@@ -82,7 +85,7 @@ static void patch_restore_all_do(void);      /* SAVE > TOOLS: RESTORE ALL */
  * Bit 5: the first-start GUIDE seen (DUELL 0.2.11, ui_guide.c; no MENU row, no editor id). Bit 6: MODE RECALL ON (0.2.11, multi.c project_load;
  * 0.2.14: MENU > CONTROL > MULTI LOAD SETS MODE). Bit 7 (0.2.14): the 0.2.14 defaults applied (PREF_DEFAULTS, settings_persist.c settings_defaults).
  * DUELL 0.2.14: bit 0 (SCOPE MIX) is retired with its MENU row (the scope always draws OUT, after MASTER): ignored, kept as stored, never reused */
-#define ui_prefs2 (favorites.factory[15][24])
+#define ui_prefs2 (favorites.defaults[15][24])
 #define PREF_X 0xFF0000u                       /* (menu_items.c MENU_FLAGS: a bit of ui_prefs2, << 16) */
 #define PREF_PREVIEW (0x02u << 16)
 #define PREF_CHORD_ADD (0x04u << 16)
@@ -99,12 +102,12 @@ static void patch_restore_all_do(void);      /* SAVE > TOOLS: RESTORE ALL */
  * DUELL 0.2.14 (owner): the OVERVIEW page is gone from HOME's round, and with it HOME OPENS' value 3 (OVERVIEW): a stored 3 reads as
  * MORPH (the unknown-code rule), kept as stored until HOME OPENS is changed. MENU > DISPLAY > OVERVIEW is gone too, and the OVERVIEW screen's
  * code (ui.home, its scope / TRACKS / LEVELS views, HOME's four cards); its settings byte [15][26] is kept as stored, read by nothing */
-#define ui_home_pg (favorites.factory[15][2])
+#define ui_home_pg (favorites.defaults[15][2])
 /* DUELL: the global SCALE, ROOT and OFF-SCALE KEYS (core.h): [15][3] bit 7 the format flag (0: an older blob or a new unit = CHROMATIC, SNAP: its
  * other bits, the former SCALE LINK and a global scale of 0.2.1 builds, are not read), bit 6 PLAY (0 SNAP), bits 0-3 the scale (0 = CHROMATIC);
  * [15][4] the global root 0..11 (0 = C) */
-#define ui_scale_set (favorites.factory[15][3])
-#define ui_root_set (favorites.factory[15][4])
+#define ui_scale_set (favorites.defaults[15][3])
+#define ui_root_set (favorites.defaults[15][4])
 enum { HP_MORPH, HP_MAC1, HP_MAC2, HP_PERF, HP_COUNT };   /* (owner 2026-11-15: MACROS 1/2 and 2/2 can be the start page too; stored as HP_MAC1_CODE, HP_MAC2_CODE) */   /* (owner 2026-11-15: HP_MODE gone with the MODE page; stored codes: 0 MORPH, HP_PERF_CODE PERFORM, anything else MORPH) */   /* (0.2.14: 3 was OVERVIEW, retired; 0.2.25 layout round: 2 was MIXER, which is GLO's first page now, not HOME's: both read as MORPH) */
 /* DUELL 1.3 (owner 2026-11-13): HOME OPENS PERFORM, the menu's third value, stored as 4 (a stored 2 or 3, the retired MIXER and OVERVIEW, still reads as MORPH) */
 #define HP_PERF_CODE 4u
@@ -113,7 +116,7 @@ enum { HP_MORPH, HP_MAC1, HP_MAC2, HP_PERF, HP_COUNT };   /* (owner 2026-11-15: 
 static uint32_t home_pg(void) { return ui_home_pg == HP_PERF_CODE ? HP_PERF : ui_home_pg == HP_MAC1_CODE ? HP_MAC1 : ui_home_pg == HP_MAC2_CODE ? HP_MAC2 : HP_MORPH; }
 /* DUELL 0.1: the very first start. project.c persist_boot raises it when the flash holds no valid settings (a new unit, stock firmware's
  * data or garbage in the sector, a flash erase) and main.c drops it again when an autosave was restored; ui_input.c first_boot_poll then
- * makes the start state: MODE LAYER and factory multi M01 loaded (VIOLET is the theme of a settings record that is not valid:
+ * makes the start state: MODE LAYER and default multi M01 loaded (VIOLET is the theme of a settings record that is not valid:
  * panel.c settings_init). Valid settings (any DUELL, Felucca blob) never raise it, so the next start is an ordinary one */
 static uint8_t first_boot_pending;
 enum { RP_CLICK, RP_LEVEL, RP_COUNTIN };
@@ -135,36 +138,36 @@ static void rp_put(uint32_t f, uint32_t v)
     ui_rec_prefs = (uint8_t)((ui_rec_prefs & ~(3u << (2u * f))) | st << (2u * f));
     rp_apply();
 }
-/* (favorites.factory[15][29]: the retired MENU > STYLE byte, FLAT or LINE; DUELL 0.2.2: FLAT only, the byte was ignored; unused) */
+/* (favorites.default[15][29]: the retired MENU > STYLE byte, FLAT or LINE; DUELL 0.2.2: FLAT only, the byte was ignored; unused) */
 /* DUELL 4b: the MORPH's settings (SPEC 3.4 AMOUNT, 3.4a TARGET), kept with the settings (not the patch, not a project) in
- * two bytes no engine uses: [15][12] bit 7 TARGET BOTH (0 SELECTED; 0.2.9: reserved, kept as stored and never read:
- * ALGORITHM's BOTH is not saved), bits 0-6 part 1's AMOUNT, [15][13] bits 0-6 part 2's
- * AMOUNT (bit 7 free, 0); an AMOUNT as 1 + its percent, 0 = the default (MORPH_AMOUNT_DEF, 15 % since 2026-10-11, 25 % before: every older setting, and the default
+ * two bytes no engine uses: [15][12] bit 7 ALGORITHM on BOTH (1.3.x, owner 2026-11-18: saved, read at power-on;
+ * ui_input.c morph_settings), bits 0-6 part 1's AMOUNT, [15][13] bits 0-6 part 2's
+ * AMOUNT, bit 7 the selected part is PART 2 (1.3.x); an AMOUNT as 1 + its percent, 0 = the default (MORPH_AMOUNT_DEF, 15 % since 2026-10-11, 25 % before: every older setting, and the default
  * state writes nothing). An unknown code (> 101) reads as the default. The ends, seeds and faders are not kept
  * (ui_input.c morph_settings) */
-#define ui_morph_set (&favorites.factory[15][12])
+#define ui_morph_set (&favorites.defaults[15][12])
 /* DUELL 3.5: the MORPH SET page's SMART / ARP / PITCH (morph.c MC_WILD, MC_ARP, MC_PIT: bit 0 WILD = SMART off, bit 1 ARP ON,
  * bit 2 PITCH ON) in [15][8], a byte no engine uses: 0 = SMART, ARP OFF, PITCH OFF (the default: every older setting) */
-#define ui_morph_cfg (favorites.factory[15][8])
+#define ui_morph_cfg (favorites.defaults[15][8])
 /* DUELL step 5: the output MODE (core.h DM_*, SPEC 5b.1) in a byte no engine uses, kept with the settings: 0 SPLIT (the
  * default: every older setting), 1 STEREO, 2 LAYER; an unknown code reads as SPLIT and is kept as saved until the mode is
  * changed (ui_input.c mode_settings) */
-#define ui_mode_set (favorites.factory[15][9])
+#define ui_mode_set (favorites.defaults[15][9])
 /* the MODE page's KNOB 3..4 (core.h mix_xf, mix_split), two more bytes no engine uses, kept with the settings and in
  * each MULTI: [15][6] XFADE (0..100 %), [15][7] SPLIT (0 = OFF, else the note + 1). [15][5] was BALANCE's (int8): item 157, a SPARE byte,
  * neither read nor written (the settings record keeps its size and layout). 0 in every older setting = XFADE 0, SPLIT OFF (nothing changes);
  * an out-of-range byte reads as 0 / OFF and is kept as saved until the value is changed (ui_input.c mode_settings) */
-#define ui_mix_xf (favorites.factory[15][6])
-#define ui_mix_split (favorites.factory[15][7])
+#define ui_mix_xf (favorites.defaults[15][6])
+#define ui_mix_split (favorites.defaults[15][7])
 /* DUELL step 6: GLO > MIDI's parts' MIDI channels (seq.c midi_pch), kept with the settings in two more bytes no engine uses: [15][0] part 1,
  * [15][1] part 2; 0 (every older setting) = the default, channel 1 for part 1 and 2 for part 2, else the channel 1..16 (an unknown code
  * reads as the default and is kept as saved until changed: ui_input.c midi_ch_get). Not in the MULTIs (the device's, like the clock) */
-#define ui_midi_p1 (favorites.factory[15][0])
-#define ui_midi_p2 (favorites.factory[15][1])
+#define ui_midi_p1 (favorites.defaults[15][0])
+#define ui_midi_p2 (favorites.defaults[15][1])
 /* DUELL 0.2.22: GLO > SIDECHAIN's MIDI setup (fx.c sc_midi, core.h SC_CH_DEF), the device's like the channels above: [15][14] part 1's channel, [15][15] its note, [15][16] part 2's channel, [15][17] its note
  * (bytes of the FX layer's old key map, retired in 0.2.2 and unused since; a value out of range reads as the default). 0 = the default (every older setting); a channel is stored 1 + 0..15, a note 1 + 0..127 (0 = ANY).
  * Not in a patch, a multi or the project: a load never touches them (ui_input.c sc_get / sc_put / sc_sync) */
-#define ui_sc_set (&favorites.factory[15][14])
+#define ui_sc_set (&favorites.defaults[15][14])
 static const char *const DM_NAME[DM_N] = {"DUEL", "STEREO", "LAYER"};
 static void draw_gaps(uint32_t y, uint32_t h);        /* (ui_draw.c) */
 
@@ -287,10 +290,10 @@ enum { CF_NONE, CF_CLEAR_SEQ, CF_CLEAR_TRK, CF_OVR_PROJ, CF_OVR_USER, CF_LOAD_PA
  * Off: lcd_power(0) (DISPOFF, SLPIN) and nothing is drawn. Waking, a frame at a time (never a wait in
  * the loop): 120 ms after the SLPIN, SLPOUT (lcd_power(1)); 120 ms after that one frame redraws everything
  * (ui.force), then DISPON (lcd_power(2)) */
-#define ui_scr (favorites.factory[15][27])
+#define ui_scr (favorites.defaults[15][27])
 /* MENU > ANIM IDLE (1.2, Discussion #135; menu_items.c, ui_input.c idle_leds): bit 0, the LEDs' idle animation, in a
  * byte no engine uses, kept with the settings; 0 in every older setting = off. The other bits: 0 (room for a delay) */
-#define ui_idle (favorites.factory[15][10])
+#define ui_idle (favorites.defaults[15][10])
 /* DUELL 0.2.14 GLO > MODULES (core.h MODS_*): bits 1..4 of the same byte, ARP SEQ SENDS PART FX, a SET bit = that module OFF. Every older
  * record has them clear (settings_persist.c settings_defaults clears bits 1..7 of an older record once: nothing wrote them before), so a
  * new unit, ERASE DATA and any older setting read all four ON. A device setting: no patch, multi or project holds it. Bits 5..7 stay free.
@@ -303,7 +306,7 @@ enum { CF_NONE, CF_CLEAR_SEQ, CF_CLEAR_TRK, CF_OVR_PROJ, CF_OVR_USER, CF_LOAD_PA
 #define PERF_KEEP_BIT 0x20u
 /* DUELL 1.1 MENU > DISPLAY > NOTES LEFT (ON / OFF): bit 0 of the settings record's byte [15][23] (an unused byte, see settings_persist.c), set = OFF; a clear bit (a new unit,
  * ERASE DATA, every older record) = ON, the default. ui_draw.c draws the notes left of each part in the header's left corner while it is ON. A device setting, never in a patch or multi */
-#define ui_notes_off (favorites.factory[15][23])
+#define ui_notes_off (favorites.defaults[15][23])
 #define NOTES_OFF_BIT 0x01u
 static uint32_t notes_show_on(void) { return (ui_notes_off & NOTES_OFF_BIT) == 0u; }
 #if DUELL_VELO
@@ -317,18 +320,18 @@ static uint32_t aftert_on(void) { return (ui_idle & AFTERT_OFF_BIT) == 0u; }
  * older record reads as before: OFF stays OFF, ON becomes NORMAL (today's curve exactly). The type is in the byte [15][22] (unused until now; 0 = NORMAL, the default): bits 0..2 the
  * KEY VELOCITY type + 1, bits 3..5 the AFTERTOUCH type + 1 (stored 0 = NORMAL, 1..5 = SOFTER .. HARDER; anything above 5 reads as NORMAL: settings_persist.c clears it). A device
  * setting, never in a patch or multi. The menu value is 0 = OFF, 1..5 = SOFTER .. HARDER */
-#define ui_sense_type (favorites.factory[15][22])
+#define ui_sense_type (favorites.defaults[15][22])
 static uint32_t keyvel_type(void) { uint32_t t = ui_sense_type & 7u; return t && t <= SC_TYPE_N ? t - 1u : SC_TYPE_NORMAL; }
 static uint32_t aftert_type(void) { uint32_t t = (ui_sense_type >> 3) & 7u; return t && t <= SC_TYPE_N ? t - 1u : SC_TYPE_NORMAL; }
 #endif
 static uint32_t perf_keep(void) { return (ui_idle & PERF_KEEP_BIT) != 0u; }
-/* DUELL 1.3 MACROS' device settings (MENU > CONTROL, menu_items.c; the editor's MENU settings): the row favorites.factory[13], the favourites row of engine 13 (SLICE, retired in
+/* DUELL 1.3 MACROS' device settings (MENU > CONTROL, menu_items.c; the editor's MENU settings): the row favorites.default[13], the favourites row of engine 13 (SLICE, retired in
  * 0.2.9: no sound, no favourite since; favorites.c never hands it out for a shown engine). [0] the tag MAC_TAG: without it (a new unit, ERASE DATA, every older record, whatever
  * SLICE's old stars left there) every pick reads its default; [1..4] PERFORM KNOB 1..4 (MAC_MORPH .. MAC_KILL, MAC_DEPTH), [5..8] QUICK MACRO KNOB 1..4 (MAC_MORPH .. MAC_KILL),
  * [9] the MIDI PRESET (midi_control.c MPRE_*). A value out of range reads its default. Defaults: PERFORM as it always was, K1 MORPH, K2 SPACE, K3 KILL, K4 DEPTH; QUICK MACRO
  * TIMBRE, FILTER, CHARACTER, MOTION (owner 2026-11-12); MIDI PRESET STANDARD. A device setting: no patch, multi or project holds it.
  * NOT BUILT in this round: the MENU rows that would edit each macro's targets (macro.c's const tables are the device's one set) */
-#define ui_mac_set (favorites.factory[13])
+#define ui_mac_set (favorites.defaults[13])
 #define MAC_TAG 0xD4u                                   /* (0xD4 since 2026-11-13: PERFORM K1 is DEPTH; a record of the 0xD3 layout reads the defaults) */
 static const uint8_t MAC_PICK_DEF[8] = {MAC_DEPTH, MAC_MORPH, MAC_SPACE, MAC_KILL, MAC_TIMBRE, MAC_FILTER, MAC_CHARACTER, MAC_MOTION};   /* owner 2026-11-13: PERFORM K1 is DEPTH, fixed (the depth of the 16 buttons under it); K2 K3 K4 the three picks */
 static uint32_t mac_pick(uint32_t k)                     /* k 0..3: PERFORM KNOB k + 1; 4..7: QUICK MACRO KNOB k - 3 */
@@ -370,7 +373,7 @@ static uint32_t mods_get(void) { return ((uint32_t)ui_idle >> MODS_SHIFT) & MODS
 /* DUELL 1.1 (owner, ARP_SEQ_RUN_SWITCH_V1.md): the ARP and SEQ cards have OFF, FOLLOWS PATCH (the default) and KEEPS RUNNING. OFF is the MODULES bit above; KEEPS RUNNING is a bit of its own in the byte
  * [15][23] (bit 1 ARP, bit 2 SEQ; bit 0 is NOTES LEFT): set = KEEPS RUNNING while the module is not OFF. The document proposed the bits 6 and 7 of [15][10], but they are KEY VELOCITY and AFTERTOUCH
  * (below, DUELL_VELO builds). A clear bit (a new unit, ERASE DATA, every older record) = FOLLOWS PATCH. A device setting: no patch, multi or project holds it */
-#define ui_runkeep (favorites.factory[15][23])
+#define ui_runkeep (favorites.defaults[15][23])
 #define RUNKEEP_SHIFT 1u
 static uint32_t mods_keep_get(void) { return ((uint32_t)ui_runkeep >> RUNKEEP_SHIFT) & 3u; }
 static void mods_apply(void)
@@ -997,7 +1000,7 @@ static int seq_is_empty(const track_t *t)
     return 1;
 }
 
-/* One-step UNDO of a load. A sound load (a factory or user preset, an engine jump, TOOLS INIT, the
+/* One-step UNDO of a load. A sound load (a default or user preset, an engine jump, TOOLS INIT, the
  * editor's PRESET / G_ENGSEL / UP_LOAD) changes the sound only; a pattern load (SAVE > PATTERNS) changes
  * the steps and the pattern parameters only. Each first copies the track as it was; SAVE held 0.7 s
  * swaps back what the loads changed (held again: the loads again), so steps recorded after a sound
@@ -1016,7 +1019,7 @@ static struct {
     uint8_t what;                /* UNDO_SOUND | UNDO_PAT: what the loads since the copy changed (undo_swap) */
     uint8_t eng, preset, user, patn;
     uint8_t fm6_slot;            /* the track's FM6 patch and its SLOT (eng_fm6.c): an edited or a project's */
-    uint8_t fm6[FP_SIZE + 1u];   /* patch is the track's own, not a factory one */
+    uint8_t fm6[FP_SIZE + 1u];   /* patch is the track's own, not a default one */
     int16_t p[P_COUNT];
     step_t step[NSTEP];
     motion_store_t motion_backup; /* one track only, swaps with the shared event pool on undo */
@@ -1095,6 +1098,8 @@ static void load_motion_hold(track_t *t, uint32_t what)
 static void load_begin(track_t *t, uint32_t what)
 {
     uint32_t i = trk_index(t);
+    if (what & UNDO_SOUND)
+        foot_mu &= (uint8_t)~(1u << i);                 /* (1.3.x: a sound loaded: the footer names it again) */
     if ((what & UNDO_SOUND) && !(what & UNDO_ENG)) {
         pl_pend_on = 0;                           /* (and no cursor place waits for a load) */
         perf_fade_begin(0);                       /* (0.2.14 PERF LEAVE FADE: a sound load takes PERFORM's SPACE and KILL back to neutral; 0.2.24: not an engine change) */
@@ -1286,11 +1291,11 @@ static void cmp_sync(void)
     cmp_cfg = (uint32_t)song.cp[0] | (uint32_t)song.cp[1] << 8 | (uint32_t)song.cp[2] << 16 | (uint32_t)song.cp[3] << 24;
 }
 /* WIDTH (DUELL 0.2.23; fx.c width_stage): song.ms[] (WIDTH 0..200 %; core.h G_WD) <-> the settings record's bytes
- * favorites.factory[15][18..21] (ui_ms_set; bytes of the FX layer's key map, retired in 0.2.2, that nothing has read since): [18] the tag MS_TAG, [19] WIDTH, [20] (0.2.25: the SATURATOR's DRIVE of 0.2.23 / 0.2.24, removed: never read, written 0), [21] BASS MONO + 1 (0.2.24; 0 = the default, ON at 200 Hz). DEVICE settings like COMP: no
+ * favorites.default[15][18..21] (ui_ms_set; bytes of the FX layer's key map, retired in 0.2.2, that nothing has read since): [18] the tag MS_TAG, [19] WIDTH, [20] (0.2.25: the SATURATOR's DRIVE of 0.2.23 / 0.2.24, removed: never read, written 0), [21] BASS MONO + 1 (0.2.24; 0 = the default, ON at 200 Hz). DEVICE settings like COMP: no
  * multi, project or patch holds them and a load never touches them. Without the tag (every older record: 0, or what the old key map left) the bytes are the defaults (WIDTH 100 %:
  * the stage off); a value out of range reads as its default. As cmp_sync: written only when changed here (saved ~2 s later), read when changed from outside (power-on,
  * a backup restore), every frame (ui_input.c); the audio side gets wd_sel */
-#define ui_ms_set (&favorites.factory[15][18])
+#define ui_ms_set (&favorites.defaults[15][18])
 #define MS_TAG 0xB7u
 static uint32_t ms_last = 0xFFFFFFFFu;
 static uint32_t ms_pack(void) { return (uint32_t)song.ms[0] | (uint32_t)song.bm << 16; }
@@ -1382,7 +1387,7 @@ static void undo_swap(void)
     }
     fm1_irq_on();
     if (undo.what & UNDO_SOUND) {                 /* FM6: the track's patch as it was (edited, a project's, a
-                                                   * converted DIGITAL sound), not a factory one */
+                                                   * converted DIGITAL sound), not a default one */
         uint32_t tr = trk_index(t);
         uint8_t v[FP_SIZE + 1u], sl = fm6_slot[tr];
         memcpy(v, fm6_patch[tr], FP_SIZE);
@@ -1516,7 +1521,7 @@ static void pslot_save_ui(uint32_t k, const char *name)
     ui_say("SAVED ", l);
     ui.force = 1;
 }
-/* the track's settings, not the sound's: what a sound load (factory or user preset, an engine jump,
+/* the track's settings, not the sound's: what a sound load (default or user preset, an engine jump,
  * TOOLS INIT) leaves alone. The mix (LEVEL, PAN, MUTE: the MIXER; 0.2.19: LEVEL is the player's mixer level, the sound's loudness is P_TRIM, which a load sets), the arpeggiator (ARP, ARP 2),
  * the chord keys (CHRD, VOIC; not id 27, KEY TRK, nor id 28, TRANSPOSE, which are the sound's), the pattern parameters (LEN, DIV, SWING, GATE; 1.2: QUANTIZE). (DUELL: the SLICER
  * insert's ids were kept too; it is removed, its ids P_FREEA..D are not) */
@@ -1526,27 +1531,35 @@ static int param_kept(uint32_t i)
            i == P_CHRD || i == P_VOIC || i == P_SQNT;
 }
 
-/* DUELL patches and the arp: every patch sets the part's arp (DUELL 1.0, owner: a patch restores its own arp state, OFF as well; there are no factory and user kinds):
- * a factory sound's arp pairs, or the defaults (OFF) when it has none; a stored patch's AK block (upreset.c up_load), or the defaults. The load keeps the
+/* DUELL patches and the arp: every patch sets the part's arp (DUELL 1.0, owner: a patch restores its own arp state, OFF as well; there are no default and user kinds):
+ * a default sound's arp pairs, or the defaults (OFF) when it has none; a stored patch's AK block (upreset.c up_load), or the defaults. The load keeps the
  * part's own arp settings (P_AMODE .. P_AORDER) aside; the next patch loaded gives them back first, unless the arp was changed since (then the change
  * stays: the player's) and then sets its own. The global GLO > MODULES ARP switch still kills every arp. */
 _Static_assert(P_AORDER == P_AMODE + 7, "the arp's eight ids in a row");
 static uint8_t ds_lent[NTRK];
 static int16_t ds_arp_was[NTRK][8], ds_arp_set[NTRK][8];
-/* ov: a stored patch's own arp (upreset.c: its AK block, the eight values, or the defaults); 0: the factory sound s's (its pairs, else the defaults) */
-/* DUELL 1.1 (owner, ARP_SEQ_RUN_SWITCH_V1.md, option B): with MODULES ARP on KEEPS RUNNING, a patch without an arp of its own (MODE OFF, or a factory sound without DSF_ARP; INIT too) leaves the part's arp
+/* ov: a stored patch's own arp (upreset.c: its AK block, the eight values, or the defaults); 0: the default sound s's (its pairs, else the defaults) */
+/* DUELL 1.1 (owner, ARP_SEQ_RUN_SWITCH_V1.md, option B): with MODULES ARP on KEEPS RUNNING, a patch without an arp of its own (MODE OFF, or a default sound without DSF_ARP; INIT too) leaves the part's arp
  * exactly as it is: no give-back of the lent one, no new one, and the chord keys and the sequencer pattern stay as well (ds_keys, ds_seq_back and ds_seq_lend skip while ds_kept is set).
  * A patch with an arp of its own takes over as ever. FOLLOWS PATCH (the default): everything as before. ds_arp is the first of the four calls of a load and sets ds_kept for the others */
 static uint8_t ds_kept;
 static int ds_has_arp(const ds_sound_t *s, const int16_t *ov) { return ov ? ov[0] != 0 : s && (s->flags & DSF_ARP) != 0u; }
+/* DUELL 1.3.x (owner 2026-11-18, "HOLD stays"): HOLD is the player's switch (REC): no patch or multi load changes it. On stays on, as the new
+ * sound's arp needs it (ARP with its arp running, ALL without: the same as REC sets it, ui_input.c rec_hold_tap); off stays off */
+static void hold_keep(track_t *t, int32_t h)
+{
+    t->p[P_AHOLD] = (int16_t)(h ? (arp_mode(t) != AM_OFF ? 1 : 2) : 0);
+}
 static void ds_arp(track_t *t, const ds_sound_t *s, const int16_t *ov)
 {
     uint32_t k = trk_index(t) % NTRK, i;
     int16_t *a = &t->p[P_AMODE];
+    int32_t h = t->p[P_AHOLD];
     ds_kept = (uint8_t)(((mods_keep & MODK_ARP) != 0u) && !ds_has_arp(s, ov));
     if (ds_kept)
         return;
     if (ds_lent[k]) {
+        a[P_AHOLD - P_AMODE] = ds_arp_set[k][P_AHOLD - P_AMODE];   /* (1.3.x: HOLD switched since is no change of the arp: the part's own still comes back) */
         if (!memcmp(a, ds_arp_set[k], sizeof ds_arp_set[k]))
             memcpy(a, ds_arp_was[k], sizeof ds_arp_was[k]);
         ds_lent[k] = 0;
@@ -1562,6 +1575,7 @@ static void ds_arp(track_t *t, const ds_sound_t *s, const int16_t *ov)
         memcpy(ds_arp_set[k], a, sizeof ds_arp_set[k]);
         ds_lent[k] = 1;
     }
+    hold_keep(t, h);                                    /* (1.3.x: HOLD as the player left it) */
 }
 
 /* the same for the chord keys (P_CHRD, P_VOIC; DSF_KEYS): a pad may set chord keys. No scale: it is the instrument's (core.h) */
@@ -1595,8 +1609,8 @@ static void ds_keys(track_t *t, const ds_sound_t *s, const int16_t *ov)   /* ov:
     }
 }
 
-/* the engine's factory sound pi (sounds.c; pi modulo its count), or INIT for an engine that has none: the sound only
- * (not the steps, not param_kept: the mixer LEVEL stays; but the factory sound's TRIM, its loudness, and its arp: ds_arp) */
+/* the engine's default sound pi (sounds.c; pi modulo its count), or INIT for an engine that has none: the sound only
+ * (not the steps, not param_kept: the mixer LEVEL stays; but the default sound's TRIM, its loudness, and its arp: ds_arp) */
 static void apply_preset_to(track_t *t, uint32_t pi)
 {
     uint32_t en = t->eng_req % NENGINES, n = ds_count(en), i;
@@ -1613,7 +1627,7 @@ static void apply_preset_to(track_t *t, uint32_t pi)
     for (i = 0; i < P_E0; i++)                        /* INIT: the sound's parameters to their defaults (a preset */
         if (!param_kept_on(t, i))                     /* sounds the same after any edit) */
             t->p[i] = TP[i].def;
-    ext_defaults(t);                                  /* .. the extension slots too (ext.h: TWIN, SUB, CYCLE values; a factory sound's pairs on top) */
+    ext_defaults(t);                                  /* .. the extension slots too (ext.h: TWIN, SUB, CYCLE values; a default sound's pairs on top) */
     for (i = 0; i < 8u; i++)
         t->p[P_E0 + i] = e->edit[i].def;
     if (s)
@@ -1671,7 +1685,7 @@ static void set_engine_of(track_t *t, uint32_t ei)
     e = ENGINES[ei];
     oe = ENGINES[old];
     load_begin(t, UNDO_SOUND | UNDO_ENG);
-    {                                                   /* T0227 (owner): the patch stays the one it came from: a factory sound's slot becomes the part's slot (t->user), so the
+    {                                                   /* T0227 (owner): the patch stays the one it came from: a default sound's slot becomes the part's slot (t->user), so the
                                                          * name and the slot shown (footer, PATCHES, SAVE's offer) do not turn into the new engine's first sound when preset goes to 0 */
         uint32_t sl = slot_of(t);
         if (!t->user && sl < UP_SLOTS)
@@ -1717,7 +1731,7 @@ static void track_defaults(track_t *t)
     track_defaults_steps(t);
 }
 
-/* INIT (the SOUND INIT dialog, the INIT page): the engine's defaults and its first preset, then KEY TRK at the new-sound default (0.2.22: a factory BASS sound sets 0 itself) */
+/* INIT (the SOUND INIT dialog, the INIT page): the engine's defaults and its first preset, then KEY TRK at the new-sound default (0.2.22: a default BASS sound sets 0 itself) */
 static void init_sound(void)
 {
     init_engine_of(TSEL, TSEL->eng_req);
@@ -1733,7 +1747,7 @@ static void select_engine(uint32_t e)
     ui_refresh();
 }
 
-/* PATCHES (SPEC 3.6, 0.2.17): ONE list of 128 SLOTS, in slot order #1..#128. A slot is its saved record, else the factory sound at that
+/* PATCHES (SPEC 3.6, 0.2.17): ONE list of 128 SLOTS, in slot order #1..#128. A slot is its saved record, else the default sound at that
  * browse position (upreset.c, the slot layer sl_*): there is no other kind of entry, no empty place and no tail. The PRESETS knob, the
  * PATCHES page and MIDI program change all step this list. A part whose sound is in no slot (an engine
  * change, a multi, the editor; or its slot was overwritten) is at no place of it: total is returned (the browser shows "--", a step goes
@@ -1744,7 +1758,7 @@ static void select_engine(uint32_t e)
  * 1 + CAT_* a category, 1 + CAT_N + n the engine at place n of ENGINE_ORDER. The category is kept with the settings in a
  * byte no engine uses (ui_lcat: 0 = none; firmware before reads ALL there, and favorites.filter stays 0 / 1 for it, the
  * editor and backups); the PRESETS knob and page browse that list. The filters look at what the slots hold now */
-#define ui_lcat (favorites.factory[15][11])
+#define ui_lcat (favorites.defaults[15][11])
 #define LIST_N (1u + CAT_N + NENG_SHOWN)                 /* ALL FAV BASS LEAD PAD PLUCK KEYS PERC FX OTHER, then one per engine */
 static uint32_t list_mode(void) { return favorites.filter ? 1u : ui_lcat && ui_lcat < LIST_N - 1u ? 1u + ui_lcat : 0u; }
 static void list_set(uint32_t m)
@@ -1766,7 +1780,7 @@ static int list_keep(uint32_t k)
         return sl_engine(k) == eng_vis(m - CAT_N - 1u);
     return m == 1u ? list_fav(k) : m ? sl_cat(k) == m - 1u : 1;
 }
-/* the category of the sound track t plays: its slot's, else its factory sound's (the editor's default) */
+/* the category of the sound track t plays: its slot's, else its default sound's (the editor's default) */
 static uint32_t track_cat(const track_t *t)
 {
     uint32_t s = slot_of(t);
@@ -1882,11 +1896,11 @@ static void preset_mark(int on)
     }
 }
 
-/* the pattern the selected track's sound suggests: its slot in the SAVE > PATTERNS list (a factory preset's PAT(n) =
+/* the pattern the selected track's sound suggests: its slot in the SAVE > PATTERNS list (a default preset's PAT(n) =
  * slot n), or -1 (a user sound's own pattern is not in the list) */
 static int32_t preset_pat_hint(void)
 {
-    return -1;                                          /* (DUELL's factory sounds suggest no pattern: sounds.c) */
+    return -1;                                          /* (DUELL's default sounds suggest no pattern: sounds.c) */
 }
 
 static void preset_hinted(void)                     /* after a sound load: SAVE > PATTERNS starts at the suggested pattern */

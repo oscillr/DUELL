@@ -14,7 +14,7 @@
  *   8  DUELL 0.2.14's user tables (TABLE 26..28 = USR1..USR3, eng_wave.c wv_user): the byte -> level map against the exact 2^(-(255 - b) / 16), a table
  *      built from a slot against a reference computed here (double precision sums, the engine's 10 bit levels, RMS 63.5 / peak 127: within 2 steps of the
  *      8-bit samples, three levels), an EMPTY slot = a sine named EMPTY, the shown names, a slot stored again under a playing part (fade out, built anew,
- *      no click), a slot changed in the middle of its build (never half of each), determinism, the factory tables untouched (t_list's fingerprint)
+ *      no click), a slot changed in the middle of its build (never half of each), determinism, the default tables untouched (t_list's fingerprint)
  *   9  DUELL 0.2.25: SUB and DTN without a zipper (a change on a held note: no curvature over 1.5 x the steady, where the unsmoothed engine
  *      shows the step; the values land exactly; a value held is bit for bit the unsmoothed engine; a restart in place keeps SUB's level), the
  *      EMPTY slot as it plays (a sine as loud as HARM's, no DC), a voice given up (stage 4) fades over one block
@@ -144,7 +144,7 @@ static void t_list(void)
     okn &= ENG_WAVE.edit[0].max == (int)WV_NT - 1 && ENG_WAVE.edit[0].names == N_WV_TABLE && WV_NT == 29u && WV_NTF == 26u && WV_NU == 3u;
     okn &= !strcmp(N_WV_TABLE[13], "ROUGH") && !strcmp(N_WV_TABLE[14], "BAND") && !strcmp(N_WV_TABLE[25], "AIR");
     okn &= wv_table_of(-3) == 0u && wv_table_of(13) == 13u && wv_table_of(25) == 25u && wv_table_of(28) == 28u && wv_table_of(200) == WV_NT - 1u;
-    snprintf(m, sizeof m, "the list: %u tables (26 factory: 3..5 letter names; 3 user slots, EMPTY), TABLE 0..%d, a value past the end the last",
+    snprintf(m, sizeof m, "the list: %u tables (26 default: 3..5 letter names; 3 user slots, EMPTY), TABLE 0..%d, a value past the end the last",
              (unsigned)WV_NT, ENG_WAVE.edit[0].max);
     expect(m, okn);
     for (tb = 0; tb < WV_NT_OLD; tb++) {               /* (FNV-1a over every byte of the 14 older tables) */
@@ -806,7 +806,7 @@ static void t_user(void)
     k = user_cmp(tb_, B, 1u | 2u | 8u, &worst);
     snprintf(m, sizeof m, "the same for USR3 and levels 1 3 (128, 64 samples): %u off by more than 2, worst %d; the slots do not leak into each other", (unsigned)k, (int)worst);
     expect(m, k == 0u && memcmp(ta, tb_, sizeof ta));
-    for (same = 1, f = 0; f < WV_F; f++) {                          /* all frames sine phase (the factory build's own check), the guard */
+    for (same = 1, f = 0; f < WV_F; f++) {                          /* all frames sine phase (the default build's own check), the guard */
         for (b = 0; b < WV_NL; b++) {
             const int8_t *s = tb_ + f * WV_FS + WV_LO[b];
             same &= s[0] == 0 && s[WV_N[b]] == 0 && s[WV_N[b] / 2u] == 0;
@@ -814,7 +814,7 @@ static void t_user(void)
                 same &= s[WV_N[b] - n] == -s[n];
         }
     }
-    expect("a user table's frames: sine phase (f(0) = f(N/2) = 0, the guard = f(0), f(N - n) = -f(n)), as a factory table's", same);
+    expect("a user table's frames: sine phase (f(0) = f(N/2) = 0, the guard = f(0), f(N - n) = -f(n)), as a default table's", same);
     /* through the main loop: built at once for a part, deterministic, the same bytes as the direct build */
     fresh();
     user_set(0, A, "SAWTILT");
@@ -907,7 +907,7 @@ static void t_user(void)
             wv_frame(WV_NTF, f, ta + f * WV_FS);
         expect("..the table that is built is the new one whole (all 19 frames)", wmem(0)->h.have == WV_NTF + 1u && !memcmp(wmem(0)->tab, ta, sizeof ta));
     }
-    /* a factory table's own recipe, encoded as user bytes (the converter's encoding, wtab_encode.h), sounds as the factory table: level 0 within a few steps.
+    /* a default table's own recipe, encoded as user bytes (the converter's encoding, wtab_encode.h), sounds as the default table: level 0 within a few steps.
      * (Only tables whose recipe has no negative harmonic: a sign is a phase flip, and user tables keep no phase. PWM, BAND etc. would differ in shape.) */
     {
         static const uint8_t TBL[] = {0, 2, 3, 4, 5, 6, 8, 12, 14};
@@ -931,22 +931,22 @@ static void t_user(void)
                 }
             }
         }
-        snprintf(m, sizeof m, "factory recipes (SAWSQ HARM ODD ORGAN VOWEL BRASS RESO CHIME BAND) encoded as user bytes play as themselves: level 0 worst %d steps, rms %.2f (of 63.5)",
+        snprintf(m, sizeof m, "default recipes (SAWSQ HARM ODD ORGAN VOWEL BRASS RESO CHIME BAND) encoded as user bytes play as themselves: level 0 worst %d steps, rms %.2f (of 63.5)",
                  (int)w, sqrt(sq / tot));
         expect(m, w <= 4 && sqrt(sq / tot) < 1.0);
     }
-    /* determinism: two builds of one slot give the same bytes; the factory tables are not touched by any of it (t_list's fingerprint) */
+    /* determinism: two builds of one slot give the same bytes; the default tables are not touched by any of it (t_list's fingerprint) */
     for (f = 0; f < WV_F; f++) {
         wv_frame(WV_NTF, f, ta + f * WV_FS);
         wv_frame(WV_NTF, f, tb_ + f * WV_FS);
     }
     expect("a user table is deterministic (two builds, the same bytes)", !memcmp(ta, tb_, sizeof ta));
-    {   /* the cost of a user table's build is a factory table's order (no recipe maths: the dearest factory tables are 2 M) */
+    {   /* the cost of a user table's build is a default table's order (no recipe maths: the dearest default tables are 2 M) */
         uint64_t i0 = instr_now(), c;
         for (f = 0; f < WV_F; f++)
             wv_frame(WV_NTF, f, wvj.out);
         c = instr_now() - i0;
-        snprintf(m, sizeof m, "a user table's build %.2f M host instructions (under the 2.5 M of every factory table)", c / 1e6);
+        snprintf(m, sizeof m, "a user table's build %.2f M host instructions (under the 2.5 M of every default table)", c / 1e6);
         expect(m, c < 2500000u);
     }
     (void)ref;
@@ -1045,7 +1045,7 @@ static void t_zipper(void)
     expect("DTN held at a value (0, 1, 10, 20, 60, 127): bit for bit the engine without smoothing (the renders' hashes)", same);
 }
 
-/* the EMPTY user slot as it plays: a sine (the slot's defined sound, not silence, DC or another table), as loud as the factory sine
+/* the EMPTY user slot as it plays: a sine (the slot's defined sound, not silence, DC or another table), as loud as the default sine
  * (HARM at POS 0); and a voice given up for another part / the overload (voice.c voice_kill, stage 4): its fade (one block, linear) */
 static void t_empty_and_kill(void)
 {

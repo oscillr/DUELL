@@ -5,7 +5,7 @@
  *             slots in slot order, the AMP / DEPTH products too: a stable shift changes nothing); the packed layout has no empty slot before a used one and keeps the order
  *   UNIT      MATRIX 1-4, slot 2's SRC turned to OFF: slots 3 and 4 move into 2 and 3, slot 4 is clear, the cursor stays on slot 2 (it shows the slot that moved in);
  *             a slot with a SRC but no DST yet stays (it is being set up); MATRIX 5-8 is skipped by SELECT and the page buttons while slot 4 is unused, there once it is
- *   LOAD      a factory sound loads packed (gaps counted and printed: the factory data's own gaps, compacted as they load, sound-identical)
+ *   LOAD      a default sound loads packed (gaps counted and printed: the default data's own gaps, compacted as they load, sound-identical)
  * Built and run by DUELL/host_tests.sh (name: matrixpack) */
 #define UI_TEST_NO_MAIN 1
 #include "ui_test.c"
@@ -173,7 +173,7 @@ int main(void)
         expect("a slot with a SRC and no DST yet stays where it is (being set up)", TSEL->p[P_M4SRC] != 0 && TSEL->p[P_M4DST] == 0 && page_visible(m58));
         TSEL->p[P_M4SRC] = 0;
     }
-    /* LOAD: a factory sound with gaps loads packed; the factory data's gaps counted */
+    /* LOAD: a default sound with gaps loads packed; the default data's gaps counted */
     {
         uint32_t e, i, gaps = 0, total = 0;
         for (e = 0; e < NENGINES; e++) {
@@ -195,7 +195,7 @@ int main(void)
                 total++;
             }
         }
-        printf("matrixpack: factory sounds with a gap in their matrix: %u of %u (they load packed, sound-identical)\n", gaps, total);
+        printf("matrixpack: default sounds with a gap in their matrix: %u of %u (they load packed, sound-identical)\n", gaps, total);
         gaps_seen = gaps;
         ui_power_on();
         init_engine_of(TSEL, 0u);

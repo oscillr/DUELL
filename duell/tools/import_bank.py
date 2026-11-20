@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
-"""DUELL 1.0 (owner, 2026-10-21 evening): the factory bank IS the 128 records of tools/factory_bank.duell-patches.json (the editor's "factory bank export").
+"""DUELL 1.0 (owner, 2026-10-21 evening): the default bank IS the 128 records of tools/default_bank.duell-patches.json (the editor's "default bank export").
 
     tools/import_bank.py [--write]  [FILE]
 
 Reads the bank file (format duell-patches v1: per patch number, name, engine, category, crc32, the stored record in base64), checks every
 record against its crc32, decodes it exactly as the firmware does (upreset.c: the sparse pairs on the STORE defaults, the extension block, End B,
 the arp / keys block) and writes
-  tools/duell_sounds.py            the 128 factory sounds in the form tools/gen_duell_sounds.py reads (idx = the old index of a sound of the same
+  tools/duell_sounds.py            the 128 default sounds in the form tools/gen_duell_sounds.py reads (idx = the old index of a sound of the same
                                    engine and name, else the next free one: favourites keep their meaning)
-  tests/factory_bank_records.txt   one line per slot: NN crc32(8 hex) record(hex) trim: the record as the file has it, slot and revision bytes 0, and the TRIM the build gives
-                                   it (tools/factory_bank_trims.json, the level balance; else the record's own); tests/bank_test.c
-                                   loads each factory slot through the firmware, saves it and compares the bytes with these lines
+  tests/default_bank_records.txt   one line per slot: NN crc32(8 hex) record(hex) trim: the record as the file has it, slot and revision bytes 0, and the TRIM the build gives
+                                   it (tools/default_bank_trims.json, the level balance; else the record's own); tests/bank_test.c
+                                   loads each default slot through the firmware, saves it and compares the bytes with these lines
 Nothing of a patch is changed: values are copied, not tuned. A patch the sound list cannot hold is REPORTED (exit 1), never bent.
 Without --write it only reports what it would do.
 """
@@ -26,8 +26,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 TOOLS = ROOT / "tools"
-DEFAULT_FILE = TOOLS / "factory_bank.duell-patches.json"
-TRIMS_FILE = TOOLS / "factory_bank_trims.json"           # {"NN": TRIM}: the level balance (BANK_LEVELS.md): the only thing changed on top of the bank, the patch TRIM
+DEFAULT_FILE = TOOLS / "default_bank.duell-patches.json"
+TRIMS_FILE = TOOLS / "default_bank_trims.json"           # {"NN": TRIM}: the level balance (BANK_LEVELS.md): the only thing changed on top of the bank, the patch TRIM
 CATS = ["", "BASS", "LEAD", "PAD", "PLUCK", "KEYS", "PERC", "FX", "OTHER"]       # category.c (the record's byte 6; the editor says DRUM for PERC)
 PTF = dict(PAT=1, TR=2, FM6=4, MB=8, XB=16, AK=32, BM=64, CB=128)
 AK_IDS = ["P_AMODE", "P_ARATE", "P_AOCT", "P_AGATE", "P_ASWING", "P_APROB", "P_AHOLD", "P_AORDER", None, "P_CHRD", "P_VOIC", "P_SLEN", "P_SDIV", "P_SSWING", "P_SGATE", "P_SQNT"]
@@ -229,11 +229,11 @@ def mdst_name(ctx, v):
 
 def write_sounds(ctx, sounds, path):
     L = ['# SPDX-License-Identifier: GPL-3.0-only',
-         '"""DUELL factory sounds: the data (tools/gen_duell_sounds.py validates it and writes build/gen/duell_sounds.h).',
+         '"""DUELL default sounds: the data (tools/gen_duell_sounds.py validates it and writes build/gen/duell_sounds.h).',
          '',
-         'DUELL 1.0 (owner, 2026-10-21): the 128 factory sounds are the owner\'s bank, the records of tools/factory_bank.duell-patches.json as exported (no refinement,',
+         'DUELL 1.0 (owner, 2026-10-21): the 128 default sounds are the owner\'s bank, the records of tools/default_bank.duell-patches.json as exported (no refinement,',
          'no retuning, the names of the file), written here by tools/import_bank.py. The earlier recipe list (SOUND_RECIPES.md, the refinement passes) is in git history.',
-         'Every sound: engine, idx (its factory index within the engine: the identity favourites and the shadows use; APPEND-ONLY per engine), name, cat, p: the',
+         'Every sound: engine, idx (its default index within the engine: the identity favourites and the shadows use; APPEND-ONLY per engine), name, cat, p: the',
          'parameters that differ from INIT (params.c TP defaults and the engine\'s EDIT defaults; E1..E8 are the engine\'s eight; MOD1..MOD8 are (SRC, DST, AMT)',
          'matrix slots; extension slots as "<group> <label>"), bseed / bamt: End B (the roll\'s seed and the AMOUNT %). Do not edit by hand: import again.',
          '"""',
@@ -343,7 +343,7 @@ def main(argv):
         if s["number"] in trims:
             s["p"]["TRIM"] = trims[s["number"]]
     changed = sum(1 for n, t in trims.items() if t != own_trim[n])
-    print("import_bank: %d records read, %d problems, %d trims changed (tools/factory_bank_trims.json)" % (len(recs), len(problems), changed))
+    print("import_bank: %d records read, %d problems, %d trims changed (tools/default_bank_trims.json)" % (len(recs), len(problems), changed))
     for p in problems:
         print("  PROBLEM", p)
     if a.write and not problems:
@@ -353,8 +353,8 @@ def main(argv):
             z = bytearray(b)
             z[2] = z[3] = 0
             lines.append("%02d %08x %s %d" % (it["number"], zlib.crc32(bytes(z)) & 0xFFFFFFFF, bytes(z).hex(), trims.get(it["number"], r["values"][ctx.ids["P_TRIM"]])))
-        (ROOT / "tests" / "factory_bank_records.txt").write_text("\n".join(lines) + "\n")
-        print("written: tools/duell_sounds.py, tests/factory_bank_records.txt")
+        (ROOT / "tests" / "default_bank_records.txt").write_text("\n".join(lines) + "\n")
+        print("written: tools/duell_sounds.py, tests/default_bank_records.txt")
     return 1 if problems else 0
 
 

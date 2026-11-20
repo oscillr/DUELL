@@ -39,7 +39,7 @@
 #define FELUCCA_ID "FM-1_900"    /* package identity (build.py: the .fwsc marker string) */
 #endif
 #ifndef DUELL_TWOCORE
-#define DUELL_TWOCORE 0          /* DUELL: the second core plays part 2 (stage 1, developer builds only: docs/TWOCORE_STAGE1.md) */
+#define DUELL_TWOCORE 0          /* DUELL: the second core shares the voices of both parts (the voice split, twocore_run.c; 0 here, build.py sets 1) */
 #endif
 #ifndef DUELL_VELO
 #define DUELL_VELO 0             /* DUELL: key velocity and aftertouch from the keys (sense.c, docs/design/VELO_STUDY.md; developer builds until the recording tunes sense_cal.h) */
@@ -91,7 +91,7 @@
 #if DUELL_RAMPLACE
 #include "ramplace.c"            /* the RAM ranges' start-up copy and check (main.c, ABOUT: ui_menu.c) */
 #endif
-#include "engines.c"             /* dsp.c, the eng_*.c files, the factory patterns */
+#include "engines.c"             /* dsp.c, the eng_*.c files, the default patterns */
 #include "params.c"
 #include "mod.c"               /* the modulation matrix, used by voice.c and fx.c */
 #include "morph.c"               /* DUELL MORPH: the ends, the fader's blend (its hook: fx.c mix_block, voice.c) */

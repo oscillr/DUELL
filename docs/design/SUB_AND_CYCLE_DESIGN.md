@@ -367,7 +367,7 @@ Effort: about 1 round, plus your listening session.
 ### C2. How WAVE works today, and the best place for steps
 
 **WAVE today (CONFIRMED, `eng_wave.c` header and `wave_render`; SPEC 2.6):**
-- TABLE picks one of 26 factory tables and 3 user slots. Each table has 19 frames. Each frame is stored in 5 band-limited versions plus a sine.
+- TABLE picks one of 26 default tables and 3 user slots. Each table has 19 frames. Each frame is stored in 5 band-limited versions plus a sine.
 - POS (E2) is the place along the 19 frames. Two neighbouring frames are mixed; all frames are in sine phase, so the mix is a mix of spectra with no level dips.
 - POS is moved by the **SHP routes**: AMP DEST SHP, ENV 2 DEST SHP, LFO 1 / LFO 2 SHP and the matrix's SHP, as an offset (63 steps = the whole scan), per note. The matrix can also move E2 POS once a block.
 - Each block, the target place `fp1` (in 1/65536 frames) is computed, and the read ramps from last block's place `fp0` to it over the 32 samples (`v->s[0]`). That ramp is what makes POS smooth today.

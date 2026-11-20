@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright (C) 2026 OSCILL/R (DUELL)
 # The repo's golden renders against the WebAssembly build: tests/golden.txt (regress.c: presets, the 128 DUELL sounds, voice modes, sends, the song) and
-# tests/multi_render_golden.txt (the factory multis M01..M16 and the test scenes, fader 0 / 63 / 127). The same job code and flags as host_tests.sh, compiled
+# tests/multi_render_golden.txt (the default multis M01..M16 and the test scenes, fader 0 / 63 / 127). The same job code and flags as host_tests.sh, compiled
 # with Emscripten (-ffp-contract=off) and run in Node, one fresh instance per render. Prints every difference; exits 1 if there is one.
 #   web/emu/golden_compare.sh [FILTER]       (FILTER: only golden names containing it, e.g. "sound/" or "M0")
 # Needs build/gen (python3 gen_only.py at the repo root, or ./build.sh) and emcc. Writes build/emu_golden/ (not committed).

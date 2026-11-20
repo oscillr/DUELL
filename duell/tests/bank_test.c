@@ -1,14 +1,14 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
-/* DUELL 1.0: THE FACTORY BANK and the ARP RECALL.
- * 1. The bank (tools/factory_bank.duell-patches.json, the owner's 128 patches as exported, imported by tools/import_bank.py; tests/factory_bank_records.txt: "NN crc32
- *    record-hex trim" per slot, slot and revision bytes 0, the crc32 the file's own, trim the balanced TRIM of tools/factory_bank_trims.json). For every browse slot k the
- *    factory sound is loaded through the firmware (sl_load, as PATCHES loads it) and saved through the firmware (up_patch_save_part, as SAVE does: End B block, extension
+/* DUELL 1.0: THE DEFAULT BANK and the ARP RECALL.
+ * 1. The bank (tools/default_bank.duell-patches.json, the owner's 128 patches as exported, imported by tools/import_bank.py; tests/default_bank_records.txt: "NN crc32
+ *    record-hex trim" per slot, slot and revision bytes 0, the crc32 the file's own, trim the balanced TRIM of tools/default_bank_trims.json). For every browse slot k the
+ *    default sound is loaded through the firmware (sl_load, as PATCHES loads it) and saved through the firmware (up_patch_save_part, as SAVE does: End B block, extension
  *    block, arp / keys block, the FM6 patch). Then the stored record and the file's record are both put into the store and decoded the firmware's way (up_rec, ak_get,
  *    upf_get) and compared FIELD BY FIELD: engine, name, category, all 127 values but the TRIM (which must be the balanced one in the stored record and the file's own in
  *    the file's), the extension slots, End B block, hand-set edits, pattern, FM6 patch; and the stored record must carry the arp and keys block (arp OFF written
  *    explicitly). Counted: byte for byte equal to the file's record (the case when the TRIM is unchanged and the file's record has the block), equal in every field.
  * 2. The arp recall: a patch saved with the arp OFF turns the arp OFF when it is loaded after one with the arp ON; a patch with an arp brings it back (all eight values);
- *    a factory sound without an arp turns an arp off; the chord keys the same; a record without the block (written before 1.0) loads as arp OFF, keys at their
+ *    a default sound without an arp turns an arp off; the chord keys the same; a record without the block (written before 1.0) loads as arp OFF, keys at their
  *    defaults; the global MODULES switch still kills the arp.
  *   build/host/bank_test [records-file]          (DUELL/host_tests.sh "bank") */
 #include <ctype.h>
@@ -99,7 +99,7 @@ static int arp_equal(const track_t *t, const int16_t *v)
 
 int main(int argc, char **argv)
 {
-    const char *fn = argc > 1 ? argv[1] : "tests/factory_bank_records.txt";
+    const char *fn = argc > 1 ? argv[1] : "tests/default_bank_records.txt";
     FILE *f = fopen(fn, "r");
     static char line[4096];
     uint32_t n_ok = 0, n_bytes = 0, n_fields = 0, n_noend = 0, k, i, nrec = 0;
@@ -129,7 +129,7 @@ int main(int argc, char **argv)
     }
     fclose(f);
     ck("the records file holds the 128 patches", nrec == 128u);
-    /* pass 1: every factory sound through the firmware's load and save */
+    /* pass 1: every default sound through the firmware's load and save */
     for (k = 0; k < 128u; k++) {
         sl_load((k + 61u) % UP_SLOTS);                    /* another sound first: nothing of the one before may leak into this one */
         sl_load(k);
@@ -140,7 +140,7 @@ int main(int argc, char **argv)
         }
         n_ok++;
     }
-    ck("all 128 factory slots load and store through the firmware", n_ok == 128u);
+    ck("all 128 default slots load and store through the firmware", n_ok == 128u);
     /* pass 2: the file's record and the stored one, decoded the firmware's way */
     for (k = 0; k < 128u; k++) {
         const char *why;
@@ -170,7 +170,7 @@ int main(int argc, char **argv)
     }
     printf("bank: %u of 128 slots: %u equal the file's record in every field (TRIM the balanced one, the arp block written), %u of them byte for byte, %u equal but for the End B block the file lacks\n",
            n_ok, n_fields, n_bytes, n_noend);
-    ck("every factory slot stores as the file's record (all fields; one End B block the file lacks)", n_fields + n_noend == 128u && n_noend <= 1u);
+    ck("every default slot stores as the file's record (all fields; one End B block the file lacks)", n_fields + n_noend == 128u && n_noend <= 1u);
     for (k = 0; k < 128u; k++)
         sl_restore(k);
 
@@ -183,7 +183,7 @@ int main(int argc, char **argv)
         uint32_t rn;
         for (i = 0; i < 8u; i++)
             off[i] = TP[P_AMODE + i].def;
-        /* find a factory sound with no arp (the bank has several arp sounds: ARP BASS, ARP PLUCK ..) and one that has one */
+        /* find a default sound with no arp (the bank has several arp sounds: ARP BASS, ARP PLUCK ..) and one that has one */
         for (s = 0; s < 128u; s++) {
             uint32_t e, fk;
             if (!sl_fac(s, &e, &fk))
@@ -194,7 +194,7 @@ int main(int argc, char **argv)
             } else if (!a_off)
                 a_off = s + 1u;
         }
-        ck("the bank has a factory sound with an arp and one without", a_on && a_off);
+        ck("the bank has a default sound with an arp and one without", a_on && a_off);
         set_arp(t, 1);
         for (i = 0; i < 8u; i++)
             on[i] = t->p[P_AMODE + i];
@@ -211,14 +211,14 @@ int main(int argc, char **argv)
         ck("load the arp OFF patch after it: the arp is OFF (it used to stay ON)", arp_equal(t, off));
         sl_load(11u);
         sl_load(a_off - 1u);
-        ck("a factory sound without an arp, loaded after an arp patch: the arp is OFF", arp_equal(t, off));
+        ck("a default sound without an arp, loaded after an arp patch: the arp is OFF", arp_equal(t, off));
         sl_load(11u);
         set_arp(t, 0);
         t->p[P_ARATE] = 7;                                  /* the player changed one value of the lent arp, then: */
         sl_load(10u);
         ck("a load sets the patch's own arp even after the player changed it", arp_equal(t, off));
         sl_load(a_on - 1u);
-        ck("a factory sound with an arp sets it", t->p[P_AMODE] != 0);
+        ck("a default sound with an arp sets it", t->p[P_AMODE] != 0);
         sl_load(10u);
         ck("  and the next patch (arp OFF) takes it away again", arp_equal(t, off));
         /* the chord keys */

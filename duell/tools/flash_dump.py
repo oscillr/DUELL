@@ -171,7 +171,7 @@ def main():
                 with open(os.path.join(args.extract_multis, "M%02d.bin" % slot), "wb") as f:
                     f.write(rec)
     print("%d multi(s) stored" % used)
-    print("(an M01..M10 not listed above shows its factory multi, tools/factory_multis)")
+    print("(an M01..M10 not listed above shows its default multi, tools/default_multis)")
 
 
 if __name__ == "__main__":

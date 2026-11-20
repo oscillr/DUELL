@@ -11,7 +11,7 @@
 #define EDITOR_TEST_NO_MAIN 1
 #include "editor_test.c"
 
-/* 0.2.31: reset() leaves the engine's first factory sound on both parts, which now runs filter 2, the SUB layer and a CYCLE time of its own; the scope 2 tests read the slots' defaults */
+/* 0.2.31: reset() leaves the engine's first default sound on both parts, which now runs filter 2, the SUB layer and a CYCLE time of its own; the scope 2 tests read the slots' defaults */
 static void reset_plain(void)
 {
     uint32_t t, k;
@@ -163,7 +163,7 @@ static int scope2(void)
     request(ED_PRESET, a, 2);
     ok = !sync_frames(0) && !wire_frames(ED_RELOAD, 0);
     bad += check("the editor's own PRESET: no push of the slots it loaded", ok);
-    XV(TSEL, X_LINK) = XV(TSEL, X_LINK) ? 0 : 1; XV(TSEL, X_ROUTE) = XV(TSEL, X_ROUTE) ? 0 : 1;   /* (both flipped: factory 2 is the owner's BEHIVE since 0.2.31, which already has LINK OFF and ROUTE PARAL) */
+    XV(TSEL, X_LINK) = XV(TSEL, X_LINK) ? 0 : 1; XV(TSEL, X_ROUTE) = XV(TSEL, X_ROUTE) ? 0 : 1;   /* (both flipped: default 2 is the owner's BEHIVE since 0.2.31, which already has LINK OFF and ROUTE PARAL) */
     ok = sync_frames(0) == 2u;
     bad += check("CHANGED push: after a PRESET the device's own changes of slots are pushed again", ok);
     a[0] = 0; request(ED_WATCH, a, 1);

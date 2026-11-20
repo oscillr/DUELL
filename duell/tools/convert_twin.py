@@ -7,7 +7,7 @@
     tools/convert_twin.py [--check] [--force] [--out DIR] [--report FILE] [FILE ...]
 
 FILE: tools/duell_sounds.py or tools/owner_sounds.py (the sound lists, edited by text, the comments kept), a multi record (*.bin, MU_VER 7), a patch record (*.rec, as PATCH_RAW moves it), or an
-editor export (*.duell-patches.json, *.duell-multis.json, duell-backup-*.json). No FILE: tools/duell_sounds.py, tools/owner_sounds.py and tools/factory_multis/M*.bin. The converted copies go to
+editor export (*.duell-patches.json, *.duell-multis.json, duell-backup-*.json). No FILE: tools/duell_sounds.py, tools/owner_sounds.py and tools/default_multis/M*.bin. The converted copies go to
 --out DIR (default: over the input, the original stays in git); --check changes nothing and lists what would change (exit status 1 when anything would).
 
 THE RULES (a value the table does not name stays; AMOUNTs, PATCH LEVELs, End B seeds, names and categories are never touched):
@@ -785,7 +785,7 @@ def run(argv):
     ap.add_argument("--report", default=None)
     a = ap.parse_args(argv)
     ctx = Ctx()
-    files = [Path(f) for f in a.files] or [TOOLS / "duell_sounds.py", TOOLS / "owner_sounds.py"] + sorted((TOOLS / "factory_multis").glob("M*.bin"))
+    files = [Path(f) for f in a.files] or [TOOLS / "duell_sounds.py", TOOLS / "owner_sounds.py"] + sorted((TOOLS / "default_multis").glob("M*.bin"))
     report, outputs, todo, led = [], [], 0, ledger()
     for f in files:
         if not f.exists():

@@ -1,5 +1,7 @@
 # TWO-CORE stage 1: the second core's device code, the unit protocol, and the work list
 
+**Replaced on 2026-11-05 by the voice split** (owner): no part owns a core; every block, core 0 deals every voice of both parts to the less busy core (firmware/src/twocore_run.c, THE VOICE SPLIT). Stage 1 below, where core 1 played part 2, is history.
+
 Branch `cloud/stage1` (from `cloud/base`). Everything here is behind the build flag `DUELL_TWOCORE` (default 0). With the flag off, the preprocessor removes every new line: the normal firmware and every host test are unchanged (checked when the branch was made: the preprocessed `felucca.c` is identical, and `./host_tests.sh` gives the same results as on `cloud/base`).
 
 Stage 1 goal: core 1 plays part 2 (its voices, part effects and part mix into its own sums) while core 0 plays part 1, then gathers, runs the shared effects and the master. The sound must be the one-core sound sample for sample. Stage 1 is a developer build: core 1 runs only at a power-on that was armed once (as the earlier bench did).

@@ -58,7 +58,7 @@ static uint8_t ep3rx[64 + 4] __attribute__((aligned(4)));
 /* serial rings: in = host -> console (ISR writes), out = console -> host (ISR reads) */
 #define CI_N 256u
 #if (defined(DUELL_BENCH) && DUELL_BENCH) || (defined(DUELL_TEST_MODE) && DUELL_TEST_MODE)
-#define CO_N 2048u                   /* developer builds: a long output ring (the bench log lines and `memr` dumps) */
+#define CO_N 512u                    /* developer builds: the output ring (the bench log lines and `memr` dumps wait for room); 1.3.3: 2048 -> 512, as the product console,  so a bench build fits beside the INSERT and SAT right-side states */
 #else
 #define CO_N 512u                    /* a product build with the console switched on by hand (FELUCCA_CDC=1; the product has none): a full ring only makes the console wait (console.c con_putc); a power of 2 */
 #endif

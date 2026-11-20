@@ -28,8 +28,8 @@ export function buildMultis(app, wrap) {
     h("button", { class: "ghost small", text: "Import file...", title: "A multi file from this computer is written into a slot of the unit you choose", onclick: () => fileIn.click() }), fileIn);
   wrap.append(h("div", { class: "multiswrap" }, bar, msg, box));
   let used = u.multis || null, recs = null;
-  const factory = new Map(L.MULTIS);
-  const nameOf = (s) => u.multiNames?.[s] ?? (recs?.[s] ? S.multiName(recs[s]) : null) ?? (factory.has(s) ? factory.get(s) : null);
+  const defaults = new Map(L.MULTIS);
+  const nameOf = (s) => u.multiNames?.[s] ?? (recs?.[s] ? S.multiName(recs[s]) : null) ?? (defaults.has(s) ? defaults.get(s) : null);
   async function refreshUsed() { try { used = await u.multiUsed(); draw(); } catch (e) { app.fail(e); } }
   async function readNames() { try { app.say("Reading the stored multis ..."); const r = await S.readMultis(u); recs = r.records; await u.readMultiObjects(); draw(); app.say("Names read.", "good"); } catch (e) { app.fail(e); } }
   function draw() {
@@ -37,13 +37,13 @@ export function buildMultis(app, wrap) {
     for (let s = 0; s < 16; s++) {
       const stored = recs ? !!recs[s] : u.multiNames ? u.multiNames[s] != null : null, name = nameOf(s);
       const label = used == null ? "…" : name ?? (used[s] ? "(used)" : "(empty)");
-      // (editor2, owner item 7: no separate user and factory kinds: no kind words, no bold-versus-plain)
+      // (editor2, owner item 7: no separate user and default kinds: no kind words, no bold-versus-plain)
       box.append(h("div", { class: "mrow2", role: "listitem", title: `${S.M_LABEL(s)} ${label}` }, h("b", { text: S.M_LABEL(s) }), h("span", { class: "n", text: label }),
         h("span", { class: "acts" },
           h("button", { class: "ghost small", text: "Recall", title: `Recall ${S.M_LABEL(s)} on the unit (replaces both parts, the effects and the arps)`, disabled: used?.[s] === false, onclick: () => doLoad(s, label) }),
           h("button", { class: "ghost small", text: used?.[s] && name ? `Replace ${S.M_LABEL(s)} ${name}` : "Save to unit", title: `Save what the unit plays now into the unit's slot ${S.M_LABEL(s)} (its own memory; no file on this computer)`, onclick: () => doSave(s, label) }),
-          h("button", { class: "ghost small", text: "Download file", title: stored === false ? "A factory multi lives in the firmware: Recall it and save it to the unit once, then it can be downloaded" : `${S.M_LABEL(s)} as a file on this computer`, disabled: stored === false, onclick: () => download(s) }),
-          h("button", { class: "ghost small", text: "Rename...", disabled: used?.[s] === false && !factory.has(s), title: "Rename this multi on the unit (a factory multi is saved to the unit under the new name)", onclick: () => doRename(s, label, stored) }))));
+          h("button", { class: "ghost small", text: "Download file", title: stored === false ? "A default multi lives in the firmware: Recall it and save it to the unit once, then it can be downloaded" : `${S.M_LABEL(s)} as a file on this computer`, disabled: stored === false, onclick: () => download(s) }),
+          h("button", { class: "ghost small", text: "Rename...", disabled: used?.[s] === false && !defaults.has(s), title: "Rename this multi on the unit (a default multi is saved to the unit under the new name)", onclick: () => doRename(s, label, stored) }))));
     }
   }
   async function doLoad(s, label) {
@@ -57,10 +57,10 @@ export function buildMultis(app, wrap) {
     if (!(await ask(`Save to unit: ${S.M_LABEL(s)}`, lines, used?.[s] ? "Overwrite" : "Save", !!used?.[s]))) return;
     await app.run(`Saving ${S.M_LABEL(s)}`, () => u.saveMulti(s)); recs = null; draw();
   }
-  // RENAME (owner, 0b): every multi, a factory one too: a factory multi (never saved) is recalled, saved to the unit and then renamed, after one short question
+  // RENAME (owner, 0b): every multi, a default one too: a default multi (never saved) is recalled, saved to the unit and then renamed, after one short question
   async function doRename(s, label, stored) {
     const fresh = stored !== true && !u.multiNames?.[s];
-    const nn = await askText(`Rename ${S.M_LABEL(s)}`, fresh ? [`"${label}" is a factory multi: it is recalled (it replaces what the unit plays now) and saved to the unit under the new name.`] : [], u.multiNames?.[s] || label, "Rename");
+    const nn = await askText(`Rename ${S.M_LABEL(s)}`, fresh ? [`"${label}" is a default multi: it is recalled (it replaces what the unit plays now) and saved to the unit under the new name.`] : [], u.multiNames?.[s] || label, "Rename");
     if (!nn) return;
     await app.run("Renaming", async () => {
       if (fresh) { await u.loadMulti(s); app.undo?.forget(); await u.saveMulti(s); }
@@ -73,7 +73,7 @@ export function buildMultis(app, wrap) {
       app.say("Reading the stored multis ...");
       const r = await S.readMultis(u); recs = r.records;
       const list = (slot == null ? [...Array(16).keys()] : [slot]).filter((s) => recs[s]).map((s) => ({ slot: s, bytes: recs[s] }));
-      if (!list.length) { app.say(slot == null ? "No multi is saved on the unit (the factory multis live in the firmware: Recall one and save it to the unit to keep a copy)." : `${S.M_LABEL(slot)} is not saved on the unit: Recall it and save it to the unit once, then download it.`, "warn"); draw(); return; }
+      if (!list.length) { app.say(slot == null ? "No multi is saved on the unit (the default multis live in the firmware: Recall one and save it to the unit to keep a copy)." : `${S.M_LABEL(slot)} is not saved on the unit: Recall it and save it to the unit once, then download it.`, "warn"); draw(); return; }
       const name = slot == null ? `duell-multis-${list.length}.duell-multis.json` : `duell-multi-${S.M_LABEL(slot)}-${S.multiName(recs[slot]).replace(/[^A-Za-z0-9._-]+/g, "_") || "multi"}.duell-multis.json`;
       saveText(app, name, JSON.stringify(S.multiFile(list, u.info.version), null, 1) + "\n");
       app.say(`Downloaded ${name} to this computer (${list.length} multi${list.length > 1 ? "s" : ""}).`, "good"); draw();
@@ -92,7 +92,7 @@ export function buildMultis(app, wrap) {
       which.addEventListener("change", sync); sync();
       const done = (v) => { dlg.close(); dlg.remove(); resolve(v); };
       dlg.append(h("h2", { text: "Import a multi into the unit" }),
-        h("p", { text: `From the file ${f.name}${r.firmware ? ` (made with ${r.firmware.replace(/^FELUCCA /, "")})` : ""}. The multi is written into the slot you choose, in the unit's own memory. What that slot holds now is replaced (a factory multi comes back if you erase it on the unit later). The unit stops playback while it writes.` }),
+        h("p", { text: `From the file ${f.name}${r.firmware ? ` (made with ${r.firmware.replace(/^FELUCCA /, "")})` : ""}. The multi is written into the slot you choose, in the unit's own memory. What that slot holds now is replaced (a default multi comes back if you erase it on the unit later). The unit stops playback while it writes.` }),
         r.multis.some((m) => m.problem) ? h("p", { class: "warn small", text: `Left out: ${r.multis.filter((m) => m.problem).map((m) => `${m.name} (${m.problem})`).join("; ")}.` }) : null,
         h("label", { class: "row" }, h("span", { text: "Multi" }), which), h("label", { class: "row" }, h("span", { text: "Into the unit's slot" }), slot),
         h("div", { class: "row end" }, h("button", { class: "ghost", text: "Cancel", onclick: () => done(null) }), h("button", { class: "danger", text: "Write into the slot", onclick: () => done({ m: ok[+which.value], slot: +slot.value }) })));

@@ -1,12 +1,12 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 /* DUELL 0.2.19 (owner, 2026-10-15): the level split. A part's loudness is two things, as on a real synth:
- *   PATCH TRIM   (P_TRIM)  stored WITH a patch: a factory sound's tuned level, a patch record, a multi's part; a sound load sets it, SAVE stores it, RESTORE brings the factory one
+ *   PATCH TRIM   (P_TRIM)  stored WITH a patch: a default sound's tuned level, a patch record, a multi's part; a sound load sets it, SAVE stores it, RESTORE brings the default one
  *   MIXER LEVEL  (P_LEVEL) the player's volume on the mixer: NOT part of a patch (a load never changes it), kept with a multi and the project, default unity (112 = 0 dB)
  * and the part plays at TRIM x MIXER LEVEL (fx.c part_lvl). Checked here:
- *   1. the tables: unity, the labels, the defaults; the ids; the factory sounds' TRIM is the pair they used to call LEVEL (tools/duell_sounds.py)
- *   2. a sound load (factory, a stored patch, an engine change, INIT, UNDO) never changes the mixer level, a lowered part 2 stays lowered; it sets the trim
- *   3. SAVE stores the trim only (the record has no mixer level), RESTORE brings the factory trim, a power cycle; a record of before the split has its LEVEL read as the trim
- *   4. a multi and the project (autosave) store both; a multi load brings both back; the factory multis hold the mixer at unity
+ *   1. the tables: unity, the labels, the defaults; the ids; the default sounds' TRIM is the pair they used to call LEVEL (tools/duell_sounds.py)
+ *   2. a sound load (default, a stored patch, an engine change, INIT, UNDO) never changes the mixer level, a lowered part 2 stays lowered; it sets the trim
+ *   3. SAVE stores the trim only (the record has no mixer level), RESTORE brings the default trim, a power cycle; a record of before the split has its LEVEL read as the trim
+ *   4. a multi and the project (autosave) store both; a multi load brings both back; the default multis hold the mixer at unity
  *   5. MIDI CC7 is the mixer level (the trim stays); MIDI LEARN of the mixer level
  *   6. the audio gain is the product: the gain function, the output of two splits of one product bit for bit, mixer 0 / trim 0 silent, the +7.5 dB ceiling, unity = the old single level
  *   6b. MORPH with TARGET BOTH never moves the trim or the mixer level
@@ -59,7 +59,7 @@ static void cycle(void)                              /* the RAM is gone, the fla
     frame();
     song.sel = 0;
 }
-/* the first browse slot whose factory sound has a trim other than the default (and its trim) */
+/* the first browse slot whose default sound has a trim other than the default (and its trim) */
 static uint32_t slot_with_trim(uint32_t not_this, int32_t *trim)
 {
     uint32_t k, e, f;
@@ -89,7 +89,7 @@ static void lv_tables(void)
         if (ds_value(s, P_LEVEL, -1) != -1)
             n += 1000;
     }
-    ck("the factory sounds: every one with a tuned level holds it as TRIM, none holds a mixer LEVEL", n > 100u && n < 1000u && off > 100u);
+    ck("the default sounds: every one with a tuned level holds it as TRIM, none holds a mixer LEVEL", n > 100u && n < 1000u && off > 100u);
     {
         char b[8], u[8];
         const char *un = u;
@@ -111,12 +111,12 @@ static void lv_load(void)
     fresh();
     a = slot_with_trim(0xFFFFu, &trim);
     b = slot_with_trim(a, &trim2);
-    ck("two factory slots with different tuned trims exist", a != 0xFFFFu && b != 0xFFFFu && trim != trim2);
+    ck("two default slots with different tuned trims exist", a != 0xFFFFu && b != 0xFFFFu && trim != trim2);
     trk[1].p[P_LEVEL] = 61;                           /* part 2's mixer level lowered by the player */
     trk[0].p[P_LEVEL] = 99;
     song.sel = 1;
     sl_load(a);
-    ck("a factory sound loaded into part 2 whose mixer level was lowered: the mixer stays lowered", trk[1].p[P_LEVEL] == 61);
+    ck("a default sound loaded into part 2 whose mixer level was lowered: the mixer stays lowered", trk[1].p[P_LEVEL] == 61);
     ck("  and the part has the sound's trim", trk[1].p[P_TRIM] == trim);
     ck("  part 1 untouched", trk[0].p[P_LEVEL] == 99);
     sl_load(b);
@@ -136,7 +136,7 @@ static void lv_load(void)
     for (e = 0; e < NENGINES; e++)
         if (!ds_count(e) && eng_ok(e))
             break;
-    ck("INIT on an engine with no factory sound: the default trim", e >= NENGINES || (init_engine_of(&trk[1], e), trk[1].p[P_TRIM] == TP[P_TRIM].def && trk[1].p[P_LEVEL] == 61));
+    ck("INIT on an engine with no default sound: the default trim", e >= NENGINES || (init_engine_of(&trk[1], e), trk[1].p[P_TRIM] == TP[P_TRIM].def && trk[1].p[P_LEVEL] == 61));
     /* UNDO (a sound's undo copy) swaps the sound, with its trim, never the mixer */
     sl_load(a);
     trk[1].p[P_LEVEL] = 55;
@@ -191,14 +191,14 @@ static void lv_save(void)
     song.sel = 1;
     sl_load(a);
     ck("  after a power cycle the same (trim 91, mixer 70)", trk[1].p[P_TRIM] == 91 && trk[1].p[P_LEVEL] == 70);
-    /* RESTORE: the factory trim back */
+    /* RESTORE: the default trim back */
     song.sel = 0;
     sl_load(a);
     k = (uint32_t)sl_restore(a);
-    ck("RESTORE: the record is gone and the part that played it has the FACTORY trim", (k == 0u || k == 3u) && !up_used(a) && trk[0].p[P_TRIM] == trim);
+    ck("RESTORE: the record is gone and the part that played it has the DEFAULT trim", (k == 0u || k == 3u) && !up_used(a) && trk[0].p[P_TRIM] == trim);
     ck("  its mixer level (37, set before the load) is what it was", trk[0].p[P_LEVEL] == 99u || trk[0].p[P_LEVEL] == 37 || trk[0].p[P_LEVEL] == TP[P_LEVEL].def);
     sl_load(a);
-    ck("  loading the slot now: the factory trim", trk[0].p[P_TRIM] == trim);
+    ck("  loading the slot now: the default trim", trk[0].p[P_TRIM] == trim);
     /* a record of before the split: its LEVEL was the trim */
     {
         up_rec_t o;
@@ -269,7 +269,7 @@ static void lv_multi(void)
     ck("  MULTI LOAD over LEVEL 0 and 127 (GLO K3 / K4): the multi's 77 / 33, not the unit's", trk[0].p[P_LEVEL] == 77 && trk[1].p[P_LEVEL] == 33);
     trk[0].p[P_LEVEL] = 9; trk[1].p[P_LEVEL] = 9;
     project_load(0u);
-    ck("  a factory multi over LEVEL 9 / 9: both at unity (112, 0 dB)", trk[0].p[P_LEVEL] == 112 && trk[1].p[P_LEVEL] == 112);
+    ck("  a default multi over LEVEL 9 / 9: both at unity (112, 0 dB)", trk[0].p[P_LEVEL] == 112 && trk[1].p[P_LEVEL] == 112);
     cycle();
     trk[0].p[P_LEVEL] = 1; trk[1].p[P_LEVEL] = 2;
     project_load(10u);
@@ -289,7 +289,7 @@ static void lv_multi(void)
     }
     ck("  a project of revision 2 (one level) is refused", !proj_import(&back, &st, sizeof st));
     ck("multi version 7", MU_VER == 7u);
-    /* the factory multis: a mixer level of their own (unity up to 0.2.22; 0.2.23: each multi's balance, -16 .. +4 dB), the trim the sound's */
+    /* the default multis: a mixer level of their own (unity up to 0.2.22; 0.2.23: each multi's balance, -16 .. +4 dB), the trim the sound's */
     for (i = 0; i < DF_N; i++) {
         const uint8_t *b = DM_REC + DM_AT[i];
         uint32_t pos = MU_G_AT + 2u * b[2], t;
@@ -308,12 +308,12 @@ static void lv_multi(void)
                    (fl & 1u ? 128u : 0u);
         }
     }
-    ck("every factory multi record (version 7): each part's mixer level a fader position of -16 .. +4 dB, its trim the sound's", ok && n == 2u * DF_N);
-    /* a factory multi loads with the mixer at unity; the sounds' trims are the ones the multi's sounds carry */
+    ck("every default multi record (version 7): each part's mixer level a fader position of -16 .. +4 dB, its trim the sound's", ok && n == 2u * DF_N);
+    /* a default multi loads with the mixer at unity; the sounds' trims are the ones the multi's sounds carry */
     fresh();
     trk[0].p[P_LEVEL] = 20;
     project_load(0u);
-    ck("a factory multi (M01) loaded: the mixer back at its stored unity, a trim", trk[0].p[P_LEVEL] == 112 && trk[1].p[P_LEVEL] == 112 && trk[0].p[P_TRIM] == 113 && trk[1].p[P_TRIM] == 87);
+    ck("a default multi (M01) loaded: the mixer back at its stored unity, a trim", trk[0].p[P_LEVEL] == 112 && trk[1].p[P_LEVEL] == 112 && trk[0].p[P_TRIM] == 113 && trk[1].p[P_TRIM] == 87);
 }
 
 /* ------------------------------------------------------------------------------------------ 5. MIDI */
@@ -418,7 +418,7 @@ static void lv_audio(void)
         if (part_lvl(&trk[0]) != (int32_t)LEVEL_Q12[t])
             break;
     }
-    ck("mixer at unity: the gain is exactly the old single level's LEVEL_Q12[trim] for every trim (every factory render is as before)", t == 128u);
+    ck("mixer at unity: the gain is exactly the old single level's LEVEL_Q12[trim] for every trim (every default render is as before)", t == 128u);
     a = forked(60, 112);
     b = forked(112, 60);
     ck("trim 60 x mixer 112 and trim 112 x mixer 60: the same output bit for bit (a product)", a.h && a.h == b.h && a.peak > 100);

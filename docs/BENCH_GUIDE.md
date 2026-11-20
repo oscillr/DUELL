@@ -73,13 +73,13 @@ The CSV has more: the voices that sounded (`vox`), the voices cut (`shed`), the 
 ## The rows
 
 - **IDLE ST / LAYER / DUEL**: nothing playing (the mixer and the effect buses as at power-on). **NO FX ST**: the same with SENDS OFF (the mixer alone).
-- **ANALOG 1 .. WAVE 4**: each engine's dearest factory sound (the one the model finds dearest: ANALOG GLASS SHARDS, FM6 HAN SOLO, PHASE WIRE HARP, LOFI WOW FLUTTER, VOICE VESPERS, TRIO CHIP CHAPEL, WHEEL LESLIE STORM, PHYS PAN WHISTLE, NOISE SEA ORGAN, WAVE PWM PAD), 1 and 4 notes, STEREO, no effect.
+- **ANALOG 1 .. WAVE 4**: each engine's dearest default sound (the one the model finds dearest: ANALOG GLASS SHARDS, FM6 HAN SOLO, PHASE WIRE HARP, LOFI WOW FLUTTER, VOICE VESPERS, TRIO CHIP CHAPEL, WHEEL LESLIE STORM, PHYS PAN WHISTLE, NOISE SEA ORGAN, WAVE PWM PAD), 1 and 4 notes, STEREO, no effect.
 - **INS SOFT .. INS VINYL, SAT 64, EQ 1/2/3 BANDS, DUCK PUMP**: each part stage on one ANALOG voice (compare with ANALOG 1).
 - **FLT OPEN / 12DB / 24DB**: the multimode filter on 4 WAVE voices.
 - **BUS OFF / BUS ON / CHORUS / DL DIGI, PING, RAND, OCT+ / RV ROOM .. PLATE / SHIM DN**, each in STEREO (ST) and DUEL (DU): both parts one ANALOG voice, one effect fed at 100 (compare with BUS OFF). RV SHIM is SHIM with PITCH UP.
 - **COMP 4:1, WIDTH 150, BASS MONO**: the master stages (STEREO).
 - **TYP / HVY, LAY / ST / DUEL, 4+4 / 8+8**: both parts ANALOG GLASS SHARDS. Typical: PHASR insert, SAT, one EQ band, chorus, DIGITAL delay, HALL, COMP. Heavy: the same with RANDOM delay, SHIM PITCH DOWN with MOD 50, WIDTH and BASS MONO. **The voice pool has 8 voices**: 8 + 8 asked for plays 8 at most (the `vox` column says how many sounded); in LAYER 4 notes are 8 voices.
-- **M16 1 / 2 / 3 KEYS**: the multi in slot 16 (M16 STRESS TEST unless you saved over it), LAYER, the keys C4, E4, G4 played as MIDI notes.
+- **M16 1 / 2 / 3 KEYS**: the multi in slot 16 (M16 SLOW THAW unless you saved over it; the bench script's M16 tests write the stress multi into M16 for the run and put M16 back afterwards), LAYER, the keys C4, E4, G4 played as MIDI notes.
 - BENCH-B1 only, **IDL / TYP / HVY + C1 IDLE, TIGHT 50, SRAM 50, FL8K 50, FL40K 50, FL40K 90**: core 0 plays IDLE ST, TYP ST 4+4 or HVY DUEL 8+8 while core 1 runs a test load for 50 % (or 90 %) of each half: TIGHT = a small loop that stays in the cache (pure computing), SRAM = reading and writing 8 KB of memory, FL8K / FL40K = running 8 KB / 40 KB of code from the flash (the 40 KB one cannot stay in the 32 KB cache that both cores share). Compare each with its C1 IDLE row: how much the cores slow each other.
 - BENCH-B1 only, **STRESS 10M** (K3, not in the automatic run): HVY DUEL 8+8 for 10 minutes with core 1 at FL40K 90.
 

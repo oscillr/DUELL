@@ -5,7 +5,7 @@
 (owner, 2026-11-02: WAVE, 4-voice chords, the unit showing a 4-voice limit, 2-3 crackles in a few minutes, no pattern, also without page changes; owner 2026-11-08: "make a detailed test").
 
 The product's own limits stay ON: the voice budget as the screen shows it (no `budget OPEN`), the protection as it ships. STEREO, part 1 plays alone.
-Five sounds: three factory WAVE patches as they are (#60 DIGITAL PAD, #61 EVOLVING PAD, #116 FROZEN AIR, the one with TWIN) and the everything-on WAVE test
+Five sounds: three default WAVE patches as they are (#60 DIGITAL PAD, #61 EVOLVING PAD, #116 FROZEN AIR, the one with TWIN) and the everything-on WAVE test
 patch of MAX-VOICES-PART (WAVE DEAR with every feature on and moving, the same words) at MORPH A and at MORPH B.
 Three chords that share no pitch: P = C3 E3 G3 C4 (4 notes), Q = G2 B2 D3 F3 (4 notes, a G7), R = D2 A2 F#3 A3 D4 F#4 (6 notes: above the screen's number on the heavy
 sounds, so the voice stealing runs too). Three ways to play them, each over and over for SECS seconds (default 85; --secs N overrides):
@@ -41,7 +41,7 @@ def main():
     secs = 85
     if "--secs" in sys.argv:
         secs = int(sys.argv[sys.argv.index("--secs") + 1])
-    bank = {p["number"]: p for p in json.load(open(os.path.join(HERE, "factory_bank.duell-patches.json")))["patches"]}
+    bank = {p["number"]: p for p in json.load(open(os.path.join(HERE, "default_bank.duell-patches.json")))["patches"]}
     sounds = []
     for num in PATCHES:
         p = bank[num]

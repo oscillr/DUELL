@@ -2,9 +2,9 @@
  "format": "duell-patches",
  "version": 1,
  "app": "DUELL editor",
- "firmware": "FELUCCA DUELL 0.2.30 (factory bank export)",
+ "firmware": "FELUCCA DUELL 0.2.30 (default bank export)",
  "created": "2026-10-21T16:31:34Z",
- "source": "factory bank",
+ "source": "default bank",
  "patches": [
   {
    "number": 1,

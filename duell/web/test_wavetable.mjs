@@ -170,9 +170,9 @@ const S = 2048;
 }
 function same(a, b) { return a.length === b.length && a.every((v, i) => v === b[i]); }
 
-// ---- a factory table's render, converted back (tests/wavetable_fixture.c: what the unit plays, and the recipe's bytes)
+// ---- a default table's render, converted back (tests/wavetable_fixture.c: what the unit plays, and the recipe's bytes)
 {
-  const fx = JSON.parse(readFileSync(new URL("./fixtures/wavetable_factory.json", import.meta.url), "utf8"));
+  const fx = JSON.parse(readFileSync(new URL("./fixtures/wavetable_default.json", import.meta.url), "utf8"));
   const unb64 = (s) => Uint8Array.from(Buffer.from(s, "base64"));
   for (const t of fx.tables) {
     const pcm = new Int8Array(unb64(t.pcm).buffer), want = unb64(t.bytes), x = Float64Array.from(pcm, (v) => v / 128);

@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-only
-"""DUELL factory sounds: the data (tools/gen_duell_sounds.py validates it and writes build/gen/duell_sounds.h).
+"""DUELL default sounds: the data (tools/gen_duell_sounds.py validates it and writes build/gen/duell_sounds.h).
 
-Every sound: engine, idx (its factory index within the engine: the identity favourites, saved copies (shadows) and the
+Every sound: engine, idx (its default index within the engine: the identity favourites, saved copies (shadows) and the
 stable End B seed use; APPEND-ONLY per engine, never renumber), name (<= 12 characters), cat (BASS LEAD PAD PLUCK KEYS
 FX OTHER), mono (True: VOICE LEG, as the old presets' flag), recipe (the DUELL/SOUND_RECIPES.md section), and p: the
 parameters that differ from INIT (the track defaults, params.c TP, and the engine's EDIT defaults). Names: the
@@ -328,7 +328,7 @@ SOUNDS = [
         # short square tones [G]
         "WAVE": "SQR", "DTN": 0, "MIX": 0,
         # high-resonance band-pass [G] -> BP, RES 90, CUT 70. (Cloud job B retired ANALOG's filter TYPE switch, LP BP HP: the engine is a low-pass until job J takes its filter
-        # out, so this sound plays the low-pass with CUT 70, RES 90 now; it was the only factory ANALOG sound that was not LP. Job J's conversion puts the band-pass back as TWIN FILTER BP)
+        # out, so this sound plays the low-pass with CUT 70, RES 90 now; it was the only default ANALOG sound that was not LP. Job J's conversion puts the band-pass back as TWIN FILTER BP)
         "CUT": 70, "RES": 90,
         "ENV2 FLT": dep(30), "E2ATK": 0, "E2DEC": ms(60), "E2SUS": 0, "E2REL": ms(60),
         # D 30-100 ms, S 0 [G] -> 100 ms (the long end: a longer ping is more level for the same peak; this sound's
@@ -518,7 +518,7 @@ SOUNDS = [
     }),
     dict(engine="PHYS", idx=4, name="ROSEWOOD", cat="KEYS", bseed=55371, recipe="4.4 Marimba / kalimba (modal)", p={
         # a rosewood marimba bar: STRC 116 = 1 : 4 : 9 (a tuned bar's), a dark hard-mallet strike with a woody knock (EXC), a
-        # short ring (DAMP low: the bar dies in a few hundred ms), dry, no motion at all [S eng_phys.c; the factory MARIMBA preset's
+        # short ring (DAMP low: the bar dies in a few hundred ms), dry, no motion at all [S eng_phys.c; the default MARIMBA preset's
         # DAMP 40 / BRIT 38 as the starting point]
         "MODEL": "MODAL", "STRC": 116, "BRIT": 47, "DAMP": 57, "POS": 24, "ACC": 100, "BOW": 0, "EXC": 47,
         "E2ATK": 0, "E2DEC": ms(171), "E2SUS": 0, "E2REL": ms(60),
@@ -649,7 +649,7 @@ SOUNDS = [
     # restarts with osc 1) into a 12 dB SVF (MODE LP BP HP NOT, a slowly drifting cutoff, resonance stops short of
     # self-oscillation). INT2 / INT3 = osc 2 / 3 intervals in semitones, DTN = osc 2 up / osc 3 down (ct). FLT (ENV 2, the matrix
     # CUT) moves CUT, SHP moves PW (the pulse sets only). Morph: WAVE never rolls, MODE only LP <-> NOT, INT2 / INT3 are pitch items
-    # (a factory End B leaves them): no struck or mode-flip cliff to tag.
+    # (a default End B leaves them): no struck or mode-flip cliff to tag.
     dict(engine="TRIO", idx=0, name="BREADBIN", cat="BASS", bseed=30953, mono=True, recipe="1.1 Minimoog-style bass + FAT BASS preset (chip bass)", p={
         # three saws, osc 3 an octave down, a few cents apart: the chip's fat bass [Felucca FAT BASS: DTN 9 -> 11]
         "WAVE": "SAW3", "INT2": 0, "INT3": -12, "DTN": 11, "MODE": "LP",
@@ -816,7 +816,7 @@ SOUNDS = [
     # LOFI facts (eng_lofi.c): a chip voice. CHIP 4BIT / 4B/2 (half rate) / 8BIT / 1BIT / STEP (a 4-bit stepped envelope replaces the
     # ADSR curve: held at full, only REL ends it; CRSH is then its shape), WAVE PLS TRI SAW NOIS WRAM (DUTY / 8 picks one of 16 tables),
     # SWP = a pitch slide down that never stops (p / 8 steps a control tick: 8..15 = 1, ~86 semitones a second), VIB = LFO-free vibrato,
-    # ARP = the chip's own fast arp (OCT MAJ MIN); TONE = the low-pass (FLT only opens it). Morph: SWP / VIB are pitch items (a factory End B
+    # ARP = the chip's own fast arp (OCT MAJ MIN); TONE = the low-pass (FLT only opens it). Morph: SWP / VIB are pitch items (a default End B
     # leaves them), CHIP / DUTY / ARP never roll, WAVE only PLS / TRI / SAW: no cliff to tag.
     dict(engine="LOFI", idx=0, name="CARTRIDGE", cat="BASS", bseed=28474, mono=True, recipe="1.1 Minimoog-style bass (as a Game Boy wave bass) + WAVE BASS preset", p={
         # wave RAM BAS2 (DUTY 64..71: table 8, 1 + 2 + 3 harmonics) in the 4-bit chip: the console's wave bass [G]
@@ -1241,7 +1241,7 @@ SOUNDS = [
     dict(engine="WAVE", idx=11, name="GROWL BASS", cat="BASS", bseed=20849, mono=True, recipe="1.7 Growl bass (an LFO on the table's position, tempo-synced)", p={
         # the GROWL table (a saw under a man's vowels, U -> AH -> AE) at POS 40 (between short U and AW); LFO 2 at a half note
         # moves the vowel [S 1.7: LFO at 1/2 on the wavetable position, ~27-38 % of it]: +-19 POS steps (a third of the scan,
-        # the gentle end) [G]; free-running like every factory LFO (house rule; the source retriggers it), synced to the tempo
+        # the gentle end) [G]; free-running like every default LFO (house rule; the source retriggers it), synced to the tempo
         # it still lands on the beat; SUB: a sine an octave below for the weight [G, 1.5's sub layer]; a little drive [S 1.7:
         # distortion, drive 20 %]
         "TABLE": "GROWL", "POS": 40, "SUB": pct(40),
@@ -1345,7 +1345,7 @@ SOUNDS = [
         "TRIM": 106,
     }),
     # ====================================================================================================== DUELL 0.2.9 (batch R)
-    # The sample engines SAMPLE, GRAIN and SLICE are retired (owner: WAVE replaces them); their 21 factory sounds are replaced here by
+    # The sample engines SAMPLE, GRAIN and SLICE are retired (owner: WAVE replaces them); their 21 default sounds are replaced here by
     # 21 sounds of the same categories on the remaining engines (recipes: SOUND_RECIPES.md 1.8 .. 6.3). Each engine's idx goes on
     # where it stood (append-only); TRIM from tests/sound_audit.c SOUND_TRIM=1, bseed from SOUND_BSEED=1.
     # ---------------------------------------------------------------------------------------------------------------- PERC
@@ -1615,9 +1615,9 @@ SOUNDS = [
     }),
 ]
 
-# DUELL 0.2.17 (owner, 2026-10-15): 14 new factory sounds, the bank 114 -> 128 (docs/NEW_PATCHES_PROPOSAL.md; the drafts' numbers were set by
+# DUELL 0.2.17 (owner, 2026-10-15): 14 new default sounds, the bank 114 -> 128 (docs/NEW_PATCHES_PROPOSAL.md; the drafts' numbers were set by
 # measurement and by the recipes of DUELL/SOUND_RECIPES.md 1.10..1.16, 2.12, 2.13, 4.14, 6.4; the owner listens). Every idx is appended
-# to its engine, so favourites, saved patches, the factory multis and every End B seed keep their identity: only the browse numbers (#NN) move.
+# to its engine, so favourites, saved patches, the default multis and every End B seed keep their identity: only the browse numbers (#NN) move.
 # House bass rule kept: the HF shelf down on every bass; the subtle PUMP ducker only on the longer, rolling basses (ARP BASS, FM BASS 2) and OFF on the
 # hard ones (KICK BASS, FOLD BASS, SID BASS, SYNC BASS, FUZZ BASS) and on HARD KICK. Basses are dry (no chorus / delay / reverb send; FM BASS 2 has a touch of
 # reverb for its CC0 voice). No vibrato route anywhere (the only routes to PITCH are the kick's ENV 2 drop).
@@ -1780,7 +1780,7 @@ SOUNDS += [
     }),
 ]
 
-# DUELL 0.2.2 (owner): the LFOs run FREE on every factory sound, both of them, set explicitly (not left to the default,
+# DUELL 0.2.2 (owner): the LFOs run FREE on every default sound, both of them, set explicitly (not left to the default,
 # params.c P_LTRIG / P_L2TRIG). A FADE restarts with each fresh phrase all the same (voice.c trk_note_on); only the PHASE is
 # no longer put back at the key press. A sound that wants the key trigger sets "LFO TRIG": "NOTE" itself.
 for _s in SOUNDS:
@@ -1800,7 +1800,7 @@ SUBTLE_SEED = 1717
 
 
 def subtle(engine, idx, slot):
-    """the route's AMT: 2..7 of 64, from SUBTLE_SEED and the route's place (engine, factory idx, slot), not the list's order"""
+    """the route's AMT: 2..7 of 64, from SUBTLE_SEED and the route's place (engine, default idx, slot), not the list's order"""
     return 2 + zlib.crc32(f"{SUBTLE_SEED}:{engine}:{idx}:{slot}".encode()) % 6
 
 

@@ -540,13 +540,13 @@ static void test_control(void)
     flush();
     {
         static persist_t p;
-        ok = st_load(OBJ_SETTINGS, &p, sizeof p) > 0 && p.favorites.factory[15][18] == MS_TAG && p.favorites.factory[15][19] == 137u && p.favorites.factory[15][20] == 0u && p.favorites.factory[15][21] == (uint8_t)(BM_DEF + 1) &&
+        ok = st_load(OBJ_SETTINGS, &p, sizeof p) > 0 && p.favorites.defaults[15][18] == MS_TAG && p.favorites.defaults[15][19] == 137u && p.favorites.defaults[15][20] == 0u && p.favorites.defaults[15][21] == (uint8_t)(BM_DEF + 1) &&
              p.magic == PERSIST_MAGIC;
         expect("a change is saved ~2 s later in the settings record's bytes [15][18..21]: the tag 0xB7, WIDTH 137, 0 (the removed DRIVE's byte), BASS MONO + 1 (0.2.24: 9 = 200 Hz) (same record, same size)", ok);
         boot();
         frame();
         expect("a power-on reads it back: WIDTH 137 %, to the audio side", song.ms[0] == 137 && wd_sel == 137u);
-        p.favorites.factory[15][18] = MS_TAG, p.favorites.factory[15][19] = 137u, p.favorites.factory[15][20] = 71u, p.favorites.factory[15][21] = 0u;   /* a 0.2.24 record with DRIVE 71 */
+        p.favorites.defaults[15][18] = MS_TAG, p.favorites.defaults[15][19] = 137u, p.favorites.defaults[15][20] = 71u, p.favorites.defaults[15][21] = 0u;   /* a 0.2.24 record with DRIVE 71 */
         st_save(OBJ_SETTINGS, &p, sizeof p);
         boot();
         frame();
@@ -558,8 +558,8 @@ static void test_control(void)
         for (v = 0; v < 256u; v++) {
             uint32_t b;
             for (b = 18u; b <= 21u; b++) {
-                p.favorites.factory[15][18] = MS_TAG, p.favorites.factory[15][19] = 137u, p.favorites.factory[15][20] = 71u, p.favorites.factory[15][21] = 0u;
-                p.favorites.factory[15][b] = (uint8_t)v;
+                p.favorites.defaults[15][18] = MS_TAG, p.favorites.defaults[15][19] = 137u, p.favorites.defaults[15][20] = 71u, p.favorites.defaults[15][21] = 0u;
+                p.favorites.defaults[15][b] = (uint8_t)v;
                 st_save(OBJ_SETTINGS, &p, sizeof p);
                 boot();
                 frame();
@@ -569,18 +569,18 @@ static void test_control(void)
             }
         }
         expect("every byte value 0..255 in each of the four bytes (1024 power-ons): in range; without the tag the defaults (100 %, OFF)", ok);
-        memset(p.favorites.factory[15] + 14, 0x5A, 10);   /* an old record: the FX layer's key map in [14..23] */
-        p.favorites.factory[15][18] = 0x13;
+        memset(p.favorites.defaults[15] + 14, 0x5A, 10);   /* an old record: the FX layer's key map in [14..23] */
+        p.favorites.defaults[15][18] = 0x13;
         st_save(OBJ_SETTINGS, &p, sizeof p);
         boot();
         frame();
         expect("an older record with the FX layer's old key map in those bytes (no tag) reads as the default: WIDTH 100 %", song.ms[0] == 100 && wd_sel == 100u);
-        memset(p.favorites.factory[15] + 14, 0, 10);
+        memset(p.favorites.defaults[15] + 14, 0, 10);
         st_save(OBJ_SETTINGS, &p, sizeof p);
         boot();
         frame();
         flush();
-        ok = st_load(OBJ_SETTINGS, &p, sizeof p) > 0 && p.favorites.factory[15][18] == 0u && p.favorites.factory[15][19] == 0u;
+        ok = st_load(OBJ_SETTINGS, &p, sizeof p) > 0 && p.favorites.defaults[15][18] == 0u && p.favorites.defaults[15][19] == 0u;
         expect("a unit that never touches them keeps the bytes 0 (nothing written for them)", ok);
     }
     song.ms[0] = 40;
@@ -613,7 +613,7 @@ static void test_control(void)
             frame();
             ok &= song.ms[0] == 180;
         }
-        expect("  .. nor does any factory multi", ok);
+        expect("  .. nor does any default multi", ok);
     }
     {
         project_t q;

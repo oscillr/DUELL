@@ -1,16 +1,16 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
-/* DUELL factory multis (0.2.11; 0.2.23: all sixteen, the table from tools/factory_multis.py): builds the factory multis
- * (tools/factory_multis/Mnn.bin) with the firmware's own code: each part's factory sound loaded as the PATCHES list loads it
+/* DUELL default multis (0.2.11; 0.2.23: all sixteen, the table from tools/default_multis.py): builds the default multis
+ * (tools/default_multis/Mnn.bin) with the firmware's own code: each part's default sound loaded as the PATCHES list loads it
  * (set_engine_of + apply_preset_to: its values, End B seed and AMOUNT), then the multi's own per-part settings (the mix, the sends,
  * HOLD, chord keys, a matrix route, the arp and its SEQUENCER pattern, the insert, EQ and ducker), the globals (tempo, chorus, delay,
  * reverb), the MODE, XFADE and SPLIT (item 157: no BALANCE; the record's spare byte is 0), saved by multi.c's packer (project_save_as) and read back from the store. The table is
- * tools/factory_multis.py's; run that tool (`build`), which writes the C table, compiles and runs this. The recipes: DUELL/SOUND_RECIPES.md, chapter 7.
- *   build/host/gen_factory_multis build tools/factory_multis    writes the built slots' Mnn.bin (tools/factory_multis.py build does it)
- *   build/host/gen_factory_multis dump [SLOT ..]                 what the factory multis of the generated header hold (default: all)
- *   build/host/gen_factory_multis loud                           the loudness of the factory multis (needs the header regenerated with them)
- *   build/host/gen_factory_multis search SLOT PART AMOUNT N [SEED]  (0.2.13) End B candidates of PART at AMOUNT: level, brightness against End A
- *   build/host/gen_factory_multis eval SLOT [S1 A1 S2 A2]         (0.2.13) End A against End B (both parts, each alone; 3 keys and C4)
- *   build/host/gen_factory_multis moves SLOT [S1 A1 [S2 A2]]       the values End B moves (optionally rolled again with these seeds / AMOUNTs)
+ * tools/default_multis.py's; run that tool (`build`), which writes the C table, compiles and runs this. The recipes: DUELL/SOUND_RECIPES.md, chapter 7.
+ *   build/host/gen_default_multis build tools/default_multis    writes the built slots' Mnn.bin (tools/default_multis.py build does it)
+ *   build/host/gen_default_multis dump [SLOT ..]                 what the default multis of the generated header hold (default: all)
+ *   build/host/gen_default_multis loud                           the loudness of the default multis (needs the header regenerated with them)
+ *   build/host/gen_default_multis search SLOT PART AMOUNT N [SEED]  (0.2.13) End B candidates of PART at AMOUNT: level, brightness against End A
+ *   build/host/gen_default_multis eval SLOT [S1 A1 S2 A2]         (0.2.13) End A against End B (both parts, each alone; 3 keys and C4)
+ *   build/host/gen_default_multis moves SLOT [S1 A1 [S2 A2]]       the values End B moves (optionally rolled again with these seeds / AMOUNTs)
  * (dump, loud, search, eval, moves: compiled against the generated build/gen_test/duell_multis.h, which holds the multis)
  * Loudness ('loud'): each multi loaded in a fresh power-on with its own MODE (as MODE RECALL ON) and played 10 s as it is meant to
  * be played (a multi with a stored step pattern on a part without the SEQUENCER arp: PLAY, no key; any other, the six since 0.2.12:
@@ -24,14 +24,15 @@ enum { DV_1_16 = 2 };                             /* N_DIV: the steps' DIV */
 #define END (-1)
 
 typedef struct {
-    uint8_t eng, idx;                            /* the factory sound (engine, factory index) */
+    uint8_t eng, idx;                            /* the default sound (engine, default index) */
     const char *sound;                           /* its name (checked) */
-    int16_t set[96];                             /* (P_ id, value) pairs after the load, END-terminated */
+    int16_t set[160];                             /* (P_ id, value) pairs after the load, END-terminated */
     const char *steps;                           /* the SEQUENCER arp's pattern (space separated): "." rest, a signed offset in
                                                   * semitones from the held key, suffix A accent; 0: no pattern */
     uint8_t len;
     uint16_t bseed;                              /* End B: 0 the sound's own; else rolled again with this seed (the sound's AMOUNT) */
     uint8_t amt;                                 /* 0.2.13: 0 the sound's AMOUNT; else End B rolled at this AMOUNT (%) and the part's AMOUNT set to it */
+    const uint8_t *fm;                           /* 1.3.3: an FM6 voice of the multi's own (the 128 packed bytes; SLOT OWN), else 0: the sound's */
 } part_t;
 typedef struct {
     const char *name;
@@ -43,9 +44,9 @@ typedef struct {
     part_t p[2];
 } multi_t;
 
-/* DUELL 0.2.23: the table is tools/factory_multis.py's (MULTIS), written as C by its `build` (build/gen_mm/factory_multis_def.h);
+/* DUELL 0.2.23: the table is tools/default_multis.py's (MULTIS), written as C by its `build` (build/gen_mm/default_multis_def.h);
  * the slots it marks `kept` are records kept byte for byte and are not in it */
-#include "factory_multis_def.h"
+#include "default_multis_def.h"
 #define NM (sizeof MM / sizeof *MM)
 
 static int parse_steps(track_t *t, const char *s, uint32_t len)
@@ -109,6 +110,15 @@ static void build(const multi_t *m)
             t->p[id] = p->set[i + 1u];
         }
         parse_steps(t, p->steps, p->len);
+        if (p->fm) {                             /* (1.3.3: the multi's own FM6 voice, before End B is rolled from it) */
+            uint8_t v[FP_SIZE + 1u];
+            fm6_unpack(p->fm, v);
+            fm6_set_patch(k, v);
+            fm6_slot[k] = (uint8_t)FM6_OWN;
+        }
+        if (m->slot == 15u)                      /* M16 SLOW THAW (owner 2026-11-18): its sounds are made in the multi, so End B is rolled from the
+                                                  * multi's values, not from the sound it starts from (the Original taken again after the settings) */
+            morph_rebase_part(k);
     }
     for (k = 0; k < 2u; k++)
         if (m->p[k].bseed || m->p[k].amt) {
@@ -131,8 +141,8 @@ static void dump(uint32_t k)
     uint32_t pi, i;
     char nm[16];
     ui_power_on();
-    if (!project_factory(k)) {
-        printf("M%02u: no factory multi\n", k + 1u);
+    if (!project_default(k)) {
+        printf("M%02u: no default multi\n", k + 1u);
         return;
     }
     project_load(k);
@@ -217,7 +227,7 @@ static void loud(uint32_t k, uint32_t nkeys, uint32_t solo)   /* solo: 0 both pa
     double e = 0, pk = 0;
     int32_t out[2 * CTL];
     ui_power_on();
-    if (!project_factory(k))
+    if (!project_default(k))
         return;
     ui_prefs2 |= PREF_MODE_RECALL >> 16;         /* (0.2.12: the multi's own MODE, as it is meant to be played: all LAYER; with
                                                   * MODE RECALL OFF the keys played part 1 alone in a power-on's DUEL) */
@@ -314,7 +324,7 @@ int main(int argc, char **argv)
         else
             for (i = 0; i < MU_SLOTS; i++) {
                 ui_power_on();
-                if (project_factory(i))
+                if (project_default(i))
                     dump(i);
             }
         return 0;
@@ -412,6 +422,6 @@ int main(int argc, char **argv)
             }
         return 0;
     }
-    fprintf(stderr, "usage: gen_factory_multis build DIR | dump [SLOT ..] | loud\n");
+    fprintf(stderr, "usage: gen_default_multis build DIR | dump [SLOT ..] | loud\n");
     return 2;
 }

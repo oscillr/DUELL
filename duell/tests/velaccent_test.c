@@ -4,18 +4,18 @@
  * core.h (accent_lift, accent_dir_*): the lift now ramps from 0 at 110 to 24 at 127, and a filter opens the way its MODE / TYPE opens (LP up, HP down, BP none);
  * eng_noise.c: the make-up gain no longer follows the lifted cutoff; eng_formant.c: the lift opens the presence instead of moving the vowel; eng_phys.c: the lift
  * is the model's accent instead of its exciter brightness.
- * Scan: every non-retired engine but LOFI (someone else's), its first 8 presets (host_preset) and first 8 factory sounds (host_ds_load), one note (C3, 48),
+ * Scan: every non-retired engine but LOFI (someone else's), its first 8 presets (host_preset) and first 8 default sounds (host_ds_load), one note (C3, 48),
  * velocity 1..127, sends off, STEREO, the RMS of the part's mix 0.5 s after a 4-block skip. Per sound the running maximum of the level over the lower velocities is
  * kept; the sound FAILS if at some velocity its level is more than its allowance below that maximum (levels under FLOOR_DB are not compared).
  * ALLOWANCE (measured with the lift OFF, -DACCENT_MAX=0, 127 sounds): ANALOG PHASE WAVE WHEEL VOICE TRIO NOISE PHYS are exactly monotone (0.00 dB), so their
  * allowance is NOISE_DB 0.02 dB (rounding). KNOWN exceptions, each printed (KNOWN), and what is left of them:
  *  - FM6, 1.5 dB (largest 1.49, sound 7 near velocity 124): FM6 is an exact DX7 copy; its velocity table raises the modulation index with velocity and the Bessel ripple of FM
  *    moves the level by itself. Not a bug, not changed.
- *  - ANALOG factory 4, 0.95 dB (0.89 at velocity 115): RES 97 low-pass at CUT 26; the accent opens the cutoff and the resonance peak passes a harmonic of the note. Measured
+ *  - ANALOG default 4, 0.95 dB (0.89 at velocity 115): RES 97 low-pass at CUT 26; the accent opens the cutoff and the resonance peak passes a harmonic of the note. Measured
  *    with the lift OFF and the velocity fixed, the level against CUT alone falls the same way (about 4 dB between CUT 21 and 27): the filter's own behaviour, not the method.
- *  - PHYS sweep (phys_sweep, 4 models x 12 settings x velocity 1..127, any setting, not only factory sounds): 0.02 dB, except the CURVED BRIDGE (STRNG with STRC 30 or less, SYMP
+ *  - PHYS sweep (phys_sweep, 4 models x 12 settings x velocity 1..127, any setting, not only default sounds): 0.02 dB, except the CURVED BRIDGE (STRNG with STRC 30 or less, SYMP
  *    with BUZZ 6 or more) and the BOWED string (STRNG with BOW > 0), 2.5 dB (measured up to 2.4): a nonlinear string driven by its own amplitude, or by a few random hits in
- *    the window, jumps between regimes; no velocity mapping can make that monotone. The PHYS factory sounds themselves are all at 0.02 dB.
+ *    the window, jumps between regimes; no velocity mapping can make that monotone. The PHYS default sounds themselves are all at 0.02 dB.
  *   cc -O1 -w -DDUELL_TEST_MODE=1 -Ibuild/gen_test -Ibuild/gen -Ifirmware/src -Itests '-DFELUCCA_VERSION="x"' -o build/host/velaccent_test tests/velaccent_test.c -lm
  *   build/host/velaccent_test      (DUELL/host_tests.sh "velaccent"; VA_TABLE=1 prints every sound's worst fall) */
 #define UI_TEST_NO_MAIN 1
@@ -81,7 +81,7 @@ static void dsp_clean(void)
     song.grid = 0;
 }
 
-static void render_child(uint32_t e, uint32_t pi, uint32_t vel)   /* pi < 8: preset pi; pi >= 8: factory sound pi - 8 */
+static void render_child(uint32_t e, uint32_t pi, uint32_t vel)   /* pi < 8: preset pi; pi >= 8: default sound pi - 8 */
 {
     track_t *t = &trk[0];
     double s = 0;
@@ -121,7 +121,7 @@ static double render(uint32_t e, uint32_t pi, uint32_t vel)
     return *lvl;
 }
 
-/* PHYS over the parameter space, not only the factory sounds (owner's rule 2026-10-24: fix the generic logic): every model (MODAL STRNG MEMB SYMP), PHYS_NSET settings of
+/* PHYS over the parameter space, not only the default sounds (owner's rule 2026-10-24: fix the generic logic): every model (MODAL STRNG MEMB SYMP), PHYS_NSET settings of
  * STRC BRIT DAMP POS ACC BOW EXC from a fixed generator (ACC at least 30: with ACC 0 the velocity does nothing but the amplitude), notes C2..C6, velocity 1..127.
  * Allowance 0.02 dB, except the two nonlinear regimes that no velocity mapping can make monotone (KNOWN, PHYS_NL_DB): the CURVED BRIDGE (STRNG with STRC 30 or less,
  * SYMP with BUZZ 6 or more: the string is driven by its own amplitude, and at a long DAMP the level jumps between regimes), and the BOWED string (STRNG with BOW > 0:
@@ -218,18 +218,18 @@ int main(void)
             if (worst < -allow(ENGINES[e]->name, pi)) {
                 nfall++;
                 printf("velaccent: FALL %-8s %s %u: %.2f dB at velocity %u below the level of a lower velocity (110: %.1f, 127: %.1f dB)\n",
-                       ENGINES[e]->name, pi < 8u ? "preset" : "factory", pi & 7u, worst, wv, l110, l127);
+                       ENGINES[e]->name, pi < 8u ? "preset" : "default", pi & 7u, worst, wv, l110, l127);
             } else if (worst < -NOISE_DB)
-                printf("velaccent: KNOWN %-8s %s %u: %.2f dB at velocity %u (within its allowance %.2f)\n", ENGINES[e]->name, pi < 8u ? "preset" : "factory", pi & 7u, worst, wv, allow(ENGINES[e]->name, pi));
+                printf("velaccent: KNOWN %-8s %s %u: %.2f dB at velocity %u (within its allowance %.2f)\n", ENGINES[e]->name, pi < 8u ? "preset" : "default", pi & 7u, worst, wv, allow(ENGINES[e]->name, pi));
             else if (show)
-                printf("velaccent: ok   %-8s %s %u: worst %.2f dB, 110: %.1f, 127: %.1f dB\n", ENGINES[e]->name, pi < 8u ? "preset" : "factory", pi & 7u, worst, l110, l127);
+                printf("velaccent: ok   %-8s %s %u: worst %.2f dB, 110: %.1f, 127: %.1f dB\n", ENGINES[e]->name, pi < 8u ? "preset" : "default", pi & 7u, worst, l110, l127);
         }
     }
     for (n = 0; n < NENG_SHOWN; n++)
         if (str_eq(ENGINES[eng_vis(n)]->name, "PHYS"))
             nfall += phys_sweep(eng_vis(n), &nrender, &nnan, &worst_all);
-    printf("velaccent: %u sounds, %u renders, largest fall %.2f dB (allowance 0.02, FM6 1.5, ANALOG factory 4 0.95, PHYS sweep curved bridge / bowed 2.5: %.2f), %u sounds fall more, %u NaN levels\n", nsound, nrender, worst_all,
+    printf("velaccent: %u sounds, %u renders, largest fall %.2f dB (allowance 0.02, FM6 1.5, ANALOG default 4 0.95, PHYS sweep curved bridge / bowed 2.5: %.2f), %u sounds fall more, %u NaN levels\n", nsound, nrender, worst_all,
            NOISE_DB, nfall, nnan);
-    printf("velaccent: no sound is quieter at a harder velocity (velocity 1..127, every engine but LOFI, 8 presets + 8 factory sounds each)  %s\n", nfall || nnan ? "FAIL" : "ok");
+    printf("velaccent: no sound is quieter at a harder velocity (velocity 1..127, every engine but LOFI, 8 presets + 8 default sounds each)  %s\n", nfall || nnan ? "FAIL" : "ok");
     return nfall || nnan ? 1 : 0;
 }

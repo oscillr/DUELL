@@ -570,7 +570,7 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
                                          * bit 4 (value 16, DUELL 0.2.15): the patch store's chunks 6..15 were backup ids 27..31 and 35..39 (gone in job A: see bit 5);
                                          * bit 5 (value 32, the cloud plan's job A): the patch store is carried as LOGICAL records, one patch at a time: object id 40 plus a slot byte,
                                          * LIST pages of the saved patches (editor_backup.c); the ids 6, 7, 9..12, 27..31 and 35..39 are no longer listed */
-        ed_b(0x46); ed_b(1); ed_b(FM6_NFACTORY); ed_b(0);   /* FM6 patches: cmds 68..71 (no bank since 1.0.3) */
+        ed_b(0x46); ed_b(1); ed_b(FM6_NDEFAULT); ed_b(0);   /* FM6 patches: cmds 68..71 (no bank since 1.0.3) */
         ed_b(0x53); ed_b(1); ed_b(3);   /* live sync: bit 0 WATCH while on keeps the shadow, bit 1 no RELOAD echo */
         ed_b(0x50); ed_b(1); ed_b(3);   /* FM6 patches v2: bit 0 no bank (SLOT F1..F8, 8 OWN), bit 1 user preset
                                          * patches (FM6 target 3, backup id 9) */
@@ -700,7 +700,7 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
         if (na < 1u || a[0] >= NENGINES)
             return;
         ed_b(a[0]);
-        ed_b(ds_count(a[0]));                              /* (DUELL: the engine's factory sounds, sounds.c) */
+        ed_b(ds_count(a[0]));                              /* (DUELL: the engine's default sounds, sounds.c) */
         for (i = 0; i < ds_count(a[0]); i++)
             ed_str(ds_name(a[0], i), 12);
         for (i = 0; i < 2u; i++)                           /* then the two edit-page titles */
@@ -731,7 +731,7 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
     case ED_UP_LIST: {                                     /* start, count -> start, count, total, per slot: used, engine, name;
                                                             * (1.2) then per slot its category (category.c CAT_*)
                                                             * after the entries, so an older editor stops before them; 0.2.17: then per
-                                                            * slot SAVED (1: a saved record, RESTORE applies; 0: the factory sound) */
+                                                            * slot SAVED (1: a saved record, RESTORE applies; 0: the default sound) */
         uint32_t s0, cnt;
         if (na < 2u)
             return;
@@ -744,7 +744,7 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
         ed_b(s0);
         ed_b(cnt);
         ed_b(UP_SLOTS > 127u ? 127u : UP_SLOTS);            /* (DUELL: 128 slots; a data byte holds 127 at most: slots 0..127 are all there) */
-        for (i = s0; i < s0 + cnt; i++) {                  /* every slot holds a sound: its saved record, else its factory sound */
+        for (i = s0; i < s0 + cnt; i++) {                  /* every slot holds a sound: its saved record, else its default sound */
             char nm[13] = {0};
             sl_name(i, nm);
             ed_b(1);
@@ -759,8 +759,8 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
     }
     case ED_UP_GET: {                                      /* slot -> slot, used, engine, name, P_COUNT x v14, 16 x (note,
                                                             * flags), (v5) kind [, 16 x hi], (1.2) category, (0.2.17) SAVED
-                                                            * (upreset.c up_parse). A factory slot: its sound's values, no pattern */
-        int16_t v[P_COUNT];
+                                                            * (upreset.c up_parse). A default slot: its sound's values, no pattern */
+        int16_t v[EXT_P_LEN];   /* (1.3.3: sl_values / up_values also write the extension slots, XW_BASE + k: P_COUNT overran the stack) */
         char nm[13] = {0};
         const up_rec_t *r;
         uint32_t u;
@@ -782,7 +782,7 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
         }
         ed_b(0);                                /* kind: 1 was a drum grid (gone in 0.2.14) */
         ed_b(sl_cat(a[0]));                     /* 1.2: the category (an older editor stops before it) */
-        ed_b(u);                                /* 0.2.17: SAVED (1) or the factory sound (0) */
+        ed_b(u);                                /* 0.2.17: SAVED (1) or the default sound (0) */
         break;
     }
     case ED_UP_PUT: {                                      /* slot, engine, name, values, pattern -> slot, rc */
@@ -794,7 +794,7 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
         if (!rc && ed_flash_stop())
             rc = 2;
         if (!rc) {
-            int16_t v[P_COUNT];
+            int16_t v[EXT_P_LEN];   /* (1.3.3: sl_values / up_values also write the extension slots, XW_BASE + k: P_COUNT overran the stack) */
             up_values(&r, v);                              /* each value inside its range */
             for (i = 0; i < P_COUNT; i++)
                 up_set_value(&r, i, v[i]);                 /* the record's own form (v4: a byte each) */
@@ -829,12 +829,12 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
         if (na < 1u)
             return;
         ed_b(a[0]);
-        if (a[0] < UP_SLOTS)                               /* the slot's record, else its factory sound */
+        if (a[0] < UP_SLOTS)                               /* the slot's record, else its default sound */
             sl_load(a[0]);
         ed_b(a[0] < UP_SLOTS ? 0u : 1u);
         break;
-    case ED_UP_ERASE:                                      /* 0.2.17: RESTORE: the slot's saved record is removed, its factory sound is back
-                                                            * (a slot that holds the factory sound already: rc 0, nothing written) */
+    case ED_UP_ERASE:                                      /* 0.2.17: RESTORE: the slot's saved record is removed, its default sound is back
+                                                            * (a slot that holds the default sound already: rc 0, nothing written) */
         if (na < 1u)
             return;
         ed_b(a[0]);

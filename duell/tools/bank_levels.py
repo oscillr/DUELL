@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
-"""DUELL 1.0: balance the levels of the 128 factory patches by their TRIM alone (owner, 2026-10-21, item 30; working docs/BANK_LEVELS.md).
+"""DUELL 1.0: balance the levels of the 128 default patches by their TRIM alone (owner, 2026-10-21, item 30; working docs/BANK_LEVELS.md).
 
     tools/bank_levels.py [--passes N] [--md FILE]
 
 Measures with the recipe's level audit (tools/refine_audit.sh all: C3, velocity 100, held 10 s, ear-weighted, before MASTER), takes per kind (the category)
 the bank's own MEDIAN of the kind's level, and moves every patch that sits more than WINDOW dB from that median onto it, in TRIM steps (0.5 dB each);
-a patch inside the window keeps its TRIM. Nothing else of a patch is touched: the result is tools/factory_bank_trims.json, which tools/import_bank.py lays over
+a patch inside the window keeps its TRIM. Nothing else of a patch is touched: the result is tools/default_bank_trims.json, which tools/import_bank.py lays over
 the bank (no other value changes). Rules:
   level      MED (the held body, median of seconds 1..6) for a patch that sustains, LOUD (the loudest 0.5 s window) for PLUCK and KEYS and for a patch that does not
              sustain; a HIT (PERC, and a one-shot OTHER: the audit's 'H' flag) by its PEAK, kept between -6 and -3 dBFS (the audit's hit rule)
@@ -75,8 +75,8 @@ def main(argv):
     ap.add_argument("--passes", type=int, default=4)
     ap.add_argument("--md", default="")
     a = ap.parse_args(argv)
-    trims_file = TOOLS / "factory_bank_trims.json"
-    bank = {it["number"]: it for it in json.loads((TOOLS / "factory_bank.duell-patches.json").read_text())["patches"]}
+    trims_file = TOOLS / "default_bank_trims.json"
+    bank = {it["number"]: it for it in json.loads((TOOLS / "default_bank.duell-patches.json").read_text())["patches"]}
     if trims_file.exists():
         trims_file.unlink()
     subprocess.run([sys.executable, "-I", str(TOOLS / "import_bank.py"), "--write"], cwd=ROOT, check=True, capture_output=True)

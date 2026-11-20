@@ -155,12 +155,12 @@ ok(lv[0] == 0 and all(lv[i] <= lv[i + 1] for i in range(127)) and all(abs(ctx.su
 
 # ------------------------------------------------------------------------------------------ 3. the committed data
 cur = (TOOLS / "duell_sounds.py").read_bytes()
-# 0.2.31: the factory sounds were refined by hand after the conversion (the patch pass of 2026-10-21; PATCH_REVIEW.md), so the file is no longer the tool's output: reported, not compared
+# 0.2.31: the default sounds were refined by hand after the conversion (the patch pass of 2026-10-21; PATCH_REVIEW.md), so the file is no longer the tool's output: reported, not compared
 print("convert_twin: tools/duell_sounds.py is %s the tool's output (refined by hand since 0.2.31: not a check)" % ("still" if cur == sl_text else "no longer"))
 same, changed = 0, 0
 for f in sorted(FIX.glob("M*.bin")):
     old = f.read_bytes()
-    now = (TOOLS / "factory_multis" / f.name).read_bytes()
+    now = (TOOLS / "default_multis" / f.name).read_bytes()
     new = ct.convert_multi(ctx, old, [], f.stem)
     if new is None:
         same += 1
@@ -173,7 +173,7 @@ for f in sorted(FIX.glob("M*.bin")):
 ok(same + changed == 16 and changed >= 12, "the 16 committed multi records: %d converted exactly as the tool does, %d untouched" % (changed, same))
 diffs = {}
 for f in sorted(FIX.glob("M*.bin")):
-    o, n = f.read_bytes(), (TOOLS / "factory_multis" / f.name).read_bytes()
+    o, n = f.read_bytes(), (TOOLS / "default_multis" / f.name).read_bytes()
     ok(len(o) == len(n) and o[:20] == n[:20], "%s: same length, same header" % f.name) if o != n else None
 
 # ------------------------------------------------------------------------------------------ 4. the guards
@@ -197,7 +197,7 @@ shutil.copy(FIX / "M05.bin", rec)
 subprocess.run([sys.executable, str(TOOLS / "convert_twin.py"), "--out", str(tmp / "out1"), str(rec)], capture_output=True, text=True)
 real_led = TOOLS / "convert_twin_done.json"
 ok(real_led.exists() and json.loads(real_led.read_text())["outputs"], "the ledger tools/convert_twin_done.json lists the records the tool wrote (%d)" % len(json.loads(real_led.read_text())["outputs"]))
-r2 = subprocess.run([sys.executable, str(TOOLS / "convert_twin.py"), "--check", str(TOOLS / "factory_multis" / "M05.bin")], capture_output=True, text=True)
+r2 = subprocess.run([sys.executable, str(TOOLS / "convert_twin.py"), "--check", str(TOOLS / "default_multis" / "M05.bin")], capture_output=True, text=True)
 ok("already converted (ledger)" in r2.stdout and r2.returncode == 0, "  .. M05.bin as committed is skipped by its ledger entry (--check exit %d)" % r2.returncode)
 
 # ------------------------------------------------------------------------------------------ 5. patch records
@@ -324,7 +324,7 @@ rpt = []
 out = ct.convert_json(ctx, tmp / "m.duell-multis.json", rpt, False)
 j = json.loads(out)
 nrec = base64.b64decode(j["multis"][0]["data"])
-ok(nrec == (TOOLS / "factory_multis" / "M08.bin").read_bytes() and j["multis"][0]["crc"] == zlib.crc32(nrec) and j["multis"][0]["size"] == len(nrec), "an editor export of M08: the converted record is the committed one, size and crc updated")
+ok(nrec == (TOOLS / "default_multis" / "M08.bin").read_bytes() and j["multis"][0]["crc"] == zlib.crc32(nrec) and j["multis"][0]["size"] == len(nrec), "an editor export of M08: the converted record is the committed one, size and crc updated")
 
 # ------------------------------------------------------------------------------------------ 6. the cases kept out
 rep = []

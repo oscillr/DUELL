@@ -4,7 +4,7 @@
 // A file is JSON: { format: "duell-patches", version: 1, firmware, created, source, patches: [ ... ] }. Each patch:
 //   number     the slot it came from, as the unit shows it (#NN, 1..128), or absent
 //   name, engine (its name, "FM6"), category (its name)
-//   saved      true: the patch is a saved record of the slot; false: the slot held a factory sound (a copy of its values only: "approximate")
+//   saved      true: the patch is a saved record of the slot; false: the slot held a default sound (a copy of its values only: "approximate")
 //   record     base64 of the unit's STORED RECORD, lossless (PATCH_RAW; patchrecord.js), with its CRC-32 in crc32 (8 hex digits)
 //   values     (approximate patches only) the P_COUNT parameter values, a numbers array
 //   params     the readable dump: what differs from the engine's defaults, named as the editor's pages name it. For reading and diffing; never read back
@@ -35,7 +35,7 @@ export function itemFromRecord(record, { number = null, source = "unit", warning
 export function itemApprox({ number = null, name, engine, cat = 0, values, source = "unit" }) {
   const e = L.ENG[engine];
   return { number, name, engine, engineName: e?.name ?? "?", cat, catName: CATEGORIES[cat] || "-", kind: "approx", record: null, crc: 0, values: values.slice(), source,
-    params: {}, warnings: ["A factory sound: a copy of its values (its arp block and pattern are not copied)."], error: e ? null : "unknown engine" };
+    params: {}, warnings: ["A default sound: a copy of its values (its arp block and pattern are not copied)."], error: e ? null : "unknown engine" };
 }
 
 // ---- writing a file

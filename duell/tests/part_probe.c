@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
-/* DUELL 0.2.24: PART PROBE, a measuring tool (not a test): ONE part of a factory multi played alone on one key and its spectrum measured, so a
+/* DUELL 0.2.24: PART PROBE, a measuring tool (not a test): ONE part of a default multi played alone on one key and its spectrum measured, so a
  * claim like "the pad is dark" or "MORPH opens it" is a number, not an ear (owner: measure, do not claim). Used for M03 PAD SPLIT in 0.2.24
  * (SOUND_RECIPES.md 7.8): the pad's spectral centroid and band energies at E4 / A4 / C5, with KEY TRK, the reverb LOW CUT, the note (the TRN
  * of 0.2.22), the sends, the MORPH fader and the engine's CUT changed one at a time.

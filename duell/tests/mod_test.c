@@ -903,7 +903,7 @@ static void test_dest027(void)
                         printf("mod:   DST %u \"%s\" is engine %u's EDIT label\n", d, N_MDST[d], e);
                         ok = 0;
                     }
-        check("  no new DST name is an engine knob's label (the factory sounds name engine slots by label)", ok);
+        check("  no new DST name is an engine knob's label (the default sounds name engine slots by label)", ok);
     }
     {   /* the DEST line: every destination has words (none empty), a few by name */
         char b[32];

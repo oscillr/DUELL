@@ -56,7 +56,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   ok(longDesc(L.TP[37], 37) === vce && L.TP[37].label === "VCE", "labels: the same descriptor object for the same control (a drag is never rebuilt) and the firmware's table untouched");
   let lenOk = true; for (const [k, m] of Object.entries(VALUE_NAMES)) { const d = /^\d+$/.test(k) ? L.TP[+k] : null; if (d?.names) lenOk = lenOk && longDesc(d, +k).names.length === d.names.length; }
   ok(lenOk, "labels: a long value list keeps the firmware list's length and order");
-  ok(engineLong("FM6", "SLOT") === "SOURCE" && engineLong("ANALOG", "DTN") === "DETUNE" && engineLong("WAVE", "POS") === "POSITION" && engineLong("WAVE", "TABLE") === "TABLE" && engineLong("FM6", "MLVL") === "MOD LEVEL" && /factory voice/.test(tipOf("e:FM6", { short: "SLOT" })), "labels: engine controls by the engine's short label (WAVETABLE: TABLE, POSITION; MACROS: SOURCE, MOD LEVEL; with what F / OWN / B mean)");
+  ok(engineLong("FM6", "SLOT") === "SOURCE" && engineLong("ANALOG", "DTN") === "DETUNE" && engineLong("WAVE", "POS") === "POSITION" && engineLong("WAVE", "TABLE") === "TABLE" && engineLong("FM6", "MLVL") === "MOD LEVEL" && /defaults voice/.test(tipOf("e:FM6", { short: "SLOT" })), "labels: engine controls by the engine's short label (WAVETABLE: TABLE, POSITION; MACROS: SOURCE, MOD LEVEL; with what F / OWN / B mean)");
   ok(CATEGORY_NAMES.length === 9 && CATEGORY_NAMES[6] === "PERCUSSION", "labels: the nine categories in the unit's order (6 is PERC on the unit, not DRUM)");
   ok(L.TP[48].names.join() === "12dB,24dB", "layout: SLOPE's value names fixed (the dump wrote them from index 0: '-' for 12 dB)");
   ok(whyText("UNUSED") === "" && whyText("INSERT OFF").length > 5 && Object.values(WHY).every((t) => t.length <= 60), "labels: every hide reason is a short plain line (none for an unused engine slot)");
@@ -179,7 +179,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 {
   const { m, u } = await connect();
   const r = await S.readMultis(u);
-  ok(S.multiName(r.records[2]) === "TESTONE" && r.records[0] === null, "multis: the stored records are read (M03 TESTONE); a factory slot holds none");
+  ok(S.multiName(r.records[2]) === "TESTONE" && r.records[0] === null, "multis: the stored records are read (M03 TESTONE); a default slot holds none");
   const file = JSON.parse(JSON.stringify(S.multiFile([{ slot: 2, bytes: r.records[2] }, { slot: 11, bytes: r.records[11] }], u.info.version)));
   const back = S.parseMultiFile(file);
   ok(back.ok && back.multis.length === 2 && back.multis[0].slot === 2 && back.multis[0].name === "TESTONE" && !back.multis[0].problem, "multi file: duell-multis, records whole, slot and name kept");
@@ -243,7 +243,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const { m, u } = await connect(); await u.listSlots();
   await LIB.setCategory(u, 0, 5);
   ok(u.slots[0].cat === 5 && m.patches.get(0).cat === 5, "category: a stored patch's category changed (record read whole, byte 6, written whole)");
-  ok(await (async () => { try { await LIB.setCategory(u, 3, 2); return false; } catch (e) { return /factory/.test(e.message); } })(), "category: a factory slot's category is fixed (it says so)");
+  ok(await (async () => { try { await LIB.setCategory(u, 3, 2); return false; } catch (e) { return /defaults/.test(e.message); } })(), "category: a default slot's category is fixed (it says so)");
 }
 
 // ---- 21: the unit's own settings follow the panel (WIDTH, BASS MONO, COMP, the MENU rows, the globals)

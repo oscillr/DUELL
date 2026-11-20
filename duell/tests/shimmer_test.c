@@ -23,8 +23,8 @@
 /* the SHIM before this change, rendered by the base commit (ff8df90) */
 #define H_BUS_A 0x3c328d00u
 #define H_BUS_B 0x091f03d3u
-#define H_MIX_STEREO 0x379c68a0d823dec8ull   /* (0.2.31: the three mix hashes re-based on purpose, the factory sounds WAVE 1 and PHYS 2 were refined; were 0xb0349e95305d0465, 0xbeaf994edade7675, 0xbc2a1061abc66350)  (job 3, on purpose: part 2 draws its own random numbers in the voice stage (voice.c part_rand), so the shared sequence the PHYS pluck's note-on seed comes from is not advanced by part 2's LFO any more; the scene plays a pad and a PHYS pluck on two parts; before: 0x3f372eed50047294, 0x330c1c778ef2d2bc, 0x1820f49e32024f34. 0.2.25: re-pinned on purpose: #62 VOWEL PAD's LFO 1 -> SUB now glides within each block (eng_wave.c SUB without a zipper); before: 0x48d788950a6e2499, 0x44ecba0fd49884b1, 0x9630cfd1f0e803c2. 0.2.22: re-pinned a third time on purpose: the scene plays #62 VOWEL PAD and #75 GHOST HARP, which now have KEY TRK +51 % (owner); before that: 0x5d413c2d194a9478, 0xda3d519d67bc89d2, 0xee5127709d5c78ac. Earlier: re-pinned again on purpose: the scene plays #75 GHOST HARP, whose PATCH TRIM went 112 -> 113 for the new low cut (owner-approved); first pin at the new LOCUT default: 0x11b435e273a6282c, 0x38a7ce86978f2a06, 0x1d5a2be01b32b1eb. Then: re-pinned on purpose: the scene runs at the new LOCUT default, 75 = 299 Hz, the reverb low cut's new range; the bus alone, above, is unchanged. Before: 0x290f333a12786bd9, 0x9a25b46b919706e7, 0x8862eba6c6787015 at value 61 = 88 Hz) */
-#define H_MIX_LAYER 0x61248d80e97da59cull   /* (DUELL 1.0: the three mix hashes re-based on purpose: the factory sounds WAVE 1 and PHYS 2 are the owner's bank now) */
+#define H_MIX_STEREO 0x379c68a0d823dec8ull   /* (0.2.31: the three mix hashes re-based on purpose, the default sounds WAVE 1 and PHYS 2 were refined; were 0xb0349e95305d0465, 0xbeaf994edade7675, 0xbc2a1061abc66350)  (job 3, on purpose: part 2 draws its own random numbers in the voice stage (voice.c part_rand), so the shared sequence the PHYS pluck's note-on seed comes from is not advanced by part 2's LFO any more; the scene plays a pad and a PHYS pluck on two parts; before: 0x3f372eed50047294, 0x330c1c778ef2d2bc, 0x1820f49e32024f34. 0.2.25: re-pinned on purpose: #62 VOWEL PAD's LFO 1 -> SUB now glides within each block (eng_wave.c SUB without a zipper); before: 0x48d788950a6e2499, 0x44ecba0fd49884b1, 0x9630cfd1f0e803c2. 0.2.22: re-pinned a third time on purpose: the scene plays #62 VOWEL PAD and #75 GHOST HARP, which now have KEY TRK +51 % (owner); before that: 0x5d413c2d194a9478, 0xda3d519d67bc89d2, 0xee5127709d5c78ac. Earlier: re-pinned again on purpose: the scene plays #75 GHOST HARP, whose PATCH TRIM went 112 -> 113 for the new low cut (owner-approved); first pin at the new LOCUT default: 0x11b435e273a6282c, 0x38a7ce86978f2a06, 0x1d5a2be01b32b1eb. Then: re-pinned on purpose: the scene runs at the new LOCUT default, 75 = 299 Hz, the reverb low cut's new range; the bus alone, above, is unchanged. Before: 0x290f333a12786bd9, 0x9a25b46b919706e7, 0x8862eba6c6787015 at value 61 = 88 Hz) */
+#define H_MIX_LAYER 0x61248d80e97da59cull   /* (DUELL 1.0: the three mix hashes re-based on purpose: the default sounds WAVE 1 and PHYS 2 are the owner's bank now) */
 #define H_MIX_DUEL 0xea63f53d61b8b378ull
 
 static uint32_t xs0 = 0x1234567u;
@@ -160,7 +160,7 @@ static void bus_hashes(uint32_t *ha, uint32_t *hb)
 #endif
 
 /* ------------------------------------------------------------- the whole mix --- */
-/* a part through SHIM. kind 0 pad (a long dyad + fifth), 1 pluck (a phrase), 2 chord (two stabs held). eng / k: the factory sound (hostsim.c host_ds_load). secs of audio into rec_l / rec_r */
+/* a part through SHIM. kind 0 pad (a long dyad + fifth), 1 pluck (a phrase), 2 chord (two stabs held). eng / k: the default sound (hostsim.c host_ds_load). secs of audio into rec_l / rec_r */
 static const uint8_t PADN[3] = {48, 55, 64}, PLKN[8] = {60, 64, 67, 72, 67, 64, 62, 59}, CHDA[4] = {57, 60, 64, 71}, CHDB[4] = {53, 57, 60, 69};
 static void mix_scene(uint32_t mode, uint32_t e, uint32_t k, int kind, int pitch, int mod, uint32_t secs, int send)
 {
@@ -232,7 +232,7 @@ static void wav(const char *path, const int32_t *l, const int32_t *r, uint32_t n
 }
 static void demo(const char *dir)
 {
-    /* the sounds: factory indices of tools/duell_sounds.py (engine, idx) */
+    /* the sounds: default indices of tools/duell_sounds.py (engine, idx) */
     static const struct { const char *tag, *label, *eng; uint32_t k; int kind; int send; } SRC[] = {
         {"pad_wave", "PAD: WAVE #1 VOWEL PAD (a held dyad and fifth)", "WAVE", 1, 0, 110},
         {"pad_noise", "PAD: NOISE SEA ORGAN (a held dyad and fifth)", "NOISE", 2, 0, 110},

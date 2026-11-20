@@ -14,9 +14,9 @@
  *    0.1 s and the model switching under the notes.
  * 2. cost: the heaviest settings of each model (8 notes asked, the engine's 3 voices, as regress.c's CPU
  *    check: instructions per sample of the whole mix less the idle mix) against PHASE WIRE, the heaviest
- *    factory preset (tests/cpu_baseline.txt): at most that; the models added in 1.0 (MEMB, SYMP) at
+ *    default preset (tests/cpu_baseline.txt): at most that; the models added in 1.0 (MEMB, SYMP) at
  *    most MODAL struck (the cost measured on the device, ~13 % per voice).
- * 3. demos: each factory preset playing a phrase, each model over C1 .. C7, into DEMODIR. (The drums, PHYS's
+ * 3. demos: each default preset playing a phrase, each model over C1 .. C7, into DEMODIR. (The drums, PHYS's
  *    MODEL DRUM before 1.0, are the DRUM engine: tests/drum_test.c.) */
 #define main hostsim_main
 #include "hostsim.c"
@@ -138,7 +138,7 @@ static void stability(void)
     fails += bad != 0;
 }
 
-/* a factory preset of each model (torture's starting sound) */
+/* a default preset of each model (torture's starting sound) */
 static uint32_t preset_of(uint32_t md)
 {
     uint32_t i;
@@ -388,7 +388,7 @@ static void demos(const char *dir)
 int main(int argc, char **argv)
 {
     if (ENG_PHYS.npresets > NPHRASE) {
-        printf("phys_test: %u factory presets, %u demo phrases: add one\n", ENG_PHYS.npresets, NPHRASE);
+        printf("phys_test: %u default presets, %u demo phrases: add one\n", ENG_PHYS.npresets, NPHRASE);
         fails++;
     }
     if (!getenv("NOCOST"))

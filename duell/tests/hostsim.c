@@ -92,7 +92,7 @@ static void host_tracks_init(void)                /* as felucca_init: defaults, 
     song.master_q12 = 4096;
 }
 
-/* the factory preset as ui.c apply_preset_to sets it (sound, sends; not the steps, not the track's own:
+/* the default preset as ui.c apply_preset_to sets it (sound, sends; not the steps, not the track's own:
  * the mix, ARP, SCL, the pattern parameters);
  * the engine as the UI asks for it (eng_req: the audio side switches; host_preset: at once) */
 static void host_preset_values(track_t *t, uint32_t e, uint32_t pi, const preset_t *p)
@@ -108,7 +108,7 @@ static void host_preset_values(track_t *t, uint32_t e, uint32_t pi, const preset
     t->p[P_SUS] = p->env[2];
     t->p[P_REL] = p->env[3];
     t->p[P_ED_FLT] = p->fenv;
-    t->p[P_KTRK] = 0;                             /* (0.2.22: a factory preset keeps KEY TRK off; TP's default is for a new sound) */
+    t->p[P_KTRK] = 0;                             /* (0.2.22: a default preset keeps KEY TRK off; TP's default is for a new sound) */
     t->p[P_VOICE] = p->mono ? V_LEGATO : V_POLY;
     for (i = 0; i < 4u; i++)
         t->p[P_DIST + i] = (int16_t)(p->fx[i] ? p->fx[i] - 1 : FX_DEF[i]);
@@ -135,7 +135,7 @@ static void host_preset(track_t *t, uint32_t e, uint32_t pi)
     wave_build_now(t);                            /* (WAVE: its table built, as the main loop does after a load) */
 }
 
-/* DUELL factory sound k of engine e (firmware/src/sounds.c) as ui.c apply_preset_to loads it: INIT (TP's defaults, the
+/* DUELL default sound k of engine e (firmware/src/sounds.c) as ui.c apply_preset_to loads it: INIT (TP's defaults, the
  * engine's EDIT defaults; the track's own ones too: a render starts from host_tracks_init), then its pairs, the arp's
  * too (no UI here: nothing to lend it from). tests/sound_audit.c, tests/regress.c (sound/...) */
 static void host_ds_load(track_t *t, uint32_t e, uint32_t k)

@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 /* DUELL: the loudness of the player's own rolls (host_tests.sh rolls; by hand, not in the default list: ~1 min).
  * ROLL B at AMOUNT ROLL_AMOUNT (20) with the player's default settings (SMART, ARP and PITCH off, STEREO), 300 seeds per
- * engine over its sounds (ANALOG: the DUELL factory sounds; PHASE FM6 TRIO WHEEL GRAIN: the engine's presets), each End B
+ * engine over its sounds (ANALOG: the DUELL default sounds; PHASE FM6 TRIO WHEEL GRAIN: the engine's presets), each End B
  * (fader at B) and its Original rendered as tests/loudness.h measures (C3 held 4 s, the weighted loudness of the sound's
  * body). The ratio B / A in dB: its distribution per engine and in all. Targets (owner, 2026-10-11): 90 % of the rolls
  * within +-4.5 dB, 99 % within +-8 dB; the test fails outside them.

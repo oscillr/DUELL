@@ -41,4 +41,4 @@ Hardware checklist:
 
 ## Voices and CPU
 
-Each part's AVAILABLE VOICES in the header shows how many more notes that part can play right now; that number is what really plays. **M16 STRESS TEST** is a multi made to work the unit hard (you may overwrite it). If you hear a click or a dropout, report the patch or multi, the mode, how many keys you held and what you turned.
+Each part's AVAILABLE VOICES in the header shows how many more notes that part can play right now; that number is what really plays. If you hear a click or a dropout, report the patch or multi, the mode, how many keys you held and what you turned.

@@ -3,7 +3,7 @@
 /* Regression suite of the FELUCCA DSP on the Mac (same sources as the firmware, through hostsim.c).
  *   build/host/regress [GOLDEN_FILE CPU_FILE]      (run_tests.sh builds and runs it)
  *
- * 1. golden renders: every engine x factory preset (Felucca's, engine_t.presets), DUELL's factory sounds (sounds.c: sound/..), the voice modes (POLY / MONO /
+ * 1. golden renders: every engine x default preset (Felucca's, engine_t.presets), DUELL's default sounds (sounds.c: sound/..), the voice modes (POLY / MONO /
  *    LEGATO / UNISON) of three engines, the FX sends, and a 4-track sequencer mix (DUELL: the SLICER's
  *    renders went with the SLICER insert). Each render plays
  *    a fixed phrase (notes, an overlap, a chord, note-offs, the release tail) and is reduced to a
@@ -178,7 +178,7 @@ static void job_preset(const job_t *j)
     phrase(t, 60);
 }
 
-static void job_sound(const job_t *j)           /* DUELL: factory sound pi of engine e (sounds.c), as the browser loads it */
+static void job_sound(const job_t *j)           /* DUELL: default sound pi of engine e (sounds.c), as the browser loads it */
 {
     track_t *t = &trk[0];
     host_tracks_init();
@@ -940,7 +940,7 @@ int main(int argc, char **argv)
             j->e = (uint8_t)e;
             j->pi = (uint8_t)pi;
         }
-    for (e = 0; e < NENGINES; e++)                  /* DUELL: the factory sounds the browser lists (sounds.c) */
+    for (e = 0; e < NENGINES; e++)                  /* DUELL: the default sounds the browser lists (sounds.c) */
         for (pi = 0; pi < ds_count(e); pi++) {
             job_t *j;
             slug(s, ds_name(e, pi), sizeof s);

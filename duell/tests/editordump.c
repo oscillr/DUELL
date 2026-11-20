@@ -3,7 +3,7 @@
 /* The web editor's layout, from the firmware's own tables (through hostsim.c, like descdump.c): the page table PAGES[], the parameter
  * descriptors with every value formatted by param_format (so labels, ranges, value names and units cannot drift), each engine's
  * EDIT descriptors and the mode-dependent ones (engine desc hooks, the INSERT's A B C by TYPE, ENV SYNC, ARP TARGET), the matrix
- * lists in the shown order and their "why" reasons, the factory sounds and multis. web/editor/layout.json is this output; the host
+ * lists in the shown order and their "why" reasons, the default sounds and multis. web/editor/layout.json is this output; the host
  * test (web/editor/test_layout.mjs) compares the file with a fresh run.
  *   build/host/editordump > web/editor/layout.json */
 #include "duell_version.h"
@@ -135,7 +135,7 @@ static void js_vis(const page_t *pg)
 #include "duell_multis.h"                 /* DF_N, DF_SLOT, DM_AT, DM_REC (multi.c is not in hostsim) */
 #define MU_NAME_AT 8u                      /* multi.c: the record's name */
 #define PROJ_NAME_LEN 12u
-/* the factory multis' names: the record's name at MU_NAME_AT */
+/* the default multis' names: the record's name at MU_NAME_AT */
 /* (the same typedef as src/gfx.c: the generated build/gen/ui_palettes.h is the one table both read) */
 typedef struct { const char *name; uint16_t bg[2], bgl, surf[2], text, mid, line[2], raise[2], rec, c[4], r[4], a[4], g, ga; uint8_t hc; } ui_pal_t;   /* (as gfx.c; 0.2.24: g / ga) */
 #include "ui_palettes.h"
@@ -329,7 +329,7 @@ int main(void)
     printf("],\n\"ORDER\":[");
     for (k = 0; k < NENG_SHOWN; k++)
         printf("%s%u", k ? "," : "", (unsigned)eng_vis(k));
-    printf("],\n\"SLOTS\":%u,\n\"BROWSE\":[", (unsigned)UP_SLOTS);   /* 0.2.17: slot i holds the factory sound at browse position i: [engine, factory index] */
+    printf("],\n\"SLOTS\":%u,\n\"BROWSE\":[", (unsigned)UP_SLOTS);   /* 0.2.17: slot i holds the default sound at browse position i: [engine, default index] */
     for (k = 0; k < ds_list_n(); k++) {
         uint32_t fk, fe = ds_list_at(k, &fk);
         printf("%s[%u,%u]", k ? "," : "", (unsigned)fe, (unsigned)fk);

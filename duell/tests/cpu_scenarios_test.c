@@ -3,14 +3,14 @@
  * after a settle (attacks, ramps, WAVE tables built: wave_service), host instructions per half (proc_pid_rusage) in the loadcost scale:
  * 420 k instructions = 100 % of the device's half (33 a sample = 1 %; the device reads ~10-25 % lower, one calibration point: M15).
  * Build: -O1 -fno-builtin, the device's memset / memcpy (as loadcost_test.c). Needs macOS; elsewhere it reports and passes.
- * Default run (host_tests.sh "cpuscen"): Q, the factory multis M01 (0.2.13: REESE SWAMP, the first start's), M03..M06 (the four emulator-made
+ * Default run (host_tests.sh "cpuscen"): Q, the default multis M01 (0.2.13: REESE SWAMP, the first start's), M03..M06 (the four emulator-made
  * ones, M01..M04 before 0.2.13), M14, M15 at fader 0 / 63 / 127 (4 + 4 notes and 8 on part 1), with
  * guards on the fader in the middle (SMART's wake rule, morph.c morph_wake_half: the morph must not creep back up); C, the VOICE CAP
- * (voice.c vcap: the caps of heavy pairs and the factory multis, measured with and without, never below 4, new notes only).
- * DUELL 0.2.23: the multis of Q, N, K, O are the TEST SCENES of tests/scenes.h (0.2.22's factory multis and CPU TEST multis, byte for byte, loaded as then);
- * G (default) today's sixteen factory multis (MODE RECALL ON), 4 + 4 notes at fader 63, guarded at 100 % (M16 the STRESS TEST unguarded); S the STRESS TEST
+ * (voice.c vcap: the caps of heavy pairs and the default multis, measured with and without, never below 4, new notes only).
+ * DUELL 0.2.23: the multis of Q, N, K, O are the TEST SCENES of tests/scenes.h (0.2.22's default multis and CPU TEST multis, byte for byte, loaded as then);
+ * G (default) today's sixteen default multis (MODE RECALL ON), 4 + 4 notes at fader 63, guarded at 100 % (M16 the STRESS TEST unguarded); S the STRESS TEST
  * played from the keys in LAYER / STEREO / DUEL, 1..8 keys (docs/TESTING.md).
- * CPU_SCEN=letters for more: I the INSERT types incl. TAPE, VINYL (0.2.14), N the other factory multis (M02, M07..M10) as Q (no guard), P the cap's per-voice table, E engine pairs x SMART / WILD rolls, M what a factory End B moves, X the
+ * CPU_SCEN=letters for more: I the INSERT types incl. TAPE, VINYL (0.2.14), N the other default multis (M02, M07..M10) as Q (no guard), P the cap's per-voice table, E engine pairs x SMART / WILD rolls, M what a default End B moves, X the
  * stages a small move wakes, W WAVE incl. the kitchen sink, K the faded choices of M04 (WIRED SNAIL) / M14 / M15, F bursts (retrigger, 64 MIDI
  * events, 63 CC74), L (0.2.14) PERFORM's K3 FILTER steady and turned, on one scene. Y (0.2.14, default): a flat part EQ (gains 0) is not run:
  * the output bit for bit and the cost as with none, and what an EQ on costs. V (0.2.25, default): M16 STRESS TEST (as S, fader at A, COMP off) in LAYER and
@@ -201,7 +201,7 @@ static void guard(const char *what, double v, double lim)
     printf("cpuscen: %-66s %6.1f %% (limit %5.1f) %s\n", what, v, lim, v <= lim ? "ok" : "FAIL");
     bad += v > lim;
 }
-/* DUELL 0.2.23: the multis these scenarios were written for (0.2.22's factory multis and the CPU TEST multis M13..M16) are test scenes now
+/* DUELL 0.2.23: the multis these scenarios were written for (0.2.22's default multis and the CPU TEST multis M13..M16) are test scenes now
  * (tests/scenes.h): load_scene_of(slot) loads the one that slot held, as it loaded then (the TEST ones with their MODE) */
 static const char *const OLD_SCENE[16] = {"M01_REESE_SWAMP", "M02_WHISPER_TIDE", "M03_EERIE_SIGNAL", "M04_WIRED_SNAIL", "M05_DEAD_BUFFER", "M06_ACID_ETHER",
                                           "M07_COLD_CHAPEL", "M08_GARGLE_ACID", "M09_NIGHT_ORGAN", "M10_FINAL_REEL", 0, 0,
@@ -216,13 +216,13 @@ static void load_scene_of(uint32_t slot)
     }
 }
 /* the multis as stored (the scenes, above), nn notes (4: 4 + 4 on both parts, 8: on part 1), the fader at f; avg (returned) and *pk the worst half */
-static int g_factory;                             /* (0.2.23, F: multi_run on the factory multi of the slot, loaded with its MODE) */
+static int g_default;                             /* (0.2.23, F: multi_run on the default multi of the slot, loaded with its MODE) */
 static double multi_run(uint32_t slot, uint32_t nn, uint32_t f, double *pk)
 {
     uint64_t sum = 0, p = 0, h;
     uint32_t i, n;
     power();
-    if (g_factory) {
+    if (g_default) {
         ui_prefs2 |= PREF_MODE_RECALL >> 16;
         project_load(slot);
     } else
@@ -344,7 +344,7 @@ static void cap_tests(void)
         ok &= c[0] >= VC_MIN || c[0] == vc_eng_cap(ENGINES[eng_idx(trk[0].eng_req)]);
         ok &= c[1] >= VC_MIN || c[1] == vc_eng_cap(ENGINES[eng_idx(trk[1].eng_req)]);
     }
-    {   /* the factory multis as loaded (0.2.23: all sixteen, with their MODE: MODE RECALL ON) */
+    {   /* the default multis as loaded (0.2.23: all sixteen, with their MODE: MODE RECALL ON) */
         for (i = 0; i < MU_SLOTS; i++) {
             power();
             ui_prefs2 |= PREF_MODE_RECALL >> 16;
@@ -506,7 +506,7 @@ int main(void)
     }
     ovh = a1 - a0;
     for (i = 0; i < 5; i++) { a0 = instr_now(); a1 = instr_now(); if (a1 - a0 < ovh) ovh = a1 - a0; }
-    if (strchr(sec, 'Q')) {                       /* the factory multis as stored, fader 0 / 63 / 127 */
+    if (strchr(sec, 'Q')) {                       /* the default multis as stored, fader 0 / 63 / 127 */
         static const uint32_t MS[7] = {0, 2, 3, 4, 5, 13, 14};   /* (0.2.13: M01 REESE SWAMP guarded too; M03..M06 were M01..M04, the same limits) */
         static const double LIM[7] = {85.0, 80.0, 85.0, 85.0, 45.0, 95.0, 115.0};   /* 4 + 4, fader 63 (0.2.11: 69.6 74.5 75.7 35.9 86.5 107.0 for the old six) */
         uint32_t m, f, nn;
@@ -520,7 +520,7 @@ int main(void)
             }
         }
     }
-    if (strchr(sec, 'N')) {                       /* (0.2.11 integration) the other factory multis (0.2.13: M02, M07..M10), as Q, no guard */
+    if (strchr(sec, 'N')) {                       /* (0.2.11 integration) the other default multis (0.2.13: M02, M07..M10), as Q, no guard */
         static const uint32_t NS[5] = {1, 6, 7, 8, 9};
         uint32_t j, m, f, nn;
         for (j = 0; j < 5; j++) for (nn = 4; nn <= 8; nn += 4) for (f = 0; f < 3; f++) {
@@ -530,19 +530,19 @@ int main(void)
                    f * 63u + (f == 2), av, pk, ENGINES[trk[0].engine]->name, ENGINES[trk[1].engine]->name, (unsigned)dm_cur);
         }
     }
-    if (strchr(sec, 'G')) {                       /* 0.2.23: the factory multis of today (MODE RECALL ON), 4 + 4 notes, fader 63; M16 (the STRESS TEST) unguarded */
+    if (strchr(sec, 'G')) {                       /* 0.2.23: the default multis of today (MODE RECALL ON), 4 + 4 notes, fader 63; M16 (the STRESS TEST) unguarded */
         uint32_t m;
-        g_factory = 1;
+        g_default = 1;
         for (m = 0; m < MU_SLOTS; m++) {
             double pk, av = multi_run(m, 4, 63, &pk);
             printf("G M%02u %-12s 4+4 notes fader  63: avg %5.1f %%  peak half %5.1f %%  (parts: %s / %s, mode %u)\n", m + 1, mu_names[m], av, pk,
                    ENGINES[trk[0].engine]->name, ENGINES[trk[1].engine]->name, (unsigned)dm_cur);
             if (m < 15u) {
-                snprintf(b, sizeof b, "M%02u %s 4 + 4 notes, fader 63, average (a factory multi)", m + 1, mu_names[m]);
+                snprintf(b, sizeof b, "M%02u %s 4 + 4 notes, fader 63, average (a default multi)", m + 1, mu_names[m]);
                 guard(b, av, 100.0);
             }
         }
-        g_factory = 0;
+        g_default = 0;
     }
     if (strchr(sec, 'S'))
         stress_table();
@@ -670,7 +670,7 @@ int main(void)
                 s = base(); s.e1 = (int)e1; s.k1 = (int)k; s.n1 = 4; s.e2 = (int)e2; s.k2 = (int)k; s.n2 = 4;
                 snprintf(b, sizeof b, "E %s#%u + %s#%u 4+4 LAYER: no morph", PA[q][0], k, PA[q][1], k); pr(b, &s);
                 s.morph = 3;
-                for (f = 0; f < 3; f++) { g_fader = FD[f]; snprintf(b, sizeof b, "E   factory End B, fader %d", FD[f]); pr(b, &s); }
+                for (f = 0; f < 3; f++) { g_fader = FD[f]; snprintf(b, sizeof b, "E   default End B, fader %d", FD[f]); pr(b, &s); }
                 s.morph = 1; g_fader = 64;
                 g_amt = 15; pr("E   SMART AMOUNT 15 both ends rolled, fader 64", &s);
                 g_amt = 40; pr("E   SMART AMOUNT 40, fader 64", &s);
@@ -680,7 +680,7 @@ int main(void)
             }
         }
     }
-    if (strchr(sec, 'M')) {                       /* which values a factory End B moves (fader 127), and the cost of each alone */
+    if (strchr(sec, 'M')) {                       /* which values a default End B moves (fader 127), and the cost of each alone */
         static const char *PA[][2] = {{"ANALOG", "PHASE"}, {"FM6", "WAVE"}, {"WHEEL", "TRIO"}, {"PHYS", "NOISE"}};
         uint32_t q, pi, id;
         for (q = 0; q < 4; q++) {

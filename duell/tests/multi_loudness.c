@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
-/* DUELL 1.0: the loudness of the sixteen factory multis, as tests/sound_audit.c measures the patches (tests/loudness.h: ear-weighted, on the mix before
+/* DUELL 1.0: the loudness of the sixteen default multis, as tests/sound_audit.c measures the patches (tests/loudness.h: ear-weighted, on the mix before
  * MASTER; the key C3 held 10 s, as played from the keys: both parts answer, LAYER, the multi's own BALANCE / XFADE, MODE RECALL ON, End A, 1.0 s tap).
  * Output: one line per multi: slot, name, sustains, MED (the held body), LOUD, PEAK, TAP (a 1 s note's loudest 0.5 s).
  *   build/host/multi_loudness            (by hand, release_drafts/VOLUME_CHECK_V1.md; not in the default list) */

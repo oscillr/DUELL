@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
-/* DUELL 0.2.24 (owner): an ENGINE CHANGE keeps the sound's settings (ui.c set_engine_of). Up to 0.2.23 it was an INIT: the engine's defaults and its FIRST FACTORY SOUND
+/* DUELL 0.2.24 (owner): an ENGINE CHANGE keeps the sound's settings (ui.c set_engine_of). Up to 0.2.23 it was an INIT: the engine's defaults and its FIRST DEFAULT SOUND
  * replaced the whole patch (apply_preset_to: every common parameter to its default, then the sound's values). Now only the engine and its own eight (P_E0..P_E7) change.
  *   KEEP      a part with every common parameter (below P_E0) set to a value off its default, switched through all ten engines and back: the common values, the slot it
  *             came from (t->user) and the mixer are untouched at every step; the engine's own eight are its defaults, or carried over where the label / format / range / list
@@ -7,7 +7,7 @@
  *   BACK      switching back to the engine the part came from puts its own eight back as they were (eng_prev, 18 bytes a part), and a third engine in between does not
  *   SOUND     the part plays after every switch (a note renders above silence); FM6 loads its SLOT's patch
  *   MORPH     AMOUNT stays; the fader goes to A with a fresh End B (the old one was rolled for the old engine's own eight: for the morph another engine is another sound); PERFORM's SPACE / KILL / DEPTH untouched (no PERF LEAVE fade)
- *   INIT      INIT SOUND (init_engine_of) still resets everything: the defaults and the first factory sound
+ *   INIT      INIT SOUND (init_engine_of) still resets everything: the defaults and the first default sound
  *   EDITOR    the editor's SET G_ENGSEL and the ENGINE page's K1 go through the same set_engine_of (tests/editor_test.c, engine_page_test.c cover the paths)
  * Built and run by DUELL/host_tests.sh (name: engswitch) */
 #define UI_TEST_NO_MAIN 1
@@ -194,7 +194,7 @@ int main(void)
     }
     /* INIT still resets everything */
     init_engine_of(TSEL, 0u);
-    expect("INIT SOUND (init_engine_of): the first factory sound, the common parameters at the sound's values (not the custom ones)", !common_same(want, TSEL->p, &first) && TSEL->user == 0);
+    expect("INIT SOUND (init_engine_of): the first default sound, the common parameters at the sound's values (not the custom ones)", !common_same(want, TSEL->p, &first) && TSEL->user == 0);
     printf("engswitch: %d checks, %d failed\n", ncheck, bad);
     return bad ? 1 : 0;
 }

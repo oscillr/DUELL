@@ -296,7 +296,7 @@ static void midi_cc_set(track_t *t, uint32_t id, uint32_t value)
 }
 /* MIDI LEARN (1.5, Discussion #170): up to ML_N CCs, each set to one parameter of one track, whatever channel it
  * comes on (a channel ROUT ignores stays ignored) and whichever track that channel plays. Kept with the settings in
- * the 32 bytes of favorites.factory[14] (no engine 14: favorites.c; all 0 in every older setting = nothing learned),
+ * the 32 bytes of favorites.default[14] (no engine 14: favorites.c; all 0 in every older setting = nothing learned),
  * an entry two bytes, as a 16-bit value LSB first: bits 0..6 the CC, 7..8 the track, 9..15 the parameter's code, 0 =
  * an empty entry: a common parameter its P_* id + 1 (1 .. ML_E0 - 1: their ids never move, new ones go before P_E0),
  * an engine parameter ML_E0 + k for P_E0 + k (P_E0 moves when common ones are added). A learned CC no longer reaches
@@ -306,7 +306,7 @@ static void midi_cc_set(track_t *t, uint32_t id, uint32_t value)
 #define ML_N 16u
 #define ML_E0 120u
 typedef char ml_ids_fit[P_E0 < ML_E0 && P_COUNT - P_E0 == 8 ? 1 : -1];
-static uint8_t *const ml_tab;               /* favorites.factory[14] (midi_learn.c: a build without the UI, none) */
+static uint8_t *const ml_tab;               /* favorites.default[14] (midi_learn.c: a build without the UI, none) */
 static volatile uint8_t *const ml_io;       /* ui.ml.io (midi_learn.c; not globals here: the ISR's data keeps its layout) */
 #define ml_arm (ml_io[0])                   /* the UI waits for a CC (MIDI LEARN with a parameter picked) */
 #define ml_heard (ml_io[1])                 /* .. the CC that came meanwhile, + 1 (0 none) */
@@ -521,7 +521,7 @@ static int __attribute__((noinline)) midi_mode_cc(uint32_t cc, uint32_t value)
  * ignored; SEL: the selected part; LAYER: part 1's channel, SEL any).
  *   LAYER: bank 0, program 0..15 = MULTI M01..M16 (the MULTI page's LOAD; an empty slot nothing); any other bank / program
  *   ignored. SPLIT, STEREO: a SOUND for the channel's part only: bank 0 program n = entry n of the PATCHES list (ALL:
- *   factory sounds with their stored copies in place, then the user patches; the empty places are no entry); bank 1 program n = stored patch n (slot 0..127);
+ *   default sounds with their stored copies in place, then the user patches; the empty places are no entry); bank 1 program n = stored patch n (slot 0..127);
  *   other banks, programs past the list and empty slots ignored. Dropped if PCQ_N recalls are already waiting */
 #define PCQ_N 8u
 #define PCQ_MULTI 0xFFu                                    /* (the entry's part: LAYER's multi) */

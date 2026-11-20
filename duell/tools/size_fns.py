@@ -22,7 +22,12 @@ SIZE_FILES = ["ui.c", "favorites.c", "menu_items.c", "icons.c", "ui_graph.c", "u
               "editor.c", "editor_preferences.c", "editor_backup.c", "editor_menu.c", "console.c",
               "usb.c", "midi_uart.c", "midi_control.c", "midi_clock.c", "seq.c", "chord.c", "motion.c",
               "panel.c", "lcd.c", "gfx.c", "ota.c", "ota_hw.c", "up_fm6.c", "params.c", "editor_fm6.c",
-              "ui_layer.c", "ui_perform.c", "ui_name.c", "ui_events.c", "main.c", "libc.c", "storage_hw.c", "engines.c"]
+              "ui_layer.c", "ui_perform.c", "ui_name.c", "ui_events.c", "main.c", "libc.c", "storage_hw.c", "engines.c",
+              # DUELL 1.3.3 (the flash was full: 16 B free before the SPREAD insert fix): main-loop only files, the editor's, ERASE, the guide and the reader
+              "editor_bypass.c", "editor_erase.c", "editor_learn.c", "editor_map.c", "editor_patchraw.c", "editor_wtab.c",
+              "erase_data.c", "category.c", "ui_guide.c", "ui_speak.c", "multi.c",
+              # DUELL 1.3.3 release (32 B over with the basses' EQ back): the remaining screen-only files
+              "ui_tools.c", "ui_kb.c", "ui_boxes.c", "ui_fm6op.c", "twin_graph.c"]
 # (DUELL 0.2.9: slice_store.c and ui_slice.c are gone with the SLICE engine)
 ISR_ROOTS = ("fm1_alnk0_irq", "fm1_timer5_irq")      # hal/fm1_isr.S: the audio ISR, the key / LED scan (+ USB poll)
 DEF = re.compile(r"^(?:static|void|int|uint\w*|int\w*|const)\b[^;=(]*?\b([A-Za-z_]\w*)\s*\(", re.M)

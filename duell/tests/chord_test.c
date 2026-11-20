@@ -8,7 +8,7 @@
  * of the keys, and OFF plays exactly as before. The GLOBAL scale (core.h; owner 2026-10-12): CHROMATIC by default, OFF-SCALE
  * KEYS SNAP (nearest scale note, a tie down) / PLAY, both parts the same note, DIA3 / DIA7 stack the scale and play plain
  * MAJ / MAJ7 when chromatic, fixed shapes keep their intervals from the snapped root, arps and SEQUENCER steps follow the scale,
- * the settings, the patch AK block (an old SCALE read and discarded) and the factory sounds (no SCALE).
+ * the settings, the patch AK block (an old SCALE read and discarded) and the default sounds (no SCALE).
  * Run by tests/run_tests.sh (needs build/gen from one firmware build). */
 #define UI_TEST_NO_MAIN 1
 #include "ui_test.c"
@@ -544,7 +544,7 @@ static int global_scale(void)
     bad += check("the scale changed while a key is held: it keeps its note (C), the release ends it", gate_note(&trk[0], 60));
     key_up(K_C4 + 1u);
     bad += check("  nothing hangs", !ngated(&trk[0]) && !ngated(&trk[1]));
-    /* loading a sound never touches the global scale; no factory sound carries one */
+    /* loading a sound never touches the global scale; no default sound carries one */
     {   uint32_t e, nl = 0, nk = 0;
         ok = 1;
         scale_g = 7; root_g = 5; offscale_g = OS_PLAY;
@@ -562,7 +562,7 @@ static int global_scale(void)
                     ok &= scale_g == 7 && root_g == 5 && offscale_g == OS_PLAY;
                 }
             }
-        bad += check("loading sounds on either part leaves the global SCALE, ROOT and OFF-SCALE alone; no factory pad sets a SCALE", ok && nl > 20u && nk > 0u); }
+        bad += check("loading sounds on either part leaves the global SCALE, ROOT and OFF-SCALE alone; no default pad sets a SCALE", ok && nl > 20u && nk > 0u); }
     scale_g = 0; root_g = 0; offscale_g = OS_SNAP;
     return bad;
 }

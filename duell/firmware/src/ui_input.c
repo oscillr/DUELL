@@ -599,6 +599,15 @@ static int32_t morph_pending(uint32_t g)
     return ui.mg.acc[g] < 0 ? -1 : 1;
 }
 static void morph_say_end(const char *a, uint32_t e) { ui_say(a, e ? "B" : "A"); }
+/* ALGORITHM's message: the multi's name, then the position ("REESE SWAMP PART 1"; owner 2026-11-18); no name: the position alone. pos 0 PART 1, 1 BOTH, 2 PART 2 */
+static void algo_say(uint32_t pos)
+{
+    char nm[16];
+    project_cur_name(nm);                               /* (the music's name: the multi it came from; "" none) */
+    if (nm[0])
+        str_cpy(nm + str_len(nm), " ", 2);
+    ui_say(nm, pos == 1u ? "BOTH" : pos ? "PART 2" : "PART 1");
+}
 /* an action on the parts of mask its message; from the page or MIDI */
 static void morph_act(uint32_t kind, uint32_t mask, uint32_t v, uint32_t pi)
 {
@@ -611,7 +620,7 @@ static void morph_act(uint32_t kind, uint32_t mask, uint32_t v, uint32_t pi)
     else if (kind == MQ_UNDO)
         morph_say_end(r ? "UNDO " : "NO UNDO ", v);
     else if (kind == MQ_TARGET)                         /* (ALGORITHM's words: a learned MORPH TARGET CC is the same selector) */
-        ui_message(v >= 2u ? "BOTH" : v ? "PART 2" : "PART 1");
+        algo_say(v >= 2u ? 1u : v ? 2u : 0u);
     else if (kind == MQ_SMART)
         ui_message(v ? "SMART ON" : "WILD");
     else if (kind == MQ_ARP)
@@ -624,8 +633,8 @@ static void morph_act(uint32_t kind, uint32_t mask, uint32_t v, uint32_t pi)
  * MORPH SET's TARGET knob): BOTH = morph.target MT_BOTH, the morph (the MORPH page, PERFORM's K1 MORPH and ROLL A / B, MIDI's CCs)
  * acts on both parts. On every other page ALGORITHM picks PART 1 or PART 2 only, as before (algo_input); BOTH stays as it was
  * left for the MORPH page and PERFORM (one shared state). song.sel is always the last single part chosen: the part every other
- * page edits and shows (its badge alone, the screen's colour), the keys' part. Not saved: power-on, a multi load and a settings
- * import never set BOTH (their TARGET bytes are reserved); a learned MORPH TARGET CC sets it (it is this selector's state; the shipped map has no number for it).
+ * page edits and shows (its badge alone, the screen's colour), the keys' part. DUELL 1.3.x (owner 2026-11-18): SAVED in the settings
+ * (morph_settings), a power-on starts where it was left; a new unit / ERASE DATA starts on BOTH; a multi load never sets BOTH; a learned MORPH TARGET CC sets it (it is this selector's state; the shipped map has no number for it).
  * ALGO_BOTH_EDIT_HOOK (future, owner idea 2026-10-14, not built): BOTH on the edit pages, an edit moving both parts by the same
  * step (relative); algo_input and edit_param's call are where it would go. Today an edit changes song.sel's part only */
 static uint32_t algo_pos(void) { return morph.target == MT_BOTH ? 1u : song.sel ? 2u : 0u; }   /* 0 PART 1, 1 BOTH, 2 PART 2 */
@@ -638,12 +647,12 @@ static void algo_step(int32_t s)
     if (nv != 1)
         track_select(nv ? 1u : 0u);
     morph_do(MQ_TARGET, 0, nv == 1 ? 2u : 0u);
-    ui_message(nv == 1 ? "BOTH" : nv ? "PART 2" : "PART 1");
+    algo_say((uint32_t)nv);
     ui.force = 1;
 }
 static void algo_input(int32_t s)
 {
-    if (ui.perf || (cur_page()->graph == GR_MORPH))   /* (PERFORM: its page, shown while ui.perf) */
+    if (ui.perf || cur_page()->graph == GR_MORPH || cur_page()->scope == SC_MACRO)   /* (PERFORM: its page, shown while ui.perf; DUELL 1.3.x (owner 2026-11-18): HOME's MACROS 1/2 and 2/2 too, they act on ALGORITHM's part(s): PART 1 / BOTH / PART 2 there as on MORPH. Before, they had PART 1 / PART 2 only and from BOTH a turn moved the edited part while BOTH stayed) */
         algo_step(s);
     else if (page_global(cur_page()) || cur_page()->scope == SC_MODE)   /* 0.2.24 (owner): a GLOBAL page edits no part: ALGORITHM does nothing there (it switched the highlight colour and nothing else); the MODE page counts as global (ui_draw.c screen_global) */
         return;
@@ -681,8 +690,8 @@ static void morph_knob(uint32_t slot, int32_t s)
         break;
     }
 }
-/* AMOUNT and SMART / ARP / PITCH <-> the settings bytes (ui.c ui_morph_set, ui_morph_cfg; 0.2.9: TARGET's bit 7 is reserved, kept as
- * stored and never read: ALGORITHM's BOTH is not saved, power-on is a single part): bytes changed from outside
+/* AMOUNT and SMART / ARP / PITCH <-> the settings bytes (ui.c ui_morph_set, ui_morph_cfg; 1.3.x: bit 7 of the first byte is ALGORITHM's BOTH,
+ * bit 7 of the second the selected part PART 2, read at power-on only): bytes changed from outside
  * (power-on, a settings import, the editor's restore) are read into the morph (and each part gets a fresh End B at that
  * AMOUNT and with those settings); a change made here is written into them and saved ~2 s after the last one (settings_save;
  * while playing it waits: project.c settings_poll), so a knob turned writes the flash once */
@@ -693,6 +702,11 @@ static void morph_settings(void)
     uint8_t *b = ui_morph_set, w[3];
     uint32_t pi;
     if (!ui.mset_ok || b[0] != ui.mset_seen[0] || b[1] != ui.mset_seen[1] || ui_morph_cfg != ui.mset_seen[2]) {
+        if (!ui.mset_ok) {                              /* DUELL 1.3.x (owner 2026-11-18): power-on: ALGORITHM where it was left (b[0] bit 7 BOTH, b[1] bit 7 PART 2);
+                                                         * a new unit / ERASE DATA has no settings: first_boot_poll sets BOTH */
+            morph.target = (b[0] & 0x80u) ? MT_BOTH : MT_SELECTED;
+            track_select((b[1] & 0x80u) ? 1u : 0u);
+        }
         morph.cfg = (uint8_t)(ui_morph_cfg & MC_SET);
         for (pi = 0; pi < NSHOWN; pi++) {
             morph_part_t *mp = &mph[pi];
@@ -711,8 +725,8 @@ static void morph_settings(void)
         ui.mset_ok = 1;
         return;
     }
-    w[0] = (uint8_t)((b[0] & 0x80u) | mset_enc(mph[0].n[0] ? mph[0].aset : MORPH_AMOUNT_DEF));
-    w[1] = (uint8_t)mset_enc(mph[1].n[0] ? mph[1].aset : MORPH_AMOUNT_DEF);
+    w[0] = (uint8_t)((morph.target == MT_BOTH ? 0x80u : 0u) | mset_enc(mph[0].n[0] ? mph[0].aset : MORPH_AMOUNT_DEF));   /* (bit 7: ALGORITHM on BOTH, 1.3.x) */
+    w[1] = (uint8_t)((song.sel == 1u ? 0x80u : 0u) | mset_enc(mph[1].n[0] ? mph[1].aset : MORPH_AMOUNT_DEF));          /* (bit 7: the selected part is PART 2, 1.3.x) */
     w[2] = (uint8_t)(morph.cfg & MC_SET);
     if (w[0] != b[0] || w[1] != b[1] || w[2] != ui_morph_cfg) {
         b[0] = ui.mset_seen[0] = w[0];
@@ -728,7 +742,7 @@ static void morph_settings(void)
 /* SAVE held, from any page (SPEC 3.5, 2026-10-15): the OVERWRITE #NN NAME? dialog for the selected part's sound: the slot it came from is
  * offered and K1 picks another (the slot is written and what it held is gone); with ALGORITHM's BOTH on the MORPH page both parts', each over its own
  * (0.2.9: not MORPH SET any more) (OCT+ saves: upreset.c patch_save_do; OCT- cancels). Every slot always holds something (a saved record or the
- * factory sound), so this is the only way to save: no 'new' sound, no NAME screen, no 'full'. It replaces the undo of
+ * default sound), so this is the only way to save: no 'new' sound, no NAME screen, no 'full'. It replaces the undo of
  * the last load SAVE held was (ui.c undo_swap: still the EDIT layer's OCT-) */
 static void patch_save_ask(void)
 {
@@ -1476,7 +1490,7 @@ static void act_do(void)
         if (c > 2u)
             return;
         if (!act_ready()) {                               /* nothing there to clear */
-            ui_message(c == 2u ? "ALL FACTORY" : "NOTHING TO CLEAR");
+            ui_message(c == 2u ? "ALL DEFAULT" : "NOTHING TO CLEAR");
             return;
         }
         if (c == 2u && transport_busy())                  /* (RESTORE ALL writes flash) */
@@ -1818,10 +1832,7 @@ static void ui_notices(void)
 #if DUELL_TWOCORE
     if (tc_say) {                                       /* DUELL 1.1 (owner 2026-10-25): the second core is not playing part 2 (a fault, a pause, or it did not start): fewer voices; said once each time */
         tc_say = 0;
-        if (ui.msg_t)
-            str_cpy(ui.msg2, "ONE CORE ONLY: FEWER VOICES", sizeof ui.msg2);
-        else
-            ui_message("ONE CORE ONLY: FEWER VOICES");
+        notice_show("ONE CORE ONLY", "FEWER VOICES");   /* (1.3.3, owner: full screen, long enough to read; was a header message) */
     }
 #endif
     ml_poll();                                          /* (MIDI LEARN: a CC came for the picked parameter) */
@@ -1858,8 +1869,8 @@ static void splash_input(uint32_t pressed, uint32_t notes)
 }
 
 /* DUELL 0.1: the first start of a unit with no valid settings (ui.c first_boot_pending): once the settings bytes are synced (mode_settings,
- * morph_settings have run), MODE is LAYER (the default of a new unit) and factory multi M01 is loaded exactly as SAVE > MULTIS' LOAD does it
- * (project_load(0): the factory record, both parts, the mode, tempo and globals the multi holds, nothing hard-coded here). The settings are
+ * morph_settings have run), MODE is LAYER (the default of a new unit) and default multi M01 is loaded exactly as SAVE > MULTIS' LOAD does it
+ * (project_load(0): the default record, both parts, the mode, tempo and globals the multi holds, nothing hard-coded here). The settings are
  * saved at once (settings_save, 2 s after the changes at the latest), so the next start finds valid settings and starts as any other */
 static void first_boot_poll(void)
 {
@@ -1916,6 +1927,14 @@ static void ui_input(void)
         return;                                         /* (before the buttons' timers: no tap or hold after it) */
     if (splash_on) {                                    /* the power-on splash: its key ends it, nothing else sees it */
         splash_input(pressed, notes);
+        return;
+    }
+    if (notice_on) {                                    /* 1.3.3: a full-screen notice (ui_draw.c): any button, key or knob ends it and is used up by that */
+        uint32_t k, moved = 0;
+        for (k = 0; k < NE; k++)
+            moved |= panel_enc(k) != 0;
+        if (notice_drawn && (pressed || notes || moved))
+            notice_end();
         return;
     }
     play_hold(now);

@@ -711,7 +711,7 @@ static __attribute__((noinline)) void dly_side_mix(int32_t *l, int32_t *r, uint3
  * effect and less a lighter one. MIX (P_IMIX) blends dry and wet linearly; MIX 0 or TYPE OFF: the track bit for bit
  * as before (nothing runs). MIX glides (2.9 ms, SL_SLOPE); a TYPE change fades the old one out, clears the state,
  * fades the new one in; so does a start from MIX 0 (no stale line or filter). With SPREAD (mix_spread) the insert
- * takes the mono sum b, as DIST does; the side passes it by.
+ * takes the left and the right (1.3.3, track_insert_lr), and so does DIST (SAT; track_dist_lr).
  * Order: DIST -> INSERT -> EQ: the insert colours the sound as DIST does (DUELL: the SLICER that came after is
  * removed). State in the pool, per track (ins[], 580 B each); noinline, its own loops: the audio
  * ISR's inlined path gains one test per part (track_t ins_run) */
@@ -733,6 +733,7 @@ typedef struct {
     int16_t line[IL_LEN];               /* FLANG / CHOR, at a quarter (headroom) */
 } ins_t;
 static ins_t ins[NLIVE] __attribute__((section(".pool")));
+static ins_t ins_r[NLIVE];   /* (ordinary RAM: the pool had no room) DUELL 1.3.3 (owner 2026-11-18): the right side's INSERT state of a SPREAD part (spread_fx runs the insert on left and right) */
 
 static inline int32_t ins_mixq(int32_t m) { return m >= 127 ? 32768 : m <= 0 ? 0 : m * 258; }   /* MIX -> Q15 */
 /* the one-pole low-pass (topology-preserving) coefficient of cutoff index c, Q16: G = g / (1 + g), g = tan(pi fc / FS) */
@@ -999,14 +1000,16 @@ static __attribute__((noinline)) void ins_lofi(ins_t *s, const track_t *t, int32
 static __attribute__((noinline)) void ins_rest(track_t *t)
 {
     if (!TRK_HIDDEN(t))                                 /* (DUELL: a hidden part has no INSERT state) */
-        memset(&ins[(uint32_t)(t - trk)], 0, sizeof(ins_t));
+        memset(&ins[(uint32_t)(t - trk)], 0, sizeof(ins_t));   /* (ins_r: track_insert clears it when it starts) */
     t->ins_run = 0;
 }
 
 /* the track's INSERT on its block b (mix_part, mix_spread): nothing while TYPE is OFF or MIX is 0 and faded */
+static uint8_t ins_side[NLIVE];                 /* 1.3.3: 1 while track_insert_lr runs the right side (the state ins_r): per part, the two cores run the parts at once */
 static __attribute__((noinline)) void track_insert(track_t *t, int32_t *b, uint32_t n)
 {
-    ins_t *s = &ins[(uint32_t)(t - trk) % NLIVE];
+    uint32_t k_ = (uint32_t)(t - trk) % NLIVE;
+    ins_t *s = (ins_side[k_] ? ins_r : ins) + k_;
     int32_t ty = clamp(t->p[P_ITYPE], 0, IT_N - 1), tw;
     if (TRK_HIDDEN(t)) {
         t->ins_run = 0;
@@ -1032,6 +1035,30 @@ static __attribute__((noinline)) void track_insert(track_t *t, int32_t *b, uint3
     else
         ins_drive(s, t, b, n, tw);
     t->ins_run = s->w != 0;                             /* (mix_part calls again while it fades) */
+}
+/* DUELL 1.3.3 (owner 2026-11-18: a BIT CRUSHER at 100 % did not crush a wide pad): with SPREAD the INSERT runs on the left and the right (b + d, b - d: twice the
+ * sides, so a centred sound, d = 0, gets exactly what the mono insert gives it) with a state each, and the mid and side are made again from them. Before: the
+ * insert took the mid b only and the side d passed it by clean */
+static __attribute__((noinline)) void track_insert_lr(track_t *t, int32_t *b, int32_t *d, uint32_t n)
+{
+    uint32_t i, k = (uint32_t)(t - trk) % NLIVE, run;
+    for (i = 0; i < n; i++) {
+        int32_t l = b[i] + d[i], r = b[i] - d[i];
+        b[i] = l;
+        d[i] = r;
+    }
+    for (run = 0, i = 0; i < 2u; i++) {                 /* (one call: the hot block inlines track_insert into its callers) */
+        ins_side[k] = (uint8_t)i;
+        track_insert(t, i ? d : b, n);
+        run |= t->ins_run;
+    }
+    ins_side[k] = 0;
+    t->ins_run = (uint8_t)run;
+    for (i = 0; i < n; i++) {
+        int32_t l = b[i], r = d[i];
+        b[i] = (l + r) >> 1;
+        d[i] = (l - r) >> 1;
+    }
 }
 
 /* EQ (DUELL, SPEC 5c.3): one per part, after its INSERT (and DIST) and before the DUCK, the level, the pan and the sends: mono
@@ -2336,15 +2363,59 @@ static __attribute__((noinline)) int32_t mix_ramp(const mixpart_t *m, int32_t pk
     return pk;
 }
 
+/* DUELL 1.3.3 (owner 2026-11-19: SAT under SPREAD, as the INSERT): with SPREAD the SAT runs on the left and the right (b + d, b - d, as track_insert_lr) with a
+ * state each (the right side's in dist_rs), and the mid and side are made again from them. A centred sound (d = 0) gets exactly what the mono SAT gives it (both
+ * sides the same). SAT 0: the bypass, both states restarted. ramp: track_dist_ramp from w0 to w1 (spread_run) instead of track_dist. Before: the mid only, the side
+ * passed clean, so a wide pad was hardly saturated */
+static int32_t dist_rs[NLIVE][3];               /* the right side's dist_hp, dist_lp1, dist_lp2 */
+static void dist_swap(track_t *t, int32_t *r)
+{
+    int32_t a = t->dist_hp, b = t->dist_lp1, c = t->dist_lp2;
+    t->dist_hp = r[0], t->dist_lp1 = r[1], t->dist_lp2 = r[2];
+    r[0] = a, r[1] = b, r[2] = c;
+}
+static __attribute__((noinline)) void track_dist_lr(track_t *t, int32_t *b, int32_t *d, uint32_t n, uint32_t ramp, int32_t w0, int32_t w1)
+{
+    uint32_t i, k = (uint32_t)(t - trk) % NLIVE;
+    int32_t *rs = dist_rs[k];
+    if (!t->p[P_DIST] && !(ramp && (w0 > 0 || w1 > 0))) {
+        t->dist_hp = rs[0] = DIST_OFF;          /* (the bypass: the block untouched) */
+        return;
+    }
+    if (t->dist_hp == DIST_OFF)
+        rs[0] = DIST_OFF;                       /* (starting: both sides from this signal) */
+    for (i = 0; i < n; i++) {
+        int32_t sd = ramp ? (d[i] << 1) - b[i] : d[i];  /* (ramp: spread_run's d is the left, (b + side) / 2: the side is 2 d - b, as mix_spread forms it) */
+        int32_t l = b[i] + sd, r = b[i] - sd;
+        b[i] = l;
+        d[i] = r;
+    }
+    for (i = 0; i < 2u; i++) {
+        if (i)
+            dist_swap(t, rs);
+        if (ramp)
+            track_dist_ramp(t, i ? d : b, n, w0, w1);
+        else
+            track_dist(t, i ? d : b, n);
+        if (i)
+            dist_swap(t, rs);
+    }
+    for (i = 0; i < n; i++) {
+        int32_t l = b[i], r = d[i];
+        b[i] = (l + r) >> 1;
+        d[i] = ramp ? l >> 1 : (l - r) >> 1;            /* (ramp: back to the left, (b + side) / 2; mix_spread makes the side again: at most 1 LSB off) */
+    }
+}
+
 /* SPREAD's part (the mix too): the part t's block b (n samples), fxm the PART FX mode, pan the Q8 pan this block mixes at; m: the part's stage context
  * (its accumulators, the block's snapshot, its index) */
 /* mix_spread's effect stages with their BYPASS crossfades, in the flash (mix_spread is in the hot RAM block, which has no room for the four stage copies) */
 static __attribute__((noinline)) void spread_fx(track_t *t, int32_t *b, int32_t *d, uint32_t n, uint32_t pp)
 {
-    FXSTAGE(pp, BY_SAT, b, (int32_t *)0, n, track_dist(t, b, n));
-    FXSTAGE(pp, BY_INS, b, (int32_t *)0, n,
+    FXSTAGE(pp, BY_SAT, b, d, n, track_dist_lr(t, b, d, n, 0, 0, 0));
+    FXSTAGE(pp, BY_INS, b, d, n,
             if (t->p[P_ITYPE] | t->ins_run)
-                track_insert(t, b, n));
+                track_insert_lr(t, b, d, n));
     FXSTAGE(pp, BY_EQ, b, d, n,
             if (EQ_ON(t)) {
                 track_eq(t, b, n, 0u);
@@ -2380,7 +2451,7 @@ static __attribute__((noinline)) void mix_spread(track_t *t, int32_t *b, uint32_
         memcpy(sc->dryd, d, n * sizeof d[0]);
     }
     if (fxm != PFX_SKIP)
-        spread_fx(t, b, d, n, m->pp);                   /* SAT, INSERT (the mono sum), EQ (the sum and the side alike) */
+        spread_fx(t, b, d, n, m->pp);                   /* SAT, INSERT (the left and the right), EQ (the sum and the side alike) */
     if ((bs->pf_mute >> m->pp) & 1u) {                  /* PERFORM: MUTE 1 / 2 held (perform.c) */
         if (fxm == PFX_FADE)
             pfx_mute(m->pp, b, d, n, bs->mute_tg[m->pp]);
@@ -2428,23 +2499,20 @@ static void spread_post(uint32_t pp, uint32_t n, const blockstate_t *bs);
 static __attribute__((noinline)) void spread_run(mixpart_t *m, uint32_t fxm, int32_t pan)
 {
     track_t *t = m->t;
-    uint32_t pp = m->pp, n = m->n, i;
-    int32_t *b = m->b, hp = 0, di = t->p[P_DIST];
+    uint32_t pp = m->pp, n = m->n;
+    int32_t *b = m->b, hp = 0, hpr = 0, di = t->p[P_DIST];
     volatile int sat = fxm == PFX_RUN && !(byp_m[pp] & BY_SAT) && m->dist_rw0 != dist_x[pp] && (m->dist_rw0 < 12 * 256 || dist_x[pp] < 12 * 256);   /* (volatile: the test below is not made into a second copy of the call) */
     if (sat) {
-        int32_t *d = m->scr->sbuf, *dry = m->scr->dry;  /* (dry: unused outside a PART FX fade) */
-        for (i = 0; i < n; i++)
-            dry[i] = b[i];
-        track_dist_ramp(t, b, n, m->dist_rw0, dist_x[pp]);
-        for (i = 0; i < n; i++)
-            d[i] += (b[i] - dry[i]) >> 1;
+        track_dist_lr(t, b, m->scr->sbuf, n, 1u, m->dist_rw0, dist_x[pp]);   /* (1.3.3: SAT on the left and the right; the scratch here holds the left, track_dist_lr takes it so) */
         hp = t->dist_hp;
+        hpr = dist_rs[(uint32_t)(t - trk) % NLIVE][0];
         t->p[P_DIST] = 0;                               /* (mix_spread's track_dist: the bypass, which resets dist_hp) */
     }
     mix_spread(t, b, n, fxm, pan, m);
     if (sat) {
         t->p[P_DIST] = (int16_t)di;
         t->dist_hp = hp;
+        dist_rs[(uint32_t)(t - trk) % NLIVE][0] = hpr;
     }
     {
         int32_t *q = sp_cur[pp];
@@ -2810,7 +2878,7 @@ static __attribute__((noinline)) void plain_fx(track_t *t, int32_t *b, uint32_t 
                 track_dist(t, b, n));
     FXSTAGE(pp, BY_INS, b, (int32_t *)0, n,
             if (t->p[P_ITYPE] | t->ins_run)
-                track_insert(t, b, n));         /* the INSERT (1.5): off, nothing */
+                track_insert(t, b, n));   /* the INSERT (1.5): off, nothing */
     FXSTAGE(pp, BY_EQ, b, (int32_t *)0, n,
             if (EQ_ON(t))
                 track_eq(t, b, n, 0u));         /* the EQ (DUELL): all bands at 0 dB, nothing */

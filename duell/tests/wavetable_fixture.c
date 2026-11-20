@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
-/* DUELL 0.2.14: the factory tables as the converter's test input. For SAWSQ, PWM, ORGAN and VOWEL: the 19 frames of level 0 (256 samples, 8 bit,
+/* DUELL 0.2.14: the default tables as the converter's test input. For SAWSQ, PWM, ORGAN and VOWEL: the 19 frames of level 0 (256 samples, 8 bit,
  * exactly what the unit plays) and the bytes of the recipe encoded as a user table (wtab_encode.h). Written as JSON (base64) to argv[1];
- * web/fixtures/wavetable_factory.json is the committed copy, host_tests.sh wavetable compares a fresh run with it (and web/test_wavetable.mjs
+ * web/fixtures/wavetable_default.json is the committed copy, host_tests.sh wavetable compares a fresh run with it (and web/test_wavetable.mjs
  * converts the frames back to bytes and compares them with the recipe's). */
 #define WV_TEST_HOOKS 1
 #define main hostsim_main
@@ -29,7 +29,7 @@ int main(int argc, char **argv)
     FILE *o = argc > 1 ? fopen(argv[1], "w") : stdout;
     if (!o)
         return 1;
-    fprintf(o, "{\n \"about\": \"DUELL 0.2.14 tests/wavetable_fixture.c: factory tables as played (level 0, 19 frames x 256 int8, base64) and as encoded user-table bytes (19 x 64)\",\n \"tables\": [\n");
+    fprintf(o, "{\n \"about\": \"DUELL 0.2.14 tests/wavetable_fixture.c: default tables as played (level 0, 19 frames x 256 int8, base64) and as encoded user-table bytes (19 x 64)\",\n \"tables\": [\n");
     for (t = 0; t < 4u; t++) {
         for (f = 0; f < WV_F; f++) {
             wv_frame(TB[t], f, wvj.out);

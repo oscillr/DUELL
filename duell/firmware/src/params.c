@@ -106,8 +106,8 @@ static const char *const N_MDST[] = {"OFF", "PITCH", "CUT", "SHP", "AMP", "PAN",
                                      "CRT", "CDP", "FDBK", "DMDEP", "DMRAT", "RSIZE", "RDAMP",
                                      "FMODE",
                                      "AATK", "ADEC", "ASUS", "AREL",
-                                     "CUT2", "FRES2", "FDRV", "FBLND", "SUBLV", "SPACE", "MORPH"};   /* (DUELL 1.1: SPACE, mod.c MD_SPACE) */   /* cloud job B (mod.c MD_CUT2 ..; FILTER_PAGES_PROPOSAL 5.1's factory-sound names): filter 2's cutoff, RES, DRIVE, BLEND, the SUB LAYER's LEVEL */   /* T0229: the AMP ENV's times (mod.c MD_AATK ..; shown AMP / ATTACK ..) */          /* DUELL 0.2.25: the multimode filter's MODE (mod.c MD_FMODE; shown in full "MULTI FILTER MODE", the editor's "FILTER MODE") */
-/* (a DST name is never an engine's EDIT label: the factory sounds' MOD routes name an engine slot by its label, RES = ANALOG's E6,
+                                     "CUT2", "FRES2", "FDRV", "FBLND", "SUBLV", "SPACE", "MORPH"};   /* (DUELL 1.1: SPACE, mod.c MD_SPACE) */   /* cloud job B (mod.c MD_CUT2 ..; FILTER_PAGES_PROPOSAL 5.1's default-sound names): filter 2's cutoff, RES, DRIVE, BLEND, the SUB LAYER's LEVEL */   /* T0229: the AMP ENV's times (mod.c MD_AATK ..; shown AMP / ATTACK ..) */          /* DUELL 0.2.25: the multimode filter's MODE (mod.c MD_FMODE; shown in full "MULTI FILTER MODE", the editor's "FILTER MODE") */
+/* (a DST name is never an engine's EDIT label: the default sounds' MOD routes name an engine slot by its label, RES = ANALOG's E6,
  * and tools/gen_duell_sounds.py takes an N_MDST name first; mod_test checks it) */
 static const char *const N_ENGNAME[] = {"ANALOG", "-" /* DIGITAL: retired */, "PHASE", "LOFI", "-" /* SAMPLE: retired, 0.2.9 */, "VOICE",
                                              "TRIO", "WHEEL", "-" /* GRAIN: retired */, "PHYS", "-" /* DRUM: retired, 0.2.14 */, "NOISE", "FM6",
@@ -153,7 +153,7 @@ static const param_desc_t TP[P_COUNT] = {
     [P_AORDER] = PE("ORD", N_ORDER, 0),
     [P_RES2] = PD("RES", F_PCT, -64, 127, 0),       /* TWIN FILTER RES 2 (id 25, was ROOT): 0..127 (TRIO's damping law) for LP BP HP NOTCH LADDER, FEEDBACK -64..+63 on COMB (tw_desc): the stored range is both. Default 0 (stored: nothing; a chosen type starts from RES 0) */
     [P_DRV2] = PD("DRIVE", F_PCT, 0, 127, 0),       /* TWIN FILTER DRIVE (id 26, was SCALE): 0 = not run */
-    [P_KTRK] = PD("KTRK", F_KTRK, -63, 63, 32),    /* 0.2.21: the multimode filter's KEY TRK (core.h UF_KT), -100..+100 %; 0.2.22 (owner): the default is 32 (shown +51 %; 50 % is between 31 and 32): a new / INIT sound and the factory sounds track the keys, except the BASS, PERC and KICK ones, which set 0 (tools/gen_duell_sounds.py), and the STORED default stays 0 (upreset.c up_def) */
+    [P_KTRK] = PD("KTRK", F_KTRK, -63, 63, 32),    /* 0.2.21: the multimode filter's KEY TRK (core.h UF_KT), -100..+100 %; 0.2.22 (owner): the default is 32 (shown +51 %; 50 % is between 31 and 32): a new / INIT sound and the default sounds track the keys, except the BASS, PERC and KICK ones, which set 0 (tools/gen_duell_sounds.py), and the STORED default stays 0 (upreset.c up_def) */
     [P_TRANS] = PD("TRN", F_SEMI, -24, 24, 0),
     [P_SLEN] = PD("LEN", F_STEPS, 1, NSTEP, 16),
     [P_SDIV] = PE("DIV", N_DIV, 2),
@@ -233,7 +233,7 @@ static const param_desc_t TP[P_COUNT] = {
     [P_DKTHR] = PD("THR", F_PCT, 0, 100, 30),      /* PART: the key level above which the duck starts */
     /* DUELL: ENV 2 DEST and LFO 2 DEST (the classic arrangement, SPEC 2.4): ENV 2 / LFO 2's own depths, ENV 1 DEST's and LFO 1
      * DEST's units and ranges (voice.c track_render adds them where ENV 1's and LFO 1's go). Default 0: every stored sound
-     * loads as before (a store without them takes the default); a new factory sound sets ENV 2 FLT (+40) itself */
+     * loads as before (a store without them takes the default); a new default sound sets ENV 2 FLT (+40) itself */
     [P_E2FLT] = PD("FLT", F_BIPCT, -64, 63, 0),
     [P_E2SHP] = PD("SHP", F_BIPCT, -64, 63, 0),
     [P_L2PIT] = PD("PIT", F_BIPCT, -64, 63, 0),
@@ -564,10 +564,12 @@ _Static_assert(sizeof MDST_ORDER == NELEM(N_MDST) && sizeof MSRC_ORDER == NELEM(
 static const uint8_t AMODE_ORDER[16] = {0, 15, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14};
 static const uint8_t CLK_ORDER[4] = {CLK_AUTO, 0, 1, 2};   /* CLK as shown: AUTO INT USB TRS */
 static const uint8_t DKSRC_ORDER[4] = {3, 0, 1, 2};        /* DUCK SRC as shown (0.2.24): OFF PUMP PART MIDI */
+static const uint8_t CHRD_ORDER[10] = {0, 3, 4, 5, 6, 7, 8, 9, 1, 2};   /* CHORD as shown (1.3.3, owner 2026-11-19): OFF MAJ MIN DOM7 MAJ7 MIN7 SUS4 POW, then DIA3 DIA7 (the stored numbers keep their meaning) */
+_Static_assert(sizeof CHRD_ORDER == NELEM(N_CHRD), "CHRD_ORDER: every chord once");
 static const uint8_t *enum_order(const param_desc_t *d)
 {
     return d->names == N_DIV ? DIV_ORDER : d->names == N_LSYNC ? LSYNC_ORDER
-           : d->names == N_AMODE ? AMODE_ORDER : d->names == N_CLOCK ? CLK_ORDER : d->names == N_DKSRC ? DKSRC_ORDER : d->names == N_MSRC ? MSRC_ORDER : d->names == N_MDST ? MDST_ORDER : 0;
+           : d->names == N_AMODE ? AMODE_ORDER : d->names == N_CLOCK ? CLK_ORDER : d->names == N_DKSRC ? DKSRC_ORDER : d->names == N_CHRD ? CHRD_ORDER : d->names == N_MSRC ? MSRC_ORDER : d->names == N_MDST ? MDST_ORDER : 0;
 }
 static int32_t enum_rank(const param_desc_t *d, int32_t v)   /* v's place in the shown order (+ min): the gauges */
 {
@@ -1008,7 +1010,7 @@ static const page_t PAGES[] = {
     /* SAVE's taps (1.5, #173; names and order 2026-10-11, 2026-10-12): PATCHES (one list of the sounds; SAVE's first tap), PATTERNS (Felucca's PHRASES, with DUELL's slots P1..P16), MULTI
      * (DUELL: Felucca's PROJECT, sixteen multis M01..M16: SLOT, LOAD SAVE; project.c multi.c), TOOLS.
      * DUELL has no song mode: GLO keeps the TEMPO page, Felucca's SONG page is gone */
-    {"PATCHES", FAM_SAVE, SC_GLOBAL, GR_BROWSE, {0xFF, 0xFF, 0xFF, 0xFF}},  /* DUELL: ONE list, factory sounds, user patches, empty places: K1 PATCH, K2 TYPE, K3 SAVE (opens the save window), K4 FAV
+    {"PATCHES", FAM_SAVE, SC_GLOBAL, GR_BROWSE, {0xFF, 0xFF, 0xFF, 0xFF}},  /* DUELL: ONE list, default sounds, user patches, empty places: K1 PATCH, K2 TYPE, K3 SAVE (opens the save window), K4 FAV
                                                                              * (ui.c pl_*, ui_input.c; replaced PRESETS and USER PATCHES) */
     {"PATTERNS", FAM_SAVE, SC_GLOBAL, GR_PATS, {0xFF, 0xFF, 0xFF, 0xFF}},   /* SLOT, LOAD SAVE (ui.c pat_load; the 16 slots
                                                                              * patslot.c); the tap after PRESETS */
@@ -1163,7 +1165,7 @@ static const param_desc_t *page_desc(const page_t *pg, uint32_t slot, int16_t **
 }
 
 /* T0227 unit label pass (0.2.25, owner; release_drafts/LAYOUT_PROPOSAL.md section F): the name a card SHOWS, where it is not the stored label. The stored labels stay
- * the keys (the icons, the tests, the factory sound tool, the editor's tables); only the screen and the header say these. The rule: the full word when it fits the card
+ * the keys (the icons, the tests, the default sound tool, the editor's tables); only the screen and the header say these. The rule: the full word when it fits the card
  * (50 px), a two-word name that does not fit breaks into two lines at its space (ui_draw.c label_split: the value on the third line, no gauge), a single word that does
  * not fit keeps its accepted short form (THRESH, FREQ, ALLOC, FDBK, DAMP, POL, OCT, TRANSP, POS, PW, PERC, RES, Q). A "\n" is a break chosen here. One thing, one word:
  * DETUNE everywhere, KEY TRACK everywhere, CUTOFF for every filter's cutoff and depth, FILTER ENV for the second (filter) envelope */
@@ -1200,7 +1202,7 @@ static const char *const LBL_SHOWN[][2] = {
     {"CRS", "COARSE"}, {"STG", "STAGE"},                                 /* FM6's operator pages (ui_fm6op.c) */
 };
 /* DUELL 1.1 label audit (owner): the option texts a card shows where the stored name is a code. Keyed by the card's stored label and the stored name (the stored names stay the
- * keys: the factory sound tool, the tests, the editor's value tables); the editor spells the same words (labels.js VALUE_NAMES). Note values (8T, 1/16, 2BAR) stay (NAMING_RULES 8) */
+ * keys: the default sound tool, the tests, the editor's value tables); the editor spells the same words (labels.js VALUE_NAMES). Note values (8T, 1/16, 2BAR) stay (NAMING_RULES 8) */
 static const char *const VAL_SHOWN[][3] = {
     {"POL", "BI", "BIPOLAR"}, {"POL", "UNI", "UNIPOLAR"}, {"POL2", "BI", "BIPOLAR"}, {"POL2", "UNI", "UNIPOLAR"},
     {"VCE", "LEG", "LEGATO"}, {"VCE", "UNI", "UNISON"},
@@ -1313,7 +1315,7 @@ static void desc_said(const param_desc_t *d, char *b, uint32_t n)
         if (b[i] == '\n')
             b[i] = ' ';
 }
-/* an engine's name as the screen shows it (DUELL 1.1, owner 2026-10-25): the stored name stays the key (the factory sounds, the icons, the editor's engine list); PHYS is shown PHYSICAL
+/* an engine's name as the screen shows it (DUELL 1.1, owner 2026-10-25): the stored name stays the key (the default sounds, the icons, the editor's engine list); PHYS is shown PHYSICAL
  * on the ENGINE card, the engine list, the header, the lists and the message. Every other engine shows its name as it is */
 static const char *eng_shown(const char *name)
 {

@@ -315,7 +315,7 @@ tail 3
 measure 0.0 9.0
 expect close
 
-# ---- DUEL: the MONO DUEL pair #15 BREADBIN (part 1, left) + #27 SQUARE LEAD (part 2, right), a bass line and a lead line (no factory slot holds a DUEL multi on T0229)
+# ---- DUEL: the MONO DUEL pair #15 BREADBIN (part 1, left) + #27 SQUARE LEAD (part 2, right), a bass line and a lead line (no default slot holds a DUEL multi on T0229)
 test DUEL-SCENE  DUEL: #15 BREADBIN bass line (channel 1) + #27 SQUARE LEAD (channel 2)
 mode DUEL
 load patch 1 #15 "BREADBIN"

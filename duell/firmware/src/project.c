@@ -333,7 +333,7 @@ static int project_restore_runtime(const project_t *input)
     panic_keep = 0;                                     /* (a project or multi load follows the old rules: nothing of the arp is kept) */
     /* the slow part first, interrupts on (a window of ~74 k instructions here once, a quarter of the audio interrupt's time: a load
      * with the audio running missed blocks): every value fitted to its range, each FM6 patch unpacked and the SLOT it shows found
-     * (fm6_adopt_slot compares with up to 32 factory patches). The window then only copies */
+     * (fm6_adopt_slot compares with up to 32 default patches). The window then only copies */
     for (k = 0; k < NTRK; k++) {
         const proj_trk_t *s = &p->t[k];
         uint32_t e = s->engine;                         /* (< NENGINES: proj_engines_ok) */
@@ -372,7 +372,7 @@ static int project_restore_runtime(const project_t *input)
         memcpy(t->step, s->step, sizeof t->step);
         fm6_set_patch(k, fv[k]);                        /* the project's own FM6 patch, never reloaded from SLOT: F n if it is that */
         fm6_env_look(k, FM6_LOOK_KEEP);                 /* (DUELL 1.1: its own AMP ENV knobs stay; the numbers its patch gives are noted) */
-        fm6_own_ok &= (uint8_t)~(1u << k);              /* factory patch, else OWN (fm6_adopt, done above) */
+        fm6_own_ok &= (uint8_t)~(1u << k);              /* default patch, else OWN (fm6_adopt, done above) */
         if (e == ENGI_FM6)
             t->p[P_E7] = (int16_t)fslot[k];
         fm6_slot[k] = (uint8_t)fslot[k];
@@ -483,7 +483,7 @@ static void persist_boot(void)                    /* before settings_init / pane
             || flash_jedec == 0xB36014u;             /* UC25HQ80, newer FM-1s (2026): same size and commands (as Felucca, SLOOP, JIANT FM; L/RRY 2026-11-08) */
     irq_restore(f);
     if (!flash_ok) {
-        settings_defaults(favorites.factory[15]);  /* (DUELL 0.2.14: RAM only, as a new unit: the new defaults) */
+        settings_defaults(favorites.defaults[15]);  /* (DUELL 0.2.14: RAM only, as a new unit: the new defaults) */
         return;
     }
     fl_plain_window_init();                        /* flash above 0x93000 reads as plaintext through XIP (the stores' read-back) */
@@ -497,13 +497,13 @@ static void persist_boot(void)                    /* before settings_init / pane
             panel.magic = 0;                           /* theme) and `panel` (the button / knob map, panel.c) are .noinit RAM, and the erase's restart is a chip reset
                                                         * (fm1_reboot) that keeps RAM, so the old ones came back and the first start saved them again. No record =
                                                         * a new unit: the first theme and the built-in map (settings_init, panel_init; a BUTTON MAP calibration redoes it) */
-            settings_defaults(favorites.factory[15]);  /* DUELL 0.2.14: KNOB ACCEL ON, CLICK REC, USB SERIAL OFF (before usb_serial_apply) */
+            settings_defaults(favorites.defaults[15]);  /* DUELL 0.2.14: KNOB ACCEL ON, CLICK REC, USB SERIAL OFF (before usb_serial_apply) */
         }
     }
     multi_boot();                                  /* DUELL: the multis' names, so SAVE > MULTI's list is right */
     up_boot();                                     /* user presets */
 #else
-    settings_defaults(favorites.factory[15]);      /* (DUELL 0.2.14: no flash, as a new unit: the new defaults) */
+    settings_defaults(favorites.defaults[15]);      /* (DUELL 0.2.14: no flash, as a new unit: the new defaults) */
 #endif
 }
 
@@ -675,6 +675,7 @@ static int autosave_boot(int allowed)
             proj_bound(&proj_scratch);
             if (!project_restore_runtime(&proj_scratch)) {
                 ui_message("RESTORED");
+                foot_mu_check();                       /* (1.3.x: the footer as before the power-off: the multi's name for a part that is no exact patch) */
                 rc = 1;
                 boot_unmute();
             }

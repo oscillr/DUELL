@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
-"""DUELL factory sounds: validate tools/duell_sounds.py and write build/gen/duell_sounds.h.
+"""DUELL default sounds: validate tools/duell_sounds.py and write build/gen/duell_sounds.h.
 
     tools/gen_duell_sounds.py build/gen/duell_sounds.h      (tools/build.py generate(), DUELL/gen_only.py)
     tools/gen_duell_sounds.py --check                       (validate and print the table only)
@@ -13,7 +13,7 @@ and the engine's EDIT defaults (eng_*.c .edit). The names an author writes are r
   - MOD1..MOD8: a matrix slot, (SRC, DST, AMT) with N_MSRC / N_MDST names (DST may also be an EDIT label: RES = E6).
 Values: an int (range-checked against TP / the EDIT table), or a value name of that parameter (SAW, LP, LEG, UPDN, 1/16).
 Errors (unknown name, value out of range, unknown value name, a parameter twice, a track-only parameter, MODW in the
-matrix, a name over 12 characters, a bad category or engine, factory indices not 0..n-1 per engine) stop the build.
+matrix, a name over 12 characters, a bad category or engine, default indices not 0..n-1 per engine) stop the build.
 
 End B AS VALUES (owner 2026-10-29: a pre-loaded patch carries its End B exactly like a saved patch, PT_VER 4): 'bend' {label: End B value} (only the values that differ from
 the Original; the labels are bend_labels()'s: a P_ name without P_, E1..E8, "<group> <label>" for an extension slot), 'bpin' [labels] (the values set by hand: the marks),
@@ -54,14 +54,14 @@ ALIAS = {
     "STEREO SPRD": "SPRD", "REVERB": "REV",   # (GRAIN, retired in 0.2.9, had an EDIT label SPRD)
 }
 # a sound load leaves these to the track (ui.c param_kept), so a sound may not set them (0.2.19: nor the MIXER LEVEL, P_LEVEL: it is the player's);
-# TRIM (the PATCH TRIM, its loudness), the arp (AMODE.. AORDER) and the chord keys (CHRD VOIC) are the exceptions: a factory sound sets its trim
+# TRIM (the PATCH TRIM, its loudness), the arp (AMODE.. AORDER) and the chord keys (CHRD VOIC) are the exceptions: a default sound sets its trim
 # and may lend the arp and the keys (ui.c ds_arp, ds_keys)
 TRACK_ONLY = {"LEVEL", "PAN", "MUTE", "QUANT", "SLEN", "SDIV", "SSWING", "SGATE", "SQNT"}   # (DUELL 1.1, owner 2026-10-27: TRANS, the TRANSPOSE, is the sound's now: a sound may set it; ROOT and SCALE are the instrument's, no ids: 25 and 26 are the TWIN FILTER's RES 2 and DRIVE)
 KEY_IDS = ["CHRD", "VOIC"]               # lent like the arp (ui.c ds_keys): a pad may set chord keys. No SCALE: the scale is the instrument's (core.h)
 ARP_IDS = ["AMODE", "ARATE", "AOCT", "AGATE", "ASWING", "APROB", "AHOLD", "AORDER"]
 CATS = ["BASS", "LEAD", "PAD", "PLUCK", "KEYS", "PERC", "FX", "OTHER"]
 MAX_PAIRS = 64
-# a factory sound's End B AMOUNT (%) by category (owner, 2026-10-11): conventional sounds move a little, pads (drones too)
+# a default sound's End B AMOUNT (%) by category (owner, 2026-10-11): conventional sounds move a little, pads (drones too)
 # and effects more. A sound's own 'bamt' overrides it (by a small step, the reason in its recipe comment)
 CAT_BAMT = {"BASS": 7, "KEYS": 11, "PLUCK": 11, "PERC": 11, "LEAD": 17, "PAD": 27, "FX": 31, "OTHER": 17}
 NENG_TABLE = 16                   # DS_ENG_AT covers engine numbers 0..15 (favorites.c: 16 engines)
@@ -96,19 +96,19 @@ def parse_ids():
     return {n: i for i, n in enumerate(ids)}
 
 
-XW_BASE = 128           # ext.h: the extension slots' wide ids (a pair of a factory sound names one as 128 + slot)
+XW_BASE = 128           # ext.h: the extension slots' wide ids (a pair of a default sound names one as 128 + slot)
 XGROUP = {"ROUTE": "TWIN", "LINK": "TWIN", "KTRK2": "TWIN", "ENV2": "TWIN", "LFO1": "TWIN", "LFO2": "TWIN",
           "SUBLVL": "SUB", "SUBOCT": "SUB", "SUBWAVE": "SUB", "SUBHARM": "SUB",
           "CYMODE": "CYCLE", "CYRISE": "CYCLE", "CYFALL": "CYCLE", "CYCURVE": "CYCLE", "CYSYNC": "CYCLE",
-          # DUELL 1.1: the DEST cards, the LFO LEVELs (ext.h X15..X26; X27 is STRUM, item 144: a chord-key setting, no factory sound sets it)
+          # DUELL 1.1: the DEST cards, the LFO LEVELs (ext.h X15..X26; X27 is STRUM, item 144: a chord-key setting, no default sound sets it)
           "ESAT": "AMPENV", "E2BLD": "FILTERENV", "E2DRV": "FILTERENV", "E2RES": "FILTERENV",
           "CYCUT2": "CYCLE", "CYPAN": "CYCLE", "CYPIT": "CYCLE", "L2RES2": "LFO2", "L2FMODE": "LFO2", "L2BLD": "LFO2",
           "LFO1LVL": "LFO1", "LFO2LVL": "LFO2",
-          "STRUM": "CHORD"}       # (item 144: X27, the CHORD page's STRUM; no factory sound sets it)
+          "STRUM": "CHORD"}       # (item 144: X27, the CHORD page's STRUM; no default sound sets it)
 
 
 def parse_xtp(names):
-    """ext.h X_* enum and params.c XTP[]: {name: (wide id, label, lo, hi, default, names)} for each extension slot. A factory sound writes a slot as
+    """ext.h X_* enum and params.c XTP[]: {name: (wide id, label, lo, hi, default, names)} for each extension slot. A default sound writes a slot as
     its enum name (X_SUBLVL), as "<group> <label>" (TWIN LINK, SUB LEVEL, SUB WAVE, CYCLE MODE, CYCLE SYNC ..) or, when no other name takes it, as the label (LINK, KTRK2, RISE)"""
     ext = strip_comments((SRC / "ext.h").read_text())
     m = re.search(r"enum\s*\{\s*(X_ROUTE.*?)\}", ext, re.S)
@@ -248,10 +248,10 @@ def load_data(path):
 
 
 def with_owner(sounds, path=None):
-    """DUELL 0.2.24: the owner's own edits of factory sounds (docs/OWNER_REFINE.md). tools/owner_sounds.py, written by
+    """DUELL 0.2.24: the owner's own edits of default sounds (docs/OWNER_REFINE.md). tools/owner_sounds.py, written by
     tools/import_owner_edits.py from what his unit saved, holds OWNER_SOUNDS: sound dicts in duell_sounds.py's form; each replaces the
     sound of the same (engine, idx) here, whole (its name, category, every value, End B). duell_sounds.py keeps the recipes; the
-    overlay is what the build sounds like. Absent: the list as it is. The result is what every consumer of the factory list sees."""
+    overlay is what the build sounds like. Absent: the list as it is. The result is what every consumer of the default list sees."""
     path = path or Path(__file__).resolve().parent / "owner_sounds.py"
     if not path.exists():
         return list(sounds)
@@ -261,7 +261,7 @@ def with_owner(sounds, path=None):
     for o in own:
         key = (o.get("engine"), o.get("idx"))
         if key not in by:
-            die(f"owner_sounds.py: {o.get('name', '?')}: no factory sound {key} to replace")
+            die(f"owner_sounds.py: {o.get('name', '?')}: no default sound {key} to replace")
         out[out.index(by[key])] = o
     return out
 
@@ -337,7 +337,7 @@ def build(data):
                     die(f"{where}: {label} must be (SRC, DST, AMT)")
                 src, dst, amt = v
                 if src == "MODW":
-                    die(f"{where}: {label}: MODW moves the MORPH fader now: no MODW routes in factory sounds")
+                    die(f"{where}: {label}: MODW moves the MORPH fader now: no MODW routes in default sounds")
                 if isinstance(dst, str) and dst not in names["N_MDST"] and dst in elabels:   # (CUT SHP ...: the matrix's own)
                     dst = f"E{elabels[dst] + 1}"
                 put(ids[f"P_M{k}SRC"], resolve_value(where, label + " SRC", src, *tp[f"P_M{k}SRC"][1:3],
@@ -432,7 +432,7 @@ def build(data):
     for e in {x["e"] for x in sounds}:
         got = sorted(x["idx"] for x in sounds if x["e"] == e)
         if got != list(range(len(got))):
-            die(f"{engines[e]['name']}: factory idx must be 0..{len(got) - 1} (append-only), got {got}")
+            die(f"{engines[e]['name']}: default idx must be 0..{len(got) - 1} (append-only), got {got}")
     if len(sounds) > 255:
         die("more than 255 sounds: widen DS_LIST / DS_ENG_AT")
     sounds.sort(key=lambda x: (x["e"], x["idx"]))
@@ -446,7 +446,7 @@ def build(data):
 
 
 def emit(path, sounds, lst, engines, cats, idname):
-    L = ["/* generated by tools/gen_duell_sounds.py from tools/duell_sounds.py: DUELL's factory sounds (read by",
+    L = ["/* generated by tools/gen_duell_sounds.py from tools/duell_sounds.py: DUELL's default sounds (read by",
          " * firmware/src/sounds.c). Do not edit: edit tools/duell_sounds.py */", "#pragma once", "",
          f"#define DS_N {len(sounds)}u", f"#define DS_NENG {NENG_TABLE}u"]
     npairs = sum(len(s["pairs"]) for s in sounds)
@@ -460,7 +460,7 @@ def emit(path, sounds, lst, engines, cats, idname):
         for i in range(0, len(row), 6):
             L.append("    " + ", ".join(row[i:i + 6]) + ",")
         at += len(s["pairs"])
-    L += ["};", "", "/* engine-major: sound k of engine e = DS_SOUNDS[DS_ENG_AT[e] + k] (k: the factory index) */",
+    L += ["};", "", "/* engine-major: sound k of engine e = DS_SOUNDS[DS_ENG_AT[e] + k] (k: the default index) */",
           "static const ds_sound_t DS_SOUNDS[DS_N ? DS_N : 1u] = {"]
     for s in sounds:
         fl = " | ".join(f for f, on in (("DSF_MONO", s["mono"]), ("DSF_ARP", s["arp"]), ("DSF_KEYS", s["keys"])) if on) or "0"

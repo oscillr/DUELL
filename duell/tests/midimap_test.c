@@ -440,7 +440,7 @@ static int settings_record(void)
     ok &= map_set(69, P_ATK, MAP_R_PART2, MAP_W_TYPED, 0, 0) == MAP_OK && ml_learn(65, 1, P_REV) == 1u && map_clear(31) == MAP_OK;
     memset(&p, 0x5A, sizeof p);
     settings_export(&p);
-    ok &= p.favorites.factory[14][0] == MAP_REC_VER && p.favorites.factory[14][1] == 1u && p.favorites.factory[14][2] == MIDI_MAP_DEFAULTS_REV;
+    ok &= p.favorites.defaults[14][0] == MAP_REC_VER && p.favorites.defaults[14][1] == 1u && p.favorites.defaults[14][2] == MIDI_MAP_DEFAULTS_REV;
     ok &= !memcmp(p.map, midi_map, sizeof midi_map);
     for (i = 0; i < 64u; i++)
         ok &= p.map_tail[i] == 0u;
@@ -453,7 +453,7 @@ static int settings_record(void)
           settings_import(&p, (int)(sizeof p - sizeof p.favorites)) == 0 && settings_import(&p, 0) == 0;
     bad += check("the record round trip at the exact size is the same bytes; the old size (cloud/base3's record) and any other is no record", ok);
     /* another version byte: the shipped list */
-    p.favorites.factory[14][0] = MAP_REC_VER + 1u;
+    p.favorites.defaults[14][0] = MAP_REC_VER + 1u;
     ok = settings_import(&p, sizeof p) == 1 && !memcmp(midi_map, MIDI_MAP_DEFAULTS, sizeof midi_map);
     bad += check("a record of another map version starts with the shipped list", ok);
     /* a stored map is made valid */
@@ -472,7 +472,7 @@ static int settings_record(void)
         p.map[42] = MAP_LINE(P_ED_SHP, 0, MAP_W_TYPED);
         for (k = 0; k < 17u; k++)
             p.map[free17[k]] = MAP_LINE(P_ATK + k + 1u, 0, MAP_W_LEARNED); /* 17 learned lines */
-        p.favorites.factory[14][2] = MIDI_MAP_DEFAULTS_REV;
+        p.favorites.defaults[14][2] = MIDI_MAP_DEFAULTS_REV;
         ok = settings_import(&p, sizeof p) == 1;
         ok &= MAP_IS_LOCKED(midi_map[64]) && MAP_IS_LOCKED(midi_map[0]) && MAP_IS_EMPTY(midi_map[20]) && MAP_IS_EMPTY(midi_map[41]) && MAP_IS_EMPTY(midi_map[43]);
         ok &= MAP_TARGET(midi_map[40]) == P_ED_SHP && MAP_IS_EMPTY(midi_map[42]);
@@ -497,12 +497,12 @@ static int settings_record(void)
         p.map[c[2]] = MAP_LINE(P_ED_SHP, MAP_R_PART2, MAP_W_TYPED);         /* taken by another parameter */
         p.map[c[3]] = MAP_EMPTY;                                            /* empty, but its parameter was moved ... */
         p.map[f] = MAP_LINE(MAP_TARGET(MIDI_MAP_DEFAULTS[c[3]]), MAP_RULE(MIDI_MAP_DEFAULTS[c[3]]), MAP_W_TYPED);   /* ... to a free number */
-        p.favorites.factory[14][2] = (uint8_t)(MIDI_MAP_DEFAULTS_REV + 1u);
+        p.favorites.defaults[14][2] = (uint8_t)(MIDI_MAP_DEFAULTS_REV + 1u);
         ok = settings_import(&p, sizeof p) == 1;
         ok &= midi_map[c[0]] == MIDI_MAP_DEFAULTS[c[0]] && MAP_IS_EMPTY(midi_map[c[1]]) && (midi_map[c[1]] & MAP_CLEARED) &&
               midi_map[c[2]] == MAP_LINE(P_ED_SHP, MAP_R_PART2, MAP_W_TYPED) && MAP_IS_EMPTY(midi_map[c[3]]) && MAP_TARGET(midi_map[f]) == MAP_TARGET(MIDI_MAP_DEFAULTS[c[3]]);
         p.map[c[0]] = MAP_EMPTY;                                            /* the same revision: nothing is filled */
-        p.favorites.factory[14][2] = MIDI_MAP_DEFAULTS_REV;
+        p.favorites.defaults[14][2] = MIDI_MAP_DEFAULTS_REV;
         ok &= settings_import(&p, sizeof p) == 1 && MAP_IS_EMPTY(midi_map[c[0]]);
     }
     bad += check("a later firmware's shipped line fills only a number that is empty and was never cleared (not a cleared one, a taken one, a parameter that has moved)", ok);

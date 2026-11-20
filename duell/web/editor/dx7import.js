@@ -3,7 +3,7 @@
 // The FM6 engine plays the generic 6-operator voice; a patch of the store carries its own copy of it (record flag FM6, SLOT 8 = OWN), so a converted
 // voice is an ordinary FM6 patch. Everything else in the patch is the owner's neutral starting point (a DX7 knows nothing of our sections):
 //   the effects and sends dry but a little reverb (REV 7 %), SAT 0, EQ flat, a gentle MULTI FILTER (12 dB low-pass, 6.8 kHz, a trace of resonance: it takes the
-//   digital edge off the top, as the factory FM BASS 2 does), POLY and the house LEVEL (a bass voice is MONO), no arp, no keys, no morph block.
+//   digital edge off the top, as the default FM BASS 2 does), POLY and the house LEVEL (a bass voice is MONO), no arp, no keys, no morph block.
 // A patch is never called "DX7": the name is the voice's own, cleaned; "DX7 sysex import" is only the label of where it came from. No DOM.
 import { L, P_E0, ID } from "./layout.js";
 import { FM6 } from "./fm6voice.js";

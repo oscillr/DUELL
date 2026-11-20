@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
-/* DUELL 0.2.25, the owner's report "the cutoff crackles when I move it in the editor on #83 TINE ROOM": a measurement, no check (exit 0). TINE ROOM (FM6, factory
+/* DUELL 0.2.25, the owner's report "the cutoff crackles when I move it in the editor on #83 TINE ROOM": a measurement, no check (exit 0). TINE ROOM (FM6, default
  * sound 4; the multimode filter is bypassed at CUT 82, KEY TRK at the new-sound default) holds a four-note chord through the real voice path (uf_test.c's
  * harness: hostsim, mblk); the multimode filter's CUT (P_FREEA) is set before each audio block (32 samples) the way the editor's writes reach the unit:
  *   A  CUT still at 50 (the filter running): the reference

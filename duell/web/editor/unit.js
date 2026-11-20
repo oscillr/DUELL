@@ -7,7 +7,7 @@ import { lo7, hi7, join7 } from "./modbypass.js";
 import { L, ID, P_E0, NX, X, descOf, xdescOf, xDefaults, clampTo } from "./layout.js";
 import { BACKUP_CMD, bkU32, bkR32, bkPack, bkUnpack, bkCrc } from "../fm1backup.js";
 
-export const UP_SLOTS = 128;   // the patch slots, ids 0..127 (DUELL 0.2.17: one list; a slot is its saved record or else the factory sound at that place of the list)
+export const UP_SLOTS = 128;   // the patch slots, ids 0..127 (DUELL 0.2.17: one list; a slot is its saved record or else the default sound at that place of the list)
 export class UnitError extends Error { constructor(msg, rc) { super(msg); this.rc = rc; } }
 // the filter cutoffs (fmt 23 FILT: the multimode filter's CUT, 0..82; fmt 5 CUTOFF: an engine's own) move in steps of at most this many per write (see queueWrite)
 const slewOf = (d) => (d && !d.names && (d.fmt === 23 || d.fmt === 5) ? Math.max(2, Math.round((d.max - d.min) / 24)) : 0);
@@ -287,22 +287,22 @@ export class Unit {
     this.queueWrite(`fm6:${part}`, Array.from(packed), async (val) => {
       const a = await this.req(CMD.FM6_PUT, [0, part, ...val.map((x) => x & 127)], 2000);
       if (a[2]) throw new UnitError("The unit refused the FM6 voice.", a[2]);
-      const s = await this.req(CMD.TRACK_PARAM, [part, P_E0 + 7]);                   // SLOT is OWN now (or F n when it is a factory voice unchanged)
+      const s = await this.req(CMD.TRACK_PARAM, [part, P_E0 + 7]);                   // SLOT is OWN now (or F n when it is a default voice unchanged)
       this.set(part, P_E0 + 7, rv14(s, 2), false);
     });
   }
 
-  // ---- patch slots (DUELL 0.2.17: ONE list of 128 slots; slot i is its saved record, or else the factory sound at browse position i, #NN = i + 1)
-  async factoryNames(eng) {
+  // ---- patch slots (DUELL 0.2.17: ONE list of 128 slots; slot i is its saved record, or else the default sound at browse position i, #NN = i + 1)
+  async defaultNames(eng) {
     if (this.names.has(eng)) return this.names.get(eng);
     const n = parseNames(await this.req(CMD.NAMES, [eng])).names; this.names.set(eng, n); return n;
   }
-  async loadFactory(part, eng, idx) {                 // a factory sound by engine and index (the EDIT pages' sound list; the slots do not need it)
+  async loadDefault(part, eng, idx) {                 // a default sound by engine and index (the EDIT pages' sound list; the slots do not need it)
     await this.select(part); await this.idle();
     await this.req(CMD.PRESET, [eng, idx]);
     await this.readPart(part);
   }
-  // the 128 slots: [{slot, eng, name, cat, saved}] (saved: it holds a saved record; false: it holds its factory sound)
+  // the 128 slots: [{slot, eng, name, cat, saved}] (saved: it holds a saved record; false: it holds its default sound)
   async listSlots(onProgress) {
     const all = [];
     for (let s = 0; s < UP_SLOTS; s += 16) {
@@ -311,7 +311,7 @@ export class Unit {
     }
     this.slots = all.slice(0, UP_SLOTS); this.emit("patches", this.slots); return this.slots;
   }
-  async loadSlot(part, slot) {                        // the slot's record, else its factory sound, into the part
+  async loadSlot(part, slot) {                        // the slot's record, else its default sound, into the part
     await this.select(part); await this.idle();
     const a = await this.req(CMD.UP_LOAD, [slot]);
     if (a[1] !== 0) throw new UnitError("That slot is not valid.", a[1]);
@@ -319,7 +319,7 @@ export class Unit {
     this.parts[part].slot = slot;
   }
   // Saves the part's CURRENT sound over a slot (UP_STORE: the unit stores it itself, so End B and the arp block are kept; UP_PUT would drop them). What
-  // the slot held is gone (a saved record, or nothing but its factory sound, which RESTORE brings back).
+  // the slot held is gone (a saved record, or nothing but its default sound, which RESTORE brings back).
   async saveSlot(part, slot, name) {
     await this.select(part); await this.idle();
     const a = await this.req(CMD.UP_STORE, [slot, ...cstr(name)], 6000);
@@ -329,7 +329,7 @@ export class Unit {
     if (this.parts[part]) this.parts[part].slot = slot;
     await this.listSlots();
   }
-  // RESTORE: the slot's saved record is removed and its factory sound is back (UP_ERASE; a slot that holds its factory sound already: rc 0, nothing written)
+  // RESTORE: the slot's saved record is removed and its default sound is back (UP_ERASE; a slot that holds its default sound already: rc 0, nothing written)
   async restoreSlot(slot) {
     this.guard();
     const a = await this.req(CMD.UP_ERASE, [slot], 6000);
@@ -396,7 +396,7 @@ export class Unit {
     await this.readMultiObjects();
     const o = slot >> 1, b = this.multiObjs[o].slice(), h = slot & 1;
     const len = [b[4] | b[5] << 8, b[6] | b[7] << 8];
-    if (b.length < 8 || !len[h]) throw new UnitError("This multi is not stored on the unit (a factory or empty slot): save it first, then rename it.");
+    if (b.length < 8 || !len[h]) throw new UnitError("This multi is not stored on the unit (a default or empty slot): save it first, then rename it.");
     const at = 8 + (h ? len[0] : 0) + 8;
     for (let i = 0; i < 12; i++) b[at + i] = i < name.length ? name.charCodeAt(i) : 0;
     const put = async (args) => { const a = await this.req(BACKUP_CMD.PUT, args, 8000); if (a[2]) throw new UnitError(`The unit refused the write (error ${a[2]}).`, a[2]); };

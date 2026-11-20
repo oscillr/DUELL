@@ -1,9 +1,9 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
-/* DUELL 0.2.17: the factory multis render bit for bit as they did before the 14 new factory sounds (bank 114 -> 128).
- * A factory multi (tools/factory_multis/Mnn.bin) carries its sounds as parameter bytes plus the identity (engine, factory index);
+/* DUELL 0.2.17: the default multis render bit for bit as they did before the 14 new default sounds (bank 114 -> 128).
+ * A default multi (tools/default_multis/Mnn.bin) carries its sounds as parameter bytes plus the identity (engine, default index);
  * adding sounds appends new indices per engine and moves only the browse numbers (#NN), so a multi must sound the same.
- * DUELL 0.2.23: the sixteen factory multis M01..M16 (tools/factory_multis.py; loaded as with MODE RECALL ON: their MODE, BALANCE, XFADE)
- * and the fourteen TEST SCENES of tests/scenes.h (0.2.22's factory multis and CPU TEST multis, byte for byte, loaded as they were then: the CPU
+ * DUELL 0.2.23: the sixteen default multis M01..M16 (tools/default_multis.py; loaded as with MODE RECALL ON: their MODE, BALANCE, XFADE)
+ * and the fourteen TEST SCENES of tests/scenes.h (0.2.22's default multis and CPU TEST multis, byte for byte, loaded as they were then: the CPU
  * TEST ones with their MODE, the others in the power-on MODE), whose hashes are the ones of 0.2.22. Each is loaded as the LOAD page does it and
  * played (both parts: a chord of 3 notes, 1.5 s, then the release, 1 s), at MORPH fader 0, 63 and 127 (End A, the middle, End B: the seeds
  * and rolls of the part's sound), and the output is hashed (FNV-1a 64). Every render runs in its own fork()ed child (state as at boot:
@@ -32,7 +32,7 @@ static uint32_t fl_jedec_ram(void) { return 0x856014u; }
 static void fl_plain_window_init(void) {}
 
 static const uint8_t CH1[3] = {48, 55, 64}, CH2[3] = {60, 67, 72};
-/* the renders: a factory slot (scene 0) or a scene loaded into the slot it had (recall: with its MODE) */
+/* the renders: a default slot (scene 0) or a scene loaded into the slot it had (recall: with its MODE) */
 typedef struct { const char *name; uint32_t slot; const char *scene; int recall; } rn_t;
 static const rn_t RN[] = {
     {"M01", 0, 0, 1}, {"M02", 1, 0, 1}, {"M03", 2, 0, 1}, {"M04", 3, 0, 1}, {"M05", 4, 0, 1}, {"M06", 5, 0, 1}, {"M07", 6, 0, 1}, {"M08", 7, 0, 1},
@@ -42,7 +42,7 @@ static const rn_t RN[] = {
     {"S07_COLD_CHAPEL", 6, "M07_COLD_CHAPEL", 0}, {"S08_GARGLE_ACID", 7, "M08_GARGLE_ACID", 0}, {"S09_NIGHT_ORGAN", 8, "M09_NIGHT_ORGAN", 0},
     {"S10_FINAL_REEL", 9, "M10_FINAL_REEL", 0}, {"S13_TEST_1_BASE", 12, "M13_TEST_1_BASE", 1}, {"S14_TEST_2_PHASE", 13, "M14_TEST_2_PHASE", 1},
     {"S15_TEST_3_HEAVY", 14, "M15_TEST_3_HEAVY", 1}, {"S16_TEST_4_MIX", 15, "M16_TEST_4_MIX", 1},
-    /* 0.2.24: the spare multis of 0.2.23 (tests/scenes/spare, tools/factory_multis.py SPARE), loaded as the factory slots are: the hashes they had as M06 / M07 / M14 */
+    /* 0.2.24: the spare multis of 0.2.23 (tests/scenes/spare, tools/default_multis.py SPARE), loaded as the default slots are: the hashes they had as M06 / M07 / M14 */
     {"X06_TINE_STRINGS", 5, "spare/M06_TINE_STRINGS", 1}, {"X07_BOWL_AND_WIND", 6, "spare/M07_BOWL_AND_WIND", 1}, {"X14_SEVENOAKS", 13, "spare/M14_SEVENOAKS", 1},
     /* 0.2.25: BASILDON left M13 for the owner's COLD CHAPEL (spare data; its M13 hashes of 0.2.25) */
     {"X13_BASILDON", 12, "spare/M13_BASILDON", 1},
@@ -126,13 +126,13 @@ int main(int argc, char **argv)
         g = fopen(argv[1], "w");
         if (!g)
             return perror(argv[1]), 1;
-        fprintf(g, "# tests/multi_render_test.c: FNV-1a 64 of each factory multi's output (3-note chords on both parts, fader 0 / 63 / 127).\n"
-                   "# Written on 0.2.16's sounds (114): the 14 new factory sounds of 0.2.17 must not change it.\n"
-                   "# Re-baselined on purpose in 0.2.22: the reverb LOW CUT's new range (20 Hz .. 2 kHz) and default (75 = 299 Hz; the factory multis carry it): 40 of the 42 renders; with LOCUT 0 all 42 are the 0.2.21 ones.\n"
-                   "# 0.2.23: M01..M16 the sixteen factory multis of 0.2.23 (new); Snn_NAME the test scenes (tests/scenes.h): the 0.2.22 hashes of Mnn, unchanged.\n"
+        fprintf(g, "# tests/multi_render_test.c: FNV-1a 64 of each default multi's output (3-note chords on both parts, fader 0 / 63 / 127).\n"
+                   "# Written on 0.2.16's sounds (114): the 14 new default sounds of 0.2.17 must not change it.\n"
+                   "# Re-baselined on purpose in 0.2.22: the reverb LOW CUT's new range (20 Hz .. 2 kHz) and default (75 = 299 Hz; the default multis carry it): 40 of the 42 renders; with LOCUT 0 all 42 are the 0.2.21 ones.\n"
+                   "# 0.2.23: M01..M16 the sixteen default multis of 0.2.23 (new); Snn_NAME the test scenes (tests/scenes.h): the 0.2.22 hashes of Mnn, unchanged.\n"
                    "# 0.2.24: the owner's COLD CHAPEL, ACID ETHER, GARGLE ACID back (M06, M09, M14 = the S07, S06, S08 records, loaded with recall), FINAL REEL M08 -> M07,\n"
                    "# MONO DUEL M09 -> M08, M03 PAD SPLIT's pad CUT opened; Xnn_NAME the spare multis of 0.2.23 (tests/scenes/spare): their 0.2.23 hashes as M06 / M07 / M14.\n"
-                   "# 0.2.24: BASS MONO is a unit setting, ON at 200 Hz on a new unit: the factory multis render with it (their STEREO / LAYER hashes re-made once); the test scenes set it OFF (hashes as before).\n"
+                   "# 0.2.24: BASS MONO is a unit setting, ON at 200 Hz on a new unit: the default multis render with it (their STEREO / LAYER hashes re-made once); the test scenes set it OFF (hashes as before).\n"
                    "# 0.2.25: the part EQ in 32-bit multiplies with its rounding carried (fx.c eq_run): the 33 renders of the multis and scenes with an EQ re-made once (M12, M13, M15, M16, S05, S13..S16, X07, X14).\n"
                    "# 0.2.25: each EQ band on its own; the HIGH band runs whenever its gain is set (0.2.24 ran it only with MID Q off its middle): M02, M03, M08, M13, M16, S13..S16 re-made once.\n"
                    "# 0.2.25: SHIM's PITCH BOTH removed (owner): M16 STRESS TEST, the one multi that stored it, plays UP: its three renders re-made once.\n"
@@ -163,10 +163,10 @@ int main(int argc, char **argv)
                    "# pedal hunt (release_drafts/PEDAL_BASS_HUNT.md): the ducker keeps 2 more bits of every ducked sample (fx.c duck_run), and PHASE slews a jumping DCW / ENV / SUB (eng_phase.c pd_sl):\n"
                    "# the renders listed as CHANGED by the test before this commit were re-made once (the multis and scenes with a working ducker or a moving PHASE shape).\n\n"
                    "# hunt4 (release_drafts/HUNT4.md): PHASE's moving DCW no longer steps at the block seams (eng_phase.c phase_render_0): S14 TEST 2 PHASE, S15 TEST 3 HEAVY and X14 SEVENOAKS re-made.\n\n"
-                   "# 1.0: the owner's duell-multis-13 file (13 records, byte for byte) is the factory M01..M05 and M08..M15 (M06, M07, M16 unchanged): their 39 renders re-made once; the test scenes are unchanged.\n"
+                   "# 1.0: the owner's duell-multis-13 file (13 records, byte for byte) is the default M01..M05 and M08..M15 (M06, M07, M16 unchanged): their 39 renders re-made once; the test scenes are unchanged.\n"
                    "# 1.0 volume check (release_drafts/VOLUME_CHECK_V1.md): the TRIM of both parts of M01 M02 M04 M05 M06 M07 M08 M13 M15 moved by the same dB (tools/multi_trim.py): their 27 renders are made again (one re-base for 1.0 in all).\n"
                    "# 1.0 MORPH B (release_drafts/MORPH_B_ROLL_V1.md): End B of M01..M15 rolled again with the firmware's ROLL B (tools/morph_b_roll.py, fixed seeds): their fader 63 and 127 renders (30) made again; fader 0 (End A) is unchanged.\n"
-                   "# 1.0 owner's answers: M04 DUB CHORD's TRIM one more step down (peak ceiling) and its seed k = 20: its three renders made again. M05 / M11 name VOICE sounds by their closed-up factory indices (CROONER left the bank): same sound, same hashes.\n");
+                   "# 1.0 owner's answers: M04 DUB CHORD's TRIM one more step down (peak ceiling) and its seed k = 20: its three renders made again. M05 / M11 name VOICE sounds by their closed-up default indices (CROONER left the bank): same sound, same hashes.\n");
         for (m = 0; m < NR; m++)
             for (f = 0; f < 3u; f++)
                 fprintf(g, "%s f%u %016llx\n", RN[m].name, FAD[f], (unsigned long long)got[m * 3 + f]);

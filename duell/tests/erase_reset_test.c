@@ -117,7 +117,7 @@ int main(int argc, char **argv)
     settings.palette = 5u;                                   /* theme OCEAN */
     ui_prefs ^= PREF_ACCEL;                                  /* a preference (KNOB ACCEL) */
     favorites.user = 0x15u;                                  /* favourite patches */
-    favorites.factory[15][28] = (uint8_t)((favorites.factory[15][28] & ~3u) | 2u);   /* CLICK ON */
+    favorites.defaults[15][28] = (uint8_t)((favorites.defaults[15][28] & ~3u) | 2u);   /* CLICK ON */
     midi_map[20] = (uint16_t)(midi_map[20] ^ 0x11u);         /* a MIDI MAP line (learned CC) */
     cal = panel; i = cal.btn[B_FX]; cal.btn[B_FX] = cal.btn[B_SCL]; cal.btn[B_SCL] = (uint8_t)i;   /* a HARDWARE CALIBRATION of the buttons */
     panel = cal;
@@ -130,7 +130,7 @@ int main(int argc, char **argv)
     ps_save_trk(&trk[0], 2u, "ACID DUB");                    /* pattern slots */
     ps_save_trk(&trk[0], 12u, "DEEP");
     song.playing = 0; transport_req = 0;
-    project_save(4u);                                        /* user multis (M05 over a factory one, M12) */
+    project_save(4u);                                        /* user multis (M05 over a default one, M12) */
     project_save(11u);
     st_save(OBJ_WTAB0 + 1u, junk, sizeof junk);              /* a user wavetable (USR2) */
     for (i = 0; i < 4096u; i++) nor[0xE7000u + i] = (uint8_t)(i * 3u);   /* an FM6 voice bank (its sector) */
@@ -164,18 +164,18 @@ int main(int argc, char **argv)
     row("autosave (last session)", st_load(OBJ_AUTOSAVE, junk, sizeof junk) == 200 && junk[1] == 8u ? "OLD ONE LEFT" : "gone (new unit's own)",
         !(st_load(OBJ_AUTOSAVE, junk, sizeof junk) == 200 && junk[1] == 8u));
     for (i = 0; i < sizeof junk; i++) junk[i] = (uint8_t)(i * 7u + 1u);
-    row("user patches (128 slots, 22 chunks)", up_count() ? "LEFT" : "none: factory sounds", up_count() == 0u);
+    row("user patches (128 slots, 22 chunks)", up_count() ? "LEFT" : "none: default sounds", up_count() == 0u);
     row("pattern slots", ps_changed(2) || ps_changed(12) ? "LEFT" : "the 32 default patterns", !ps_changed(2) && !ps_changed(12));
-    row("user multis (M05, M12)", stored(OBJ_MULTI0 + 2u) || stored(OBJ_MULTI0 + 5u) ? "LEFT" : "factory M05, M12 back",
-        !stored(OBJ_MULTI0 + 2u) && !stored(OBJ_MULTI0 + 5u) && project_factory(4u) && project_factory(11u));
+    row("user multis (M05, M12)", stored(OBJ_MULTI0 + 2u) || stored(OBJ_MULTI0 + 5u) ? "LEFT" : "default M05, M12 back",
+        !stored(OBJ_MULTI0 + 2u) && !stored(OBJ_MULTI0 + 5u) && project_default(4u) && project_default(11u));
     for (i = 0; i < DF_N; i++) {
         uint8_t blk[NSHOWN][MB_N], amt[NSHOWN], set[6];
         if (!mu_unpack(&proj_scratch, blk, amt, set, DM_REC + DM_AT[i], DM_LEN[i])) damaged++;
     }
     {
         uint32_t fact = 0;
-        for (i = 0; i < 16u; i++) fact += project_factory(i);
-        row("factory multis M01..M16 (load, not DAMAGED)", damaged ? "DAMAGED" : "all 16 load", !damaged && fact == 16u && DF_N == 16u);
+        for (i = 0; i < 16u; i++) fact += project_default(i);
+        row("default multis M01..M16 (load, not DAMAGED)", damaged ? "DAMAGED" : "all 16 load", !damaged && fact == 16u && DF_N == 16u);
     }
     row("user wavetables (USR1..USR3)", stored(OBJ_WTAB0) || stored(OBJ_WTAB0 + 1u) || stored(OBJ_WTAB0 + 2u) ? "LEFT" : "EMPTY",
         !stored(OBJ_WTAB0) && !stored(OBJ_WTAB0 + 1u) && !stored(OBJ_WTAB0 + 2u));

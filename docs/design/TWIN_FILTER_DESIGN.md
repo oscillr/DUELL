@@ -78,7 +78,7 @@ Words used here that are not yet in GLOSSARY.md (explained once, here):
 | PHASE, LOFI, VOICE, WHEEL, PHYS, FM6, WAVE | no (LOFI has a one-pole TONE inside; PHYS's filters are part of the string model; VOICE's resonators are the vowel itself) | - | - | - | - | - | CUT and the FLT routes move the MULTI FILTER instead |
 | **all ten** | **MULTI FILTER** | **after** | the same SVF, **12 or 24 dB** (24 = two stages, Butterworth pair), MODE blends LP > BP > HP, kill zones at the ends, soft knee at 48000 | 25 B (`uf[4]`, `ufw[3]`, `uft`, `msl`) | **measured** host: 12 dB +46.6, MODE blend +58.6, 24 dB LP +77.3, 24 dB HP +104 instructions a sample; device est. +1.8 (12 dB) and +2.6 (24 dB) points | CUT 45, RES 46, MODE 47, SLOPE 48 (`P_FREEA..D`), KEY TRK 27 | ufilt 1 engines: CUT, FRES (38), FMODE (46). ANALOG / TRIO / NOISE: FRES and FMODE only, no CUT (SPEC 2.5) |
 
-Note (CONFIRMED, `budget.c`): KEY TRK's default of 32 keeps the MULTI FILTER out of its bypass, so most factory sounds already run filter 1 at 12 dB. Its cost is already paid; the TWIN cost below comes on top of it.
+Note (CONFIRMED, `budget.c`): KEY TRK's default of 32 keeps the MULTI FILTER out of its bypass, so most default sounds already run filter 1 at 12 dB. Its cost is already paid; the TWIN cost below comes on top of it.
 
 ### 1.3 Can the engines' own filters be lifted out?
 
@@ -98,7 +98,7 @@ Note (CONFIRMED, `budget.c`): KEY TRK's default of 32 keeps the MULTI FILTER out
   - CRSH and the DC blocker come after the filter. Lifted out after the engine, the crusher would come first: a different sound.
 
 **What would change if they were lifted:**
-- every ANALOG, TRIO and NOISE sound, factory and yours;
+- every ANALOG, TRIO and NOISE sound, default and yours;
 - their E slots;
 - the routes (CUT and the FLT depths would need a new target);
 - the MORPH rules for those engines (TYPE and MODE fades, the "no dead filter path" rules).
@@ -115,7 +115,7 @@ Note (CONFIRMED, `budget.c`): KEY TRK's default of 32 keeps the MULTI FILTER out
 - a later CHIP type copies TRIO's grit and drift.
 
 **What must stay bit for bit:**
-- every stored sound, factory sound and multi while TWIN is OFF;
+- every stored sound, default sound and multi while TWIN is OFF;
 - the three engines' own filters always;
 - `uf_run` itself. TWIN calls it unchanged for filter 1, so its hot code is not edited.
 
@@ -200,7 +200,7 @@ All costs are est. (section 4). Every SVF type is 12 dB, as the Virus's second f
   - Recommended.
 - **A sine at the note's pitch**: a cleaner, bell-like FM. One phase per note. Later, if wanted.
 - **The other part's audio**: rejected.
-  - It would tie the two cores together every block (part 2 runs on core 1).
+  - It would tie the two cores together every block (the two cores share every block's voices).
   - Two chords give noise.
 
 **The cost.** The filter's settings must be recomputed every sample instead of once a block. That is about +0.3 to 0.5 points a note (est.).
@@ -556,7 +556,7 @@ Effort: step 2 is about 1 to 2 rounds and can be done off the unit; step 3 is 1 
 | The three own filters and the MULTI FILTER share the Simper SVF | `dsp.c` `tsvf_coef_k`, `tsvf_lp`; `voice.c` `uf_run` | CONFIRMED |
 | ufilt 1 / 2 per engine; routes go to the own filter on ANALOG, TRIO, NOISE | engine tables in `eng_*.c`; `core.h` engine_t.ufilt; SPEC 2.5 | CONFIRMED |
 | MULTI FILTER costs +46.6 / +58.6 / +77.3 / +104 host instructions a sample; device est. +1.8 / +2.6 points | SPEC 2.5 (uf_test.c), docs/CPU_PLAN.md section 2 | measured / device est. |
-| Most factory sounds run the MULTI FILTER (KEY TRK 32) | `budget.c` comment at BD_F12 | CONFIRMED |
+| Most default sounds run the MULTI FILTER (KEY TRK 32) | `budget.c` comment at BD_F12 | CONFIRMED |
 | Voice costs 4.3 to 8.6 points, PHYS 15.7 to 20.8; a note slot 124 B | docs/CPU_PLAN.md section 2 | measured host / device est. |
 | Two cores: M07 49.6 to 35.3 % | release_drafts/BENCHR2_RUN1.md | measured |
 | Free ids 25, 26, 42, 106; P_COUNT 127 | `core.h` (P_ROOT / P_SCALE note, P_ALLOC), `params.c` (PFREE at 106, ALLOC "never read") | CONFIRMED |

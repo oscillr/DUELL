@@ -1,10 +1,10 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
 /* DUELL's PATCH store (SAVE > PATCHES, SPEC 3.6; editor protocol v2, cmds 16-21): ONE list of UP_SLOTS (128) patch slots (owner, 2026-10-15).
- * Slot k holds a SAVED record if one was written (SAVE overwrites the slot it is told to), else the FACTORY sound at browse position k
+ * Slot k holds a SAVED record if one was written (SAVE overwrites the slot it is told to), else the DEFAULT sound at browse position k
  * (sounds.c DS_LIST: category, engine, name = the #NN numbers): a virtual fallback, nothing is written at first boot, a fresh or erased
- * unit shows the factory sounds in all 128 slots. RESTORE removes the record of a slot, so the factory sound comes back; the factory sound
- * a slot falls back to is the one at that position in the INSTALLED firmware (the factory set changes between versions; a saved record
+ * unit shows the default sounds in all 128 slots. RESTORE removes the record of a slot, so the default sound comes back; the default sound
+ * a slot falls back to is the one at that position in the INSTALLED firmware (the default set changes between versions; a saved record
  * stays in its slot number: no compatibility is promised before the alpha). The slot layer is at the end of this file (sl_*).
  * Stored COMPACTLY in sixteen storage.c objects (chunks 0..15: OBJ_PATCH0..5, A/B sector pairs 0xC8000..0xCDFFF USR3's old place, 0xDC000..0xDFFFF
  * Felucca's retired preset banks, 0x9F000 / 0xFE000 the retired FM6 bank's pair; and, DUELL 0.2.15, OBJ_PATCHX0..9 = chunks 6..15 at 0xA6000..0xB9FFF),
@@ -23,7 +23,7 @@
  *   4 u8 flags PTF_*                      5 u8 engine              another chunk exists twice for a moment: the newer wins)
  *   6 u8 category (raw, 0 none)           7 12 bytes name, 0-padded                19 u8 nvalues (the bits set below)
  *   20 PT_VER 4 (ROLL CHAINED storage, 2026-10-29): the values, SPARSE: a PT_VB (20) byte bitmap, a bit per wide id (0..126 the parameter ids, 127 never,
- *      128..155 the extension slots) that differs from its stored default (up_def: the engine's INIT, params.c, as the factory sounds' format, sounds.c;
+ *      128..155 the extension slots) that differs from its stored default (up_def: the engine's INIT, params.c, as the default sounds' format, sounds.c;
  *      a slot's: XTP), then those values in wide id order, each in the bits of its range (param_desc_of: value - min, LSB first; morph.c wv_bits,
  *      bs_put), padded to the byte. Lossless: what a load fits a value to (param_fit) is what is stored. The ranges are part of the format: from the
  *      alpha on they stay as they are (pt_limits_ok)
@@ -74,7 +74,7 @@ _Static_assert(P_COUNT <= UP_PMAX * 2u && P_COUNT < 128, "user preset record: P_
 #define UP_MB_N 7u
 #define UP_MB_AT (UP_CAT_AT - UP_MB_N)
 _Static_assert(P_COUNT <= UP_MB_AT, "user preset record: P_COUNT leaves the morph block its room");
-/* The two bytes before the morph block, packed[134..135], were the SHADOW marker of the 2026-10-11 save flow (a copy of a factory sound
+/* The two bytes before the morph block, packed[134..135], were the SHADOW marker of the 2026-10-11 save flow (a copy of a default sound
  * named its engine + 1 and preset + 1). 0.2.17 has one list of slots and no shadows; since PT_VER 3 the record flag of the marker (16) is PTF_XB, the
  * EXTENSION BLOCK. The bytes stay reserved in up_rec_t */
 #define UP_SH_AT (UP_MB_AT - 2u)
@@ -538,7 +538,7 @@ static const uint8_t *pt_raw(uint32_t k)
 
 /* ---------------------------------------------------------------- the AK block (DUELL: arp, keys, sequencer) ---
  * A patch carries the part's ARP, its chord / voicing keys and its SEQUENCER pattern, so loading it brings them back (up_load, ui.c ds_arp).
- * DUELL 1.0 (owner, 2026-10-21): EVERY patch restores its own arp state, ON and OFF; there are no factory and user kinds. The block is therefore ALWAYS written:
+ * DUELL 1.0 (owner, 2026-10-21): EVERY patch restores its own arp state, ON and OFF; there are no default and user kinds. The block is therefore ALWAYS written:
  * the arp group and the keys group are always present (an arp that is off is the group with all eight values at their defaults, 4 bytes), the SEQ group when the
  * arp mode is SEQ. A record without the block (written by firmware before 1.0, or by the editor's UP_PUT) reads as arp OFF, keys at their defaults, no pattern
  * of its own: the same as a block of defaults. PT_VER stays 3: such a record still reads, with the new rule. The record's last
@@ -909,7 +909,7 @@ static int pt_write(uint32_t c, uint32_t skip, uint32_t n)
     pt_tally();
     return rc;
 }
-/* slot k = r (+ pk), or its record removed (r 0: RESTORE, the factory sound is back), in the chunks and in flash: 0 ok, 2 flash error
+/* slot k = r (+ pk), or its record removed (r 0: RESTORE, the default sound is back), in the chunks and in flash: 0 ok, 2 flash error
  * (nothing changed), 3 no flash (kept in RAM), PT_FULL no room (a guard only) */
 static uint32_t pt_next_rev(uint32_t k) { return pt_dir[k].ch != PT_NOCH ? (uint32_t)pt_dir[k].rev + 1u : 0u; }
 /* slot k := the record already in pt_enc (n bytes, its slot and revision bytes set): the part of pt_put that places and writes it */
@@ -976,7 +976,7 @@ static int up_put_raw(uint32_t k, const uint8_t *rec, uint32_t n)
     return rc;
 }
 /* slot k's stored record without its position: the bytes of the saved record with the slot and revision bytes (2, 3) zero, so the same sound is
- * the same bytes in any slot. Returns its length (0: the slot holds its factory sound, nothing saved); out holds at least PT_WORST bytes */
+ * the same bytes in any slot. Returns its length (0: the slot holds its default sound, nothing saved); out holds at least PT_WORST bytes */
 static uint32_t up_raw_get(uint32_t k, uint8_t *out)
 {
     const uint8_t *p = pt_raw(k);
@@ -1050,7 +1050,7 @@ static void up_boot(void)                      /* persist_boot: the chunks from 
     fvb_boot();                                  /* FM6's voice bank: a staged one finished, its voices */
     ps_boot();                                   /* DUELL: the pattern slots */
     wt_boot();                                   /* DUELL 0.2.14: the user wavetables */
-    up_gen++;                                    /* (the favourites are the slots': a slot with no record is a factory sound, FAV stays) */
+    up_gen++;                                    /* (the favourites are the slots': a slot with no record is a default sound, FAV stays) */
 }
 
 /* RAM only (a test's power-on): no patch stored */
@@ -1229,7 +1229,7 @@ static void ds_seq_lend(track_t *t, const ak_t *a)
 /* record k -> the selected part's sound: engine and every parameter except the track's own (param_kept:
  * the mix, ARP, SCL, the pattern parameters). The steps stay, but for the patch's SEQ pattern (its AK block, lent: above); the
  * record's older pattern is loaded only from SAVE > PATTERNS (up_pat_load). 0 ok, 1 no record (sl_load loads a slot: its record, else
- * its factory sound) */
+ * its default sound) */
 static int up_load(uint32_t k)
 {
     const up_rec_t *r;
@@ -1247,7 +1247,7 @@ static int up_load(uint32_t k)
         fm1_irq_off();                                  /* the audio ISR must not see half a sound */
         t->eng_req = r->engine;
         for (i = 0; i < P_COUNT; i++)
-            if (!param_kept_on(t, i))                   /* (0.2.19: P_TRIM comes with the patch, as a factory sound's does; the MIXER LEVEL stays, with the rest of the mix) */
+            if (!param_kept_on(t, i))                   /* (0.2.19: P_TRIM comes with the patch, as a default sound's does; the MIXER LEVEL stays, with the rest of the mix) */
                 t->p[i] = v[i];
         for (i = 0; i < NX; i++)                        /* the extension slots: the record's, the defaults for what it does not name (up_rec) */
             XV(t, i) = up_xval(r, i);
@@ -1256,7 +1256,7 @@ static int up_load(uint32_t k)
         fm1_irq_on();
         upf_track_load(t, k);                           /* FM6: the preset's own patch (up_fm6.c) */
     }
-    {   /* the patch's own arp / keys / SEQ pattern (its AK block) is lent as the factory sounds' are: the part's own go aside and
+    {   /* the patch's own arp / keys / SEQ pattern (its AK block) is lent as the default sounds' are: the part's own go aside and
          * come back with the next load (ui.c ds_arp / ds_keys, ds_seq_back below). DUELL 1.0: every patch sets them, a patch without the block
          * (an older one, or the editor's UP_PUT copy) as the defaults: arp OFF, no chord keys */
         ak_t a;
@@ -1354,10 +1354,10 @@ __attribute__((unused)) static uint32_t up_count(void)                 /* slots 
 }
 
 /* ================================================================ the slot layer ===
- * ONE list of UP_SLOTS (128) patch slots. Slot k is its saved record if there is one (up_used), else the factory sound at browse position k
- * (sounds.c ds_list_at: category, engine, name = the #NN numbers, #NN = k + 1). Nothing is written for the factory ones (a virtual
- * fallback). With fewer than 128 factory sounds the slots past them are INIT sounds (never in the product: a test checks the 128). */
-static uint8_t sl_te[UP_SLOTS], sl_tk[UP_SLOTS], sl_tn = 0xFFu;   /* the browse list as a table (engine, factory index per position), built once: the factory
+ * ONE list of UP_SLOTS (128) patch slots. Slot k is its saved record if there is one (up_used), else the default sound at browse position k
+ * (sounds.c ds_list_at: category, engine, name = the #NN numbers, #NN = k + 1). Nothing is written for the default ones (a virtual
+ * fallback). With fewer than 128 default sounds the slots past them are INIT sounds (never in the product: a test checks the 128). */
+static uint8_t sl_te[UP_SLOTS], sl_tk[UP_SLOTS], sl_tn = 0xFFu;   /* the browse list as a table (engine, default index per position), built once: the default
                                                                   * table is const, and the lists ask for a slot's sound in loops (plain .bss: the pool is not cleared) */
 static void sl_tab(void)
 {
@@ -1370,7 +1370,7 @@ static void sl_tab(void)
     }
     sl_tn = (uint8_t)(n < UP_SLOTS ? n : UP_SLOTS);
 }
-static int sl_fac(uint32_t k, uint32_t *e, uint32_t *fk)   /* 1: slot k has a factory sound (engine *e, its factory index *fk) */
+static int sl_fac(uint32_t k, uint32_t *e, uint32_t *fk)   /* 1: slot k has a default sound (engine *e, its default index *fk) */
 {
     sl_tab();
     if (k >= sl_tn)
@@ -1404,7 +1404,7 @@ static uint32_t sl_cat(uint32_t k)               /* its category (category.c CAT
         return up_cat(k);
     return sl_fac(k, &e, &fk) ? preset_cat(e, fk) : CAT_OTHER;
 }
-/* slot k -> the selected part: its record, else its factory sound (the ENGINE changes with it, silently: item 157, owner: no page announces an
+/* slot k -> the selected part: its record, else its default sound (the ENGINE changes with it, silently: item 157, owner: no page announces an
  * engine change, the ENGINE page and the footer show the engine). 1 = loaded, 0 = no slot k */
 static int sl_load(uint32_t k)
 {
@@ -1422,7 +1422,7 @@ static int sl_load(uint32_t k)
     apply_preset(fk);
     return 1;
 }
-/* slot k's values as a part would load them (the editor's UP_GET): the record's, or the factory sound's on INIT: the engine's EDIT defaults,
+/* slot k's values as a part would load them (the editor's UP_GET): the record's, or the default sound's on INIT: the engine's EDIT defaults,
  * the sound's pairs, its level and its arp / chord keys. 0 ok */
 static void sl_values(uint32_t k, int16_t *v)
 {
@@ -1444,7 +1444,7 @@ static void sl_values(uint32_t k, int16_t *v)
     }
 }
 
-/* the parts that play slot k (t->user) load its factory sound again once the record is gone (the selected part's PATCHES, the editor's) */
+/* the parts that play slot k (t->user) load its default sound again once the record is gone (the selected part's PATCHES, the editor's) */
 static void sl_reload_parts(uint32_t mask)       /* bit i: part i played a slot whose record is gone */
 {
     uint32_t i, was = song.sel;
@@ -1458,8 +1458,8 @@ static void sl_reload_parts(uint32_t mask)       /* bit i: part i played a slot 
     sync_reload = 1;
     ui.force = 1;
 }
-/* RESTORE: slot k's record removed, its factory sound is back (the parts that played the record play the factory sound). 0 ok (also: it was
- * the factory sound already), 1 bad slot, 2 flash error / transport, 3 no flash (kept in RAM) */
+/* RESTORE: slot k's record removed, its default sound is back (the parts that played the record play the default sound). 0 ok (also: it was
+ * the default sound already), 1 bad slot, 2 flash error / transport, 3 no flash (kept in RAM) */
 static int sl_restore(uint32_t k)
 {
     uint32_t i, m = 0;
@@ -1467,7 +1467,7 @@ static int sl_restore(uint32_t k)
     if (k >= UP_SLOTS)
         return 1;
     if (!up_used(k))
-        return 0;                                    /* (already the factory sound) */
+        return 0;                                    /* (already the default sound) */
     for (i = 0; i < NSHOWN; i++)
         m |= (uint32_t)(trk[i].user == k + 1u) << i;
     rc = up_put(k, 0);
@@ -1501,8 +1501,8 @@ static int sl_restore_all(void)
     return rc;
 }
 
-/* The slot a part's sound is in: its t->user (a saved record loaded; or a restored slot) else the slot whose factory sound it plays and that
- * still holds that factory sound. UP_SLOTS: none (the sound came from no slot: an engine change, the editor, a multi; or its slot was overwritten) */
+/* The slot a part's sound is in: its t->user (a saved record loaded; or a restored slot) else the slot whose default sound it plays and that
+ * still holds that default sound. UP_SLOTS: none (the sound came from no slot: an engine change, the editor, a multi; or its slot was overwritten) */
 static uint32_t slot_of(const track_t *t)
 {
     uint32_t e = t->eng_req % NENGINES, r;
@@ -1511,7 +1511,7 @@ static uint32_t slot_of(const track_t *t)
     r = ds_list_rank(e, t->preset);
     return r < UP_SLOTS && !up_used(r) ? r : UP_SLOTS;
 }
-/* where SAVE offers to write part t's sound: its slot; else the slot its factory sound belongs to (even if that holds a record now); else #1 */
+/* where SAVE offers to write part t's sound: its slot; else the slot its default sound belongs to (even if that holds a record now); else #1 */
 static uint32_t slot_home(const track_t *t)
 {
     uint32_t r;
@@ -1527,8 +1527,9 @@ static void up_adopt(uint32_t pi, uint32_t k)    /* part pi's sound was written 
 {
     trk[pi].user = (uint8_t)(k + 1u);
     mph[pi].user = trk[pi].user;                        /* (the morph still belongs to this sound) */
+    foot_mu &= (uint8_t)~(1u << pi);                    /* (1.3.x: saved: an exact patch now, the footer names it) */
 }
-/* part pi's sound -> slot k, overwriting what is there. Its name: the sound's own (a factory sound's, the slot it came from's); a sound that
+/* part pi's sound -> slot k, overwriting what is there. Its name: the sound's own (a default sound's, the slot it came from's); a sound that
  * has none (INIT) gets the engine's automatic name. Its category: the sound's. The record carries End B (morph block), the arp / keys /
  * SEQ pattern (AK block) and an FM6 sound's patch. 0 saved, else up_put's result */
 static uint8_t both_names;                       /* 1 while both parts are saved at once: the dialog's RENAME does not apply */
@@ -1544,7 +1545,7 @@ static int up_patch_save_part(uint32_t pi, uint32_t k)
         return 1;
     if (save_nm[0] && !both_names)                      /* 0.2.21: RENAME in the SAVE dialog (one part only) */
         str_cpy(nm, save_nm, sizeof nm);
-    else if (t->user)                                   /* its slot's name; else the factory sound it plays */
+    else if (t->user)                                   /* its slot's name; else the default sound it plays */
         sl_name((uint32_t)t->user - 1u, nm);
     else
         str_cpy(nm, ds_name(t->eng_req % NENGINES, t->preset), 13);
@@ -1593,7 +1594,7 @@ static void patch_save_do(uint32_t both)
 
 /* ---- RESTORE (SAVE > TOOLS: RESTORE ALL; the PATCHES page's K4 RESTORE and its dialog are removed: patch_restore_do stays, the host tests call it) ---- */
 /* K4 RESTORE (owner, 2026-10-26): the selected part loads the SAVED version of the slot it plays again, its unsaved edits gone (one undo:
- * load_begin in up_load / apply_preset). The saved record is never touched or deleted, the factory sound only comes for a slot that holds none */
+ * load_begin in up_load / apply_preset). The saved record is never touched or deleted, the default sound only comes for a slot that holds none */
 static void patch_restore_do(uint32_t k)
 {
     char l[6];
@@ -1629,7 +1630,7 @@ static void up_ui_named(uint32_t op, uint32_t k, const char *name, uint32_t cat)
     int rc;
     up_slot_label(l, k);
     if (op == 3u && !up_used(k)) {
-        ui_message("FACTORY SOUND");
+        ui_message("DEFAULT SOUND");
         return;
     }
     if (op && (song.playing || transport_req == 1u)) {    /* (up_put refuses too) */

@@ -14,7 +14,7 @@ int main(void)
     menu_item_t it;
     uint8_t a[3] = {11, 0, 64};
     reset();
-    settings_defaults(favorites.factory[15]);
+    settings_defaults(favorites.defaults[15]);
     for (i = 0; i < 127u; i++) {
         n = menu_desc(i, &it);
         if (n > 10u) {

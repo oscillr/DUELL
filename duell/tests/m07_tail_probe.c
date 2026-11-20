@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 /* DUELL 0.2.29 diagnosis (owner, T0226): the tail of M07 FINAL REEL (#58 BRASS PAD + #54 STRING MACH, LAYER, a hall) "cut like a noise gate".
- * The factory multi loaded as the LOAD page does it (MODE RECALL), MASTER at the default (2048), both parts a 3-note chord 3 s, released, 10 s.
+ * The default multi loaded as the LOAD page does it (MODE RECALL), MASTER at the default (2048), both parts a 3-note chord 3 s, released, 10 s.
  * Per 100 ms: the output (dBFS of 16 bit), the dry mid ((mix_l + mix_r) / 2: the HALL side cancels) and the wet bus (wet + the HALL side, left),
  * in the units before MASTER (32767 = 0 dBFS), and the voices sounding. build/host/m07_tail_probe [slot0] */
 #define UI_TEST_NO_MAIN 1

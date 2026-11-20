@@ -26,7 +26,7 @@ export async function rawInfo(u, slot) {                         // -> { saved, 
   if (a[2]) throw rcError(a[2]);
   return { saved: !!a[3], len: a[4] | a[5] << 7, crc: bkR32(a, 6) };
 }
-export async function rawRead(u, slot) {                         // -> null (the slot holds its factory sound) or the record's bytes (CRC checked)
+export async function rawRead(u, slot) {                         // -> null (the slot holds its default sound) or the record's bytes (CRC checked)
   const info = await rawInfo(u, slot);
   if (!info.saved) return null;
   const out = new Uint8Array(info.len);
@@ -52,7 +52,7 @@ export async function rawWrite(u, slot, bytes, onProgress = () => {}) {   // beg
   } catch (e) { await u.req(CMD.PATCH_RAW, [5, slot]).catch(() => {}); throw e; }
 }
 
-// ---- reading slots into items. A saved slot is its record (lossless); a slot that holds its factory sound is an approximate copy of its values (UP_GET)
+// ---- reading slots into items. A saved slot is its record (lossless); a slot that holds its default sound is an approximate copy of its values (UP_GET)
 export async function upGet(u, slot) { return parseUpGet(await u.req(CMD.UP_GET, [slot], 3000), L.P_COUNT); }
 export async function readItem(u, slot, listed) {
   const li = listed ?? u.slots?.[slot];
@@ -130,7 +130,7 @@ export function makePlan(u, items, targets) {
   return { writes, problems, savedLost: writes.filter((w) => w.replaces.saved).length };
 }
 export const confirmLines = (plan, max = 12) => {
-  const lines = plan.writes.slice(0, max).map((w) => `${w.replaces.label} ${w.replaces.saved ? `"${w.replaces.name}" (saved)` : `"${w.replaces.name}" (factory sound)`} becomes "${w.item.name}"`);
+  const lines = plan.writes.slice(0, max).map((w) => `${w.replaces.label} ${w.replaces.saved ? `"${w.replaces.name}" (saved)` : `"${w.replaces.name}" (defaults sound)`} becomes "${w.item.name}"`);
   if (plan.writes.length > max) lines.push(`... and ${plan.writes.length - max} more slots.`);
   return lines;
 };
@@ -158,16 +158,16 @@ export async function runPlan(u, plan, { safety = null, safetyAt = 4, onProgress
   return res;
 }
 
-// ---- copy, move, swap. What a slot "holds" for these is its saved record; a slot on its factory sound holds nothing of the user's.
-//   copy a -> b: b becomes a (a record whole; a factory sound as an approximate copy)
-//   swap a <-> b: two saved records change places; a saved record and a factory slot: the record moves (the old place shows its own factory sound again, b's
-//   factory sound is not carried over); two factory slots: nothing to swap
-// a stored patch's CATEGORY (0.2.25): the record read whole, byte 6 changed, written whole (the unit checks it at commit); a factory slot cannot be given one
+// ---- copy, move, swap. What a slot "holds" for these is its saved record; a slot on its default sound holds nothing of the user's.
+//   copy a -> b: b becomes a (a record whole; a default sound as an approximate copy)
+//   swap a <-> b: two saved records change places; a saved record and a default slot: the record moves (the old place shows its own default sound again, b's
+//   default sound is not carried over); two default slots: nothing to swap
+// a stored patch's CATEGORY (0.2.25): the record read whole, byte 6 changed, written whole (the unit checks it at commit); a default slot cannot be given one
 export async function setCategory(u, slot, cat) {
   if (!hasRaw(u)) throw new UnitError("Changing a category needs firmware 0.2.19 or newer.");
   if (!(cat >= 1 && cat < CATEGORIES.length)) throw new UnitError("Pick a category.");
   const rec = await rawRead(u, slot);
-  if (!rec) throw new UnitError("This slot holds a factory sound: its category is fixed. Store a sound in it first.");
+  if (!rec) throw new UnitError("This slot holds a default sound: its category is fixed. Store a sound in it first.");
   if (rec[6] === cat) return;
   const b = rec.slice(); b[6] = cat;
   await rawWrite(u, slot, b);
@@ -175,7 +175,7 @@ export async function setCategory(u, slot, cat) {
 }
 // SAVE TO UNIT from the PATCHES form: the patch in slot `src` (read whole, as the unit holds it) is stored in slot `dst` under `name` and `cat`. Nothing of the
 // parts is read or sent: the sound a part plays has no say in it. A saved patch is its record with the name (bytes 7..18) and the category (byte 6) changed
-// and written back through PATCH_RAW; a factory sound goes as the copy of its values (UP_PUT, as in a copy). The result is read back.
+// and written back through PATCH_RAW; a default sound goes as the copy of its values (UP_PUT, as in a copy). The result is read back.
 export async function saveAs(u, src, dst, { name, cat = null } = {}) {
   const nm = String(name ?? "").replace(/[^ -~]/g, "").trim().slice(0, 12);
   if (!nm) throw new UnitError("Give the patch a name (1 to 12 characters).");
@@ -211,11 +211,11 @@ export async function swapSlots(u, a, b) {
   await u.listSlots();
   return { moved: true, both: sa && sb };
 }
-// move a saved patch: written to b (what b held is gone), read back, and a shows its own factory sound again
+// move a saved patch: written to b (what b held is gone), read back, and a shows its own default sound again
 export async function moveSlot(u, a, b) {
   u.guard();
   const it = await readItem(u, a);
-  if (!u.slots[a].saved) throw new UnitError(`#${a + 1} holds a factory sound; there is nothing to move.`);
+  if (!u.slots[a].saved) throw new UnitError(`#${a + 1} holds a default sound; there is nothing to move.`);
   await writeItem(u, b, it);
   if (!(await verifyItem(u, b, it))) throw new UnitError(`The patch in #${b + 1} did not read back the same; #${a + 1} was left as it is.`);
   await restoreQuiet(u, a);
@@ -229,7 +229,7 @@ export function swapLines(u, a, b) {
   const x = describeSlot(u, a), y = describeSlot(u, b);
   if (x.saved && y.saved) return [`${x.label} "${x.name}" and ${y.label} "${y.name}" change places.`];
   const [from, to] = x.saved ? [x, y] : [y, x];
-  return [`${from.label} "${from.name}" moves to ${to.label}, replacing "${to.name}" (a factory sound).`, `${from.label} shows its own factory sound again ("${from.name}" is no longer there). Restore brings back a factory sound.`];
+  return [`${from.label} "${from.name}" moves to ${to.label}, replacing "${to.name}" (a default sound).`, `${from.label} shows its own default sound again ("${from.name}" is no longer there). Restore brings back a default sound.`];
 }
 
 // ---- a patch into a PART, live, without saving anywhere (a drop on a part column). The part gets the sound the way the unit loads a slot (ui.c param_kept): every

@@ -8,7 +8,7 @@
 //   1         the settings record (palette, LEDs, HOLD, button map, favourites, MENU, MIDI learn)
 //   40 + slot the saved patches, ONE PATCH AT A TIME as logical records (job A of the cloud plan, INFO 42 01 caps bit 5, value 32): the record PATCH_RAW moves, 20..534 bytes,
 //             its slot and revision bytes 0 (a patch is the same bytes in any slot). The wire id is 40 and the slot a byte after it; in memory a patch is the Map key 1000 + slot
-//             (patchKey / patchSlot), so the rest of the code keeps numeric ids. A slot that holds its factory sound has no record. Listed by LIST page 1..4, not by the plain LIST
+//             (patchKey / patchSlot), so the rest of the code keeps numeric ids. A slot that holds its default sound has no record. Listed by LIST page 1..4, not by the plain LIST
 //   6 7 9..12 27..31 35..39  the patch store's PHYSICAL chunks of before (DUELL 0.2.14 .. 0.2.25): gone from the unit's ids; a file of version 1..4 may carry them, it is read
 //             and they are kept out of the patches (they are of the old record and chunk format and cannot go to a unit with the new store)
 //   13..20    the multis, two to an object, M01-02 .. M15-16 (magic MUL1; DUELL 0.2.14, INFO 42 01 caps bit 2)
@@ -109,7 +109,7 @@ export function decodePatches(objects) {
   for (const [key, b] of objects) if (isPatchKey(key) && b && b.length >= REC_FIX) out.push({ slot: patchSlot(key), name: text(b, 7, 12), engine: b[5], category: CATEGORIES[b[6]] || "-" });
   return out.sort((a, c) => a.slot - c.slot);
 }
-// multi objects (index = id - 13) -> [{label: "M01", name}] for the records that are stored (an empty record shows the factory multi, or nothing)
+// multi objects (index = id - 13) -> [{label: "M01", name}] for the records that are stored (an empty record shows the default multi, or nothing)
 export function decodeMultis(objects) {
   const out = [];
   objects.forEach((b, o) => {

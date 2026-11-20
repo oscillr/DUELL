@@ -185,7 +185,7 @@ static void test_control(void)
         for (i = 1; i < 128; i++)
             if (abs((int)LOCUT_HZ[i] - 300) < abs((int)LOCUT_HZ[best] - 300))
                 best = i;
-        snprintf(w, sizeof w, "the default is the value closest to 300 Hz: %u = %u Hz (the factory multis hold it too)", best, LOCUT_HZ[best]);
+        snprintf(w, sizeof w, "the default is the value closest to 300 Hz: %u = %u Hz (the default multis hold it too)", best, LOCUT_HZ[best]);
         check(w, best == GP[G_RLOCUT].def && best == 75u && LOCUT_HZ[best] == 299u);
     }
 }

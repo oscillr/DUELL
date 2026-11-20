@@ -9,16 +9,16 @@
  *    ends (voice.c engine_t.done) once its carriers have gone silent, not before.
  * 3. retrigger: a note from silence renders the same samples twice (bit-stable); the same key again while it
  *    sounds keeps going without a jump.
- * 4. no DC, no clipping: every factory patch, notes C1..C7 at velocity 127 and 30: no voice beyond 2 x
+ * 4. no DC, no clipping: every default patch, notes C1..C7 at velocity 127 and 30: no voice beyond 2 x
  *    VOICE_FS, |mean| < 1 % of VOICE_FS.
  * 5. macros: MLVL, MRAT, FB raise the spectral centroid; MEG + keeps it up longer; VMOD + makes velocity count
  *    more; DTUN spreads the carriers (beats); ALG puts another algorithm in; PTCH loads its patch (main loop).
- * 6. formats: pack(unpack(x)) == x for the factory patches (the Python generator and the C packer agree), any
+ * 6. formats: pack(unpack(x)) == x for the default patches (the Python generator and the C packer agree), any
  *    128 bytes unpack into range, a 32-voice SysEx bank and a single-voice SysEx made here parse back
  *    (checksums) into the same patches; the patch survives a project (FUN8) round trip with the same sound.
  * 7. cost: host instructions per sample and voice with six voices held (the heaviest: six carriers), and the
  *    device estimate (1.7 % per 100: the PHYS measurements' ratio, as drum_test); fails above FM6_COST_MAX.
- * 8. demos into DEMODIR: every factory preset playing its suggested pattern. */
+ * 8. demos into DEMODIR: every default preset playing its suggested pattern. */
 #define main hostsim_main
 #include "hostsim.c"
 #undef main
@@ -73,7 +73,7 @@ static void setup(const uint8_t *v, const int16_t *e)
     trk[0].p[P_E7] = (int16_t)(e ? e[7] : 0);
     fm6_set_patch(0, v);
     fm6_env_look(0, FM6_LOOK_NEW);   /* item 138: DUELL 1.1 FM6_ENV_MAP: the AMP ENV knobs are the carriers' DX7 numbers; a new patch puts them on its own numbers (as a sound load does), else the
-                                      * knobs left from the factory sound host_preset loaded offset this patch's rates and levels */
+                                      * knobs left from the default sound host_preset loaded offset this patch's rates and levels */
     fm6_slot[0] = (uint8_t)trk[0].p[P_E7];
     trk[0].p[P_VOICE] = V_POLY;
     trk[0].p[P_CHOR] = trk[0].p[P_DLY] = trk[0].p[P_REV] = 0;
@@ -258,7 +258,7 @@ static void retrigger(void)
     static double a[FS], b[FS];
     uint32_t i, same = 1;
     double jump = 0;
-    fm6_unpack(FM6_FACTORY[0], base);
+    fm6_unpack(FM6_DEFAULT[0], base);
     setup(base, 0);
     fm6_voice_render(60, 100, a, FS, FS / 2);
     setup(base, 0);
@@ -271,7 +271,7 @@ static void retrigger(void)
         static int32_t blk[CTL];
         double prev = 0, maxstep = 0, at = 0;
         uint32_t k;
-        fm6_unpack(FM6_FACTORY[6], base);              /* ORGAN: sustained */
+        fm6_unpack(FM6_DEFAULT[6], base);              /* ORGAN: sustained */
         setup(base, 0);
         trk_note_on(&trk[0], 60, 100);
         for (i = 0; i < FS / 2u / CTL; i++) {
@@ -298,12 +298,12 @@ static void dc_clip(void)
     static double y[FS];
     uint32_t pi, note, v, ok = 1, okdc = 1;
     double worst = 0, wdc = 0;
-    for (pi = 0; pi < FM6_NFACTORY; pi++)
+    for (pi = 0; pi < FM6_NDEFAULT; pi++)
         for (note = 24; note <= 96; note += 12)
             for (v = 0; v < 2u; v++) {
                 double s = 0, pk = 0;
                 uint32_t i;
-                fm6_unpack(FM6_FACTORY[pi], base);
+                fm6_unpack(FM6_DEFAULT[pi], base);
                 setup(base, 0);
                 fm6_voice_render(note, v ? 127 : 30, y, FS, FS * 6u / 10u);
                 for (i = 0; i < FS; i++) {
@@ -315,9 +315,9 @@ static void dc_clip(void)
                 worst = pk > worst ? pk : worst;
                 wdc = fabs(s / FS) > wdc ? fabs(s / FS) : wdc;
             }
-    printf("fm6: factory patches C1..C7, velocity 30 / 127: peak %.0f (VOICE_FS %d), |mean| at most %.1f\n", worst,
+    printf("fm6: default patches C1..C7, velocity 30 / 127: peak %.0f (VOICE_FS %d), |mean| at most %.1f\n", worst,
            VOICE_FS, wdc);
-    check("no clipping: every factory patch, C1..C7, velocity 30 and 127: a voice below 2 x VOICE_FS", ok);
+    check("no clipping: every default patch, C1..C7, velocity 30 and 127: a voice below 2 x VOICE_FS", ok);
     check("no DC: |mean| below 1 % of VOICE_FS", okdc);
 }
 
@@ -553,7 +553,7 @@ static void macros(void)
         printf("fm6: DTUN 0 / 127 (3 carriers): level swing over 50 ms windows %.3f / %.3f\n", v0, v1);
         check("DTUN: the carriers apart: they beat", v1 > v0 * 1.05);
     }
-    {   /* SLOT: the main loop loads a factory patch; OWN keeps (and brings back) the track's own */
+    {   /* SLOT: the main loop loads a default patch; OWN keeps (and brings back) the track's own */
         uint8_t own[FP_SIZE + 1u];
         setup(base, 0);
         memcpy(own, fm6_patch[0], sizeof own);
@@ -563,27 +563,27 @@ static void macros(void)
               !memcmp(fm6_patch[0], own, FP_SIZE));
         trk[0].p[P_E7] = 4;
         fm6_poll();
-        check("SLOT F5 loads the fifth factory patch (main loop)", fm6_slot[0] == 4u &&
+        check("SLOT F5 loads the fifth default patch (main loop)", fm6_slot[0] == 4u &&
               !memcmp(fm6_patch[0] + FP_NAME, "SOFT PAD  ", 10));
         trk[0].p[P_E7] = FM6_OWN;
         fm6_poll();
         check("SLOT back to OWN: the own patch again", fm6_slot[0] == FM6_OWN && !memcmp(fm6_patch[0], own, FP_SIZE));
         check("SLOT: F1..F8, OWN, B1..B32 (1.4.1, the voice bank), then F9..F11 behind the bank (0.2.17), nothing past it",
-              ENG_FM6.edit[7].max == FM6_OWN + FM6_NBANK + FM6_NXF && FM6_OWN == FM6_NFACTORY && FM6_NBANK == 32u && FM6_NXF == 3u &&
+              ENG_FM6.edit[7].max == FM6_OWN + FM6_NBANK + FM6_NXF && FM6_OWN == FM6_NDEFAULT && FM6_NBANK == 32u && FM6_NXF == 3u &&
               !strcmp(ENG_FM6.edit[7].names[FM6_OWN], "OWN") && !strcmp(ENG_FM6.edit[7].names[FM6_OWN + 1], "B1") &&
               !strcmp(ENG_FM6.edit[7].names[FM6_OWN + FM6_NBANK], "B32") && !strcmp(ENG_FM6.edit[7].names[FM6_XBASE], "F9") &&
               !strcmp(ENG_FM6.edit[7].names[FM6_XBASE + 2u], "F11") && !ENG_FM6.edit[7].names[FM6_XBASE + FM6_NXF]);
-        {   /* 0.2.17: the factory patches behind the bank load like F1..F8; the stored SLOT values of OWN and the bank are untouched */
+        {   /* 0.2.17: the default patches behind the bank load like F1..F8; the stored SLOT values of OWN and the bank are untouched */
             uint8_t v[FP_SIZE + 1u];
             uint32_t x;
             for (x = 0; x < FM6_NXF; x++) {
                 trk[0].p[P_E7] = (int16_t)(FM6_XBASE + x);
                 fm6_poll();
-                fm6_unpack(FM6_XFACTORY[x], v);
-                check("SLOT F9.. (behind the bank) loads its own factory patch", fm6_slot[0] == FM6_XBASE + x && !memcmp(fm6_patch[0], v, FP_SIZE));
+                fm6_unpack(FM6_XDEFAULT[x], v);
+                check("SLOT F9.. (behind the bank) loads its own default patch", fm6_slot[0] == FM6_XBASE + x && !memcmp(fm6_patch[0], v, FP_SIZE));
                 check("  and a patch equal to it shows as that slot (project load: fm6_adopt_slot)", fm6_adopt_slot(v, 0) == (int32_t)(FM6_XBASE + x));
             }
-            check("  F9 FM BASS 2, F11 FRETLESS (the sounds' voices): the names", !memcmp(FM6_XFACTORY[0] + 118, "FM BASS 2 ", 10));
+            check("  F9 FM BASS 2, F11 FRETLESS (the sounds' voices): the names", !memcmp(FM6_XDEFAULT[0] + 118, "FM BASS 2 ", 10));
             check("  a stored SLOT above OWN is OWN (params.c param_fit)", param_fit(&ENG_FM6.edit[7], (int32_t)FM6_XBASE) == (int32_t)FM6_OWN &&
                   param_fit(&ENG_FM6.edit[7], 3) == 3);
             check("  the SLOT knob (no bank here): OWN up goes on to F9, F11 is the end, F9 down is OWN again",
@@ -601,19 +601,19 @@ static void macros(void)
         trk[0].p[P_E7] = 2;                          /* a load that says F3 with F3 unchanged: F3; edited: OWN */
         {
             uint8_t v[FP_SIZE + 1u];
-            fm6_unpack(FM6_FACTORY[2], v);
+            fm6_unpack(FM6_DEFAULT[2], v);
             fm6_set_patch(0, v);
             fm6_adopt(0);
-            check("fm6_adopt: a factory patch unchanged shows its slot", trk[0].p[P_E7] == 2 && fm6_slot[0] == 2u);
+            check("fm6_adopt: a default patch unchanged shows its slot", trk[0].p[P_E7] == 2 && fm6_slot[0] == 2u);
             v[FP_ALG] ^= 1;
             fm6_set_patch(0, v);
             fm6_adopt(0);
             check("fm6_adopt: edited, it is the track's own (OWN)", trk[0].p[P_E7] == FM6_OWN && fm6_slot[0] == FM6_OWN);
-            trk[0].p[P_E7] = FM6_NFACTORY + 3;       /* (a stored B4 of 1.0.2) */
-            fm6_unpack(FM6_FACTORY[6], v);
+            trk[0].p[P_E7] = FM6_NDEFAULT + 3;       /* (a stored B4 of 1.0.2) */
+            fm6_unpack(FM6_DEFAULT[6], v);
             fm6_set_patch(0, v);
             fm6_adopt(0);
-            check("fm6_adopt: an old B slot holding factory F7 shows F7", trk[0].p[P_E7] == 6);
+            check("fm6_adopt: an old B slot holding default F7 shows F7", trk[0].p[P_E7] == 6);
         }
     }
 }
@@ -632,15 +632,15 @@ static void formats(void)
     uint8_t v[FP_SIZE + 1u], pk[FM6_PACKED];
     static uint8_t bank[4104], single[163];
     uint32_t i, k, ok = 1, inrange = 1, seed = 12345;
-    for (k = 0; k < FM6_NFACTORY; k++) {
-        fm6_unpack(FM6_FACTORY[k], v);
+    for (k = 0; k < FM6_NDEFAULT; k++) {
+        fm6_unpack(FM6_DEFAULT[k], v);
         fm6_pack(v, pk);
-        ok &= !memcmp(pk, FM6_FACTORY[k], FM6_PACKED);
+        ok &= !memcmp(pk, FM6_DEFAULT[k], FM6_PACKED);
     }
     fm6_unpack(FM6_INIT, v);
     fm6_pack(v, pk);
     ok &= !memcmp(pk, FM6_INIT, FM6_PACKED);
-    check("pack(unpack(x)) == x: the factory patches and the init voice (generator and C agree)", ok);
+    check("pack(unpack(x)) == x: the default patches and the init voice (generator and C agree)", ok);
     for (k = 0; k < 2000u; k++) {
         for (i = 0; i < FM6_PACKED; i++) {
             seed = seed * 1103515245u + 12345u;
@@ -654,18 +654,18 @@ static void formats(void)
     /* a 32-voice bank SysEx (the generic 6-operator layout): F0 43 00 09 20 00, 4096 bytes, checksum, F7 */
     bank[0] = 0xF0; bank[1] = 0x43; bank[2] = 0x00; bank[3] = 0x09; bank[4] = 0x20; bank[5] = 0x00;
     for (k = 0; k < 32u; k++)
-        memcpy(bank + 6 + k * 128u, k < FM6_NFACTORY ? FM6_FACTORY[k] : FM6_INIT, 128);
+        memcpy(bank + 6 + k * 128u, k < FM6_NDEFAULT ? FM6_DEFAULT[k] : FM6_INIT, 128);
     bank[4102] = (uint8_t)chk(bank + 6, 4096);
     bank[4103] = 0xF7;
     ok = (uint32_t)chk(bank + 6, 4096) == bank[4102];
     for (k = 0; k < 32u; k++) {
         fm6_unpack(bank + 6 + k * 128u, v);
         fm6_pack(v, pk);
-        ok &= !memcmp(pk, k < FM6_NFACTORY ? FM6_FACTORY[k] : FM6_INIT, 128);
+        ok &= !memcmp(pk, k < FM6_NDEFAULT ? FM6_DEFAULT[k] : FM6_INIT, 128);
     }
     check("a 32-voice bank SysEx: checksum, its 32 records back as they were", ok);
     /* a single voice: F0 43 00 00 01 1B, the 155 bytes, checksum, F7 */
-    fm6_unpack(FM6_FACTORY[3], v);
+    fm6_unpack(FM6_DEFAULT[3], v);
     single[0] = 0xF0; single[1] = 0x43; single[2] = 0x00; single[3] = 0x00; single[4] = 0x01; single[5] = 0x1B;
     memcpy(single + 6, v, FP_SIZE);
     single[161] = (uint8_t)chk(single + 6, FP_SIZE);
@@ -673,7 +673,7 @@ static void formats(void)
     memcpy(v, single + 6, FP_SIZE);
     fm6_sanitize(v);
     fm6_pack(v, pk);
-    check("a single-voice SysEx (155 bytes): back to the same packed record", !memcmp(pk, FM6_FACTORY[3], 128) &&
+    check("a single-voice SysEx (155 bytes): back to the same packed record", !memcmp(pk, FM6_DEFAULT[3], 128) &&
           single[161] == chk(single + 6, FP_SIZE));
 }
 
@@ -682,7 +682,7 @@ static void voices(void)
 {
     uint32_t i, n = 0;
     static int32_t b[CTL];
-    fm6_unpack(FM6_FACTORY[4], base);
+    fm6_unpack(FM6_DEFAULT[4], base);
     setup(base, 0);
     for (i = 0; i < 8u; i++) {
         vs_block();                                     /* (one key a block: item 144's start limit is 3 a block) */
@@ -747,12 +747,12 @@ static void cost(void)
     heavy[FP_FB] = 7;
     idle = mix_cost(heavy, 0);
     printf("fm6: cost, host instructions per sample and voice (6 voices held; device estimate 1.7 %% per 100):\n");
-    for (pi = 0; pi <= FM6_NFACTORY; pi++) {
+    for (pi = 0; pi <= FM6_NDEFAULT; pi++) {
         uint8_t v[FP_SIZE + 1u];
-        if (pi < FM6_NFACTORY)
-            fm6_unpack(FM6_FACTORY[pi], v);
-        c = (mix_cost(pi < FM6_NFACTORY ? v : heavy, 6) - idle) / 6;
-        printf("fm6:   %-12s %5.0f  ~%.2f %%\n", pi < FM6_NFACTORY ? ENG_FM6.presets[pi].name : "(6 carriers)", c, c * 0.017);
+        if (pi < FM6_NDEFAULT)
+            fm6_unpack(FM6_DEFAULT[pi], v);
+        c = (mix_cost(pi < FM6_NDEFAULT ? v : heavy, 6) - idle) / 6;
+        printf("fm6:   %-12s %5.0f  ~%.2f %%\n", pi < FM6_NDEFAULT ? ENG_FM6.presets[pi].name : "(6 carriers)", c, c * 0.017);
         worst = c > worst ? c : worst;
     }
     snprintf(what, sizeof what, "cost: at most %.0f instructions a sample and voice (~%.1f %% on the device, 6 voices ~%.0f %%; limit %.0f)",
@@ -825,9 +825,9 @@ int main(int argc, char **argv)
     if (!getenv("NOCOST"))
         cost();
     if (argc > 1) {
-        for (pi = 0; pi < FM6_NFACTORY; pi++)
+        for (pi = 0; pi < FM6_NDEFAULT; pi++)
             demo(argv[1], pi);
-        printf("fm6: demos in %s: the %u presets, each playing its suggested pattern\n", argv[1], (uint32_t)FM6_NFACTORY);
+        printf("fm6: demos in %s: the %u presets, each playing its suggested pattern\n", argv[1], (uint32_t)FM6_NDEFAULT);
     }
     printf("fm6_test: %s\n", bad ? "FAILED" : "all checks ok");
     return bad != 0;

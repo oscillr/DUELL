@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
 /* The firmware's parameter and engine tables as JSON, from the same sources (through hostsim.c):
- * TP, GP, every engine's page titles, EDIT descriptors and presets, their display order, the factory patterns, the
+ * TP, GP, every engine's page titles, EDIT descriptors and presets, their display order, the default patterns, the
  * power-on sounds and the protocol constants. web/test_web.mjs compares the editor's mock device
  * (web/editor.html makeMockDevice) with it, so the mock cannot drift from the firmware.
  *   build/host/descdump > build/host/desc.json      (run_tests.sh) */
@@ -135,10 +135,10 @@ int main(void)
     printf("],\n\"FM6\":{\"bank\":0,\"own\":%u,\"init\":", (unsigned)FM6_OWN);   /* FM6: the packed patches (no bank since 1.0.3) */
     for (i = 0; i < FM6_PACKED; i++)
         printf("%s%d", i ? "," : "[", FM6_INIT[i]);
-    printf("],\"factory\":[");
-    for (k = 0; k < FM6_NFACTORY; k++)
+    printf("],\"default\":[");
+    for (k = 0; k < FM6_NDEFAULT; k++)
         for (i = 0; i < FM6_PACKED; i++)
-            printf("%s%d%s", i ? "," : k ? ",[" : "[", FM6_FACTORY[k][i], i == FM6_PACKED - 1u ? "]" : "");
+            printf("%s%d%s", i ? "," : k ? ",[" : "[", FM6_DEFAULT[k][i], i == FM6_PACKED - 1u ? "]" : "");
     printf("]}");
     printf(",\n\"PCT\":[");                          /* F_PCT as the firmware shows it (#31: SWG 0..100) */
     for (k = 0, e = 0; k < (uint32_t)P_E0 + G_COUNT; k++) {

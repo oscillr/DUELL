@@ -47,7 +47,7 @@
  * (fm1_flash.h FL_MULTI_*): objects 0..3 at 0x97000..0x9EFFF (the sectors of Felucca's four project slots, OBJ_PROJECT0..3:
  * retired, their numbers kept so no other object's commit records change; st_head / st_save refuse them, so nothing
  * writes there under their name and an old project's record reads as no multi), objects 4..7 at 0xCE000..0xD5FFF.
- * The factory multis M01..M10 (multi.c, build/gen/duell_multis.h) are ROM, not flash: an empty record shows them, a stored one wins. */
+ * The default multis M01..M10 (multi.c, build/gen/duell_multis.h) are ROM, not flash: an empty record shows them, a stored one wins. */
 #define OBJ_FM6VB 32u                          /* the voice bank's commit records (fm6_vbank.c; not an st_load object: OBJ_RETIRED, so
                                                 * st_head / st_save / st_wipe refuse it, and no object here takes its sectors) */
 enum { OBJ_SETTINGS, OBJ_PROJECT0, OBJ_UPRESET0 = OBJ_PROJECT0 + 4, OBJ_FM6BANK = OBJ_UPRESET0 + 2, OBJ_UPFM6,

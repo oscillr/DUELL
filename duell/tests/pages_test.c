@@ -43,7 +43,7 @@ static void fresh(uint32_t eng)
     ui_power_on();
     song.sel = 0;
     set_engine_of(TSEL, eng);
-    {   /* the pages are tested from the plain state: since the 0.2.31 refinement pass the engine's first factory sound (what a power-on part holds) runs filter 2 and the SUB layer */
+    {   /* the pages are tested from the plain state: since the 0.2.31 refinement pass the engine's first default sound (what a power-on part holds) runs filter 2 and the SUB layer */
         static const uint8_t TWP[] = {P_TWTYPE, P_CUT2, P_RES2, P_DRV2, P_BLEND};
         uint32_t k;
         for (k = 0; k < sizeof TWP; k++)
@@ -247,10 +247,10 @@ static void test_pages(void)
                     TSEL->p[P_TWTYPE] = 0;
                 } else if (how == 1u) {
                     project_load(0);
-                    TSEL->p[P_TWTYPE] = 0;                    /* (the factory multis hold no filter 2) */
+                    TSEL->p[P_TWTYPE] = 0;                    /* (the default multis hold no filter 2) */
                 } else if (how == 2u) {
                     init_sound();
-                    TSEL->p[P_TWTYPE] = 0;                    /* (INIT SOUND loads the engine's first factory sound; since the 0.2.31 refinement pass ANALOG's has filter 2 on: the page rule is the test, not that sound) */
+                    TSEL->p[P_TWTYPE] = 0;                    /* (INIT SOUND loads the engine's first default sound; since the 0.2.31 refinement pass ANALOG's has filter 2 on: the page rule is the test, not that sound) */
                 } else {
                     goto_page("TWIN FILTER");
                     turn(EN_K1, -9);

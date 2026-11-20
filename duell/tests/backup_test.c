@@ -383,7 +383,7 @@ int main(void)
         bad += check("restore: the multi object (id 14) commits", put_all(14, m_b, ml, mc) == 0);
         bad += check("restore: M03 and M04 are back by name, used (names, mask updated at once)",
                      project_used(2) && project_used(3) && !strcmp(mu_names[2], "TESTONE") && !strcmp(mu_names[3], "TESTTWO") &&
-                     project_factory(9) && list(14, &len, &crc) == 0 && len == ml && crc == mc);
+                     project_default(9) && list(14, &len, &crc) == 0 && len == ml && crc == mc);
         bad += check("restore: the multi LOADs (its part A step 0)", (host_tracks_init(), project_load(2), trk[0].step[0].note[0] == 62u));
         ps_save_trk(&trk[1], 5, "NEWER");                   /* P6 now in the mirror, dirty: the restore must win over it */
         bad += check("restore: the pattern object (id 21) commits over a dirty mirror", (ps_dirty & 1u) && put_all(21, p_a, pl, pc) == 0 && !(ps_dirty & 1u));
@@ -443,13 +443,13 @@ int main(void)
         transport_req = 1;
         bad += check("PUT of a multi or pattern while PLAY starts is refused (3), as for the others", put_begin(14, ml, mc) == 3u && put_begin(21, pl, pc) == 3u);
         transport_req = 0;
-        /* an empty object restores as empty: the factory multi shows again, the pattern slots are unused */
+        /* an empty object restores as empty: the default multi shows again, the pattern slots are unused */
         reset();
         multi_boot(); ps_boot();
         project_save_as(0, "MINE");
-        bad += check("before: M01 holds a saved multi, not the factory one", project_used(0) && !project_factory(0));
-        bad += check("restore: length 0 for id 13 empties M01 / M02 (the factory multi shows again)",
-                     put_all(13, "", 0, 0) == 0 && project_factory(0) && list(13, &len, &crc) == 0 && len == 0);
+        bad += check("before: M01 holds a saved multi, not the default one", project_used(0) && !project_default(0));
+        bad += check("restore: length 0 for id 13 empties M01 / M02 (the default multi shows again)",
+                     put_all(13, "", 0, 0) == 0 && project_default(0) && list(13, &len, &crc) == 0 && len == 0);
         ps_save_trk(&trk[0], 0, "X");
         bad += check("restore: length 0 for id 21 gives its slots their defaults again (object listed, written at the next quiet pass)",
                      put_all(21, "", 0, 0) == 0 && !ps_changed(0) && (ps_dirty & 1u) && list(21, &len, &crc) == 0 && len == ps_used_len(0) && len > 400u);
@@ -521,15 +521,15 @@ int main(void)
         bad += check("GET of a slot with no record, a slot past 127, a bad count, a missing slot byte: refused (1)",
                      (up_put(9, 0), get_patch(9, 0, 16)) == 1u && get_patch(128, 0, 16) == 1u && get_patch(3, 0, 0) == 1u && get_patch(3, rlen[3] - 1u, 2) == 1u && get_patch(3, 0, 16) == 0u);
         up_store_trk(&trk[0], 9, "B09", 0);
-        {   /* the patches not in a page: a slot that holds its factory sound is not listed */
+        {   /* the patches not in a page: a slot that holds its default sound is not listed */
             up_put(9, 0);
             call(ED_BACKUP_LIST, 0, 0);
             ok = list_page(1) == 0 && rep[2] == ED_BK_PPAGE - 1u;
-            bad += check("a slot with no record (its factory sound) is not listed", ok);
+            bad += check("a slot with no record (its default sound) is not listed", ok);
         }
         for (k = 0; k < UP_SLOTS; k++)
             up_put(k, 0);
-        bad += check("  the store erased: no saved patch, every slot its factory sound again", up_count() == 0u && !up_used(5u));
+        bad += check("  the store erased: no saved patch, every slot its default sound again", up_count() == 0u && !up_used(5u));
         for (k = 0, ok = 1; k < UP_SLOTS; k++)
             ok &= k == 9u || put_patch(k, rec[k], rlen[k], rcrc[k]) == 0;
         same = 0;
@@ -578,8 +578,8 @@ int main(void)
             bad += check("bad patch records (block length, XV version, a record of before 0.2.14, CRC, cut short, too long or short, a slot past 127, PLAY starting) are refused; the store is as it was",
                          ok && up_count() == UP_SLOTS - 1u && erases == e0 && up_raw_get(kx, got) == rlen[kx] && !memcmp(got, rec[kx], rlen[kx]));
         }
-        /* length 0: the slot's record removed, its factory sound is back */
-        bad += check("PUT of length 0 for a slot: its record is removed, the factory sound is back (as RESTORE)",
+        /* length 0: the slot's record removed, its default sound is back */
+        bad += check("PUT of length 0 for a slot: its record is removed, the default sound is back (as RESTORE)",
                      put_patch(5, rec[5], 0, 0) == 0 && !up_used(5u) && up_count() == UP_SLOTS - 2u);
         put_patch(5, rec[5], rlen[5], rcrc[5]);
         /* the worst record into all 128 slots through PUT */

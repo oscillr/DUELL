@@ -3,14 +3,14 @@
 #define FELUCCA_FAVORITES 1
 /* Stable engine/preset references; fixed capacity independent of optional engines. */
 typedef struct {
-    uint8_t factory[16][32]; /* engine 0..15, preset 0..255 */
+    uint8_t defaults[16][32]; /* engine 0..15, preset 0..255 */
     uint32_t user, filter;   /* user: the stored patches 0..31 (bits); filter: the FAV list */
     uint32_t user_hi[3];     /* DUELL: the stored patches 32..127 (the store has 128 slots); appended, so settings of before still read */
 } favorites_t;
 /* the word and bit of stored patch k */
 #define FAV_USER_WORD(k) ((k) < 32u ? &favorites.user : &favorites.user_hi[(k) / 32u - 1u])
 static favorites_t favorites __attribute__((section(".pool")));
-/* the byte holding factory sound `preset` of `engine`'s flag, 0 = none. Row e is engine e's, except: row 14 is the MIDI LEARN map
+/* the byte holding default sound `preset` of `engine`'s flag, 0 = none. Row e is engine e's, except: row 14 is the MIDI LEARN map
  * (midi_learn.c) and row 15 the settings bytes, so WAVE (engine 14, DUELL) keeps its flags in bytes 16..31 of row 1, DIGITAL's
  * retired row (DIGITAL, engine 1, is gone: its byte 0 is cleared on import, settings_persist.c; its bytes 16..31 were never written, so every older
  * setting holds no WAVE flag there (128 sounds)) */
@@ -19,8 +19,8 @@ static favorites_t favorites __attribute__((section(".pool")));
 static uint8_t *fav_byte(uint32_t engine, uint32_t preset)
 {
     if (engine == ENGI_WAVE)
-        return preset < 8u * (32u - FAV_WAVE_AT) ? &favorites.factory[FAV_WAVE_ROW][FAV_WAVE_AT + preset / 8u] : 0;
-    return engine < NENGINES && engine < 14u && preset < 256u ? &favorites.factory[engine][preset / 8u] : 0;
+        return preset < 8u * (32u - FAV_WAVE_AT) ? &favorites.defaults[FAV_WAVE_ROW][FAV_WAVE_AT + preset / 8u] : 0;
+    return engine < NENGINES && engine < 14u && preset < 256u ? &favorites.defaults[engine][preset / 8u] : 0;
 }
 static int favorite_has(uint32_t engine, uint32_t preset)
 {

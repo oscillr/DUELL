@@ -52,7 +52,7 @@ export async function writeObject(u, id, b) {
 }
 
 // ---- multis
-export function multiRecord(obj, slot) {                    // slot 0..15 -> the record's bytes, or null (not stored: an empty or factory slot)
+export function multiRecord(obj, slot) {                    // slot 0..15 -> the record's bytes, or null (not stored: an empty or default slot)
   if (!obj || obj.length < 8) return null;
   const l = [u16(obj, 4), u16(obj, 6)], h = slot & 1;
   return l[h] ? obj.slice(8 + (h ? l[0] : 0), 8 + (h ? l[0] : 0) + l[h]) : null;

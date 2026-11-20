@@ -3,7 +3,7 @@
 **MultiMorphing Bitimbral Synthesizer**  
 **by OSCILL/R**
 
-**Two synths in one small box.** DUELL is free, open-source firmware (GPL-3.0) for the M-VAVE FM-1. It turns the FM-1 into a bitimbral instrument: two complete parts, three ways to play them together, and a morph that glides between two versions of every sound. This is **DUELL 1.3.2**.
+**Two synths in one small box.** DUELL is free, open-source firmware (GPL-3.0) for the M-VAVE FM-1. It turns the FM-1 into a bitimbral instrument: two complete parts, three ways to play them together, and a morph that glides between two versions of every sound. This is **DUELL 1.3.3**.
 
 **Try it in your browser, no FM-1 needed:** <https://oscillr.github.io/DUELL/emu/>
 
@@ -18,7 +18,7 @@
 3. While the new firmware is written, the unit shows the **update screen**: the DUELL word over moving wave lines, WRITING, a percent number, a bar of 20 segments and DO NOT SWITCH OFF. Do not unplug until it is done. If the screen stays dark the write may still be running: wait for the installer to say Done.
 4. Details, the checklist and the way back to the official firmware: [docs/INSTALL.md](docs/INSTALL.md). If something goes wrong: [docs/RECOVERY.md](docs/RECOVERY.md).
 
-The package is `duell-1.3.2.fwsc` (compare its SHA-256 with `SHA256SUMS` on the release page).
+The package is `duell-1.3.3.fwsc` (compare its SHA-256 with `SHA256SUMS` on the release page).
 
 ## What is in it
 
@@ -48,7 +48,7 @@ ANALOG (with PULSE WIDTH for its PWM wave), PHASE, LOFI, VOICE, TRIO (its second
 
 ### Patches, multis and patterns
 - **128 patches**, sorted by category (24 BASS, 19 LEAD, 21 PAD, 14 PLUCK, 16 KEYS, 7 PERC, 16 FX, 11 OTHER). The bank is levelled with each patch's TRIM. New in 1.0: **#25 DRIVEN SAW**, a driven lead that uses both filters in series. The list of numbers is [docs/PATCH_NUMBERS.md](docs/PATCH_NUMBERS.md).
-- **16 MULTI slots**: 15 multis (REESE SWAMP, NIGHT ORGAN, PAD SPLIT, DUB CHORD, WHISPER TIDE, TINE STRINGS, FINAL REEL, HAZY TENSOR, ACID ETHER, WIRED SNAIL, EERIE SIGNAL, DEAD BUFFER, COLD CHAPEL, GARGLE ACID, WOOD & SKIN), their levels balanced and each with its own End B, and M16 STRESS TEST, a CPU test that you can overwrite.
+- **16 MULTI slots**: 16 multis (REESE SWAMP, NIGHT ORGAN, PAD SPLIT, DUB CHORD, WHISPER TIDE, TINE STRINGS, FINAL REEL, HAZY TENSOR, ACID ETHER, WIRED SNAIL, EERIE SIGNAL, DEAD BUFFER, COLD CHAPEL, GARGLE ACID, WOOD & SKIN, SLOW THAW), their levels balanced and each with its own End B.
 - **32 patterns**, P01 to P32, all filled with a default and all overwritable.
 - Save any patch into any of the 128 slots; RESTORE brings back the patch the slot came with.
 
@@ -168,7 +168,7 @@ One map for the whole unit. A CC on a part's channel moves that part; "both part
 
 **Learn-only parameters** have no CC of their own: the matrix choices and amounts, EQ, ARP and SEQ set-up, DUCK, the LFOs beyond the vibrato rows, the voice set-up, the master settings, UNDO, the four MORPH switches (TARGET, SMART, ARP, PITCH) and the settings that belong to both parts (BALANCE, XFADE, SPLIT, MODE). Teach a CC to one with SETTINGS > MIDI > MIDI LEARN on the unit.
 
-## What is not in 1.3.2
+## What is not in 1.3.3
 The editor's MIDI MAP tab, switching multis with preset changes, the SUB HARMONICS card (switched off). The full list is in [docs/KNOWN_LIMITS.md](docs/KNOWN_LIMITS.md).
 
 ## Build and test

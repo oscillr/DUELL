@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
-/* DUELL release build (DUELL_TEST_MODE off, the default): no MENU > SYSTEM > TEST row and no TEST page; the sixteen factory multis M01..M16
+/* DUELL release build (DUELL_TEST_MODE off, the default): no MENU > SYSTEM > TEST row and no TEST page; the sixteen default multis M01..M16
  * (0.2.23: the same as in the test mode, M16 the STRESS TEST; the CPU test multis of before are test scenes, tests/scenes.h) are intact. Built WITHOUT -DDUELL_TEST_MODE=1 and with build/gen/duell_multis.h
  * made without the switch (host_tests.sh "release"). The test-mode side is multi_test / select_test / erase_test / ui_test (built with the switch on).
  *   build/host/release_test            (DUELL/host_tests.sh "release") */
@@ -35,7 +35,7 @@ int main(void)
 {
     static const char *const FN[16] = {"REESE SWAMP", "NIGHT ORGAN", "PAD SPLIT", "DUB CHORD", "WHISPER TIDE", "TINE STRINGS", "FINAL REEL",
                                        "HAZY TENSOR", "ACID ETHER", "WIRED SNAIL", "EERIE SIGNAL", "DEAD BUFFER", "COLD CHAPEL", "GARGLE ACID",
-                                       "WOOD & SKIN", "STRESS TEST"};   /* (the 0.2.24 order, tools/factory_multis.py) */
+                                       "WOOD & SKIN", "STRESS TEST"};   /* (the 0.2.24 order, tools/default_multis.py) */
     uint32_t k, ok, test_rows = 0, sys_rows = 0;
     memset(nor, 0xFF, sizeof nor);
     ui_power_on();
@@ -65,8 +65,8 @@ int main(void)
         ok &= !str_eq(PAGES[k].title, "TEST");
     ck("no page is called TEST (the GLO round is untouched)", ok);
     for (k = 0, ok = 1; k < MU_SLOTS; k++)
-        ok &= project_used(k) && project_factory(k) && str_eq(mu_names[k], FN[k]);
-    ck("M01..M16 are the factory multis (0.2.24 order: REESE SWAMP, NIGHT ORGAN .. WOOD & SKIN, M16 STRESS TEST), as in the test mode", ok);
+        ok &= project_used(k) && project_default(k) && str_eq(mu_names[k], FN[k]);
+    ck("M01..M16 are the default multis (0.2.24 order: REESE SWAMP, NIGHT ORGAN .. WOOD & SKIN, M16 STRESS TEST), as in the test mode", ok);
     project_load(15);
     ck("LOAD of M16 loads the STRESS TEST (PHYS + WAVE)", proj_cur == 15u && trk[0].eng_req == 9u && trk[1].eng_req == ENGI_WAVE);
     printf(bad ? "release: FAILED (%d)\n" : "release: all ok\n", bad);

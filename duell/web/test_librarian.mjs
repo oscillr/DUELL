@@ -119,7 +119,7 @@ function storeDefault0() { const d = storeDefaults(0); return d[45] === 0 && d[4
 {
   const { m, u } = await connect();
   ok(u.info.patchRaw === true && LIB.hasRaw(u), "PATCH_RAW: the unit says so in INFO (tag 5A 01)");
-  ok((await LIB.rawRead(u, 7)) === null, "PATCH_RAW: a slot that holds its factory sound has no record");
+  ok((await LIB.rawRead(u, 7)) === null, "PATCH_RAW: a slot that holds its default sound has no record");
   const rec0 = await LIB.rawRead(u, 0);
   ok(rec0 && parseRecord(rec0).ok && parseRecord(rec0).name === "WARM PAD" && rec0[2] === 0 && rec0[3] === 0, "PATCH_RAW: a saved slot reads whole (name, slot and revision bytes zero)");
   await LIB.rawWrite(u, 30, rec0);
@@ -149,10 +149,10 @@ function storeDefault0() { const d = storeDefaults(0); return d[45] === 0 && d[4
 {
   const { u } = await connect();
   const items = await LIB.readItems(u, [0, 1, 5, 7]);
-  ok(items[0].kind === "record" && items[1].kind === "record" && items[3].kind === "approx" && items[0].number === 1 && items[0].name === "WARM PAD", "export: a saved slot is its record (lossless), a factory slot an approximate copy of its values");
+  ok(items[0].kind === "record" && items[1].kind === "record" && items[3].kind === "approx" && items[0].number === 1 && items[0].name === "WARM PAD", "export: a saved slot is its record (lossless), a default slot an approximate copy of its values");
   const text = stringifyFile(buildFile(items, { firmware: u.info.version, source: "unit" }));
   const f = JSON.parse(text);
-  ok(f.format === "duell-patches" && f.version === 1 && f.patches.length === 4 && f.patches[0].record && f.patches[0].crc32 && f.patches[0].params && f.patches[3].approximate === true && f.patches[3].values.length === L.P_COUNT && !f.patches[3].record, "file: format, version, firmware, per patch name / engine / category / base64 record / CRC-32 / readable params; a factory slot has its values");
+  ok(f.format === "duell-patches" && f.version === 1 && f.patches.length === 4 && f.patches[0].record && f.patches[0].crc32 && f.patches[0].params && f.patches[3].approximate === true && f.patches[3].values.length === L.P_COUNT && !f.patches[3].record, "file: format, version, firmware, per patch name / engine / category / base64 record / CRC-32 / readable params; a default slot has its values");
   ok(f.patches[0].engine === "ANALOG" && f.patches[0].category === "PAD" && f.patches[0].number === 1 && f.firmware === u.info.version, "file: engine and category are names, the number is the #NN of the slot");
   const r = parseFile(text);
   ok(r.ok && r.items.length === 4 && r.problems.length === 0 && same(r.items[0].record, items[0].record) && r.items[3].kind === "approx" && same(r.items[3].values, items[3].values), "file: read back, every record the same bytes, the values of the copy the same");
@@ -177,7 +177,7 @@ function storeDefault0() { const d = storeDefaults(0); return d[45] === 0 && d[4
   let plan = LIB.makePlan(u, src, [0, 1, 1, null]);
   ok(plan.problems.length === 2 && /both go to #2/.test(plan.problems[0]) && /no slot/.test(plan.problems[1]), "plan: two patches to one slot and a patch without a place are reported");
   plan = LIB.makePlan(u, src, [20, 21, 22, 23]);
-  ok(plan.problems.length === 0 && plan.writes.length === 4 && plan.savedLost === 0 && plan.writes[0].replaces.label === "#21" && !plan.writes[0].replaces.saved, "plan: four writes onto factory slots lose nothing saved");
+  ok(plan.problems.length === 0 && plan.writes.length === 4 && plan.savedLost === 0 && plan.writes[0].replaces.label === "#21" && !plan.writes[0].replaces.saved, "plan: four writes onto default slots lose nothing saved");
   const plan2 = LIB.makePlan(u, src, [0, 1, 5, 64]);
   ok(plan2.savedLost === 4 && LIB.confirmLines(plan2).length === 4 && /#1 "WARM PAD" \(saved\) becomes "WARM PAD"/.test(LIB.confirmLines(plan2)[0]), "plan: overwriting saved slots is listed one by one (slot, what it holds, what it becomes)");
   // run: safety copy first (4 slots replaced), progress, verify
@@ -203,10 +203,10 @@ function storeDefault0() { const d = storeDefaults(0); return d[45] === 0 && d[4
   const res3 = await LIB.runPlan(u, LIB.makePlan(u, src, [60, 61, 62, 63]), {});
   ok(res3.failed && /playing/.test(res3.failed.error.message) && !m.patches.has(60), "run: refused while the unit plays; nothing written");
   m.playing = false;
-  // an approximate copy (a factory sound) goes through UP_PUT
+  // an approximate copy (a default sound) goes through UP_PUT
   const fac = (await LIB.readItems(u, [100]))[0];
   const r4 = await LIB.runPlan(u, LIB.makePlan(u, [fac], [101]), {});
-  ok(r4.done.length === 1 && u.slots[101].saved && u.slots[101].name === fac.name && u.slots[101].eng === fac.engine && m.log.includes("put 101"), "copy of a factory sound: written with UP_PUT (an approximate copy), verified by its values");
+  ok(r4.done.length === 1 && u.slots[101].saved && u.slots[101].name === fac.name && u.slots[101].eng === fac.engine && m.log.includes("put 101"), "copy of a default sound: written with UP_PUT (an approximate copy), verified by its values");
   // an older unit without PATCH_RAW: records cannot be taken whole
   const old = await connect({ patchRaw: false });
   ok(!LIB.hasRaw(old.u) && LIB.makePlan(old.u, src, [1, 2, 3, 4]).problems.length === 4 && /whole/.test(LIB.makePlan(old.u, src, [1, 2, 3, 4]).problems[0]), "an older firmware: a patch file cannot be imported whole (reported per patch), the editor still works");
@@ -221,10 +221,10 @@ function storeDefault0() { const d = storeDefaults(0); return d[45] === 0 && d[4
   ok((await LIB.swapSlots(u, 0, 1)).both && same(await LIB.rawRead(u, 0), B) && same(await LIB.rawRead(u, 1), A), "swap: two saved patches change places, bit for bit");
   await LIB.swapSlots(u, 1, 0);
   const r = await LIB.swapSlots(u, 0, 9);
-  ok(r.moved && !r.both && (await LIB.rawRead(u, 0)) === null && same(await LIB.rawRead(u, 9), A) && !u.slots[0].saved && u.slots[9].saved, "swap with a factory slot: the patch moves, its old place shows its own factory sound again");
+  ok(r.moved && !r.both && (await LIB.rawRead(u, 0)) === null && same(await LIB.rawRead(u, 9), A) && !u.slots[0].saved && u.slots[9].saved, "swap with a default slot: the patch moves, its old place shows its own default sound again");
   const r2 = await LIB.swapSlots(u, 4, 9);
-  ok(r2.moved && same(await LIB.rawRead(u, 4), A) && (await LIB.rawRead(u, 9)) === null && u.slots[4].saved && !u.slots[9].saved, "swap: a factory slot first and the saved patch second: the patch moves the other way");
-  ok(!(await LIB.swapSlots(u, 30, 31)).moved, "swap: two factory slots: nothing to do");
+  ok(r2.moved && same(await LIB.rawRead(u, 4), A) && (await LIB.rawRead(u, 9)) === null && u.slots[4].saved && !u.slots[9].saved, "swap: a default slot first and the saved patch second: the patch moves the other way");
+  ok(!(await LIB.swapSlots(u, 30, 31)).moved, "swap: two default slots: nothing to do");
   ok(LIB.swapLines(u, 4, 0).length === 2 && /moves to/.test(LIB.swapLines(u, 4, 0)[0]) && /change places/.test(LIB.swapLines(u, 1, 4)[0]), "swap: the confirm text says what happens in both cases");
   const copyPlan = await LIB.planCopy(u, 4, 20);
   await LIB.runPlan(u, copyPlan, {});

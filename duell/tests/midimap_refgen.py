@@ -6,7 +6,7 @@ code can live in one test and be fed the same CCs.
 
   tests/midimap_refgen.py OUTDIR      writes OUTDIR/midimap_ref_control.inc and OUTDIR/midimap_ref_learn.inc
 
-Two lines are changed besides the names, on purpose: the old learn table is a private array of the reference (it was favorites.factory[14],
+Two lines are changed besides the names, on purpose: the old learn table is a private array of the reference (it was favorites.default[14],
 which holds the settings record's map header now), and nothing else. The names not renamed are the ones the reference shares with the firmware
 (the tracks, the MIDI routing, morph_push, mod_midi, mode_apply, the voice and chord code, MQ_PART_ALL which is the same macro)."""
 import re
@@ -36,7 +36,7 @@ def main(out):
     out.mkdir(parents=True, exist_ok=True)
     c = (HERE / "midimap_ref_control.c").read_text()
     l = (HERE / "midimap_ref_learn.c").read_text()
-    old = "static uint8_t *const ml_tab = favorites.factory[14];"
+    old = "static uint8_t *const ml_tab = favorites.default[14];"
     if old not in l:
         sys.exit("midimap_refgen: the learn table's line is not in midimap_ref_learn.c")
     l = l.replace(old, "static uint8_t ref_learn_store[32];\nstatic uint8_t *const ml_tab = ref_learn_store;")

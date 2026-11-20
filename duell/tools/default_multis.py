@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
-"""DUELL factory multis (0.2.23; 0.2.24: the owner's multis back; 0.2.25: COLD CHAPEL in M13): the ONE source of the sixteen factory multis M01..M16 and the tool that builds them.
+"""DUELL default multis (0.2.23; 0.2.24: the owner's multis back; 0.2.25: COLD CHAPEL in M13): the ONE source of the sixteen default multis M01..M16 and the tool that builds them.
 
-    tools/factory_multis.py build      the records tools/factory_multis/M01.bin..M16.bin (needs build/gen from DUELL/gen_only.py)
-    tools/factory_multis.py check      the records against this list (version, name, sounds, MODE, split) and the similarity check
-    tools/factory_multis.py list       the list as text (slot, name, mode, parts '#NN NAME', owner / mine)
-    tools/factory_multis.py selftest   the similarity check catches each kind of pair (and lets an owner pair through, reported)
+    tools/default_multis.py build      the records tools/default_multis/M01.bin..M16.bin (needs build/gen from DUELL/gen_only.py)
+    tools/default_multis.py check      the records against this list (version, name, sounds, MODE, split) and the similarity check
+    tools/default_multis.py list       the list as text (slot, name, mode, parts '#NN NAME', owner / mine)
+    tools/default_multis.py selftest   the similarity check catches each kind of pair (and lets an owner pair through, reported)
 
-How a record is made: MULTIS below says, per slot, the two parts' factory sounds (by name), what the multi sets on top of each sound
+How a record is made: MULTIS below says, per slot, the two parts' default sounds (by name), what the multi sets on top of each sound
 (raw parameter values, core.h P_* ids; an engine EDIT value as "E:LABEL", e.g. "E:CUT" on an ANALOG part), the SEQUENCER arp patterns,
-End B, the globals (core.h G_* ids), the output MODE, XFADE and SPLIT (item 157: BALANCE is no multi value; its record byte is a spare, 0). `build` writes that as a C table (build/gen_mm/factory_multis_def.h)
-and runs tests/gen_factory_multis.c, which loads each sound with the firmware's own code (set_engine_of + apply_preset_to, as PATCHES loads it),
+End B, the globals (core.h G_* ids), the output MODE, XFADE and SPLIT (item 157: BALANCE is no multi value; its record byte is a spare, 0). `build` writes that as a C table (build/gen_mm/default_multis_def.h)
+and runs tests/gen_default_multis.c, which loads each sound with the firmware's own code (set_engine_of + apply_preset_to, as PATCHES loads it),
 applies the table and saves with multi.c's packer (project_save_as): the records are byte for byte what a unit saves (version MU_VER 7; a kept record of an older version is converted by tools/multi_upgrade.py). A slot
-marked `kept` is a record made earlier that is kept byte for byte (owner, 0.2.20: the factory multis do not follow reworked sounds): it is not
+marked `kept` is a record made earlier that is kept byte for byte (owner, 0.2.20: the default multis do not follow reworked sounds): it is not
 rebuilt, only checked and, when its slot moved, moved (git mv). A slot marked `owner` is a multi the owner made or edited himself (0.2.24, owner:
 never drop or change them): kept, and exempt from the similarity check (a pair with one is reported, never a failure). The reverb LOW CUT of
 every built multi is the unit's default (G_RLOCUT 75 = 299 Hz) unless the multi sets it; DUCK SRC is PUMP / PART / MIDI (0 / 1 / 2, MU_VER 6); MU_VER 7 adds, per part, the NX extension slots and the hand-set B edit list after the values (tools/multi_upgrade.py).
@@ -20,11 +20,11 @@ every built multi is the unit's default (G_RLOCUT 75 = 299 Hz) unless the multi 
 The owner's own edits of a multi come back into this list through tools/import_owner_edits.py (docs/OWNER_REFINE.md): it writes
 tools/owner_multis.py, read below (apply_owner), whose entries replace a slot's record (kept, owner) and its line here.
 
-Old one-off converters (factory_multis_levelsplit.py, _locut.py, _ducksrc.py, _delaymode.py, _lfo_free.py) are gone: every built
+Old one-off converters (default_multis_levelsplit.py, _locut.py, _ducksrc.py, _delaymode.py, _lfo_free.py) are gone: every built
 record is made in today's format, and the kept ones were converted by them before (0.2.14 .. 0.2.22).
 
-The test scenes of the host tests (the CPU TEST multis of before 0.2.23 and the factory multis of 0.2.22) are in tests/scenes/,
-not in a factory slot (tests/scenes.h). SPARE below lists multis made for 0.2.23 that left the sixteen in 0.2.24 (their records are in
+The test scenes of the host tests (the CPU TEST multis of before 0.2.23 and the default multis of 0.2.22) are in tests/scenes/,
+not in a default slot (tests/scenes.h). SPARE below lists multis made for 0.2.23 that left the sixteen in 0.2.24 (their records are in
 tests/scenes/spare/, so they can come back: move the entry into MULTIS, give it a slot and run `build`).
 """
 import importlib.util
@@ -36,7 +36,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-DIR = ROOT / "tools" / "factory_multis"
+DIR = ROOT / "tools" / "default_multis"
 GEN = ROOT / "build" / "gen_mm"
 REC_MAX, MU_G_AT, MB_N, PS_STEP, NAME_MAX = 1916, 20, 7, 9, 12
 MU_VER, MU_STEP, NX, UPF_PK = 8, 7, 28, 112                # multi.c MU_VER 8 (ROLL CHAINED storage, 2026-10-29): End B as values after a length byte, the NX slots dense, 7-byte steps, the FM6 patch packed 8 to 7, only the globals a multi loads
@@ -52,7 +52,7 @@ def note(s):
 
 
 # ---- the multis ---------------------------------------------------------------------------------------------------------------
-# A part: sound (factory sound name), set {P_id: value or 'NAME' of the parameter's list; "E:LABEL": the engine's EDIT value}, steps (the
+# A part: sound (default sound name), set {P_id: value or 'NAME' of the parameter's list; "E:LABEL": the engine's EDIT value}, steps (the
 # SEQUENCER arp's pattern: offsets in semitones from the held key, '.' a rest, suffix A an accent; LEN = its length), bseed / amt (End B rolled
 # again with this seed / at this AMOUNT %; 0 the sound's own). A multi: g {G_id: value}, mode, xf (0..100), split (a note:
 # below it part 1, at or above part 2; compared with the key as played, before any TRN: F3 is the lowest key at octave 0, so F4 is the middle
@@ -66,6 +66,27 @@ def note(s):
 # Order (0.2.24): 1-4 bass grooves and splits, 5-8 pads, layers and the dry pair, 9-12 the four multis of 0.2.1 as made (the owner's),
 # 13-15 for performing (0.2.25: 13 is the owner's original COLD CHAPEL, in the slot of BASILDON, the multi least different from the rest), 16 the stress test.
 SEND = ("P_CHOR", "P_DLY", "P_REV")
+
+
+def _fm_voices():
+    """the multis' own FM6 voices (1.3.3), packed as the firmware keeps them (tools/gen_fm6_patches.py voice / pack)"""
+    spec = importlib.util.spec_from_file_location("gen_fm6_patches", Path(__file__).resolve().parent / "gen_fm6_patches.py")
+    fm = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(fm)
+    op = fm.op
+    # SLOW THAW (M16): FM bell / glass (SOUND_RECIPES 4.3): pair 1 a sine carrier struck by a modulator at 3.5 (3 x 1.17) that dies first, pair 2 a
+    # carrier an octave up detuned (the bell's beating hum), pair 3 a quiet sub body; velocity to the modulators; short notes (the delay carries the tail)
+    thaw = fm.voice("SLOW THAW", 5, [
+        op(r=(95, 55, 45, 75), l=(99, 70, 0, 0), ol=99, kvs=1),
+        op(r=(99, 70, 50, 75), l=(99, 40, 0, 0), ol=72, fc=3, ff=17, kvs=5),
+        op(r=(90, 52, 45, 75), l=(99, 65, 0, 0), ol=85, fc=2, det=9, kvs=1),
+        op(r=(99, 65, 50, 75), l=(99, 45, 0, 0), ol=55, fc=2, kvs=4),
+        op(r=(90, 50, 45, 75), l=(99, 65, 0, 0), ol=72, fc=0, kvs=1),
+        op(r=(99, 60, 50, 75), l=(99, 50, 0, 0), ol=40, fc=1)], fb=3)
+    return {"SLOW_THAW_FM": fm.pack(thaw)}
+
+
+FM_VOICES = _fm_voices()
 MULTIS = [
     # ---- 1-4: bass grooves and splits ----
     dict(slot=1, name="REESE SWAMP", kept=True, mode="LAYER", parts=[dict(sound="REESE BASS"), dict(sound="SQUELCH")],
@@ -81,7 +102,7 @@ MULTIS = [
     # measured on the pad alone, keys E4 / A4 / C5: spectral centroid 528 / 652 / 760 Hz -> 653 / 808 / 925 Hz, the 2-4 kHz band +3 dB, 4-8 kHz
     # +6 dB, level the same within 0.4 dB. #44 EMBER GLOW itself is unchanged (the override lives in this record only). End B rolled again
     # (seed 23709 at 27 %): the sound's own End B (seed 44167) closed the pad in this multi (its roll took AMP ENV -> FLT to -26: the pad alone
-    # -14.2 dB at End B on C4 E4 G4, `gen_factory_multis eval 3`), against the promise "MORPH opens the pad"; the new seed keeps the level
+    # -14.2 dB at End B on C4 E4 G4, `gen_default_multis eval 3`), against the promise "MORPH opens the pad"; the new seed keeps the level
     # (+0.2 dB) and is brighter (739 -> 1117 Hz, `search 3 2 27 40`).
     dict(slot=3, name="PAD SPLIT", mode="LAYER", split="F4",
          g=dict(G_BPM=97, G_DTIME="4D", G_DFDBK=37, G_DMIX=71, G_RTYPE="HALL", G_RSIZE=97, G_RDAMP=61, G_DMODE="DIGI"),
@@ -116,17 +137,31 @@ MULTIS = [
     dict(slot=14, name="GARGLE ACID", kept=True, owner=True, mode="LAYER", parts=[dict(sound="GROWL BASS"), dict(sound="SQUELCH")],
          what="a growl bass two octaves down holding the key, a 16-step acid riff on it at 127 BPM (the owner's, 0.2.11 .. 0.2.22: M08; back in 0.2.24)"),
     # slot 15: the owner's WOOD & SKIN (0.2.31), from tools/owner_multis.py (his file duell-multi-M15-WOOD_SKIN.duell-multis.json, record v7, 487 B, crc32 975420133); the 0.2.23 record built here differed in one byte (index 52)
-    # ---- 16: the STRESS TEST (owner, 0.2.23: how many notes the unit takes; a test, free to overwrite) ----
-    dict(slot=16, name="STRESS TEST", mode="LAYER", stress=True,
-         what="CPU stress test, not music: the two dearest sounds, every stage on (24 dB multimode filters, FLANGER insert + SAT on the whistle, EQ + ducker on the pad, chorus, RANDOM delay, SHIM BOTH), "
-              "a 1/16 arp pad with a short gate and release (0.2.24: calibrated so one key plays on the unit: host model 1 key ~62 %, 2 keys ~78 %, 3 keys ~95 %)",
-         g=dict(G_BPM=137, G_DTIME="1/8", G_DFDBK=61, G_DMIX=90, G_DMODE="RAND", G_DMDEP=71, G_DMRATE=44, G_CDEPTH=77, G_CRATE=41,
-                G_RTYPE="SHIM", G_RSIZE=107, G_RDAMP=51, G_SHPITCH="BOTH", G_SHMOD=51),
-         parts=[dict(sound="PAN WHISTLE", set=dict(P_VOICE="POLY", P_FREEA="u_uf(61)", P_FREEB=17, P_FREEC=127, P_FREED=2, P_ITYPE="FLANGER", P_IMIX=97, P_DIST=41,
-                                                    P_CHOR=71, P_DLY=61, P_REV=71, P_LEVEL=112)),
-                dict(sound="DIGITAL PAD", set=dict(P_VOICE="POLY", P_FREEA="u_uf(61)", P_FREEB=17, P_FREEC=127, P_FREED=2, P_AMODE="UP", P_ARATE="1/16", P_AOCT=2, P_AGATE=71, P_AHOLD="OFF",
-                                                    P_REL=47, P_EQLG=4, P_EQMG=-3, P_EQHG=3,
-                                                    P_DKSRC="PUMP", P_DKRATE="1/4", P_DKDEP=41, P_CHOR=71, P_DLY=61, P_REV=71, P_LEVEL=112))]),
+    # ---- 16: SLOW THAW (owner 2026-11-18: replaces the STRESS TEST; the bench loads its stress multi into M16 only for a run and puts this back).
+    # Two sounds made for this multi (owner: from scratch, from the recipes in SOUND_RECIPES.md):
+    # part 1 FM6: its own DX7 voice (fm=, below; FM bell / glass 4.3: a sine carrier struck by a 3.5 modulator that dies first, an octave carrier
+    #   detuned for the bell's beating hum, a quiet sub pair; velocity to the modulators), a 15-step pentatonic pattern at 1/16 (it shifts against the bar),
+    #   LFO 2 slowly on the modulator level; part 2 PHASE: a CZ string pad (two detuned SAW lines, DCW opened by a slow FILTER ENV through the matrix,
+    #   slow amp), spread full width, chorus, LFO 2 on PAN.
+    dict(slot=16, name="SLOW THAW", mode="LAYER",
+         what="an FM6 glass sequence on a pentatonic shape over a wide PHASE string pad that fades in and opens slowly (one held key plays for minutes)",
+         g=dict(G_BPM=84, G_DTIME="8D", G_DFDBK=47, G_DMIX=71, G_DMODE="PING", G_RTYPE="HALL", G_RSIZE=110, G_RDAMP=51),
+         parts=[dict(sound="TUBE BELLS", fm="SLOW_THAW_FM",
+                     set={"E:SLOT": 8, "E:ALG": 0, "P_AMODE": "SEQ", "P_ARATE": "1/16", "P_AGATE": 60, "P_AHOLD": "OFF", "P_CHRD": "OFF",
+                          "P_FREEA": "u_uf(2500)", "P_FREEB": 30, "P_TWTYPE": 2, "P_CUT2": 9, "P_RES2": 50, "P_BLEND": 0,
+                          "P_EQLG": 0, "P_EQMG": 0, "P_EQHG": 0, "P_CHOR": 20, "P_DLY": 47, "P_REV": 61, "P_SPRD": 71, "P_L2RATE": 20,
+                          "P_M1SRC": "LFO2", "P_M1DST": "E3", "P_M1AMT": 9, "P_M2SRC": "AT", "P_M2DST": "E3", "P_M2AMT": 7, "P_TRIM": 127, "P_LEVEL": 112},
+                     steps="0A . 7 . 12 . . 14 . 7 . 19A . 12 .", bseed=1717, amt=11,
+                     locks={"P_FREEA": {0: 52, 2: 60, 4: 66, 7: 48, 9: 58, 11: 72, 13: 55}}),
+                dict(sound="SONAR PING",
+                     set={"E:WAVE 1": 0, "E:WAVE 2": 1, "E:DCW": 20, "E:ENV": 30, "E:DTN": 10, "E:LINE": 0,
+                          "P_ATK": 108, "P_DEC": 110, "P_SUS": 120, "P_REL": 112, "P_E2ATK": 116, "P_E2DEC": 120, "P_E2SUS": 110, "P_E2REL": 112, "P_E2FLT": 0,
+                          "P_FREEA": "u_uf(3000)", "P_FREEB": 20, "P_TWTYPE": 2, "P_CUT2": 9, "P_RES2": 30, "P_BLEND": 0,
+                          "P_ITYPE": "PHASER", "P_IA": 30, "P_IB": 80, "P_IC": 60, "P_IMIX": 70, "P_EQLG": 0, "P_EQMG": 0, "P_EQHG": 0, "P_CHRD": "POW", "P_VOIC": "OPEN", "P_SPRD": 127,
+                          "P_LRATE": 10, "P_LD_SHP": 4, "P_LD_FLT": 0, "P_L2RATE": 12,
+                          "P_M1SRC": "AT", "P_M1DST": "SHP", "P_M1AMT": 7, "P_M2SRC": "ENV2", "P_M2DST": "SHP", "P_M2AMT": 30, "P_M3SRC": "LFO2", "P_M3DST": "CUT2", "P_M3AMT": 12,
+                          "P_CHOR": 100, "P_DLY": 17, "P_REV": 90, "P_TRIM": 127, "P_LEVEL": 100},
+                     bseed=1117, amt=11)]),
 ]
 
 # ---- spare multis (0.2.24): made for 0.2.23, out of the sixteen so the owner's COLD CHAPEL, ACID ETHER and GARGLE ACID could come back.
@@ -158,7 +193,7 @@ SPARE = [
                 dict(sound="TIN TOLL", set=dict(P_AMODE="SEQ", P_ARATE="1/16", P_AGATE=57, P_AHOLD="OFF", P_DLY=31, P_REV=41, P_LEVEL=101),
                      steps="+12A . +19 +12 . +22 +19 . +12A . +15 +17 . +19 . +10")]),
     dict(name="MONO DUEL", scene="spare/M08_MONO_DUEL", mode="DUEL",
-         what="two dry mono voices for outboard effects: a chip-Moog bass hard left, a square lead with glide hard right (M08 in 0.2.23 .. 0.2.25; the owner: Mono-dual is out; the only factory multi in DUEL)",
+         what="two dry mono voices for outboard effects: a chip-Moog bass hard left, a square lead with glide hard right (M08 in 0.2.23 .. 0.2.25; the owner: Mono-dual is out; the only default multi in DUEL)",
          g=dict(G_BPM=117, G_DTIME="1/8", G_DFDBK=31, G_DMIX=77, G_DMODE="DIGI", G_RTYPE="ROOM", G_RSIZE=51),
          parts=[dict(sound="BREADBIN", set=dict(P_VOICE="LEG", P_TRANS=-12, P_CHOR=0, P_DLY=0, P_REV=0, P_DKDEP=0, P_LEVEL=117)),
                 dict(sound="SQUARE LEAD", set=dict(P_VOICE="LEG", P_CHOR=0, P_DLY=0, P_REV=0, P_LEVEL=117))]),
@@ -167,7 +202,7 @@ SPARE = [
 
 def apply_owner(multis):
     """tools/owner_multis.py (written by tools/import_owner_edits.py): OWNER_MULTIS = [dict(slot, name, mode, parts=[dict(sound), dict(sound)], what, ...)],
-    each a record the owner saved on his unit, kept byte for byte in tools/factory_multis/Mnn.bin: it replaces the slot's entry here (kept, owner)"""
+    each a record the owner saved on his unit, kept byte for byte in tools/default_multis/Mnn.bin: it replaces the slot's entry here (kept, owner)"""
     f = ROOT / "tools" / "owner_multis.py"
     if not f.exists():
         return multis
@@ -177,7 +212,7 @@ def apply_owner(multis):
     out = list(multis)
     for o in mod.OWNER_MULTIS:
         if o.get("slot") not in range(1, 17):
-            sys.exit("factory_multis: owner_multis.py: slot %r" % o.get("slot"))
+            sys.exit("default_multis: owner_multis.py: slot %r" % o.get("slot"))
         e = dict(o, kept=True, owner=True)
         out = [m for m in out if m["slot"] != e["slot"]] + [e]
     return sorted(out, key=lambda m: m["slot"])
@@ -199,6 +234,7 @@ def _lists():
 LISTS = _lists()
 P_LIST = {"P_AMODE": "N_AMODE", "P_ARATE": "N_DIV", "P_AHOLD": "N_HOLD", "P_CHRD": "N_CHRD", "P_VOIC": "N_VOIC", "P_VOICE": "N_VOICE",
           "P_LSYNC": "N_LSYNC", "P_ITYPE": "N_ITYPE", "P_DKSRC": "N_DKSRC", "P_DKRATE": "N_DIV", "P_M8SRC": "N_MSRC", "P_M8DST": "N_MDST",
+          **{"P_M%dSRC" % i: "N_MSRC" for i in range(1, 8)}, **{"P_M%dDST" % i: "N_MDST" for i in range(1, 8)},
           "P_SDIV": "N_DIV"}
 G_LIST = {"G_DTIME": "N_DIV", "G_RTYPE": "N_RTYPE", "G_DMODE": "N_DMODE", "G_SHPITCH": "N_SHP"}
 RETIRED = {("G_SHPITCH", "BOTH"): 2}               # 0.2.25 (owner): SHIM's PITCH BOTH removed; a stored 2 plays UP (project.c, fx_bus.c rev_shimx). M16 STRESS TEST holds it
@@ -214,7 +250,7 @@ def value(lists, key, v):
     if (key, v) in RETIRED:                        # (0.2.25: a value the unit no longer offers; the record keeps its byte, the unit reads it as the stand-in)
         return RETIRED[(key, v)]
     if v not in names:
-        sys.exit("factory_multis: %s has no value %r (%s)" % (key, v, ", ".join(names)))
+        sys.exit("default_multis: %s has no value %r (%s)" % (key, v, ", ".join(names)))
     return names.index(v)
 
 
@@ -237,7 +273,7 @@ def resolve(snd):
     for m in MULTIS + SPARE:
         for p in m["parts"]:
             if p["sound"] not in by:
-                sys.exit("factory_multis: M%02d %s: no factory sound %r" % (m.get("slot", 0), m["name"], p["sound"]))
+                sys.exit("default_multis: M%02d %s: no default sound %r" % (m.get("slot", 0), m["name"], p["sound"]))
             s = by[p["sound"]]
             p["eng"], p["idx"] = ENGINES.index(s["engine"]), s["idx"]
 
@@ -253,13 +289,13 @@ def edit_key(eng, label):
             _EDIT[e["name"]] = {r[0]: k for k, r in enumerate(e["edit"])}
     labels = _EDIT.get(ENGINES[eng], {})
     if label not in labels:
-        sys.exit("factory_multis: %s has no EDIT value %r (%s)" % (ENGINES[eng], label, ", ".join(labels)))
+        sys.exit("default_multis: %s has no EDIT value %r (%s)" % (ENGINES[eng], label, ", ".join(labels)))
     return "P_E0 + %d" % labels[label]
 
 
 # ---- the C table ------------------------------------------------------------------------------------------------------------------
 def emit(path):
-    lines = ["/* generated by tools/factory_multis.py: the factory multis built by tests/gen_factory_multis.c (do not edit) */",
+    lines = ["/* generated by tools/default_multis.py: the default multis built by tests/gen_default_multis.c (do not edit) */",
              "static const multi_t MM[] = {"]
     for m in MULTIS:
         if m.get("kept"):
@@ -279,15 +315,16 @@ def emit(path):
                     st += [k, str(value(P_LIST, k, v))]
             steps = p.get("steps")
             n = len(steps.split()) if steps else 16
-            lines.append('        {%d, %d, "%s", {%s}, %s, %d, %d, %d},' % (p["eng"], p["idx"], p["sound"], ", ".join(st + ["END"]),
-                                                                       '"%s"' % steps if steps else "0", n, p.get("bseed", 0), p.get("amt", 0)))
+            fmv = "(const uint8_t[]){%s}" % ", ".join(map(str, FM_VOICES[p["fm"]])) if p.get("fm") else "0"
+            lines.append('        {%d, %d, "%s", {%s}, %s, %d, %d, %d, %s},' % (p["eng"], p["idx"], p["sound"], ", ".join(st + ["END"]),
+                                                                       '"%s"' % steps if steps else "0", n, p.get("bseed", 0), p.get("amt", 0), fmv))
         lines.append("    }},")
     lines.append("};")
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines) + "\n")
 
 
-BOOT_H = """/* tools/factory_multis.py: no factory multis (the build of the generator itself) */
+BOOT_H = """/* tools/default_multis.py: no default multis (the build of the generator itself) */
 #define DF_TEST_MULTIS DUELL_TEST_MODE
 #define DF_N 0u
 static const uint8_t DF_SLOT[1] = {0};
@@ -300,16 +337,17 @@ static const uint8_t DM_REC[1] = {0};
 def build():
     snd = sounds()
     resolve(snd)
-    emit(GEN / "factory_multis_def.h")
+    emit(GEN / "default_multis_def.h")
     (GEN / "duell_multis.h").write_text(BOOT_H)
-    exe = ROOT / "build" / "host" / "gen_factory_multis"
+    exe = ROOT / "build" / "host" / "gen_default_multis"
     exe.parent.mkdir(parents=True, exist_ok=True)
     cc = ["cc", "-O1", "-w", "-DDUELL_TEST_MODE=1", "-I" + str(GEN), "-Ibuild/gen", "-Ifirmware/src", "-Itests", '-DFELUCCA_VERSION="x"',
-          "-o", str(exe), "tests/gen_factory_multis.c", "-lm"]
+          "-o", str(exe), "tests/gen_default_multis.c", "-lm"]
     if subprocess.run(cc, cwd=ROOT).returncode:
-        sys.exit("factory_multis: tests/gen_factory_multis.c does not compile (run DUELL/gen_only.py first: build/gen)")
+        sys.exit("default_multis: tests/gen_default_multis.c does not compile (run DUELL/gen_only.py first: build/gen)")
     if subprocess.run([str(exe), "build", str(DIR)], cwd=ROOT).returncode:
-        sys.exit("factory_multis: the build failed")
+        sys.exit("default_multis: the build failed")
+    add_locks()
     want = {"M%02d.bin" % m["slot"] for m in MULTIS}
     for f in DIR.glob("M*.bin"):
         if f.name not in want:
@@ -319,8 +357,24 @@ def build():
 
 
 # ---- checks -------------------------------------------------------------------------------------------------------------------------
+def add_locks():
+    """1.3.3: a part's `locks` {P_id name: {step: value}} as parameter locks in the record's automation (multi.c: a count, then place / param | MOTION_LOCK / value)"""
+    P = p_ids()
+    for m in MULTIS:
+        ev = bytes(x for t, p in enumerate(m["parts"]) for pid, st in p.get("locks", {}).items()
+                   for k, v in sorted(st.items()) for x in ((t << 6) | k, P[pid] | 0x80, v & 255))
+        if m.get("kept") or not ev:
+            continue
+        f = DIR / ("M%02d.bin" % m["slot"])
+        b = f.read_bytes()
+        _, end = parts_of(b)
+        n = b[end]
+        b = b[:end] + bytes([n + len(ev) // 3]) + b[end + 1:end + 1 + 3 * n] + ev + b[end + 1 + 3 * n:]
+        f.write_bytes(b)
+
+
 def parts_of(b):
-    """the (engine, factory index, part start) of both parts of record b (MU_VER 8), the end position (after the automation)"""
+    """the (engine, default index, part start) of both parts of record b (MU_VER 8), the end position (after the automation)"""
     np_, pos, out = b[1], MU_G_AT + 2 * b[2], []
     for _ in range(2):
         out.append((b[pos], b[pos + 1], pos))
@@ -430,7 +484,7 @@ def selftest():
     for e, want_bad, want_allowed in cases:
         bad, allowed = check_similar([base, e])
         ok &= len(bad) == want_bad and len(allowed) == want_allowed
-    print("factory_multis: selftest of the similarity check %s" % ("ok" if ok else "FAILED"))
+    print("default_multis: selftest of the similarity check %s" % ("ok" if ok else "FAILED"))
     return ok
 
 
@@ -459,6 +513,8 @@ def check(snd=None):
         f = ROOT / "tests" / "scenes" / (m["scene"] + ".bin")
         if not f.exists():
             err.append("spare %s: %s missing" % (m["name"], f.name))
+        elif f.read_bytes()[0] != MU_VER:                # (1.3.3: the spare records are version 7, made before MU_VER 8; parts_of reads 8 only: said, not read)
+            print("default_multis: spare %s: %s is record version %d, not %d: not checked (it needs `build` from MULTIS to come back)" % (m["name"], f.name, f.read_bytes()[0], MU_VER))
         else:
             parts, _ = parts_of(f.read_bytes())
             for t, (eng, idx, _at) in enumerate(parts):
@@ -466,8 +522,8 @@ def check(snd=None):
                     err.append("spare %s part %d: the record holds %r, the list says %r" % (m["name"], t + 1, by_idx.get((ENGINES[eng], idx)), m["parts"][t]["sound"]))
     sim, allowed = check_similar(entries)
     for e in err + sim + allowed:
-        print("factory_multis:", e)
-    print("factory_multis: %d multis checked, %d record problems, multi similarity: %d pairs of %d alike, %d allowed (the owner's); %d spare" % (
+        print("default_multis:", e)
+    print("default_multis: %d multis checked, %d record problems, multi similarity: %d pairs of %d alike, %d allowed (the owner's); %d spare" % (
         len(MULTIS), len(err), len(sim), len(entries) * (len(entries) - 1) // 2, len(allowed), len(SPARE)))
     return not err and not sim
 

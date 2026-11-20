@@ -172,7 +172,7 @@ static const menu_credit_t MENU_CREDITS[] = {
     {"Xfer Serum: wavetable WAV files", MC_TEXT},
     {"of 2048 sample frames (Vital, Surge)", MC_TEXT},
     {"", MC_TEXT},
-    {"FM VOICE", MC_TITLE},                        /* DUELL 0.2.17: FM BASS 2 (FM6 factory patch F9), a DX7 voice import */
+    {"FM VOICE", MC_TITLE},                        /* DUELL 0.2.17: FM BASS 2 (FM6 default patch F9), a DX7 voice import */
     {"One FM voice: aquanodemusic (Aquanode Soundscapes), CC0 1.0 Universal", MC_TEXT},
     {"https://github.com/aquanodemusic/aquanode-soundscapes", MC_URL},
     {"", MC_TEXT},
@@ -566,7 +566,7 @@ static uint32_t about_sig(void)
 }
 #if DUELL_TEST_MODE                                    /* the CPU test screen is a developer build (DUELL_TEST_MODE); the release leaves it out down to #endif (TEST screen) */
 /* MENU > SYSTEM > TEST (the CPU test screen, beta; ui.menu 3, drawn as the page TEST_PAGE, params.c): what is loaded and how hard the audio works. The multi (slot + name), per part the ENGINE
- * and the PATCH (the stored patch's name or the factory sound's), then the CPU meter: the 1 s AVERAGE with a bar (a mark at 80 %,
+ * and the PATCH (the stored patch's name or the default sound's), then the CPU meter: the 1 s AVERAGE with a bar (a mark at 80 %,
  * a tick at the held peak), PEAK HOLD, MISSED blocks, and a word for the state (OK, NEAR THE LIMIT, AT THE LIMIT, BLOCKS MISSED
  * JUST NOW; the same flat colours as before: cpu_col). Drawn on the graph panel (cv_oy 0, panel rows). The meter reads the
  * audio's counters only while this page is up: a gap of more than 0.5 s between two looks (another page, the screen dark) opens a

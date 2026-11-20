@@ -30,7 +30,7 @@ int main(void)
     original.magic = PERSIST_MAGIC;
     original.palette = 4; original.bold = original.rsv = original.zoom = 1;   /* old id 4: MONO, now GREY */
     original.panel = PANEL_DEFAULT; original.panel.enc[0] = 3;
-    original.favorites.factory[8][0] = 1;
+    original.favorites.defaults[8][0] = 1;
     original.favorites.user = 1u << 31; original.favorites.filter = 1;
     p = original;
     assert(settings_import(&p, sizeof p) == 1); settings_init();
@@ -57,18 +57,18 @@ int main(void)
     assert(favorite_has(8, 0) && favorite_has(NENGINES, 31) && favorites.filter);
     {   /* SAMPLE's PERC starred (preset 4, retired): DRUM's kit (preset 0) instead; SAMPLE's others kept; twice the same */
         persist_t q = original;
-        q.favorites.factory[ENGI_SAMPLE][0] = 1u << SMP_SET_PERC | 1u << 2;
-        assert(settings_import(&q, sizeof q) == 1 && favorites.factory[ENGI_SAMPLE][0] == 1u << 2 &&
-               favorites.factory[ENGI_DRUM][0] == 1u);
+        q.favorites.defaults[ENGI_SAMPLE][0] = 1u << SMP_SET_PERC | 1u << 2;
+        assert(settings_import(&q, sizeof q) == 1 && favorites.defaults[ENGI_SAMPLE][0] == 1u << 2 &&
+               favorites.defaults[ENGI_DRUM][0] == 1u);
         settings_export(&q);
-        assert(settings_import(&q, sizeof q) == 1 && favorites.factory[ENGI_SAMPLE][0] == 1u << 2 &&
-               favorites.factory[ENGI_DRUM][0] == 1u);
+        assert(settings_import(&q, sizeof q) == 1 && favorites.defaults[ENGI_SAMPLE][0] == 1u << 2 &&
+               favorites.defaults[ENGI_DRUM][0] == 1u);
         p = original; assert(settings_import(&p, sizeof p) == 1);
     }
 #endif
     settings_export(&p);
     assert(!p.rsv && p.bold == 1 && p.favorites.user == (1u << 31));   /* bold: kept as saved */
-    assert(p.favorites.factory[8][0] == 1 && p.favorites.filter == 1);
+    assert(p.favorites.defaults[8][0] == 1 && p.favorites.filter == 1);
     assert(p.panel.enc[0] == 3); /* saving one feature preserves the other */
     p = original; p.magic = 0x50455233u;
     assert(settings_import(&p, sizeof p - sizeof p.favorites) == 2);
@@ -142,68 +142,68 @@ int main(void)
         assert(settings_import(&p, 8 + sizeof(panel_t)) == 2 && settings_leds == LEDS_DIM);
     }
 #ifdef FELUCCA_FAVORITES
-    {   /* 1.1 CLICK / CLICK LEVEL / COUNT-IN (ui.c ui_rec_prefs, favorites.factory[15][28]): 0 in every older record
+    {   /* 1.1 CLICK / CLICK LEVEL / COUNT-IN (ui.c ui_rec_prefs, favorites.default[15][28]): 0 in every older record
          * (the defaults: OFF / MID / OFF); each field 0..2 kept, 3 (no value) back to 0, bits 6-7 kept; twice the same */
         persist_t q;
         uint32_t b;
         p = original; p.magic = 0x50455233u;            /* PER3 (no favorites): 0 */
-        assert(settings_import(&p, sizeof p - sizeof p.favorites) == 2 && favorites.factory[15][28] == 0u);
+        assert(settings_import(&p, sizeof p - sizeof p.favorites) == 2 && favorites.defaults[15][28] == 0u);
         for (b = 0; b < 256u; b++) {
             uint32_t f, want = b;
             for (f = 0; f < 3u; f++)
                 if (((b >> (2u * f)) & 3u) == 3u) want &= ~(3u << (2u * f));
-            p = original; p.favorites.factory[15][28] = (uint8_t)b;
-            assert(settings_import(&p, sizeof p) == 1 && favorites.factory[15][28] == want && p.favorites.factory[15][28] == want);
+            p = original; p.favorites.defaults[15][28] = (uint8_t)b;
+            assert(settings_import(&p, sizeof p) == 1 && favorites.defaults[15][28] == want && p.favorites.defaults[15][28] == want);
             q = p; assert(settings_import(&q, sizeof q) == 1 && !memcmp(&q, &p, sizeof q));
-            settings_export(&q); assert(q.favorites.factory[15][28] == want);
+            settings_export(&q); assert(q.favorites.defaults[15][28] == want);
         }
         p = original; assert(settings_import(&p, sizeof p) == 1);
     }
-    {   /* 1.2 RESTORE LAST (ui.c PREF_RESTORE_OFF, bit 7 of MENU's flags, favorites.factory[15][30]): clear in every
+    {   /* 1.2 RESTORE LAST (ui.c PREF_RESTORE_OFF, bit 7 of MENU's flags, favorites.default[15][30]): clear in every
          * older record = ON; set = OFF, kept as saved with the other flags */
         persist_t q;
         p = original; p.magic = 0x50455233u;
-        assert(settings_import(&p, sizeof p - sizeof p.favorites) == 2 && !(favorites.factory[15][30] & 128u));
-        p = original; p.favorites.factory[15][30] = 128u | 64u | 1u;
-        assert(settings_import(&p, sizeof p) == 1 && favorites.factory[15][30] == (128u | 64u | 1u));
-        q = p; settings_export(&q); assert(q.favorites.factory[15][30] == (128u | 64u | 1u));
+        assert(settings_import(&p, sizeof p - sizeof p.favorites) == 2 && !(favorites.defaults[15][30] & 128u));
+        p = original; p.favorites.defaults[15][30] = 128u | 64u | 1u;
+        assert(settings_import(&p, sizeof p) == 1 && favorites.defaults[15][30] == (128u | 64u | 1u));
+        q = p; settings_export(&q); assert(q.favorites.defaults[15][30] == (128u | 64u | 1u));
         p = original; assert(settings_import(&p, sizeof p) == 1);
     }
-    {   /* 1.2 the FX layer's key map (ui_layer.c fx_keys, favorites.factory[15][14..23], 16 x 5 bits, 0 = the key's
+    {   /* 1.2 the FX layer's key map (ui_layer.c fx_keys, favorites.default[15][14..23], 16 x 5 bits, 0 = the key's
          * default): 0 in every older record; any bytes kept as saved (codes of a later firmware too), the bytes around
          * them untouched; twice the same */
         persist_t q;
         uint32_t i;
         p = original; p.magic = 0x50455233u;
         assert(settings_import(&p, sizeof p - sizeof p.favorites) == 2);
-        for (i = 14; i < 24u; i++) assert(favorites.factory[15][i] == 0u);
+        for (i = 14; i < 24u; i++) assert(favorites.defaults[15][i] == 0u);
         p = original;
-        for (i = 14; i < 24u; i++) p.favorites.factory[15][i] = (uint8_t)(i * 37u + 5u);
+        for (i = 14; i < 24u; i++) p.favorites.defaults[15][i] = (uint8_t)(i * 37u + 5u);
         assert(settings_import(&p, sizeof p) == 1);
-        for (i = 14; i < 24u; i++) assert(favorites.factory[15][i] == (uint8_t)(i * 37u + 5u));
-        assert(favorites.factory[15][13] == original.favorites.factory[15][13] && favorites.factory[15][24] == original.favorites.factory[15][24]);
+        for (i = 14; i < 24u; i++) assert(favorites.defaults[15][i] == (uint8_t)(i * 37u + 5u));
+        assert(favorites.defaults[15][13] == original.favorites.defaults[15][13] && favorites.defaults[15][24] == original.favorites.defaults[15][24]);
         memset(&q, 0, sizeof q); settings_export(&q); assert(!memcmp(&q.favorites, &p.favorites, sizeof q.favorites));
         assert(settings_import(&q, sizeof q) == 1);
-        for (i = 14; i < 24u; i++) assert(favorites.factory[15][i] == (uint8_t)(i * 37u + 5u));
+        for (i = 14; i < 24u; i++) assert(favorites.defaults[15][i] == (uint8_t)(i * 37u + 5u));
         p = original; assert(settings_import(&p, sizeof p) == 1);
     }
-    {   /* 1.5 MIDI LEARN's map (midi_control.c, favorites.factory[14], no engine's): 0 = nothing learned in every older
+    {   /* 1.5 MIDI LEARN's map (midi_control.c, favorites.default[14], no engine's): 0 = nothing learned in every older
          * record; kept as saved, byte for byte (an entry of a later firmware too), the rows around it untouched; an
          * export / import round trip and importing twice change nothing */
         persist_t q;
         uint32_t i;
         p = original; p.magic = 0x50455233u;
         assert(settings_import(&p, sizeof p - sizeof p.favorites) == 2);
-        for (i = 0; i < 32u; i++) assert(favorites.factory[14][i] == 0u);
+        for (i = 0; i < 32u; i++) assert(favorites.defaults[14][i] == 0u);
         p = original;
-        for (i = 0; i < 32u; i++) p.favorites.factory[14][i] = (uint8_t)(i * 29u + 3u);
+        for (i = 0; i < 32u; i++) p.favorites.defaults[14][i] = (uint8_t)(i * 29u + 3u);
         assert(settings_import(&p, sizeof p) == 1);
-        for (i = 0; i < 32u; i++) assert(favorites.factory[14][i] == (uint8_t)(i * 29u + 3u));
-        assert(!memcmp(favorites.factory[13], original.favorites.factory[13], 32) &&
-               !memcmp(favorites.factory[15], original.favorites.factory[15], 32));
+        for (i = 0; i < 32u; i++) assert(favorites.defaults[14][i] == (uint8_t)(i * 29u + 3u));
+        assert(!memcmp(favorites.defaults[13], original.favorites.defaults[13], 32) &&
+               !memcmp(favorites.defaults[15], original.favorites.defaults[15], 32));
         memset(&q, 0, sizeof q); settings_export(&q); assert(!memcmp(&q.favorites, &p.favorites, sizeof q.favorites));
         assert(settings_import(&q, sizeof q) == 1 && settings_import(&q, sizeof q) == 1);
-        for (i = 0; i < 32u; i++) assert(favorites.factory[14][i] == (uint8_t)(i * 29u + 3u));
+        for (i = 0; i < 32u; i++) assert(favorites.defaults[14][i] == (uint8_t)(i * 29u + 3u));
         p = original; assert(settings_import(&p, sizeof p) == 1);
     }
 #endif

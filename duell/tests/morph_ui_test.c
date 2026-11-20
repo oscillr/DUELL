@@ -11,7 +11,7 @@
  *              part's channel ignored, ROUT SEL, a learned CC the user's
  *   MATRIX     the MORPH source (fader / 127), no feedback (a roll never makes a route from MORPH nor changes one)
  *   LOAD       a sound load: the fader at A, End A the sound, End B a fresh roll
- *   SAVE HELD  SAVE held (any page): the SAVE OVER dialog, OCT+ saves the patch with End B (a load gives it back); a press\n *              opens the SAVE pages; a factory preset saved over: a copy shadows it in the browser, erased it comes back
+ *   SAVE HELD  SAVE held (any page): the SAVE OVER dialog, OCT+ saves the patch with End B (a load gives it back); a press\n *              opens the SAVE pages; a default preset saved over: a copy shadows it in the browser, erased it comes back
  *   SETTINGS   AMOUNT, SMART, ARP, PITCH kept in the settings bytes (TARGET's bit reserved, not read or written: 0.2.9), back after a power cycle; the default writes nothing
  * Built and run by DUELL/host_tests.sh (name: morphui): the UI sources against ui_test.c's stub display and knobs. */
 #define UI_TEST_NO_MAIN 1
@@ -355,10 +355,10 @@ static void t_knobs(void)
     frame();
     expect("SETTINGS > MORPH: SMART OFF (WILD), ARP ON, PITCH ON (the rows, the settings bits)",
            morph.cfg == (MC_WILD | MC_ARP | MC_PIT) && MI_TAB[MI_RSMART] == MTAB_MORPH && str_eq(menu_vname(MI_RSMART, menu_get(MI_RSMART)), "OFF") &&
-           str_eq(menu_vname(MI_RARP, menu_get(MI_RARP)), "ON") && str_eq(menu_vname(MI_RPITCH, menu_get(MI_RPITCH)), "ON") && favorites.factory[15][8] == 7u);
+           str_eq(menu_vname(MI_RARP, menu_get(MI_RARP)), "ON") && str_eq(menu_vname(MI_RPITCH, menu_get(MI_RPITCH)), "ON") && favorites.defaults[15][8] == 7u);
     menu_put(MI_RSMART, 1u); menu_put(MI_RARP, 0u); menu_put(MI_RPITCH, 0u);
     frame();
-    expect("  .. and back: SMART ON, ARP OFF, PITCH OFF (the defaults)", !morph.cfg && !favorites.factory[15][8]);
+    expect("  .. and back: SMART ON, ARP OFF, PITCH OFF (the defaults)", !morph.cfg && !favorites.defaults[15][8]);
 }
 
 /* ---------------------------------------------------------------- GESTURE --- */
@@ -673,7 +673,7 @@ static void t_load(void)
     expect("a sound load (PRESETS): the fader back at A, End A the sound, End B a fresh roll (seeded, the AMOUNT), no history",
            mph[0].fader == 0u && end_is_base(0, 0) && !end_is_base(0, 1) && rolls(0, 0) == 1u && rolls(0, 1) == 2u &&
            !seed_now(0, 0) && seed_now(0, 1) && mph[0].nid && mph[0].preset == trk[0].preset);
-    expect("AMOUNT follows the patch: the loaded factory sound's own AMOUNT shows on KNOB 4 (the rolled one's too)",
+    expect("AMOUNT follows the patch: the loaded default sound's own AMOUNT shows on KNOB 4 (the rolled one's too)",
            !trk[0].user && mph[0].amount == ds_amount(trk[0].eng_req, trk[0].preset) && mph[0].ramt[1][mph[0].top[1]] == mph[0].amount);
     turn(EN_K4, 7);
     expect("  .. turning KNOB 4 changes the AMOUNT", mph[0].amount != ds_amount(trk[0].eng_req, trk[0].preset));
@@ -758,7 +758,7 @@ static void t_item154(void)
 }
 
 /* ---------------------------------------------------------------- SAVE HELD --- */
-/* 0.2.17: ONE list of 128 slots (a slot is its saved record, else its factory sound). Hold SAVE: OVERWRITE #NN, the slot the part's sound came from,
+/* 0.2.17: ONE list of 128 slots (a slot is its saved record, else its default sound). Hold SAVE: OVERWRITE #NN, the slot the part's sound came from,
  * K1 picks another; OCT+ writes it, End B and AMOUNT with it. There is no 'new' sound, no shadow copy and no NAME screen. */
 static void t_save(void)
 {
@@ -774,7 +774,7 @@ static void t_save(void)
            !at_home() && str_eq(cur_page()->title, "PATCHES") && !up_count() && !ui.confirm);
     morph_page();
     pos = preset_pos(&total);
-    preset_go(pos);                                     /* (a factory sound, as the browser loads it) */
+    preset_go(pos);                                     /* (a default sound, as the browser loads it) */
     frames(32);
     sl = slot_of(&trk[0]);
     e = trk[0].eng_req;
@@ -783,7 +783,7 @@ static void t_save(void)
     turn(EN_K4, 20);
     turn(EN_K2, MORPH_DET); settle();                   /* ROLL B at AMOUNT 45 */
     turn(EN_K1, 70);
-    expect("a factory sound is in its slot (the browse position), the list is the 128 slots", sl == pos && total == UP_SLOTS && sl < UP_SLOTS);
+    expect("a default sound is in its slot (the browse position), the list is the 128 slots", sl == pos && total == UP_SLOTS && sl < UP_SLOTS);
     hold(B_SAVE);
     expect("SAVE held on MORPH: the OVERWRITE dialog for part 1, offering the slot the sound came from (nothing saved yet); OCT- cancels",
            ui.confirm == CF_SAVE_OVER && ui.confirm_trk == 0u && ui.svs == sl && !up_count() && (press(B_OCTDN), !ui.confirm && !up_count()));
@@ -811,7 +811,7 @@ static void t_save(void)
     up_ui(1u, sl);                                      /* RESTORE */
     preset_go(pos);
     frames(32);
-    expect("RESTORE: the factory sound back in the slot; loading it gives the factory sound",
+    expect("RESTORE: the default sound back in the slot; loading it gives the default sound",
            !up_count() && preset_at(pos) == sl && trk[0].user == 0u && slot_of(&trk[0]) == sl && !memcmp(trk[0].p, fac, sizeof fac));
     confirm_open(CF_INIT_SOUND, 0u);
     press(B_OCTUP);
@@ -830,11 +830,11 @@ static void t_save(void)
 /* ---------------------------------------------------------------- SETTINGS --- */
 static void power_cycle(void)                           /* the morph's RAM gone, the settings bytes kept (flash) */
 {
-    uint8_t keep[3] = {favorites.factory[15][12], favorites.factory[15][13], favorites.factory[15][8]};
+    uint8_t keep[3] = {favorites.defaults[15][12], favorites.defaults[15][13], favorites.defaults[15][8]};
     ui_power_on();
-    favorites.factory[15][12] = keep[0];
-    favorites.factory[15][13] = keep[1];
-    favorites.factory[15][8] = keep[2];
+    favorites.defaults[15][12] = keep[0];
+    favorites.defaults[15][13] = keep[1];
+    favorites.defaults[15][8] = keep[2];
     frame();
 }
 static void t_settings(void)
@@ -842,7 +842,7 @@ static void t_settings(void)
     fresh();
     frames(2500);
     expect("the default AMOUNT and SELECTED write nothing (the bytes stay 0, no flash write at power-on)",
-           !favorites.factory[15][12] && !favorites.factory[15][13] && !ui.mset_dirty);
+           !favorites.defaults[15][12] && !favorites.defaults[15][13] && !ui.mset_dirty);
     morph_page();
     turn(EN_K4, 40 - (int)mph[0].amount);
     turn(EN_ALGO, 1);
@@ -852,28 +852,28 @@ static void t_settings(void)
     menu_put(MI_RARP, 1u); menu_put(MI_RPITCH, 1u);   /* (SETTINGS > MORPH: ARP ON, PITCH ON; was MORPH SET's knobs) */
     frame();
     expect("AMOUNT 40 / 5 into the settings bytes (1 + %), BOTH not (bit 7 reserved, 0.2.9), a save queued",
-           favorites.factory[15][12] == 41u && favorites.factory[15][13] == 6u && ui.mset_dirty && morph.target == MT_BOTH);
+           favorites.defaults[15][12] == 41u && favorites.defaults[15][13] == 6u && ui.mset_dirty && morph.target == MT_BOTH);
     frames(2200);
     expect("  .. saved once the knob rested ~2 s (settings_save)", !ui.mset_dirty);
     power_cycle();
     expect("after a power cycle: each part's AMOUNT = its sound's (the settings keep 40 / 5 as the player's own), not BOTH (power-on: one part), ARP and PITCH ON; the ends' rolls and faders not kept; "
-           "part 1's factory sound: its own End B (its seed and AMOUNT, SMART, no ARP / PITCH: sounds.c)",
+           "part 1's default sound: its own End B (its seed and AMOUNT, SMART, no ARP / PITCH: sounds.c)",
            mph[0].amount == ds_amount(trk[0].eng_req, trk[0].preset) && mph[1].amount == ds_amount(trk[1].eng_req, trk[1].preset) &&
-           favorites.factory[15][12] == 41u && favorites.factory[15][13] == 6u && morph.target == MT_SELECTED && rolls(0, 0) == 1u && !mph[0].fader &&
+           favorites.defaults[15][12] == 41u && favorites.defaults[15][13] == 6u && morph.target == MT_SELECTED && rolls(0, 0) == 1u && !mph[0].fader &&
            morph.cfg == (MC_ARP | MC_PIT) && !trk[0].user && trk[0].preset < ds_count(trk[0].eng_req) &&
            mph[0].seed[1][mph[0].top[1]] == ds_seed(trk[0].eng_req, trk[0].preset) &&
            mph[0].ramt[1][mph[0].top[1]] == ds_amount(trk[0].eng_req, trk[0].preset) && !(mph[0].rcfg[1][mph[0].top[1]] & MC_SET));
-    favorites.factory[15][12] = 0x80u | 41u;            /* an older setting with TARGET BOTH */
+    favorites.defaults[15][12] = 0x80u | 41u;            /* an older setting with TARGET BOTH */
     power_cycle();
     frames(2500);
     expect("an older setting's TARGET BOTH bit: power-on is not BOTH; the bit is kept as stored (no rewrite, no flash write)",
-           morph.target == MT_SELECTED && favorites.factory[15][12] == (0x80u | 41u) && !ui.mset_dirty);
+           morph.target == MT_SELECTED && favorites.defaults[15][12] == (0x80u | 41u) && !ui.mset_dirty);
     morph_page();
     turn(EN_ALGO, 1);
     frames(2500);
-    expect("  .. ALGORITHM's BOTH writes nothing either (the bit stays)", morph.target == MT_BOTH && favorites.factory[15][12] == (0x80u | 41u) &&
+    expect("  .. ALGORITHM's BOTH writes nothing either (the bit stays)", morph.target == MT_BOTH && favorites.defaults[15][12] == (0x80u | 41u) &&
            !ui.mset_dirty);
-    favorites.factory[15][12] = 0xFF; favorites.factory[15][13] = 102;
+    favorites.defaults[15][12] = 0xFF; favorites.defaults[15][13] = 102;
     frame();
     expect("unknown codes read as the default (15 %); bit 7 read as nothing", mph[0].amount == MORPH_AMOUNT_DEF &&
            mph[1].amount == MORPH_AMOUNT_DEF && morph.target == MT_BOTH);

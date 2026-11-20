@@ -50,8 +50,8 @@ T0229: four new destinations, the AMP ENV times (AATK, ADEC, ASUS, AREL; shown A
 
 These are values, not selections, so they stay offered.
 
-## Factory data
+## Default data
 
-- No factory sound has a route to a removed or inert destination.
+- No default sound has a route to a removed or inert destination.
 - **M08 HAZY TENSOR** (the owner's), part 1 #3 LADDER BASS, slot 3: LFO 2 -> ANALOG WAVE, -45 %. ANALOG WAVE is now removed from the list. The route stays and plays as he made it, but the DEST knob no longer offers ANALOG WAVE.
 - **M03 PAD SPLIT** (the owner's), part 2 #44 EMBER GLOW (ANALOG, not PWM or SYNC): LFO 2 DEST SHP is 6. That card is hidden now, and its value did nothing before either.

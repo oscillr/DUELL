@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
-"""DUELL 0.2.24: the owner's own edits of patches and multis become the FACTORY set (docs/OWNER_REFINE.md is the owner's guide).
+"""DUELL 0.2.24: the owner's own edits of patches and multis become the DEFAULT set (docs/OWNER_REFINE.md is the owner's guide).
 
     tools/import_owner_edits.py [--dry-run] [--audit] [--replace] FILE...
 
@@ -10,17 +10,17 @@ FILE is what the editor writes (any number, any mix):
   duell-backup-*.json    the Backup page's file: the patch store (the same records) and the multis (M01..M16 he SAVED)
 
 What it does, with nothing of his changed (values are copied as they are; the audit is only REPORTED):
-  sounds  a saved patch in slot N replaces the factory sound at browse position N (tools/duell_sounds.py order of the build, layout.json BROWSE) when its
-          values differ from that factory sound: written to tools/owner_sounds.py (OWNER_SOUNDS, in duell_sounds.py's form, read by
+  sounds  a saved patch in slot N replaces the default sound at browse position N (tools/duell_sounds.py order of the build, layout.json BROWSE) when its
+          values differ from that default sound: written to tools/owner_sounds.py (OWNER_SOUNDS, in duell_sounds.py's form, read by
           tools/gen_duell_sounds.py with_owner: whole sounds, so the name, category, every value and End B come from his record). A patch equal to the
-          factory sound writes nothing, and an earlier entry for that slot is dropped (he undid it).
-  multis  a saved multi in slot M replaces the factory record tools/factory_multis/Mnn.bin when its bytes differ (kept byte for byte, `owner`), listed in
-          tools/owner_multis.py (read by tools/factory_multis.py apply_owner).
-  --audit then regenerates the sound table and runs the factory sound audit (tests/sound_audit.c) and tools/factory_multis.py check, and prints the FAIL
+          default sound writes nothing, and an earlier entry for that slot is dropped (he undid it).
+  multis  a saved multi in slot M replaces the default record tools/default_multis/Mnn.bin when its bytes differ (kept byte for byte, `owner`), listed in
+          tools/owner_multis.py (read by tools/default_multis.py apply_owner).
+  --audit then regenerates the sound table and runs the default sound audit (tests/sound_audit.c) and tools/default_multis.py check, and prints the FAIL
           lines: his values are never changed to pass them.
   --replace  start from nothing (the default merges: a slot not in the files keeps its earlier owner entry).
 End B: the record's End B block is imported as exact values (bend / bpin / bfm / bamt of the sound, tools/endb.py), so an End B the owner edited is kept.
-Refused with a reason (never silently): a record that does not read, an engine different from the factory sound's (a sound's engine is its identity), a name that
+Refused with a reason (never silently): a record that does not read, an engine different from the default sound's (a sound's engine is its identity), a name that
 another sound already has, the FM6 operator patch and SEQUENCER steps (not representable in duell_sounds.py: only the values are imported).
 Run from anywhere; exit 1 on a refusal.
 """
@@ -58,7 +58,7 @@ class Ctx:
 
     def __init__(self):
         self.gs = load(TOOLS / "gen_duell_sounds.py", "gen_duell_sounds")
-        self.fm = load(TOOLS / "factory_multis.py", "factory_multis")
+        self.fm = load(TOOLS / "default_multis.py", "default_multis")
         self.ids = self.gs.parse_ids()
         self.name_of = {v: k for k, v in self.ids.items()}
         self.tp, _ = self.gs.parse_tp(self.ids)
@@ -214,7 +214,7 @@ def parse_record(ctx, b):
     return dict(engine=eng, cat=b[6], name=name, values=full, mb=mb, steps=steps, fm6=fm6, ext=ext)
 
 
-def sound_from_record(ctx, rec, factory):
+def sound_from_record(ctx, rec, default):
     """the duell_sounds.py form of a record: p = every value off the INIT defaults (not the track's own), End B from the block"""
     eng = rec["engine"]
     p = {}
@@ -233,10 +233,10 @@ def sound_from_record(ctx, rec, factory):
         wid, label, lo, hi, df, nl = xtp[xn]
         if v != df:
             p["%s %s" % (ctx.gs.XGROUP[xn[2:]], label)] = v
-    cat0 = CATS[rec["cat"]] if rec["cat"] else factory["cat"]       # (a BASS / PERC / KICK sound without KEY TRK gets 0 from the generator: write the record's value, 32 included)
+    cat0 = CATS[rec["cat"]] if rec["cat"] else default["cat"]       # (a BASS / PERC / KICK sound without KEY TRK gets 0 from the generator: write the record's value, 32 included)
     if (cat0 in ("BASS", "PERC") or "KICK" in rec["name"]) and "KTRK" not in p:
         p["KTRK"] = rec["values"][ctx.ids["P_KTRK"]]
-    s = dict(engine=ctx.eng_names[eng], idx=factory["idx"], name=rec["name"], cat=CATS[rec["cat"]] if rec["cat"] else factory["cat"], p=p)
+    s = dict(engine=ctx.eng_names[eng], idx=default["idx"], name=rec["name"], cat=CATS[rec["cat"]] if rec["cat"] else default["cat"], p=p)
     if rec["mb"]:                                    # PT_VER 4: End B as exact values (the block of the record): 'bend' {label: End B value} (where it differs from the Original), 'bpin' (the marks of the values set by hand), 'bfm' (FM6 bytes), 'bamt' (the AMOUNT)
         d = endb.decode(rec["mb"], eng)
         if d["amt"]:
@@ -256,7 +256,7 @@ def build_list(ctx, lst):
 
 
 def same_sound(ctx, a, b):
-    """equal as sounds: the same values (a pair equal to the default counts as absent), name, category, End B (the block of values, else the AMOUNT); a factory seed of 0 (the hash) matches any"""
+    """equal as sounds: the same values (a pair equal to the default counts as absent), name, category, End B (the block of values, else the AMOUNT); a default seed of 0 (the hash) matches any"""
     pa, pb = dict(a["pairs"]), dict(b["pairs"])
     eng = a["e"]
     for pid in set(pa) | set(pb):
@@ -281,7 +281,7 @@ def read_files(paths):
         if j.get("format") == "duell-patches":
             for it in j.get("patches", []):
                 if not isinstance(it.get("record"), str):
-                    notes.append("%s: %s is a factory copy (values only, never saved): skipped" % (Path(path).name, it.get("name", "?")))
+                    notes.append("%s: %s is a default copy (values only, never saved): skipped" % (Path(path).name, it.get("name", "?")))
                     continue
                 b = base64.b64decode(it["record"])
                 if it.get("crc32") is not None and "%08x" % zlib.crc32(b) != str(it["crc32"]).lower().zfill(8):
@@ -361,8 +361,8 @@ def py(v, ind=0):
 
 def write_sounds(entries, path):
     lines = ['# SPDX-License-Identifier: GPL-3.0-only',
-             '"""DUELL 0.2.24: the owner\'s own edits of factory sounds, written by tools/import_owner_edits.py from what his unit saved (docs/OWNER_REFINE.md).',
-             'Each entry replaces the factory sound with the same (engine, idx) in tools/duell_sounds.py as the build sees it (tools/gen_duell_sounds.py with_owner).',
+             '"""DUELL 0.2.24: the owner\'s own edits of default sounds, written by tools/import_owner_edits.py from what his unit saved (docs/OWNER_REFINE.md).',
+             'Each entry replaces the default sound with the same (engine, idx) in tools/duell_sounds.py as the build sees it (tools/gen_duell_sounds.py with_owner).',
              'Do not edit by hand: import again, or delete an entry to go back to the recipe sound."""', "", "OWNER_SOUNDS = ["]
     for s in sorted(entries.values(), key=lambda s: (s["engine"], s["idx"])):
         tail = ""
@@ -376,8 +376,8 @@ def write_sounds(entries, path):
 
 def write_multis(entries, path):
     lines = ['# SPDX-License-Identifier: GPL-3.0-only',
-             '"""DUELL 0.2.24: multis the owner saved on his unit, written by tools/import_owner_edits.py (docs/OWNER_REFINE.md). The record of each is tools/factory_multis/Mnn.bin,',
-             'kept byte for byte; tools/factory_multis.py apply_owner puts these in its list as `kept`, `owner` (exempt from the similarity check)."""', "", "OWNER_MULTIS = ["]
+             '"""DUELL 0.2.24: multis the owner saved on his unit, written by tools/import_owner_edits.py (docs/OWNER_REFINE.md). The record of each is tools/default_multis/Mnn.bin,',
+             'kept byte for byte; tools/default_multis.py apply_owner puts these in its list as `kept`, `owner` (exempt from the similarity check)."""', "", "OWNER_MULTIS = ["]
     for m in sorted(entries.values(), key=lambda m: m["slot"]):
         lines.append("    dict(slot=%d, name=%r, mode=%r, parts=[dict(sound=%r), dict(sound=%r)])," % (       # (no description, 0.2.25)
             m["slot"], m["name"], m["mode"], m["parts"][0]["sound"], m["parts"][1]["sound"]))
@@ -416,7 +416,7 @@ def main(argv):
             refused.append("slot #%d: the record does not read (%s)" % (slot + 1, e))
             continue
         if rec["engine"] != eng_i:
-            refused.append("slot #%d %s: engine %s, the factory sound %s is %s (the engine is the sound's identity): not imported" % (
+            refused.append("slot #%d %s: engine %s, the default sound %s is %s (the engine is the sound's identity): not imported" % (
                 slot + 1, rec["name"], ctx.eng_names[rec["engine"]], fac["name"] if fac else "?", eng))
             continue
         s = sound_from_record(ctx, rec, fac)
@@ -473,7 +473,7 @@ def main(argv):
     mchanged = 0
     for slot in sorted(multis):
         b = multis[slot]
-        cur = TOOLS / "factory_multis" / ("M%02d.bin" % (slot + 1))
+        cur = TOOLS / "default_multis" / ("M%02d.bin" % (slot + 1))
         if cur.exists() and cur.read_bytes() == b:
             continue
         if len(b) < 20 or b[0] != 8 or b[1] != len(ctx.tp) and b[1] != 127:
@@ -504,8 +504,8 @@ def main(argv):
         write_multis(mown, out / "owner_multis.py")
         for slot, m in mown.items():
             if "bytes" in m:
-                (out / "factory_multis").mkdir(exist_ok=True)
-                (out / "factory_multis" / ("M%02d.bin" % slot)).write_bytes(m["bytes"])
+                (out / "default_multis").mkdir(exist_ok=True)
+                (out / "default_multis" / ("M%02d.bin" % slot)).write_bytes(m["bytes"])
         print("  wrote %s (%d sounds) and %s (%d multis)" % (out / "owner_sounds.py", len(own), out / "owner_multis.py", len(mown)))
     if a.audit and not a.dry_run and out == TOOLS:
         base = ROOT.parent
@@ -518,7 +518,7 @@ def main(argv):
             print("  sound audit: %s" % ("%d line(s) with FAIL (reported, his values are not changed):" % len(fails) if fails else "no FAIL"))
             for l in fails:
                 print("    " + l)
-        r = subprocess.run([py_, str(TOOLS / "factory_multis.py"), "check"], cwd=ROOT, capture_output=True, text=True)
+        r = subprocess.run([py_, str(TOOLS / "default_multis.py"), "check"], cwd=ROOT, capture_output=True, text=True)
         print("  multi check: " + (r.stdout.strip().splitlines() or ["?"])[-1])
     return 1 if refused else 0
 

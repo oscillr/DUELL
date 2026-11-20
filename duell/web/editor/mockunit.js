@@ -118,12 +118,12 @@ export function preselectMatrix(p) {
 // the range the unit clamps a TRACK_PARAM / SET to: the stored one (editor.c ed_tdesc: CUTOFF 2 and RES 2 keep the range of all their meanings, the page card's is narrower)
 const storedDesc = (q, id) => (id === ID.P_CUT2 || id === ID.P_RES2 ? L.TP[id] : descOf(q, id));
 
-// DUELL 0.2.17: slot i holds its saved record or else the factory sound at browse position i. The browse order is the firmware's (layout.json BROWSE, from
+// DUELL 0.2.17: slot i holds its saved record or else the default sound at browse position i. The browse order is the firmware's (layout.json BROWSE, from
 // sounds.c DS_LIST: category, then engine in the order of L.ORDER, then name; the numbers of docs/PATCH_NUMBERS.md are position + 1)
-export function factoryBrowse() {
+export function defaultBrowse() {
   return L.BROWSE.map(([eng, idx]) => ({ eng, idx, name: L.ENG[eng].sounds[idx][0], cat: L.ENG[eng].sounds[idx][1] }));
 }
-const BROWSE = factoryBrowse();
+const BROWSE = defaultBrowse();
 
 const twRound = (x) => (x < 0 ? -Math.floor(-x + 0.5) : Math.floor(x + 0.5));   // C's (x * m + 2048) / 4096 for the sign-symmetric rounding
 export class MockUnit {
@@ -216,7 +216,7 @@ export class MockUnit {
     if (part === this.selected) this.push(CMD.CHANGED, [0, id, ...v14(v)]);
     else if (id === 0 || id === 39 || id === 40) this.push(CMD.TRACK_CHANGED, [part, id, ...v14(v)]);
   }
-  // a multi load (0.2.25): both parts change (the stored snapshot, else two factory sounds of the slot); the unit pushes RELOAD for its SELECTED part only (editor.c ed_poll)
+  // a multi load (0.2.25): both parts change (the stored snapshot, else two default sounds of the slot); the unit pushes RELOAD for its SELECTED part only (editor.c ed_poll)
   // DEMO ONLY (demo11.js seedDemo sets demoTwin): a sound that loads gets the TWIN FILTER on (LADDER) when it has none, so the TWIN cards (FILTER BLEND, FILTER DRIVE, TWIN CUTOFF, TWIN RES) show in the demo as they do with a real TWIN sound.
   demoTwinOn(q) { if (this.demoTwin && !q.p[ID.P_TWTYPE]) q.p[ID.P_TWTYPE] = 5; }
   loadMultiParts(slot) {
@@ -332,7 +332,7 @@ export class MockUnit {
         }
         return [start, count, 127, ...rows.flat(), ...cats, ...(this.savedFlags ? saved : [])];   // (savedFlags false: a unit that predates the SAVED bytes)
       }
-      case CMD.UP_LOAD: {                              // the slot's record, else its factory sound
+      case CMD.UP_LOAD: {                              // the slot's record, else its default sound
         if (a[0] > 127) return [a[0], 1];
         const v = this.patches.get(a[0]);
         if (!v) { const f = BROWSE[a[0]], q = defaultPart(f.eng, part()); q.preset = f.idx; this.demoTwinOn(q); this.parts[this.selected] = q; return [a[0], 0]; }
@@ -350,7 +350,7 @@ export class MockUnit {
         this.patches.set(a[0], { name: nm || `${L.ENG[q.eng].name} ${String(a[0] + 1).padStart(2, "0")}`, eng: q.eng, cat: 8, eng2: q.eng, p: q.p.map((v, i) => (i === ID.P_LEVEL ? L.TP[i].def : v)), x: q.x.slice(), preset: q.preset, fm6: q.eng === FM6_E ? (q.fm6 ? Uint8Array.from(q.fm6) : INIT128.slice()) : null, rev: (this.patches.get(a[0])?.rev ?? -1) + 1 & 255 });
         this.log.push(`store ${a[0]}`); this.rebuild(); return [a[0], 0];
       }
-      case CMD.UP_ERASE:                               // RESTORE: the saved record is removed, the factory sound is back (rc 0 and no write when it was never saved)
+      case CMD.UP_ERASE:                               // RESTORE: the saved record is removed, the default sound is back (rc 0 and no write when it was never saved)
         if (a[0] > 127) return [a[0], 1];
         if (!this.patches.has(a[0])) return [a[0], 0];
         if (this.playing) return [a[0], 2];
@@ -379,7 +379,7 @@ export class MockUnit {
       }
       case CMD.PROJECT: {
         if (a[1] > 15) return undefined;
-        const used = this.multiStored[a[1]] != null || a[1] < 16 || this.multiUsedExtra.has(a[1]);   // (DUELL 0.2.23: all sixteen slots hold a factory multi)
+        const used = this.multiStored[a[1]] != null || a[1] < 16 || this.multiUsedExtra.has(a[1]);   // (DUELL 0.2.23: all sixteen slots hold a default multi)
         if (a[0] === 2) return [2, a[1], used ? 1 : 0];
         if (a[0] === 1) {
           if (this.playing) throw new Error("mock unit: no reply (playing)");

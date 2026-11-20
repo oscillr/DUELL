@@ -3,7 +3,7 @@
 # Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
 """Multi record converter, version 6 -> 7 (firmware/src/multi.c MU_VER 7; the cloud plan's job A, docs/design/EXTENSION_BLOCK_PLAN.md 3.6).
 
-    tools/multi_upgrade.py [--check] [FILE ...]      default: tools/factory_multis/M*.bin, in place
+    tools/multi_upgrade.py [--check] [FILE ...]      default: tools/default_multis/M*.bin, in place
 
 What a version 7 record adds, per part, right after its np (P_COUNT) values: nx (one byte, NX = 16) and nx extension values (value + 64, each the
 slot's default: firmware/src/up_xb.h XB_DEFS, read from there), then ne (one byte) = 0, no hand-set B edits. Nothing else changes: the header,
@@ -60,7 +60,7 @@ def upgrade(b, defs):
 
 def main(argv):
     check = "--check" in argv
-    files = [Path(a) for a in argv[1:] if a != "--check"] or sorted((ROOT / "tools" / "factory_multis").glob("M*.bin"))
+    files = [Path(a) for a in argv[1:] if a != "--check"] or sorted((ROOT / "tools" / "default_multis").glob("M*.bin"))
     defs, todo = xb_defs(), 0
     for f in files:
         b = f.read_bytes()

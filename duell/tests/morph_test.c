@@ -220,8 +220,8 @@ static uint64_t phrase_child(uint32_t e, uint32_t pi, uint32_t k)
     if (!(pid = fork())) {
         int16_t keep[P_COUNT];
         fresh(e, pi);
-        trk[0].preset = 0xFFu;                          /* (DUELL: no factory sound, sounds.c: its load rolls B at the
-                                                         * AMOUNT set below, not the factory sound's fixed B) */
+        trk[0].preset = 0xFFu;                          /* (DUELL: no default sound, sounds.c: its load rolls B at the
+                                                         * AMOUNT set below, not the default sound's fixed B) */
         busy(&trk[0]);
         if (k) {
             mph[0].amount = (uint8_t)(k == 3u ? 40u : k == 2u ? 60u : 0u);   /* (v2: a load rolls a B at the AMOUNT: set before) */
@@ -1672,7 +1672,7 @@ static void test_item154(void)
     char b[240];
     fresh(te, 0);
     host_ds_load(&trk[0], te, 0);
-    check("item 154: #15 BREADBIN is the factory sound loaded (TRIO, TWIN on, CYCLE and SUB set)", str_eq(ds_name(te, 0), "BREADBIN") && trk[0].p[P_TWTYPE] && trk[0].p[XW_BASE + X_SUBLVL] && trk[0].p[XW_BASE + X_CYRISE]);
+    check("item 154: #15 BREADBIN is the default sound loaded (TRIO, TWIN on, CYCLE and SUB set)", str_eq(ds_name(te, 0), "BREADBIN") && trk[0].p[P_TWTYPE] && trk[0].p[XW_BASE + X_SUBLVL] && trk[0].p[XW_BASE + X_CYRISE]);
     trk[0].p[P_LD_PIT] = 0;                             /* the owner's LFO 1 DEST page: PITCH 0, MULTI CUTOFF 17, SHAPE 11, AMP 11 */
     trk[0].p[P_LD_FLT] = 17;
     trk[0].p[P_LD_SHP] = 11;

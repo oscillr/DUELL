@@ -18,7 +18,7 @@
 /* TWIN (job E) cost rows, host instructions a sample and voice, in the Mac bench's units. Measured with uf_test's TWIN rows (valgrind callgrind instruction counts, the Linux host has no
  * counter: worst of PHASE and ANALOG, 8 voices, filter 1 running and bypassed), times the Mac / Linux ratio of filter 1 12 dB (46.6 / 69.0 = 0.675), plus 10 %, rounded up: (lin ratio).
  * The design table (30..36, 45..55, 16..22, 12..16, +2..4, 0.2..0.3 points) was an estimate and is about half of what was measured */
-/* DUELL 1.1 item 90: re-measured with tests/poly_calib.c (the Mac's instruction counter, the dearest paired difference over every factory sound of every engine): filter 2 after a
+/* DUELL 1.1 item 90: re-measured with tests/poly_calib.c (the Mac's instruction counter, the dearest paired difference over every default sound of every engine): filter 2 after a
  * running MULTI (whose BD_F12 already holds the chain path), and the extra of the chain when filter 1 is bypassed. DRIVE + PARALLEL + ENV 2 together measured 54 .. 66: split by the old ratios */
 #define BD_TW_CHAIN 0u                  /* the chain path with filter 1 running: inside BD_F12 now */
 #define BD_TW_CHAIN_BYP 36u             /* .. with filter 1 bypassed (TWIN LP alone 128 over the bypass, less the LP's 86) */

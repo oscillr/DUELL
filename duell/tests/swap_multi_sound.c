@@ -1,20 +1,20 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
-/* DUELL 0.2.9: swaps ONE part's sound in a factory multi record (tools/factory_multis/Mnn.bin) and leaves every other byte as it was.
+/* DUELL 0.2.9: swaps ONE part's sound in a default multi record (tools/default_multis/Mnn.bin) and leaves every other byte as it was.
  * Written for M03 DEAD BUFFER, whose part 1 was GRAIN's #2 STRETCH (the GRAIN engine is retired): the new sound is loaded onto that
  * part with the firmware's own code, as the PATCHES browser loads it (the multi loaded first, then set_engine_of + apply_preset_to: a
  * sound load keeps the part's own values, PAN, MUTE and the sequencer's, ui.c param_kept_on), and its values are written into the
- * record's part: the engine byte, the factory index byte and the part's parameter bytes (value + 64). The rest stays byte for byte:
+ * record's part: the engine byte, the default index byte and the part's parameter bytes (value + 64). The rest stays byte for byte:
  * the header (name, MODE, MORPH TARGET and SET), the globals (tempo, the effects), the part's AMOUNT, its End B block (the seed
  * and the roll's settings: End B is rolled again from the new sound with the same seed), its steps, the other part, the automation and
  * the mix bytes. Checked here: the record decodes (multi.c mu_unpack), only the part's bytes changed, and loaded it gives the new sound.
  *   cc -O1 -DDUELL_TEST_MODE=1 -Ibuild/gen_test -Ibuild/gen -Ifirmware/src -Itests -DFELUCCA_VERSION='"x"' -o build/host/swap_multi_sound tests/swap_multi_sound.c -lm
  *   build/host/swap_multi_sound IN.bin PART ENGINE INDEX OUT.bin [ID=VALUE ..]   (PART 1 or 2; ENGINE the engine number, INDEX its
- *                                                   factory sound; ID=VALUE: a parameter set after the load, the owner's own edits of
+ *                                                   default sound; ID=VALUE: a parameter set after the load, the owner's own edits of
  *                                                   the part that are not the old sound's, carried over by hand: core.h P_ ids)
  * M03 (0.2.9): the owner had edited part 1 beyond STRETCH (compared with STRETCH as it loaded): LFO 1 RATE 46 (SIN) feeding matrix slot 2
  * LFO1 -> PAN +35 (an auto-pan), DIST 23, slot 3 LFO2 -> DIST -8, DUCK CURVE 0. They are carried over (FROZEN AIR's own slot 3, LFO1 ->
  * DTN, gives way to his):
- *   build/host/swap_multi_sound tools/factory_multis/M03.bin 1 14 17 tools/factory_multis/M03.bin 9=46 10=0 33=23 52=1 53=5 54=35 55=12 56=6 57=-8 105=0 */
+ *   build/host/swap_multi_sound tools/default_multis/M03.bin 1 14 17 tools/default_multis/M03.bin 9=46 10=0 33=23 52=1 53=5 54=35 55=12 56=6 57=-8 105=0 */
 #define UI_TEST_NO_MAIN 1
 #include "ui_test.c"
 
@@ -32,7 +32,7 @@ int main(int argc, char **argv)
     eng = (uint32_t)atoi(argv[3]);
     idx = (uint32_t)atoi(argv[4]);
     if (part >= NSHOWN || !eng_ok(eng) || idx >= ds_count(eng))
-        return fprintf(stderr, "swap_multi_sound: part 1 or 2, a pickable engine and one of its factory sounds\n"), 2;
+        return fprintf(stderr, "swap_multi_sound: part 1 or 2, a pickable engine and one of its default sounds\n"), 2;
     f = fopen(argv[1], "rb");
     if (!f)
         return perror(argv[1]), 1;

@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-only
-"""DUELL factory sounds: the data (tools/gen_duell_sounds.py validates it and writes build/gen/duell_sounds.h).
+"""DUELL default sounds: the data (tools/gen_duell_sounds.py validates it and writes build/gen/duell_sounds.h).
 
-DUELL 1.0 (owner, 2026-10-21): the 128 factory sounds are the owner's bank, the records of tools/factory_bank.duell-patches.json as exported (no refinement,
+DUELL 1.0 (owner, 2026-10-21): the 128 default sounds are the owner's bank, the records of tools/default_bank.duell-patches.json as exported (no refinement,
 no retuning, the names of the file), written here by tools/import_bank.py. The earlier recipe list (SOUND_RECIPES.md, the refinement passes) is in git history.
-Every sound: engine, idx (its factory index within the engine: the identity favourites and the shadows use; APPEND-ONLY per engine), name, cat, p: the
+Every sound: engine, idx (its default index within the engine: the identity favourites and the shadows use; APPEND-ONLY per engine), name, cat, p: the
 parameters that differ from INIT (params.c TP defaults and the engine's EDIT defaults; E1..E8 are the engine's eight; MOD1..MOD8 are (SRC, DST, AMT)
 matrix slots; extension slots as "<group> <label>"), bseed / bamt: End B (the roll's seed and the AMOUNT %). Do not edit by hand: import again.
 End B as exact values (2026-10-29, tools/convert_endb.py; the format is tools/endb.py's = the patch record's End B block): bend {label: End B value} (where it differs from the Original),
@@ -32,9 +32,10 @@ SOUNDS = [
          }),
     dict(engine='ANALOG', idx=16, name='FOLD BASS', cat='BASS', bseed=17953,  # #2
          p={
+            'EQLG': 2, 'EQLF': -5, 'EQHG': -4,
             'ATK': 0, 'DEC': 77, 'SUS': 114, 'REL': 51, 'RES2': 17, 'DRV2': 31, 'KTRK': 13, 'TRANS': -12, 'VOICE': 2, 'GLIDE': 16, 'GLMODE': 1,
             'TWTYPE': 1, 'FREEA': 44, 'FREEB': 21, 'FREED': 2, 'E2ATK': 0, 'E2DEC': 77, 'E2SUS': 44, 'E2REL': 56, 'L2RATE': 27, 'L2WAVE': 1,
-            'ITYPE': 3, 'IA': 46, 'IB': 100, 'EQHG': -4, 'EQHF': -8, 'CUT2': -7, 'DKDEP': 41, 'TRIM': 111, 'DKSRC': 0, 'E2FLT': 17, 'L2FLT': 4,
+            'ITYPE': 3, 'IA': 46, 'IB': 100, 'EQHF': -8, 'CUT2': -7, 'DKDEP': 41, 'TRIM': 111, 'DKSRC': 0, 'E2FLT': 17, 'L2FLT': 4,
             'E1': 6, 'E2': 0, 'E3': 70, 'E7': 20, 'MOD1': ('AT', 'INS A', 16), 'MOD2': ('ENV2', 'INS A', 17), 'MOD3': ('CYCLE', 'CUT', 7), 'LTRIG': 1,
             'L2TRIG': 1, 'SUB LEVEL': 31, 'CYCLE RISE': 97, 'CYCLE FALL': 97,
          },
@@ -63,8 +64,9 @@ SOUNDS = [
          }),
     dict(engine='ANALOG', idx=3, name='RUBBER BAND', cat='BASS', bseed=49167,  # #4
          p={
+            'EQLG': 2, 'EQLF': -5, 'EQHG': -4,
             'ATK': 0, 'DEC': 82, 'SUS': 41, 'REL': 64, 'KTRK': 13, 'TRANS': -12, 'DIST': 22, 'REV': 6, 'VOICE': 2, 'FREEA': 27, 'FREEB': 47,
-            'E2ATK': 0, 'E2DEC': 65, 'E2SUS': 0, 'E2REL': 65, 'L2RATE': 21, 'EQHG': -4, 'EQHF': -8, 'TRIM': 112, 'E2FLT': 37, 'L2FLT': 4, 'E1': 6,
+            'E2ATK': 0, 'E2DEC': 65, 'E2SUS': 0, 'E2REL': 65, 'L2RATE': 21, 'EQHF': -8, 'TRIM': 112, 'E2FLT': 37, 'L2FLT': 4, 'E1': 6,
             'E2': 0, 'E3': 25, 'E7': 18, 'MOD1': ('AT', 'SAT', 7), 'MOD2': ('VEL', 'CUT', 8), 'MOD3': ('CYCLE', 'FRES', 11), 'LTRIG': 1, 'L2TRIG': 1,
             'SUB LEVEL': 31, 'CYCLE MODE': 1, 'CYCLE RISE': 0, 'CYCLE FALL': 81,
          },
@@ -104,8 +106,9 @@ SOUNDS = [
          }),
     dict(engine='FM6', idx=12, name='FM BASS 2', cat='BASS', bseed=17352,  # #7
          p={
+            'EQLG': 2, 'EQLF': -5, 'EQHG': -4,
             'LRATE': 30, 'LWAVE': 1, 'LD_FLT': 4, 'RES2': 21, 'KTRK': 0, 'TRANS': -12, 'REV': 6, 'VOICE': 2, 'TWTYPE': 1, 'FREEA': 51, 'FREEB': 11,
-            'E2ATK': 0, 'E2DEC': 71, 'E2SUS': 0, 'E2REL': 61, 'ITYPE': 1, 'IA': 40, 'IB': 127, 'IC': 112, 'IMIX': 90, 'EQHG': -4, 'EQHF': -8,
+            'E2ATK': 0, 'E2DEC': 71, 'E2SUS': 0, 'E2REL': 61, 'ITYPE': 1, 'IA': 40, 'IB': 127, 'IC': 112, 'IMIX': 90, 'EQHF': -8,
             'CUT2': -17, 'DKDEP': 51, 'DKSRC': 0, 'E2FLT': 17, 'E8': 41, 'MOD1': ('AT', 'E5', 21), 'MOD2': ('ENV2', 'E3', 17),
             'MOD3': ('CYCLE', 'E3', 4), 'LTRIG': 1, 'L2TRIG': 1, 'SUB LEVEL': 61, 'CYCLE RISE': 91, 'CYCLE FALL': 91,
          },
@@ -124,8 +127,9 @@ SOUNDS = [
          ]),
     dict(engine='FM6', idx=11, name='FRETLESS', cat='BASS', bseed=1048,  # #8
          p={
+            'EQLG': 2, 'EQLF': -5, 'EQHG': -4,
             'KTRK': 0, 'TRANS': -12, 'DIST': 7, 'CHOR': 14, 'VOICE': 2, 'GLIDE': 31, 'GLMODE': 1, 'FREEA': 47, 'FREEB': 21, 'E2ATK': 71, 'E2DEC': 87,
-            'E2SUS': 41, 'E2REL': 51, 'L2RATE': 21, 'L2WAVE': 1, 'EQHG': -4, 'EQHF': -8, 'DKDEP': 14, 'TRIM': 120, 'DKSRC': 0, 'E2FLT': 27, 'L2FLT': 4,
+            'E2SUS': 41, 'E2REL': 51, 'L2RATE': 21, 'L2WAVE': 1, 'EQHF': -8, 'DKDEP': 14, 'TRIM': 120, 'DKSRC': 0, 'E2FLT': 27, 'L2FLT': 4,
             'E6': 2, 'E8': 43, 'MOD1': ('AT', 'E3', 4), 'MOD2': ('ENV2', 'E3', 5), 'MOD3': ('CYCLE', 'E3', 4), 'LTRIG': 1, 'L2TRIG': 1,
             'CYCLE RISE': 100, 'CYCLE FALL': 100,
          },
@@ -142,8 +146,9 @@ SOUNDS = [
          ]),
     dict(engine='FM6', idx=0, name='SLAP DOCTOR', cat='BASS', bseed=45536,  # #9
          p={
+            'EQLG': 2, 'EQLF': -5, 'EQHG': -4,
             'KTRK': 0, 'TRANS': -12, 'DIST': 7, 'VOICE': 2, 'FREEA': 41, 'FREEB': 17, 'E2ATK': 0, 'E2DEC': 59, 'E2SUS': 0, 'E2REL': 56, 'L2RATE': 27,
-            'L2WAVE': 1, 'EQHG': -4, 'EQHF': -8, 'DKDEP': 16, 'TRIM': 116, 'DKSRC': 0, 'E2FLT': 21, 'L2FLT': 4, 'E2': 1, 'E3': 10, 'E5': 24, 'E6': 3,
+            'L2WAVE': 1, 'EQHF': -8, 'DKDEP': 16, 'TRIM': 116, 'DKSRC': 0, 'E2FLT': 21, 'L2FLT': 4, 'E2': 1, 'E3': 10, 'E5': 24, 'E6': 3,
             'E8': 2, 'MOD1': ('AT', 'E7', 37), 'MOD2': ('ENV2', 'E3', 11), 'MOD3': ('CYCLE', 'CUT', 7), 'LTRIG': 1, 'L2TRIG': 1, 'SUB LEVEL': 41,
             'CYCLE MODE': 1, 'CYCLE RISE': 0, 'CYCLE FALL': 81,
          },
@@ -160,8 +165,9 @@ SOUNDS = [
          ]),
     dict(engine='PHASE', idx=0, name='ELASTIC BASS', cat='BASS', bseed=60775, bamt=11,  # #10
          p={
+            'EQLG': 2, 'EQLF': -5, 'EQHG': -4,
             'DEC': 76, 'SUS': 70, 'REL': 55, 'KTRK': 0, 'TRANS': -12, 'DIST': 13, 'VOICE': 2, 'GLIDE': 21, 'GLMODE': 1, 'FREEA': 37, 'FREEB': 31,
-            'FREED': 2, 'E2ATK': 0, 'E2DEC': 71, 'E2SUS': 13, 'E2REL': 54, 'L2RATE': 27, 'L2WAVE': 1, 'EQHG': -4, 'EQHF': -8, 'DKDEP': 14, 'TRIM': 110,
+            'FREED': 2, 'E2ATK': 0, 'E2DEC': 71, 'E2SUS': 13, 'E2REL': 54, 'L2RATE': 27, 'L2WAVE': 1, 'EQHF': -8, 'DKDEP': 14, 'TRIM': 110,
             'DKSRC': 0, 'E2FLT': 27, 'L2FLT': 4, 'E1': 5, 'E3': 38, 'E4': 66, 'MOD1': ('AT', 'E3', 11), 'MOD2': ('CYCLE', 'CUT', 7), 'LTRIG': 1,
             'L2TRIG': 1, 'CYCLE RISE': 100, 'CYCLE FALL': 100,
          },
@@ -174,8 +180,9 @@ SOUNDS = [
          }),
     dict(engine='PHASE', idx=9, name='FUZZ BASS', cat='BASS', bseed=57016,  # #11
          p={
+            'EQLG': 2, 'EQLF': -5, 'EQHG': -4,
             'DEC': 77, 'SUS': 112, 'REL': 52, 'KTRK': 0, 'TRANS': -12, 'VOICE': 2, 'GLIDE': 18, 'GLMODE': 1, 'FREEA': 41, 'FREEB': 17, 'FREED': 2,
-            'E2ATK': 0, 'E2DEC': 71, 'E2SUS': 25, 'E2REL': 54, 'L2RATE': 21, 'ITYPE': 4, 'IA': 82, 'IB': 90, 'IC': 90, 'IMIX': 110, 'EQHG': -4,
+            'E2ATK': 0, 'E2DEC': 71, 'E2SUS': 25, 'E2REL': 54, 'L2RATE': 21, 'ITYPE': 4, 'IA': 82, 'IB': 90, 'IC': 90, 'IMIX': 110, 
             'EQHF': -8, 'TRIM': 111, 'E2FLT': 21, 'L2FLT': 4, 'E1': 5, 'E3': 44, 'E4': 45, 'MOD1': ('AT', 'FRES', 17), 'MOD2': ('CYCLE', 'INS A', 7),
             'LTRIG': 1, 'L2TRIG': 1, 'CYCLE RISE': 97, 'CYCLE FALL': 97,
          },
@@ -188,8 +195,9 @@ SOUNDS = [
          }),
     dict(engine='LOFI', idx=8, name='ARP BASS', cat='BASS', bseed=16972,  # #12
          p={
+            'EQLG': 2, 'EQLF': -5, 'EQHG': -4,
             'ATK': 0, 'DEC': 69, 'SUS': 89, 'REL': 47, 'KTRK': 0, 'TRANS': -12, 'VOICE': 2, 'FREEA': 51, 'FREEB': 21, 'E2ATK': 0, 'E2DEC': 71,
-            'E2SUS': 0, 'E2REL': 51, 'L2RATE': 40, 'L2WAVE': 1, 'EQHG': -4, 'EQHF': -8, 'DKDEP': 14, 'TRIM': 97, 'DKSRC': 0, 'E2FLT': 17, 'L2SHP': 11,
+            'E2SUS': 0, 'E2REL': 51, 'L2RATE': 40, 'L2WAVE': 1, 'EQHF': -8, 'DKDEP': 14, 'TRIM': 97, 'DKSRC': 0, 'E2FLT': 17, 'L2SHP': 11,
             'E1': 2, 'E3': 40, 'E7': 1, 'E8': 84, 'MOD1': ('AT', 'SHP', 17), 'MOD2': ('CYCLE', 'CUT', 7), 'LTRIG': 1, 'L2TRIG': 1, 'SUB LEVEL': 31,
             'SUB WAVE': 2, 'CYCLE RISE': 100, 'CYCLE FALL': 100,
          },
@@ -202,8 +210,9 @@ SOUNDS = [
          }),
     dict(engine='LOFI', idx=0, name='CARTRIDGE', cat='BASS', bseed=28474,  # #13
          p={
+            'EQLG': 2, 'EQLF': -5, 'EQHG': -4,
             'DEC': 73, 'SUS': 102, 'REL': 51, 'KTRK': 0, 'TRANS': -12, 'VOICE': 2, 'FREEA': 47, 'FREEB': 17, 'E2ATK': 0, 'E2DEC': 69, 'E2SUS': 0,
-            'E2REL': 51, 'L2RATE': 17, 'L2WAVE': 1, 'EQHG': -4, 'EQHF': -8, 'DKDEP': 15, 'TRIM': 99, 'DKSRC': 0, 'E2FLT': 17, 'L2FLT': 4, 'E2': 4,
+            'E2REL': 51, 'L2RATE': 17, 'L2WAVE': 1, 'EQHF': -8, 'DKDEP': 15, 'TRIM': 99, 'DKSRC': 0, 'E2FLT': 17, 'L2FLT': 4, 'E2': 4,
             'E3': 67, 'E8': 72, 'MOD1': ('AT', 'E8', 17), 'MOD2': ('CYCLE', 'CUT', 7), 'LTRIG': 1, 'L2TRIG': 1, 'SUB LEVEL': 41, 'CYCLE RISE': 100,
             'CYCLE FALL': 100,
          },
@@ -216,8 +225,9 @@ SOUNDS = [
          }),
     dict(engine='VOICE', idx=0, name='BULLFROG', cat='BASS', bseed=36283,  # #14
          p={
+            'EQLG': 2, 'EQLF': -5, 'EQHG': -4,
             'ATK': 15, 'DEC': 79, 'SUS': 102, 'REL': 59, 'KTRK': 0, 'TRANS': -12, 'DIST': 24, 'VOICE': 2, 'GLIDE': 23, 'GLMODE': 1, 'FREEA': 52,
-            'FREEB': 17, 'E2ATK': 0, 'E2DEC': 76, 'E2SUS': 0, 'L2RATE': 21, 'L2WAVE': 1, 'EQHG': -4, 'EQHF': -8, 'DKDEP': 15, 'TRIM': 94, 'DKSRC': 0,
+            'FREEB': 17, 'E2ATK': 0, 'E2DEC': 76, 'E2SUS': 0, 'L2RATE': 21, 'L2WAVE': 1, 'EQHF': -8, 'DKDEP': 15, 'TRIM': 94, 'DKSRC': 0,
             'E2FLT': 17, 'L2FLT': 4, 'E1': 95, 'E2': 6, 'E3': 62, 'E4': -4, 'E5': 96, 'E6': 0, 'E7': 84, 'MOD1': ('AT', 'E4', 5),
             'MOD2': ('CYCLE', 'SHP', -9), 'LTRIG': 1, 'L2TRIG': 1, 'CYCLE RISE': 97, 'CYCLE FALL': 97,
          },
@@ -230,8 +240,9 @@ SOUNDS = [
          }),
     dict(engine='TRIO', idx=0, name='BREADBIN', cat='BASS', bseed=30953,  # #15
          p={
+            'EQLG': 2, 'EQLF': -5, 'EQHG': -4,
             'DEC': 74, 'SUS': 108, 'REL': 55, 'RES2': 41, 'KTRK': 0, 'TRANS': -12, 'VOICE': 2, 'GLIDE': 22, 'GLMODE': 1, 'TWTYPE': 1, 'FREEA': 47,
-            'FREEB': 11, 'E2ATK': 19, 'E2DEC': 75, 'E2SUS': 28, 'E2REL': 56, 'L2RATE': 27, 'L2WAVE': 1, 'EQHG': -4, 'EQHF': -8, 'CUT2': 37,
+            'FREEB': 11, 'E2ATK': 19, 'E2DEC': 75, 'E2SUS': 28, 'E2REL': 56, 'L2RATE': 27, 'L2WAVE': 1, 'EQHF': -8, 'CUT2': 37,
             'DKDEP': 15, 'TRIM': 101, 'DKSRC': 0, 'E4': 11, 'MOD1': ('AT', 'E4', 17), 'MOD2': ('VEL', 'CUT2', 6), 'MOD3': ('CYCLE', 'CUT2', 7),
             'LTRIG': 1, 'L2TRIG': 1, 'TWIN LINK': 0, 'TWIN ENV2': 19, 'TWIN LFO2': 4, 'SUB LEVEL': 31, 'CYCLE RISE': 100, 'CYCLE FALL': 100,
          },
@@ -245,8 +256,9 @@ SOUNDS = [
          }),
     dict(engine='TRIO', idx=11, name='SID BASS', cat='BASS', bseed=7135,  # #16
          p={
+            'EQLG': 2, 'EQLF': -5, 'EQHG': -4,
             'DEC': 76, 'SUS': 108, 'REL': 54, 'RES2': 31, 'KTRK': 0, 'TRANS': -12, 'VOICE': 2, 'GLIDE': 19, 'GLMODE': 1, 'TWTYPE': 1, 'FREEA': 52,
-            'FREEB': 11, 'E2ATK': 0, 'E2DEC': 74, 'E2SUS': 32, 'E2REL': 56, 'L2RATE': 59, 'L2WAVE': 1, 'EQHG': -4, 'EQHF': -8, 'CUT2': 46, 'TRIM': 93,
+            'FREEB': 11, 'E2ATK': 0, 'E2DEC': 74, 'E2SUS': 32, 'E2REL': 56, 'L2RATE': 59, 'L2WAVE': 1, 'EQHF': -8, 'CUT2': 46, 'TRIM': 93,
             'L2SHP': 18, 'E1': 1, 'E4': 7, 'E8': 40, 'MOD1': ('AT', 'SHP', 17), 'MOD2': ('VEL', 'CUT2', 6), 'MOD3': ('CYCLE', 'CUT2', 7), 'LTRIG': 1,
             'L2TRIG': 1, 'TWIN LINK': 0, 'TWIN ENV2': 17, 'SUB LEVEL': 31, 'SUB WAVE': 2, 'CYCLE RISE': 100, 'CYCLE FALL': 100,
          },
@@ -260,8 +272,9 @@ SOUNDS = [
          }),
     dict(engine='TRIO', idx=12, name='SYNC BASS', cat='BASS', bseed=43701,  # #17
          p={
+            'EQLG': 2, 'EQLF': -5, 'EQHG': -4,
             'DEC': 79, 'SUS': 102, 'REL': 44, 'RES2': 87, 'DRV2': 21, 'KTRK': 0, 'TRANS': -12, 'DIST': 31, 'VOICE': 2, 'GLIDE': 18, 'GLMODE': 1,
-            'TWTYPE': 5, 'FREEA': 31, 'FREEB': 77, 'E2ATK': 0, 'E2SUS': 0, 'E2REL': 54, 'L2RATE': 30, 'L2WAVE': 1, 'EQHG': -4, 'EQHF': -8, 'CUT2': 40,
+            'TWTYPE': 5, 'FREEA': 31, 'FREEB': 77, 'E2ATK': 0, 'E2SUS': 0, 'E2REL': 54, 'L2RATE': 30, 'L2WAVE': 1, 'EQHF': -8, 'CUT2': 40,
             'TRIM': 114, 'E2FLT': 31, 'E1': 9, 'E2': 7, 'E3': 0, 'E4': 0, 'MOD1': ('AT', 'FDRV', 21), 'MOD2': ('VEL', 'CUT2', 6),
             'MOD3': ('ENV2', 'E2', 17), 'MOD4': ('CYCLE', 'CUT', 7), 'LTRIG': 1, 'L2TRIG': 1, 'TWIN LINK': 0, 'TWIN ENV2': 31, 'TWIN LFO2': 5,
             'SUB LEVEL': 41, 'SUB WAVE': 2, 'CYCLE RISE': 41, 'CYCLE FALL': 41, 'CYCLE SYNC': 1,
@@ -276,8 +289,9 @@ SOUNDS = [
          }),
     dict(engine='WHEEL', idx=0, name='PEDAL BASS', cat='BASS', bseed=14321,  # #18
          p={
+            'EQLG': 2, 'EQLF': -5, 'EQHG': -4,
             'DEC': 94, 'SUS': 127, 'REL': 44, 'LRATE': 21, 'LWAVE': 1, 'LD_FLT': 4, 'KTRK': 0, 'TRANS': -12, 'DIST': 30, 'VOICE': 2, 'FREEA': 36,
-            'FREEB': 11, 'E2ATK': 0, 'E2DEC': 62, 'E2SUS': 0, 'E2REL': 47, 'ITYPE': 9, 'IA': 18, 'IB': 90, 'IC': 40, 'EQHG': -4, 'EQHF': -8,
+            'FREEB': 11, 'E2ATK': 0, 'E2DEC': 62, 'E2SUS': 0, 'E2REL': 47, 'ITYPE': 9, 'IA': 18, 'IB': 90, 'IC': 40, 'EQHF': -8,
             'TRIM': 104, 'E2FLT': 11, 'E2SHP': 26, 'E1': 14, 'E3': -4, 'E4': -8, 'E6': 50, 'E7': 30, 'E8': 0, 'MOD1': ('AT', 'E7', 21),
             'MOD2': ('CYCLE', 'CUT', 11), 'LTRIG': 1, 'L2TRIG': 1, 'CYCLE MODE': 1, 'CYCLE RISE': 0, 'CYCLE FALL': 80, 'CYCLE CURVE': -21,
          },
@@ -290,8 +304,9 @@ SOUNDS = [
          }),
     dict(engine='PHYS', idx=11, name='PLUCK BASS', cat='BASS', bseed=13381,  # #19
          p={
+            'EQLG': 2, 'EQLF': -5, 'EQHG': -4,
             'ATK': 0, 'SUS': 127, 'REL': 65, 'KTRK': 0, 'TRANS': -12, 'REV': 9, 'FREEA': 36, 'FREEB': 17, 'FREED': 2, 'E2ATK': 0, 'E2DEC': 67,
-            'E2SUS': 0, 'E2REL': 56, 'L2RATE': 27, 'L2WAVE': 1, 'ITYPE': 1, 'IA': 100, 'IB': 127, 'IC': 112, 'EQHG': -4, 'EQHF': -8, 'TRIM': 106,
+            'E2SUS': 0, 'E2REL': 56, 'L2RATE': 27, 'L2WAVE': 1, 'ITYPE': 1, 'IA': 100, 'IB': 127, 'IC': 112, 'EQHF': -8, 'TRIM': 106,
             'E2FLT': 31, 'L2FLT': 4, 'E1': 1, 'E2': 61, 'E3': 47, 'E4': 118, 'E5': 41, 'E6': 127, 'E8': 11, 'MOD1': ('AT', 'E3', 11),
             'MOD2': ('CYCLE', 'CUT', 7), 'LTRIG': 1, 'L2TRIG': 1, 'CYCLE RISE': 100, 'CYCLE FALL': 100,
          },
@@ -304,8 +319,9 @@ SOUNDS = [
          }),
     dict(engine='NOISE', idx=0, name='GEARBOX', cat='BASS', bseed=14165,  # #20
          p={
+            'EQLG': 2, 'EQLF': -5, 'EQHG': -4,
             'DEC': 73, 'SUS': 108, 'REL': 55, 'LWAVE': 3, 'LD_FLT': 7, 'RES2': 31, 'TRANS': -12, 'VOICE': 2, 'TWTYPE': 1, 'FREEA': 56, 'FREEB': 21,
-            'E2ATK': 19, 'E2DEC': 76, 'E2SUS': 32, 'E2REL': 56, 'LSYNC': 8, 'EQHG': -4, 'EQHF': -8, 'CUT2': -11, 'DKDEP': 41, 'TRIM': 95, 'DKSRC': 0,
+            'E2ATK': 19, 'E2DEC': 76, 'E2SUS': 32, 'E2REL': 56, 'LSYNC': 8, 'EQHF': -8, 'CUT2': -11, 'DKDEP': 41, 'TRIM': 95, 'DKSRC': 0,
             'E2FLT': 17, 'E1': 3, 'E2': 0, 'E6': 48, 'MOD1': ('AT', 'FRES', 21), 'MOD2': ('CYCLE', 'CUT', 7), 'MOD3': ('VEL', 'CUT', 6), 'LTRIG': 1,
             'L2TRIG': 1, 'KTRK': 32, 'SUB LEVEL': 31, 'SUB WAVE': 2, 'CYCLE RISE': 100, 'CYCLE FALL': 100,
          },
@@ -348,8 +364,9 @@ SOUNDS = [
          }),
     dict(engine='WAVE', idx=21, name='KICK BASS', cat='BASS', bseed=3922,  # #23
          p={
+            'EQLG': 2, 'EQLF': -5, 'EQHG': -4,
             'ATK': 0, 'DEC': 82, 'SUS': 70, 'REL': 56, 'KTRK': 0, 'TRANS': -12, 'DIST': 41, 'VOICE': 2, 'GLMODE': 1, 'E2ATK': 0, 'E2DEC': 63,
-            'E2SUS': 0, 'E2REL': 47, 'ITYPE': 2, 'IA': 112, 'IB': 90, 'EQHG': -4, 'EQHF': -8, 'TRIM': 107, 'E1': 2, 'E2': 10,
+            'E2SUS': 0, 'E2REL': 47, 'ITYPE': 2, 'IA': 112, 'IB': 90, 'EQHF': -8, 'TRIM': 107, 'E1': 2, 'E2': 10,
             'MOD1': ('AT', 'SHP', 16), 'MOD2': ('ENV2', 'PITCH', 63), 'MOD3': ('ENV2', 'PITCH', 63), 'MOD4': ('EXPR', 'PITCH', -64), 'LTRIG': 1,
             'L2TRIG': 1, 'SUB LEVEL': 74,
          },
@@ -1067,7 +1084,7 @@ SOUNDS = [
          }),
     dict(engine='LOFI', idx=3, name='MARBLE RUN', cat='PLUCK', bseed=60893,  # #71
          p={
-            'ATK': 0, 'DEC': 79, 'SUS': 0, 'REL': 69, 'EQLG': -3, 'AMODE': 1, 'ARATE': 1, 'AOCT': 2, 'AGATE': 57, 'DLY': 38, 'REV': 44, 'FREEB': 40,
+            'ATK': 0, 'DEC': 79, 'SUS': 0, 'REL': 69, 'AMODE': 1, 'ARATE': 1, 'AOCT': 2, 'AGATE': 57, 'DLY': 38, 'REV': 44, 'FREEB': 40,
             'E2ATK': 0, 'E2DEC': 74, 'E2SUS': 0, 'E2REL': 64, 'TRIM': 112, 'E2': 1, 'E8': 96, 'LTRIG': 1, 'L2TRIG': 1,
          },
          bend={
@@ -1109,7 +1126,7 @@ SOUNDS = [
          }),
     dict(engine='WHEEL', idx=4, name='NIGHT BOX', cat='PLUCK', bseed=32458,  # #74
          p={
-            'ATK': 0, 'DEC': 81, 'SUS': 0, 'REL': 72, 'EQLG': -6, 'LRATE': 27, 'LWAVE': 1, 'LD_FLT': 5, 'AMODE': 1, 'ARATE': 1, 'AOCT': 2, 'KTRK': 31,
+            'ATK': 0, 'DEC': 81, 'SUS': 0, 'REL': 72, 'LRATE': 27, 'LWAVE': 1, 'LD_FLT': 5, 'AMODE': 1, 'ARATE': 1, 'AOCT': 2, 'KTRK': 31,
             'DLY': 25, 'REV': 51, 'FREEA': 66, 'FREEB': 17, 'E2ATK': 0, 'E2DEC': 76, 'E2SUS': 0, 'E2REL': 64, 'L2RATE': 21, 'L2WAVE': 1, 'TRIM': 111,
             'E2FLT': 11, 'E2SHP': 19, 'L2SHP': 2, 'E1': 8, 'E3': -4, 'E4': 2, 'E6': 20, 'E8': 0, 'MOD1': ('AT', 'E7', 17),
             'MOD2': ('CYCLE', 'CUT', 11), 'LTRIG': 1, 'L2TRIG': 1, 'CYCLE MODE': 1, 'CYCLE RISE': 0, 'CYCLE FALL': 71,
@@ -1209,7 +1226,7 @@ SOUNDS = [
          ]),
     dict(engine='FM6', idx=6, name='FROST BELLS', cat='KEYS', bseed=48288,  # #81
          p={
-            'EQLG': -5, 'CHOR': 13, 'REV': 70, 'FREEB': 40, 'E2ATK': 0, 'E2DEC': 98, 'E2SUS': 0, 'E2REL': 88, 'ITYPE': 1, 'IA': 40, 'IB': 127,
+            'CHOR': 13, 'REV': 70, 'FREEB': 40, 'E2ATK': 0, 'E2DEC': 98, 'E2SUS': 0, 'E2REL': 88, 'ITYPE': 1, 'IA': 40, 'IB': 127,
             'IC': 112, 'TRIM': 97, 'E6': 2, 'E7': 13, 'E8': 1, 'MOD1': ('AT', 'E3', 4), 'MOD2': ('CYCLE', 'E3', 4), 'LTRIG': 1, 'L2TRIG': 1,
             'SUB LEVEL': 51, 'SUB OCTAVE': 0, 'CYCLE MODE': 1, 'CYCLE RISE': 0, 'CYCLE FALL': 100, 'CYCLE CURVE': -21,
          },
@@ -1289,7 +1306,7 @@ SOUNDS = [
          }),
     dict(engine='TRIO', idx=3, name='TIN TOLL', cat='KEYS', bseed=43504,  # #86
          p={
-            'ATK': 0, 'DEC': 99, 'SUS': 0, 'REL': 92, 'EQLG': -5, 'RES2': 22, 'KTRK': 0, 'CHOR': 13, 'REV': 64, 'TWTYPE': 1, 'FREEA': 56, 'FREEB': 17,
+            'ATK': 0, 'DEC': 99, 'SUS': 0, 'REL': 92, 'RES2': 22, 'KTRK': 0, 'CHOR': 13, 'REV': 64, 'TWTYPE': 1, 'FREEA': 56, 'FREEB': 17,
             'E2ATK': 0, 'E2DEC': 86, 'E2SUS': 0, 'E2REL': 79, 'L2RATE': 32, 'CUT2': 67, 'TRIM': 102, 'E2FLT': 17, 'L2FLT': 4, 'E1': 13, 'E3': 17,
             'E4': 7, 'MOD1': ('AT', 'CUT2', 7), 'MOD2': ('VEL', 'CUT2', 10), 'MOD3': ('CYCLE', 'CUT2', 11), 'LTRIG': 1, 'L2TRIG': 1, 'TWIN LINK': 0,
             'TWIN ENV2': 10, 'CYCLE MODE': 1, 'CYCLE RISE': 0, 'CYCLE FALL': 95, 'CYCLE CURVE': -21,
@@ -1331,7 +1348,7 @@ SOUNDS = [
          }),
     dict(engine='PHYS', idx=5, name='MOTOR VIBES', cat='KEYS', bseed=34914,  # #89
          p={
-            'ATK': 0, 'SUS': 127, 'REL': 83, 'EQLG': -4, 'KTRK': 27, 'DLY': 18, 'REV': 38, 'FREEA': 60, 'FREEB': 11, 'E2ATK': 0, 'E2DEC': 103,
+            'ATK': 0, 'SUS': 127, 'REL': 83, 'KTRK': 27, 'DLY': 18, 'REV': 38, 'FREEA': 60, 'FREEB': 11, 'E2ATK': 0, 'E2DEC': 103,
             'E2SUS': 0, 'E2REL': 83, 'L2RATE': 89, 'TRIM': 120, 'E2FLT': 17, 'E2': 110, 'E3': 77, 'E4': 127, 'E5': 18, 'E6': 80, 'E8': 7,
             'MOD1': ('AT', 'E5', 17), 'MOD2': ('LFO2', 'AMP', 17), 'MOD3': ('CYCLE', 'CUT', 7), 'LTRIG': 1, 'L2TRIG': 1, 'CYCLE RISE': 100,
             'CYCLE FALL': 103,
@@ -1417,7 +1434,7 @@ SOUNDS = [
     dict(engine='PHASE', idx=6, name='DEEP KICK', cat='PERC', bseed=34356,  # #95
          p={
             'ATK': 0, 'DEC': 84, 'SUS': 0, 'REL': 66, 'ED_PIT': 9, 'KTRK': 0, 'TRANS': -12, 'E2ATK': 0, 'E2DEC': 56, 'E2SUS': 0, 'E2REL': 41,
-            'EQHG': -2, 'TRIM': 101, 'E3': 0, 'E4': 56, 'MOD1': ('AT', 'SHP', 13), 'MOD2': ('ENV2', 'PITCH', 63), 'MOD3': ('ENV2', 'PITCH', 20),
+            'TRIM': 101, 'E3': 0, 'E4': 56, 'MOD1': ('AT', 'SHP', 13), 'MOD2': ('ENV2', 'PITCH', 63), 'MOD3': ('ENV2', 'PITCH', 20),
             'MOD4': ('EXPR', 'PITCH', -64), 'LTRIG': 1, 'L2TRIG': 1,
          },
          bend={
@@ -1468,7 +1485,7 @@ SOUNDS = [
          }),
     dict(engine='NOISE', idx=6, name='OPEN SIZZLE', cat='PERC', bseed=25614,  # #99
          p={
-            'ATK': 0, 'DEC': 91, 'SUS': 0, 'REL': 66, 'EQLG': -6, 'RES2': 17, 'KTRK': 0, 'REV': 22, 'TWTYPE': 2, 'FREEA': 56, 'FREEB': 21,
+            'ATK': 0, 'DEC': 91, 'SUS': 0, 'REL': 66, 'RES2': 17, 'KTRK': 0, 'REV': 22, 'TWTYPE': 2, 'FREEA': 56, 'FREEB': 21,
             'FREEC': 127, 'E2ATK': 0, 'E2DEC': 76, 'E2SUS': 127, 'L2RATE': 29, 'L2WAVE': 1, 'CUT2': 71, 'TRIM': 109, 'E2': 0, 'MOD1': ('AT', 'E8', 11),
             'MOD2': ('RAND', 'CUT2', 5), 'LTRIG': 1, 'L2TRIG': 1, 'TWIN LINK': 0, 'TWIN LFO2': 3,
          },
@@ -1497,7 +1514,7 @@ SOUNDS = [
          }),
     dict(engine='NOISE', idx=5, name='TIZZ HAT', cat='PERC', bseed=16914,  # #101
          p={
-            'ATK': 0, 'DEC': 52, 'SUS': 0, 'REL': 47, 'EQLG': -6, 'RES2': 21, 'KTRK': 0, 'REV': 13, 'TWTYPE': 2, 'FREEA': 61, 'FREEB': 27,
+            'ATK': 0, 'DEC': 52, 'SUS': 0, 'REL': 47, 'RES2': 21, 'KTRK': 0, 'REV': 13, 'TWTYPE': 2, 'FREEA': 61, 'FREEB': 27,
             'FREEC': 127, 'E2ATK': 0, 'E2DEC': 51, 'E2SUS': 0, 'E2REL': 41, 'L2RATE': 32, 'L2WAVE': 1, 'CUT2': 74, 'TRIM': 117, 'E2FLT': 6, 'E2': 0,
             'MOD1': ('AT', 'REV', 17), 'MOD2': ('RAND', 'CUT2', 7), 'LTRIG': 1, 'L2TRIG': 1, 'TWIN LINK': 0, 'TWIN LFO2': 3,
          },
@@ -1527,7 +1544,7 @@ SOUNDS = [
          }),
     dict(engine='FM6', idx=7, name='ALIEN CHIMES', cat='FX', bseed=40225,  # #103
          p={
-            'EQLG': -6, 'AMODE': 4, 'ARATE': 1, 'AOCT': 2, 'AGATE': 44, 'DLY': 64, 'REV': 76, 'TWTYPE': 4, 'FREEA': 67, 'FREEB': 21, 'E2ATK': 0,
+            'AMODE': 4, 'ARATE': 1, 'AOCT': 2, 'AGATE': 44, 'DLY': 64, 'REV': 76, 'TWTYPE': 4, 'FREEA': 67, 'FREEB': 21, 'E2ATK': 0,
             'E2DEC': 94, 'E2SUS': 0, 'E2REL': 86, 'L2RATE': 26, 'L2WAVE': 1, 'CUT2': 47, 'TRIM': 112, 'L2FLT': 4, 'E1': 4, 'E2': 2, 'E4': 5, 'E7': 70,
             'E8': 1, 'MOD1': ('AT', 'E3', 9), 'MOD2': ('CYCLE', 'CUT2', 9), 'LTRIG': 1, 'L2TRIG': 1, 'TWIN LINK': 0, 'CYCLE RISE': 99,
             'CYCLE FALL': 103,
@@ -1546,7 +1563,7 @@ SOUNDS = [
          ]),
     dict(engine='PHASE', idx=5, name='CRYSTAL CAVE', cat='FX', bseed=36122,  # #104
          p={
-            'ATK': 0, 'DEC': 101, 'SUS': 32, 'REL': 86, 'EQLG': -6, 'AMODE': 4, 'ARATE': 1, 'AOCT': 3, 'AGATE': 44, 'APROB': 108, 'RES2': 41,
+            'ATK': 0, 'DEC': 101, 'SUS': 32, 'REL': 86, 'AMODE': 4, 'ARATE': 1, 'AOCT': 3, 'AGATE': 44, 'APROB': 108, 'RES2': 41,
             'DLY': 64, 'REV': 81, 'TWTYPE': 2, 'FREEA': 66, 'FREEB': 21, 'E2ATK': 0, 'E2DEC': 88, 'E2SUS': 0, 'E2REL': 79, 'L2RATE': 26, 'L2WAVE': 1,
             'BLEND': -17, 'CUT2': 58, 'TRIM': 127, 'L2SHP': 4, 'E1': 6, 'E2': 8, 'E3': 72, 'E4': 50, 'E5': 53, 'E6': 1, 'MOD1': ('AT', 'FBLND', 27),
             'MOD2': ('CYCLE', 'CUT2', 9), 'LTRIG': 1, 'L2TRIG': 1, 'TWIN ROUTE': 1, 'TWIN LINK': 0, 'TWIN LFO2': 5, 'CYCLE RISE': 105,
@@ -1562,7 +1579,7 @@ SOUNDS = [
          }),
     dict(engine='PHASE', idx=7, name='SONAR PING', cat='FX', bseed=64729,  # #105
          p={
-            'ATK': 0, 'DEC': 90, 'SUS': 52, 'REL': 103, 'EQLG': -4, 'LRATE': 18, 'LWAVE': 1, 'LD_FLT': 3, 'DLY': 60, 'REV': 77, 'FREEA': 49,
+            'ATK': 0, 'DEC': 90, 'SUS': 52, 'REL': 103, 'LRATE': 18, 'LWAVE': 1, 'LD_FLT': 3, 'DLY': 60, 'REV': 77, 'FREEA': 49,
             'FREEB': 41, 'E2ATK': 0, 'E2DEC': 76, 'E2SUS': 0, 'E2REL': 66, 'TRIM': 101, 'E2FLT': 21, 'E3': 0, 'E4': 11, 'MOD1': ('AT', 'FRES', 27),
             'MOD2': ('CYCLE', 'SHP', 7), 'LTRIG': 1, 'L2TRIG': 1, 'CYCLE MODE': 1, 'CYCLE RISE': 0, 'CYCLE FALL': 101,
          },
@@ -1624,7 +1641,7 @@ SOUNDS = [
          }),
     dict(engine='TRIO', idx=5, name='CIRCUIT BEND', cat='FX', bseed=34291,  # #109
          p={
-            'ATK': 0, 'DEC': 74, 'SUS': 44, 'EQLG': -4, 'AMODE': 3, 'AOCT': 3, 'AGATE': 76, 'APROB': 108, 'RES2': 45, 'DRV2': 41, 'KTRK': 0,
+            'ATK': 0, 'DEC': 74, 'SUS': 44, 'AMODE': 3, 'AOCT': 3, 'AGATE': 76, 'APROB': 108, 'RES2': 45, 'DRV2': 41, 'KTRK': 0,
             'DIST': 32, 'DLY': 57, 'REV': 44, 'TWTYPE': 1, 'FREEA': 72, 'FREEB': 17, 'E2ATK': 0, 'E2DEC': 65, 'E2SUS': 0, 'E2REL': 54, 'L2RATE': 34,
             'L2WAVE': 1, 'CUT2': 59, 'TRIM': 104, 'E1': 14, 'E2': 7, 'E3': 0, 'E4': 9, 'MOD1': ('AT', 'FDRV', 27), 'MOD2': ('CYCLE', 'CUT2', 11),
             'LTRIG': 1, 'L2TRIG': 1, 'TWIN LINK': 0, 'TWIN ENV2': 12, 'TWIN LFO2': 12, 'CYCLE RISE': 83, 'CYCLE FALL': 88,
@@ -1671,7 +1688,7 @@ SOUNDS = [
          }),
     dict(engine='PHYS', idx=6, name='RAIN CHIMES', cat='FX', bseed=23020,  # #112
          p={
-            'ATK': 0, 'SUS': 127, 'REL': 86, 'EQLG': -6, 'AMODE': 4, 'ARATE': 1, 'AOCT': 3, 'AGATE': 38, 'APROB': 108, 'RES2': 41, 'DLY': 57,
+            'ATK': 0, 'SUS': 127, 'REL': 86, 'AMODE': 4, 'ARATE': 1, 'AOCT': 3, 'AGATE': 38, 'APROB': 108, 'RES2': 41, 'DLY': 57,
             'REV': 76, 'TWTYPE': 2, 'FREEA': 64, 'FREEB': 17, 'E2ATK': 0, 'E2DEC': 94, 'E2SUS': 0, 'E2REL': 86, 'L2RATE': 31, 'L2WAVE': 1, 'CUT2': 61,
             'TRIM': 111, 'E2FLT': 9, 'E2': 70, 'E3': 100, 'E4': 120, 'E5': 12, 'E6': 100, 'E8': 6, 'MOD1': ('AT', 'E5', 21),
             'MOD2': ('CYCLE', 'CUT2', 9), 'LTRIG': 1, 'L2TRIG': 1, 'TWIN ROUTE': 1, 'TWIN LINK': 0, 'TWIN LFO2': 5, 'CYCLE RISE': 103,
@@ -1688,7 +1705,7 @@ SOUNDS = [
          }),
     dict(engine='NOISE', idx=4, name='MOOR WIND', cat='FX', bseed=31000, bamt=27,  # #113
          p={
-            'ATK': 99, 'SUS': 127, 'REL': 110, 'EQLG': -4, 'LRATE': 23, 'RES2': 51, 'KTRK': 0, 'DLY': 11, 'REV': 53, 'TWTYPE': 2, 'FREEA': 31,
+            'ATK': 99, 'SUS': 127, 'REL': 110, 'LRATE': 23, 'RES2': 51, 'KTRK': 0, 'DLY': 11, 'REV': 53, 'TWTYPE': 2, 'FREEA': 31,
             'FREEB': 71, 'FREEC': 35, 'E2ATK': 105, 'E2DEC': 108, 'E2SUS': 89, 'E2REL': 101, 'L2RATE': 15, 'L2WAVE': 1, 'ITYPE': 6, 'IA': 18, 'IB': 90,
             'IC': 50, 'IMIX': 76, 'BLEND': -17, 'CUT2': 51, 'TRIM': 127, 'E2FLT': 5, 'L2FLT': 12, 'E2': 100, 'E7': 90, 'MOD1': ('AT', 'E2', 17),
             'MOD2': ('CYCLE', 'CUT2', 9), 'MOD3': ('LFO1', 'FRES', 6), 'LTRIG': 1, 'L2TRIG': 1, 'TWIN ROUTE': 1, 'TWIN LINK': 0, 'TWIN LFO2': 9,
@@ -1705,7 +1722,7 @@ SOUNDS = [
          }),
     dict(engine='NOISE', idx=10, name='REV CYMBAL', cat='FX', bseed=57441,  # #114
          p={
-            'ATK': 97, 'SUS': 127, 'REL': 50, 'EQLG': -6, 'RES2': 17, 'KTRK': 8, 'REV': 47, 'TWTYPE': 3, 'FREEA': 47, 'FREEB': 41, 'FREEC': 17,
+            'ATK': 97, 'SUS': 127, 'REL': 50, 'RES2': 17, 'KTRK': 8, 'REV': 47, 'TWTYPE': 3, 'FREEA': 47, 'FREEB': 41, 'FREEC': 17,
             'FREED': 2, 'E2ATK': 97, 'E2DEC': 0, 'E2SUS': 127, 'E2REL': 47, 'CUT2': 41, 'TRIM': 109, 'E2FLT': 25, 'E2': 0, 'MOD1': ('AT', 'E8', 17),
             'MOD2': ('CYCLE', 'CUT2', 7), 'LTRIG': 1, 'L2TRIG': 1, 'TWIN LINK': 0, 'CYCLE RISE': 59, 'CYCLE FALL': 60,
          },
@@ -1719,7 +1736,7 @@ SOUNDS = [
          }),
     dict(engine='NOISE', idx=3, name='WHITE OUT', cat='FX', bseed=38918, bamt=12,  # #115
          p={
-            'ATK': 94, 'SUS': 127, 'REL': 83, 'EQLG': -4, 'KTRK': 0, 'DLY': 20, 'REV': 30, 'FREEA': 21, 'FREEB': 51, 'FREEC': 20, 'FREED': 2,
+            'ATK': 94, 'SUS': 127, 'REL': 83, 'KTRK': 0, 'DLY': 20, 'REV': 30, 'FREEA': 21, 'FREEB': 51, 'FREEC': 20, 'FREED': 2,
             'E2ATK': 100, 'E2DEC': 0, 'E2SUS': 127, 'E2REL': 79, 'L2RATE': 27, 'L2WAVE': 1, 'ITYPE': 1, 'IA': 100, 'IB': 127, 'IC': 112, 'TRIM': 81,
             'E2FLT': 51, 'L2FLT': 5, 'E2': 14, 'MOD1': ('AT', 'FRES', 24), 'MOD2': ('ENV2', 'REV', 32), 'LTRIG': 1, 'L2TRIG': 1,
          },
@@ -1732,7 +1749,7 @@ SOUNDS = [
          }),
     dict(engine='WAVE', idx=17, name='FROZEN AIR', cat='FX', bseed=26635, bamt=17,  # #116
          p={
-            'ATK': 88, 'SUS': 127, 'REL': 113, 'EQLG': -3, 'LRATE': 18, 'LWAVE': 1, 'RES2': 41, 'DLY': 32, 'REV': 102, 'TWTYPE': 2, 'FREEA': 57,
+            'ATK': 88, 'SUS': 127, 'REL': 113, 'LRATE': 18, 'LWAVE': 1, 'RES2': 41, 'DLY': 32, 'REV': 102, 'TWTYPE': 2, 'FREEA': 57,
             'FREEB': 31, 'E2ATK': 114, 'E2DEC': 0, 'E2SUS': 127, 'E2REL': 86, 'L2RATE': 11, 'L2WAVE': 1, 'BLEND': -17, 'CUT2': 63, 'TRIM': 114,
             'E2SHP': 19, 'L2SHP': 13, 'E1': 25, 'E2': 20, 'E6': 7, 'MOD1': ('AT', 'E3', 8), 'MOD2': ('LFO1', 'CUT', 11), 'MOD3': ('LFO1', 'E6', 11),
             'MOD4': ('LFO2', 'CUT', 7), 'MOD5': ('CYCLE', 'CUT2', 11), 'LTRIG': 1, 'L2TRIG': 1, 'TWIN ROUTE': 1, 'TWIN LINK': 0, 'CYCLE RISE': 110,
@@ -1813,7 +1830,7 @@ SOUNDS = [
          }),
     dict(engine='LOFI', idx=7, name='DUSTY DRONE', cat='OTHER', bseed=63786,  # #121
          p={
-            'ATK': 95, 'SUS': 127, 'REL': 103, 'EQLG': -3, 'LRATE': 17, 'LWAVE': 1, 'DLY': 34, 'REV': 47, 'TWTYPE': 4, 'FREEA': 57, 'FREEB': 17,
+            'ATK': 95, 'SUS': 127, 'REL': 103, 'LRATE': 17, 'LWAVE': 1, 'DLY': 34, 'REV': 47, 'TWTYPE': 4, 'FREEA': 57, 'FREEB': 17,
             'L2RATE': 32, 'L2WAVE': 1, 'ITYPE': 10, 'IA': 40, 'IB': 36, 'IC': 18, 'CUT2': 51, 'TRIM': 102, 'E1': 2, 'E2': 2, 'E4': 47, 'E8': 57,
             'MOD1': ('AT', 'E4', 11), 'MOD2': ('CYCLE', 'CUT', 7), 'MOD3': ('LFO2', 'E8', 7), 'LTRIG': 1, 'L2TRIG': 1, 'TWIN LINK': 0, 'TWIN LFO1': 11,
             'CYCLE RISE': 115, 'CYCLE FALL': 119,

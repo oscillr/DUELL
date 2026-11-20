@@ -208,7 +208,7 @@ static void con_status(void)
     con_puts(eng_shown(e->name));
     con_puts("\r\n");
     con_puts("preset ");
-    con_puts(ds_name(TSEL->eng_req % NENGINES, TSEL->preset));   /* (DUELL: the factory sound, sounds.c) */
+    con_puts(ds_name(TSEL->eng_req % NENGINES, TSEL->preset));   /* (DUELL: the default sound, sounds.c) */
     con_puts("\r\n");
     con_kv("bpm", song.g[G_BPM]);
     con_kv("playing", song.playing);

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 /* DUELL 0.2.24: a synthetic PATCHES export, made by the firmware's own code (tests/owner_import_test.py, tools/import_owner_edits.py).
- * Every factory sound (browse position n = patch slot n) is loaded on part 1 as the PATCHES list loads it (set_engine_of + apply_preset_to),
+ * Every default sound (browse position n = patch slot n) is loaded on part 1 as the PATCHES list loads it (set_engine_of + apply_preset_to),
  * saved with SAVE's own function (up_patch_save_part: the values, End B, the arp block) and read back as the editor's PATCH_RAW reads it
  * (up_raw_get): the records are what a unit holds after the owner saved the slot. Written as the editor's "duell-patches" file (web/editor/patchfile.js:
  * number, name, engine, category, saved, crc32, record in base64), so the editor's own parser reads it too.

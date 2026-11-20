@@ -531,7 +531,7 @@ static void __attribute__((noinline)) midi_map_cc(uint32_t ch, track_t *ct, uint
 }
 
 /* DUELL 1.3 MIDI PRESET (owner 2026-11-12; design studies/device-knob-tables_2026-11-12.md sections 1 and 2): a device setting (MENU > CONTROL > MIDI PRESET, ui.c mac_settings)
- * that changes only which CC numbers go where, for a device whose knobs have fixed factory numbers. The channels stay the user's; the user's map (midi_map) is not touched:
+ * that changes only which CC numbers go where, for a device whose knobs have fixed default numbers. The channels stay the user's; the user's map (midi_map) is not touched:
  * while a preset is on, its lines come first for their numbers (also the locked inputs 1, 2, 11: owner, "a preset may take over the locked numbers"), every other number
  * acts as the map says. SPACE and KILL are in no preset (owner). STANDARD: no lines. A MIDI LEARN waiting for a CC takes it as ever.
  *   CIRCUIT TRACKS (MIDI tracks, knobs 1..8): CC 1 TIMBRE, 2 MORPH, 5 ENVELOPE, 11 FILTER ENV DEPTH (MULTI), 12 FILTER, 13 MULTI RES, 71 MOTION, 74 CHARACTER
@@ -643,7 +643,7 @@ static void midi_control(uint32_t ch, uint32_t cc, uint32_t value)
  * ignored; SEL: the selected part; LAYER: part 1's channel, SEL any).
  *   LAYER: bank 0, program 0..15 = MULTI M01..M16 (the MULTI page's LOAD; an empty slot nothing); any other bank / program
  *   ignored. SPLIT, STEREO: a SOUND for the channel's part only: program n = patch slot n, #n + 1 of the ONE list of 128 slots (0.2.17; ui.c pc_recall),
- *   bank 0 and bank 1 alike (they were two lists before); every slot holds a sound (its record, else its factory sound). Other banks and programs
+ *   bank 0 and bank 1 alike (they were two lists before); every slot holds a sound (its record, else its default sound). Other banks and programs
  *   above 127 ignored. Dropped if PCQ_N recalls are already waiting */
 #define PCQ_N 8u
 #define PCQ_MULTI 0xFFu                                    /* (the entry's part: LAYER's multi) */

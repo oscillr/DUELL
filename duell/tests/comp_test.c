@@ -958,7 +958,7 @@ static void test_control(void)
             frame();
             ok &= song.cp[0] == 12 && song.cp[1] == 7 && song.cp[2] == 4 && song.cp[3] == 5;
         }
-        expect("  .. nor does any factory multi", ok);
+        expect("  .. nor does any default multi", ok);
     }
     {
         project_t q;

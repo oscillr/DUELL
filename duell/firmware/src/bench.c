@@ -13,7 +13,7 @@
  * MENU > SYSTEM > BENCH (the GUIDE row's place: menu_items.c; ui_guide.c guide_open opens it). K4 (turned right) or OCT+ starts it; then no hand is
  * needed: the rows of BENCH_SCN run one after the other, each
  *   STOP   STOP ALL (every voice faded, the effect lines flushed), 150 ms
- *   SET    the row's setting, at once (both parts: their sound from INIT and the engine's dearest factory sound, bench_model.h BENCH_DEAR; every
+ *   SET    the row's setting, at once (both parts: their sound from INIT and the engine's dearest default sound, bench_model.h BENCH_DEAR; every
  *          global value at its default; the mode; the master stages; the modules), in the main loop as the UI's own loads. The NOTES budget
  *          (budget.c): the cost rows hold it open (bench_bopen: no numbers, every voice the VOICE CAP and the pool give, as the 0.2.25 bench
  *          measured), the M16 rows play with it as the owner does
@@ -72,7 +72,7 @@ typedef struct {
     uint8_t shm;                /* G_SHMOD */
     uint8_t comp, width, bm;    /* COMP ratio index (0 off), WIDTH % (0: 100, neutral), BASS MONO (0 off, 1..BM_N) */
     uint8_t flt;                /* part 1's multimode filter: 0 as the sound has it, 1 open, 12 / 24: CUT 41 RES 40 LP at that slope */
-    uint8_t sendsoff, m16;      /* GLO > MODULES SENDS OFF; the factory multi M16 STRESS TEST (n[0] keys) */
+    uint8_t sendsoff, m16;      /* GLO > MODULES SENDS OFF; the default multi M16 STRESS TEST (n[0] keys) */
     uint16_t secs;              /* the measure, s (0: 3) */
 } bench_scn_t;
 
@@ -102,7 +102,7 @@ static const bench_scn_t BENCH_SCN[] BENCH_RO = {
     {.name = "IDLE LAYER", .ref = "IDLE ST", .grp = BG_IDLE, .mode = DM_LAYER},
     {.name = "IDLE DUEL", .ref = "IDLE ST", .grp = BG_IDLE, .mode = DM_SPLIT},
     {.name = "NO FX ST", .ref = "IDLE ST", .grp = BG_IDLE, .mode = DM_STEREO, .sendsoff = 1},
-    /* each engine: its dearest factory sound, 1 and 4 notes on part 1 (STEREO, no part stage, no send) */
+    /* each engine: its dearest default sound, 1 and 4 notes on part 1 (STEREO, no part stage, no send) */
     VX("ANALOG 1", E_ANALOG, 1, "voice/ANALOG"), VX("ANALOG 4", E_ANALOG, 4, 0),
     VX("FM6 1", E_FM6, 1, "voice/FM6"), VX("FM6 4", E_FM6, 4, 0),
     VX("PHASE 1", E_PHASE, 1, "voice/PHASE"), VX("PHASE 4", E_PHASE, 4, 0),
@@ -161,7 +161,7 @@ static const bench_scn_t BENCH_SCN[] BENCH_RO = {
     SC("HVY LAY 4+4", DM_LAYER, 4, HVY), SC("HVY LAY 8+8", DM_LAYER, 8, HVY),
     SC("HVY ST 4+4", DM_STEREO, 4, HVY), SC("HVY ST 8+8", DM_STEREO, 8, HVY),
     SC("HVY DUEL 4+4", DM_SPLIT, 4, HVY), SC("HVY DUEL 8+8", DM_SPLIT, 8, HVY),
-    /* M16 STRESS TEST (the factory multi, LAYER) with 1, 2, 3 keys */
+    /* M16 STRESS TEST (the default multi, LAYER) with 1, 2, 3 keys */
     {.name = "M16 1 KEY", .grp = BG_M16, .mode = DM_LAYER, .n = {1, 1}, .m16 = 1},
     {.name = "M16 2 KEYS", .grp = BG_M16, .mode = DM_LAYER, .n = {2, 2}, .m16 = 1},
     {.name = "M16 3 KEYS", .grp = BG_M16, .mode = DM_LAYER, .n = {3, 3}, .m16 = 1},
@@ -193,7 +193,7 @@ typedef struct {
 } bench_res_t;
 static bench_res_t bench_res[BENCH_NSCN] BENCH_BSS;
 static uint8_t bench_refi[BENCH_NSCN] BENCH_BSS;                 /* the ref row's index (bench_resolve) */
-static uint8_t bench_dear[NENGINES] BENCH_BSS;                   /* the dearest factory sound of each engine (bench_model.h; tests/bench_sim.c may set it) */
+static uint8_t bench_dear[NENGINES] BENCH_BSS;                   /* the dearest default sound of each engine (bench_model.h; tests/bench_sim.c may set it) */
 
 enum { BS_IDLE, BS_STOP, BS_SET, BS_SETTLE, BS_ATTACK, BS_MEASURE, BS_END, BS_DONE };
 static struct {
@@ -719,7 +719,7 @@ static BENCH_FN void bench_part(uint32_t p, const bench_scn_t *s)   /* a part fr
     else if (p == 0u && (s->flt == 12u || s->flt == 24u))
         t->p[P_FREEA] = 41, t->p[P_FREEB] = 40, t->p[P_FREEC] = 0, t->p[P_KTRK] = 0, t->p[P_FREED] = s->flt == 24u ? 2 : 1;
 }
-static BENCH_FN void bench_load_m16(void)              /* M16 STRESS TEST as a multi LOAD has it (multi.c project_load: slot 16 as stored, the factory one unless
+static BENCH_FN void bench_load_m16(void)              /* M16 STRESS TEST as a multi LOAD has it (multi.c project_load: slot 16 as stored, the default one unless
                                                         * the owner saved over it), then LAYER whatever MULTI LOAD says */
 {
     project_load(15u);
@@ -1085,7 +1085,7 @@ static BENCH_FN void bench_draw_state(int32_t y0)               /* page 1: what 
         for (zi = 0; zi < sizeof tv; zi++)
             tz[zi] = 0;
         bench_tc_get(&tv);
-        bench_put(b, tv.up && !tv.failed ? "TWO CORES: CORE 1 RUNS PART 2" : "ONE CORE: ");
+        bench_put(b, tv.up && !tv.failed ? "TWO CORES: VOICES SHARED" : "ONE CORE: ");
         if (!(tv.up && !tv.failed))
             bench_tc_why(b + str_len(b), &tv);
         cv_text_on(10, y, &AF_S, b, tv.up && !tv.failed ? T_ACCENT : T_REC, T_BG);
@@ -2077,7 +2077,7 @@ static BENCH_FN void bench_morph_flat(uint32_t pi)     /* the part's MORPH off: 
     morph_part_t *mp;
     if (pi >= NSHOWN)
         return;
-    morph_rebase_part(pi);                             /* (base = the live values; the factory End B it rolls is replaced below) */
+    morph_rebase_part(pi);                             /* (base = the live values; the default End B it rolls is replaced below) */
     mp = &mph[pi];
     MORPH_LOCK();
     memcpy(mp->h[1][mp->top[1]], mp->base, P_COUNT);
@@ -2089,7 +2089,7 @@ static BENCH_FN void bench_morph_flat(uint32_t pi)     /* the part's MORPH off: 
     MORPH_UNLOCK();
 }
 #if !BENCH_SLIM || BENCH_HEADLESS                       /* (BENCHVF, 2026-11-05: the headless build has `sound` again: the COST-CAL suites need it to measure the voice costs with the voice split's runner) */
-static BENCH_FN void bench_con_sound(const char *p)    /* sound PART ENGINE DEAR|N: the engine's factory sound N (DEAR: the dearest, the budget table's rows) on the part, from INIT, then cleaned as
+static BENCH_FN void bench_con_sound(const char *p)    /* sound PART ENGINE DEAR|N: the engine's default sound N (DEAR: the dearest, the budget table's rows) on the part, from INIT, then cleaned as
                                                         * tests/poly_calib.c clean() + setpart(): the multimode filter bypassed, no TWIN, SUB, matrix slot, MORPH, INSERT, SAT, EQ, DUCK, arp, sends; POLY */
 {
     char w[16], x[16];
@@ -2192,7 +2192,7 @@ static BENCH_FN void bench_con_cal(const char *w, const char *p)   /* mods, bypa
             return;
         }
         bench_say("OK master", x, 0);
-    } else if (bench_ieq(w, "morph")) {                /* morph PART OFF | ON | ROLL SEED AMOUNT | FADER 0..127: OFF = no morph; ON = the loaded factory sound's own End B again; ROLL = End B rolled from the sound */
+    } else if (bench_ieq(w, "morph")) {                /* morph PART OFF | ON | ROLL SEED AMOUNT | FADER 0..127: OFF = no morph; ON = the loaded default sound's own End B again; ROLL = End B rolled from the sound */
         if (!bench_arg(&p, &part) || part < 1 || part > 2 || !bench_tok(&p, x, sizeof x)) {
             bench_err("usage: morph PART OFF | ON | ROLL SEED AMOUNT | FADER 0..127");
             return;

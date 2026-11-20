@@ -5,7 +5,7 @@
  *   (a) MODEL    the cost table reproduces the bench rows within 5 %: one voice of each engine, each INSERT type, SAT, EQ, DUCK, each bus effect in STEREO and
  *                DUEL, the master stages; the worst-case scene of each MODE: its fixed part within 5 %, the totals at 1 + 1 and 4 + 4 notes never below the bench
  *                (the model errs high: a first voice costs more than the following ones) and within 12 % over it
- *   (b) FACTORY  the 16 factory multis as loaded: each part's NOTES by the one-core pair rule and what limits it, and beside it the VOICE POOL's numbers (two cores): the pool in % and each part's
+ *   (b) DEFAULT  the 16 default multis as loaded: each part's NOTES by the one-core pair rule and what limits it, and beside it the VOICE POOL's numbers (two cores): the pool in % and each part's
  *                number with the other part silent (printed; every number 1 .. the 16 slots)
  *   (c) MONOTONE switching on an INSERT, a 24 dB slope, SAT, an EQ band, the ducker or a heavier send effect never raises that part's number (the 16 multis and
  *                5000 random settings), by the one-core pair rule AND by the pool
@@ -394,7 +394,7 @@ static uint32_t pn(uint32_t p)
     return n[p];
 }
 
-/* ---- the factory multis ---- */
+/* ---- the default multis ---- */
 static void load_multi(uint32_t i)
 {
     power();
@@ -470,10 +470,10 @@ static void frow_hash(uint32_t i, frow_t *rows)
     close(fd[0]);
     close(fd[1]);
 }
-static void t_factory(void)
+static void t_default(void)
 {
     uint32_t i, p, st, below4[2] = {0, 0}, bad = 0;
-    printf("budget: --- the 16 factory multis (MODE RECALL): NOTES a part by the one-core pair rule (%u %% of the time, margin %u %%) and what limits it; then THE POOL (two cores): its size in %% of a core,\n"
+    printf("budget: --- the 16 default multis (MODE RECALL): NOTES a part by the one-core pair rule (%u %% of the time, margin %u %%) and what limits it; then THE POOL (two cores): its size in %% of a core,\n"
            "budget:     and each part's number with the other part silent. 'loaded' = as loaded; 'MORPH' = cpuscen's state (settled, MORPH on End B, fader in the middle): the morph adds a little to each voice\n", BUDGET_LIMIT, BUDGET_MARGIN);
     for (st = 0; st < 2u; st++) {
         printf("budget: [%s] %-3s %-14s %-6s %-7s %-7s %8s %8s %8s %7s %7s  %-12s %-12s %7s %7s %7s\n", st ? "MORPH " : "loaded", "no", "name", "mode", "part 1", "part 2", "global %", "fixed 1", "fixed 2",
@@ -495,7 +495,7 @@ static void t_factory(void)
         }
         printf("budget: [%s] %u of 32 parts get fewer than 4 notes on one core\n", st ? "MORPH " : "loaded", below4[st]);
     }
-    bchk("factory: every part gets 1 .. 16 notes by both rules (the pair rule on one core, the pool on two), a valid reason, shown == notes (both states)", !bad);
+    bchk("default: every part gets 1 .. 16 notes by both rules (the pair rule on one core, the pool on two), a valid reason, shown == notes (both states)", !bad);
 }
 
 /* ---- monotone ---- */
@@ -565,7 +565,7 @@ static void t_monotone_rule(const char *rule)
                 mono_step(p, 0, GSTEPS[k].on);
         }
     }
-    printf("budget: [%s] factory multis: %u steps (7 part items x 2 parts and 5 effects x 2) x 16: raises of the changed part %u, of the other part %u\n", rule, t_mono_n, t_mono_viol, t_mono_other);
+    printf("budget: [%s] default multis: %u steps (7 part items x 2 parts and 5 effects x 2) x 16: raises of the changed part %u, of the other part %u\n", rule, t_mono_n, t_mono_viol, t_mono_other);
     bchk("monotone: on the 16 multis, switching on an INSERT, 24 dB, SAT, an EQ band, the ducker, a matrix slot, filter 2 (TWIN), RANDOM, SHIM DOWN, COMP, WIDTH or the chorus never raises the changed part's number", !t_mono_viol);
     t_mono_viol = t_mono_other = t_mono_n = 0;
     power();
@@ -1356,7 +1356,7 @@ static void t_loaded(void)
     static const uint32_t MODES[3] = {DM_LAYER, DM_STEREO, DM_SPLIT};
     uint32_t m, s, nl = 0, nm = 0;
     bd_t b, bo;
-    printf("budget: --- item 142: every factory patch AS LOADED (both parts, LAYER / STEREO / DUEL; its MORPH End B rolled by the load): the items, the caps and the deadline items as before\n");
+    printf("budget: --- item 142: every default patch AS LOADED (both parts, LAYER / STEREO / DUEL; its MORPH End B rolled by the load): the items, the caps and the deadline items as before\n");
     for (m = 0; m < 3u; m++)
         for (s = 0; s < UP_SLOTS; s++) {
             load_both(MODES[m], s);
@@ -1365,7 +1365,7 @@ static void t_loaded(void)
             items_put(&b);
             nl++;
         }
-    for (s = 1; s <= MU_SLOTS; s++) {                   /* and the 16 factory multis (MODE RECALL) */
+    for (s = 1; s <= MU_SLOTS; s++) {                   /* and the 16 default multis (MODE RECALL) */
         load_multi(s - 1u);
         spin(40);                                       /* (the parts' engines settle: before that the morph is stale and not charged at all) */
         nm += (mph[0].nid || mph[0].fnid) && (mph[1].nid || mph[1].fnid) && !morph_stale(&trk[0], &mph[0]) && !morph_stale(&trk[1], &mph[1]);
@@ -1374,7 +1374,7 @@ static void t_loaded(void)
         nl++;
     }
     printf("budget:     %u loads (%u with a live morph on both parts), items hash 0x%016llx (before item 142: 0x%016llx)\n", nl, nm, (unsigned long long)lh, (unsigned long long)LOADED_REF);
-    bchk("item 142 (a): every factory patch and multi as loaded gives the items of the reference (LOADED_REF recorded 2026-11-06, the first run after the voice pool)", lh == LOADED_REF && nm > 100u);
+    bchk("item 142 (a): every default patch and multi as loaded gives the items of the reference (LOADED_REF recorded 2026-11-06, the first run after the voice pool)", lh == LOADED_REF && nm > 100u);
 
     /* (b) #01 BEHIVE edited after the load: TWIN OFF, SLOPE 12 dB. Its morph ends hold the Original's TWIN BP and 24 dB, which can never sound now: the charge equals the same
      *     state with the morph switched off, plus BD_MORPH a voice */
@@ -1627,7 +1627,7 @@ static void t_fm6comb(void)
     uint32_t s, first = UP_SLOTS, held = UP_SLOTS, i;
     fc_res_t d12, d6, h12, h6;
     fc_L = calloc((size_t)FC_NB * CTL, sizeof *fc_L);
-    for (s = 0; s < UP_SLOTS && held == UP_SLOTS; s++) {            /* the first FM6 factory patch, and the first one that HOLDS (one key: the last 0.15 s of 1.1 s still at a quarter of the peak) */
+    for (s = 0; s < UP_SLOTS && held == UP_SLOTS; s++) {            /* the first FM6 default patch, and the first one that HOLDS (one key: the last 0.15 s of 1.1 s still at a quarter of the peak) */
         int32_t pk = 1, tail = 0;
         fc_setup(s);
         if (!eng_of_slot_named("FM6"))
@@ -1671,7 +1671,7 @@ int main(void)
     printf("budget: NOTES budget: limit %u %% of a core's time, margin %u %%, %u voice slots a part; two cores: one voice pool for both parts, one core: the pair rule\n", BUDGET_LIMIT, BUDGET_MARGIN, (unsigned)NVOICE);
     t_table();
     t_model();
-    t_factory();
+    t_default();
     t_monotone();
     t_steal();
     t_pool();

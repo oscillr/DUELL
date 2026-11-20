@@ -1,14 +1,14 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
-/* DUELL 0.2.23: the TEST SCENES of the host tests. Until 0.2.22 the CPU tests and several other tests played factory multis (the CPU
- * TEST multis M13..M16 of developer builds, and M01..M10 of that day); since 0.2.23 all sixteen slots are musical factory multis (and
- * M16 the STRESS TEST, tools/factory_multis.py), so the scenes the tests were written for are kept here, byte for byte, as records:
+/* DUELL 0.2.23: the TEST SCENES of the host tests. Until 0.2.22 the CPU tests and several other tests played default multis (the CPU
+ * TEST multis M13..M16 of developer builds, and M01..M10 of that day); since 0.2.23 all sixteen slots are musical default multis (and
+ * M16 the STRESS TEST, tools/default_multis.py), so the scenes the tests were written for are kept here, byte for byte, as records:
  *   tests/scenes/M13_TEST_1_BASE.bin .. M16_TEST_4_MIX.bin   the four CPU TEST multis (tests/gen_test_multis.c made them)
- *   tests/scenes/M01_REESE_SWAMP.bin .. M10_FINAL_REEL.bin   the factory multis of 0.2.13 .. 0.2.22 in their slots of then (0.2.24: M06 ACID ETHER,
- *                                                            M07 COLD CHAPEL and M08 GARGLE ACID are factory multis again, M09 / M06 / M14, the same bytes)
+ *   tests/scenes/M01_REESE_SWAMP.bin .. M10_FINAL_REEL.bin   the default multis of 0.2.13 .. 0.2.22 in their slots of then (0.2.24: M06 ACID ETHER,
+ *                                                            M07 COLD CHAPEL and M08 GARGLE ACID are default multis again, M09 / M06 / M14, the same bytes)
  *   tests/scenes/spare/M06_TINE_STRINGS.bin (VELVET TINES), M07_BOWL_AND_WIND.bin, M14_SEVENOAKS.bin, M13_BASILDON.bin   SPARE DATA (0.2.24; BASILDON 0.2.25): multis made
- *                                                            for 0.2.23 that left the sixteen so the owner's could come back (tools/factory_multis.py SPARE); multi_render_test renders them
- *                                                            (0.2.25: M07_COLD_CHAPEL.bin is also the factory multi M13, byte for byte)
- *   tests/scenes/spare/M08_MONO_DUEL.bin                     SPARE DATA (0.2.25): MONO DUEL, the factory M08 of 0.2.23 .. 0.2.25 and the only factory multi in DUEL, left the
+ *                                                            for 0.2.23 that left the sixteen so the owner's could come back (tools/default_multis.py SPARE); multi_render_test renders them
+ *                                                            (0.2.25: M07_COLD_CHAPEL.bin is also the default multi M13, byte for byte)
+ *   tests/scenes/spare/M08_MONO_DUEL.bin                     SPARE DATA (0.2.25): MONO DUEL, the default M08 of 0.2.23 .. 0.2.25 and the only default multi in DUEL, left the
  *                                                            sixteen for the owner's HAZY TENSOR (the owner: "Mono-dual is out"); multi_render_test renders it as X08_MONO_DUEL
  * scene_put(k, NAME) stores the record in slot k (0..15) as a SAVED multi (multi.c's own store: flash or the host RAM store);
  * scene_load(k, NAME) does that and loads it as the MULTI page does, with the MODE, XFADE and SPLIT it holds applied (as the

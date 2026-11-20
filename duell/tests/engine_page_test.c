@@ -88,7 +88,7 @@ static void test_open_and_order(void)
         const char *got[16];
         uint32_t n, k, ok = 1;
         fresh(0);
-        TSEL->p[P_TWTYPE] = 0;                              /* (0.2.31: ANALOG's first factory sound runs filter 2, which adds TWIN MOD and TWIN CHAIN; the order is tested with filter 2 off) */
+        TSEL->p[P_TWTYPE] = 0;                              /* (0.2.31: ANALOG's first default sound runs filter 2, which adds TWIN MOD and TWIN CHAIN; the order is tested with filter 2 off) */
         n = edit_pages(got, 16);
         for (k = 0; k < n && k < NELEM(A); k++) ok &= str_eq(got[k], A[k]);
         expect("ANALOG: ENGINE EDIT 1 SUB OSC MULTI FILTER 1/2 2/2 TWIN FILTER VOICE 1/2 VOICE 2/2 (EDIT 2 is not shown: ANALOG has no eighth card)", ok && n == NELEM(A));

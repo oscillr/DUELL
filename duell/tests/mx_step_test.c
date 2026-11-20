@@ -504,11 +504,11 @@ int main(void)
             expect(line, v <= 40);
         }
     }
-    /* hunt1: spread_run's SAT pass works on the mid before mix_spread forms the side: SAT moves in its blend zone (the jump to +5), and the side (L - R) is the side of the render
-     * without SAT to within 2 LSB (mix_spread takes 2 d - b from the mid after SAT: the pass gives d half of SAT's change in advance, one LSB off at most); the mid (L + R) is the
-     * plain mix's, scaled by SPREAD's gains (3 LSB: the plain and the SPREAD mix round differently) */
+    /* 1.3.3 (owner 2026-11-19, SAT under SPREAD as the INSERT): spread_run's SAT pass works on the left and the right (fx.c track_dist_lr, a state each), so SAT now reaches
+     * the side too (before 1.3.3 this check asked for the opposite: the side untouched, the mid alone saturated). SAT moving in its blend zone (the jump to +5): the side
+     * differs from the side without SAT (more than 2 LSB: it is saturated), and the jump stays smooth on the side and on the left (|2nd difference| <= 40, the other jumps' rule) */
     {
-        int32_t md = 0, sd = 0, m0, m1;
+        int32_t sd = 0, vs, vl;
         uint32_t i;
         sprd_ov = 38;
         render(ra, MD_DIST, 0, S_JUMP, 0, 0, O_SIDE, 0);
@@ -517,18 +517,12 @@ int main(void)
             int32_t e = rb[i] - ra[i];
             sd = (e < 0 ? -e : e) > sd ? (e < 0 ? -e : e) : sd;
         }
-        render(ra, MD_DIST, 5, S_JUMP, 0, 0, O_MIX, 0);
+        vs = d2max(rb, JB, JB + 60u);
+        render(rb, MD_DIST, 5, S_JUMP, 0, 0, O_L, 0);
+        vl = d2max(rb, JB, JB + 60u);
         sprd_ov = 0;
-        render(rb, MD_DIST, 5, S_JUMP, 0, 0, O_MIX, 0);
-        m0 = 0;
-        for (i = JB * CTL; i < NS; i++) {   /* PAN 0, SPREAD 38: the mid gain of both channels is (4096 + 2880) / 2 = 3488 */
-            int32_t e = ra[i] - (int32_t)(((int64_t)rb[i] * 3488) >> 12);
-            md = (e < 0 ? -e : e) > md ? (e < 0 ? -e : e) : md;
-            m1 = rb[i] < 0 ? -rb[i] : rb[i];
-            m0 = m1 > m0 ? m1 : m0;
-        }
-        snprintf(line, sizeof line, "SPREAD 38: SAT 0 -> +5 in the blend zone: the side differs from the side without SAT by %d LSB (<= 2), the mid from the plain mix's by %d of %d (<= 3)", sd, md, m0);
-        expect(line, sd <= 2 && md <= 3);
+        snprintf(line, sizeof line, "SPREAD 38: SAT 0 -> +5 in the blend zone: the side is saturated (%d LSB from the side without SAT, > 2); the jump on the side %d, on the left %d (<= 40)", sd, vs, vl);
+        expect(line, sd > 2 && vs <= 40 && vl <= 40);
     }
     /* hunt1: the ramp spread_post makes is the plain mix's: PATCH LEVEL jumping by the matrix (from -12 dB to +7.5) and the DELAY send going up, the mid (L + R) of the SPREAD note
      * is the plain mix's times SPREAD 38's mid gain 3488 / 4096 at every sample of the ramp (3 LSB: two different roundings), and the delay send (O_SD) is the plain mix's to 1 LSB */

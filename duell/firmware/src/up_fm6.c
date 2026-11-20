@@ -4,7 +4,7 @@
  * (eng_fm6.c fm6_pack, 7-bit bytes packed 8 to 7: UPF_PK = 112 bytes) INSIDE its own record (PTF_FM6): one write stores both,
  * so a record can never meet another record's patch (Felucca kept the patches in a separate object, tagged with a hash of
  * the record; that object, the retired FM6 patch bank of 1.0..1.0.2 and their migration are gone). A record without a patch
- * (the editor's UP_PUT sends none) loads as before 1.0.3: SLOT F n that factory patch, OWN the init voice.
+ * (the editor's UP_PUT sends none) loads as before 1.0.3: SLOT F n that default patch, OWN the init voice.
  * The packing helpers (upf_pk_get / upf_pk_put) are in upreset.c, above the store. Included by upreset.c. */
 
 static int upf_fm6(uint32_t k) { return up_used(k) && up_engine_raw(k) == ENGI_FM6; }
@@ -42,7 +42,7 @@ static int upf_put(uint32_t k, const uint8_t *pk)
 }
 
 /* up_load: track t (its values just loaded from slot k) gets the record's patch; without one, as before 1.0.3:
- * SLOT F n that factory patch, OWN the init voice. SLOT then shows F n or OWN (fm6_adopt) */
+ * SLOT F n that default patch, OWN the init voice. SLOT then shows F n or OWN (fm6_adopt) */
 static void upf_track_load(track_t *t, uint32_t k)
 {
     uint8_t pk[FM6_PACKED], v[FP_SIZE + 1u];
@@ -51,7 +51,7 @@ static void upf_track_load(track_t *t, uint32_t k)
         return;
     if (upf_get(k, pk)) {
         int32_t s = t->p[P_E7];
-        memcpy(pk, s >= 0 && s < (int32_t)FM6_NFACTORY ? FM6_FACTORY[s] : FM6_INIT, FM6_PACKED);
+        memcpy(pk, s >= 0 && s < (int32_t)FM6_NDEFAULT ? FM6_DEFAULT[s] : FM6_INIT, FM6_PACKED);
     }
     fm6_unpack(pk, v);
     fm6_set_patch(tr, v);

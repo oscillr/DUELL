@@ -1,11 +1,11 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
-/* DUELL 0.2.22: the sidechain's MIDI setup is a DEVICE setting (GLO > SIDECHAIN; fx.c sc_midi, ui.c sc_get / sc_put, the settings record's bytes favorites.factory[15][14..17]), on the
+/* DUELL 0.2.22: the sidechain's MIDI setup is a DEVICE setting (GLO > SIDECHAIN; fx.c sc_midi, ui.c sc_get / sc_put, the settings record's bytes favorites.default[15][14..17]), on the
  * firmware's sources (the UI of ui_test.c) against simulated NOR flash.
  *   build/host/sidechain_test         (host_tests.sh sidechain)
  * 1. the defaults (channel 10, note 36 = C2 for both parts); a change is saved ~2 s later in the settings record's bytes 14..17 (a channel 1 + 0..15, a note 1 + 0..127), the same record and
  *    size; a power-on reads them back; an older record (zeros) = the defaults; every byte value in each of the four bytes (1024 power-ons) reads safely (out of range = the default); ERASE DATA
  *    (no settings) = the defaults.
- * 2. a device setting: a patch load (factory, saved), a multi load (the factory multis, a saved one), the project capture / restore and a morph leave them alone, and the stored forms (a multi
+ * 2. a device setting: a patch load (default, saved), a multi load (the default multis, a saved one), the project capture / restore and a morph leave them alone, and the stored forms (a multi
  *    record, a project) are bit for bit the same whatever the setup is.
  * 3. DUCK SRC is PUMP, PART, MIDI or OFF (stored 0..3; 0.2.24: OFF, the new-sound default): a stored value past that is clamped on load (a record of the old CH1..16 form reads as OFF), the knob order, the setup is editable with every SRC. */
 #define UI_TEST_NO_MAIN 1
@@ -89,8 +89,8 @@ int main(void)
     fm1_ms += 2100u;
     frame();
     flush();
-    ok = st_load(OBJ_SETTINGS, &p, sizeof p) > 0 && p.magic == PERSIST_MAGIC && p.favorites.factory[15][14] == 13u && p.favorites.factory[15][15] == 1u && p.favorites.factory[15][16] == 3u &&
-         p.favorites.factory[15][17] == 128u;
+    ok = st_load(OBJ_SETTINGS, &p, sizeof p) > 0 && p.magic == PERSIST_MAGIC && p.favorites.defaults[15][14] == 13u && p.favorites.defaults[15][15] == 1u && p.favorites.defaults[15][16] == 3u &&
+         p.favorites.defaults[15][17] == 128u;
     expect("saved ~2 s later in the settings record's bytes 14..17 (the same record: magic PER4, the MIDI MAP's size)", ok && sizeof(persist_t) == 4u * 4u + sizeof(panel_t) + 4u + 16u * 32u + 4u * 5u + 2u * MAP_N + 64u);
     boot();
     expect("a power-on reads them back", is(12, 0, 2, 127));
@@ -98,7 +98,7 @@ int main(void)
     for (v = 0; v < 4u; v++) {                          /* an older record: zeros there */
         memset(&p, 0, sizeof p);
         st_load(OBJ_SETTINGS, &p, sizeof p);
-        p.favorites.factory[15][14] = p.favorites.factory[15][15] = p.favorites.factory[15][16] = p.favorites.factory[15][17] = 0;
+        p.favorites.defaults[15][14] = p.favorites.defaults[15][15] = p.favorites.defaults[15][16] = p.favorites.defaults[15][17] = 0;
         st_save(OBJ_SETTINGS, &p, sizeof p);
         boot();
         ok &= is(9, 36, 9, 36);
@@ -109,8 +109,8 @@ int main(void)
     for (r = 0; r < 4u; r++)
         for (v = 0; v < 256u; v++) {
             st_load(OBJ_SETTINGS, &p, sizeof p);
-            p.favorites.factory[15][14] = p.favorites.factory[15][15] = p.favorites.factory[15][16] = p.favorites.factory[15][17] = 0;
-            p.favorites.factory[15][14 + r] = (uint8_t)v;
+            p.favorites.defaults[15][14] = p.favorites.defaults[15][15] = p.favorites.defaults[15][16] = p.favorites.defaults[15][17] = 0;
+            p.favorites.defaults[15][14 + r] = (uint8_t)v;
             st_save(OBJ_SETTINGS, &p, sizeof p);
             boot();
             ok &= sc_midi[0] <= 15u && sc_midi[2] <= 15u && sc_midi[1] <= 127u && sc_midi[3] <= 127u;
@@ -136,7 +136,7 @@ int main(void)
     trk[0].p[P_DKSRC] = 2; trk[1].p[P_DKSRC] = 1;
     frame();
     ok = 1;
-    for (k = 0; k < 40u; k++) {                         /* a factory sound into each part, then a saved one */
+    for (k = 0; k < 40u; k++) {                         /* a default sound into each part, then a saved one */
         sl_load(k);
         ok &= is(4, 60, 5, 61);
     }
@@ -160,7 +160,7 @@ int main(void)
             frame();
             ok &= is(15, 7, 9, 99);
         }
-        expect("a multi load (every factory multi) leaves the setup as it is", ok);
+        expect("a multi load (every default multi) leaves the setup as it is", ok);
         project_save_as(10, "SC TEST");
         sc_put(0, 1);
         project_load(10);

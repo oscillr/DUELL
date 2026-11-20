@@ -1,16 +1,22 @@
-# DUELL 1.3.2
+# DUELL 1.3.3
 
 **DUELL**
 **MultiMorphing Bitimbral Synthesizer**
 **by OSCILL/R**
 
-DUELL 1.3.2 is a small update for the M-VAVE FM-1: the screen reader says more.
+DUELL 1.3.3 is a small update for the M-VAVE FM-1: a few updates and small fixes.
 
 ## What has changed
-- **The screen reader says the names of patterns and multis** when you save them on SAVE > PATTERNS and SAVE > MULTIS, not only the slot number, and it reads the three rows of TOOLS. Thanks for the idea, @woodjackmusic-JD ([issue #2](https://github.com/oscillr/DUELL/issues/2)).
-- **LOFI's AVAILABLE VOICES** now shows what LOFI really plays with everything on, while you turn the knobs.
+- **ALGORITHM is remembered:** each multi keeps its own, and it comes back after power-on. MACROS 1/2 and 2/2 have PART 1 / BOTH / PART 2, like MORPH.
+- **A " *" after the patch name** shows that you have changed the sound since you loaded or saved it. A part of a multi that is not an exact patch shows the multi's name.
+- **HOLD stays as you set it** when you load another sound.
+- The patches, multis and patterns a slot holds until you save over it are called "default" on the unit, in the editor and in the installer.
+- Small fixes: INSERT and SAT work on the whole sound with SPREAD up, and the unit shows a full-screen message when it plays on one core.
+- **The CHORD list starts with MAJ.** DIA3 and DIA7 are at the end.
+- **M16 is SLOW THAW**, an FM6 glass sequence over a wide PHASE pad.
+- **Flat EQ** on the patches and multis, except the basses: they keep a gentle treble cut and get a small low lift.
 
-Everything new in 1.3 and 1.3.1 is in the [changelog](https://github.com/oscillr/DUELL/blob/main/CHANGELOG.md).
+Everything since 1.3 is in the [changelog](https://github.com/oscillr/DUELL/blob/main/CHANGELOG.md).
 
 ## Read this before you flash
 - DUELL has run on **two FM-1 units, the author's**, and more than 100 people have installed it through the Firmware Hub. The FM-1 has a single copy of its firmware and no known rollback besides the way back to the official firmware (V15 or V16).
@@ -21,11 +27,11 @@ Everything new in 1.3 and 1.3.1 is in the [changelog](https://github.com/oscillr
 ## Assets
 | File | What |
 |---|---|
-| `duell-1.3.2.fwsc` | the device package (the installer page loads this one) |
+| `duell-1.3.3.fwsc` | the device package (the installer page loads this one) |
 | `SHA256SUMS` | checksums |
 
 ```
-SHA256: 5b5834ba2423dd4296a49445aee02727ff9ee1cae4bd8daaae63f6397f90ee9b  duell-1.3.2.fwsc
+SHA256: cbf6c53d1e11b2ac6fcd65eff961799b170e422ceff222f9a7792b195a04ac2c  duell-1.3.3.fwsc
 ```
 
 ## Links

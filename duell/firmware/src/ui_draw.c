@@ -1701,7 +1701,7 @@ static void draw_column(uint32_t c, const char *label, const char *val, const ch
         }
         if (!strip && why) {                            /* the reason where the gauge would be (its capitals rows 31 .. 39) */
             GFX_HOOK_ALIGN(0, 28, 0, 28 + AF_S.asc, AL_B, "card reason under its value");
-            cv_text_fit(5, 28, &AF_S, why, T_MID, T_BG, room + 1);   /* (0.2.17: 50 px, so that FACTORY, 50 wide, fits whole) */
+            cv_text_fit(5, 28, &AF_S, why, T_MID, T_BG, room + 1);   /* (0.2.17: 50 px, so that DEFAULT, 50 wide, fits whole) */
         }
         if (!strip && ratio >= 0 && !why) {
             int32_t gw = COL_W - 10, fx = ratio * gw / 1000;
@@ -1882,7 +1882,7 @@ static void draw_act_column(uint32_t c, const char *label, uint16_t vc, uint32_t
     draw_column(c, label, picked || AREA_ON ? "[OCT+]" : "--", "", picked ? (act_ready() ? T_ACCENT : T_DIM) : vc, -1, icon);   /* (TEMPLATE 9, as the pictures: the OCT+ pill always, plain until the knob picks it; DIM: it cannot act) */
 }
 
-/* the sound's name on the track: its slot's (a saved record's or a factory sound's), else the factory sound it plays (b holds 16) */
+/* the sound's name on the track: its slot's (a saved record's or a default sound's), else the default sound it plays (b holds 16) */
 static void sound_name(const track_t *t, char *b)
 {
     b[0] = 0;
@@ -1985,6 +1985,32 @@ static int32_t foot_scroll(const char *s, int32_t w)
     t = (int32_t)(fm1_ms % (uint32_t)cyc);
     return t < 1200 ? 0 : t < 1200 + over * 40 ? (t - 1200) / 40 : over;
 }
+/* DUELL 1.3.3 (owner 2026-11-19): the footer's EDITED mark, "#12 FOLD BASS *": the selected part's sound differs from its saved patch in a value that
+ * is saved with the patch (every value a patch load sets: param_kept left out, so the mix, the arp and the chord keys never mark it; the extension slots
+ * count). MORPH never marks it: t->p stays the Original. Gone at a save or a load (the values equal the slot's again). Looked at five times a second in
+ * the main loop (draw_foot), the selected part only; a part showing the multi's name (foot_mu) has no mark */
+static uint8_t foot_ed;
+static uint32_t foot_ed_t;
+/* 0: t's values are its slot's (param_kept left out; ext 1: the extension slots too), 1: one differs, 2: t's sound is in no slot. Also multi.c foot_mu_check */
+static uint32_t snd_differs(const track_t *t, uint32_t ext)
+{
+    int16_t v[EXT_P_LEN];   /* (sl_values writes the extension slots too, XW_BASE + k) */
+    uint32_t sl, i;
+    if ((sl = slot_of(t)) >= UP_SLOTS)
+        return 2u;
+    sl_values(sl, v);
+    for (i = 0; i < (ext ? EXT_P_LEN : P_COUNT); i++)
+        if (i < P_COUNT ? !param_kept(i) && t->p[i] != v[i] : i >= XW_BASE && t->p[i] != v[i])
+            return 1u;
+    return 0u;
+}
+static void foot_edited(const track_t *t)
+{
+    if (fm1_ms - foot_ed_t >= 200u) {
+        foot_ed_t = fm1_ms;
+        foot_ed = snd_differs(t, 1u) == 1u;
+    }
+}
 static void draw_foot(void)
 {
     char s[48], pn[20], ti[28], ct[8], ln[56], pfl[24], pfr[24];
@@ -1999,6 +2025,17 @@ static void draw_foot(void)
     if (!ui.ml.on && !ui.layer && !ui.guide && grid_on != 16)
         (void)perf_foot(pfl, pfr);                     /* PERFORM: row 1 says what SELECT and ALGORITHM do there; row 2 as on every page (TEMPLATE 9: no first row, as PERFORM_NEW_LAYOUT_V4: SELECT = BALANCE is on knob 1's line) */
     sound_label(t, pn);                                /* "#12 FOLD BASS": the slot's number, when the sound is in a slot */
+    if ((foot_mu >> song.sel) & 1u) {                  /* DUELL 1.3.x (owner 2026-11-18): the multi's own sound, no exact patch: the multi's name */
+        char mn[16];
+        project_cur_name(mn);
+        if (mn[0])
+            str_cpy(pn, mn, sizeof pn);
+    }
+    else {
+        foot_edited(t);
+        if (foot_ed && pn[0])
+            str_cpy(pn + str_len(pn), " *", (uint32_t)sizeof pn - str_len(pn));   /* (1.3.3: the EDITED mark, foot_edited above) */
+    }
     if (ui.layer) {                                    /* a layer's map: its button and kind in the page's place */
         layer_foot_title(ti, ct);
     } else if (ui.guide) {                             /* item 118: the GUIDE / SETUP page's counter, "1/5" (the MENU's copy "1/3"), where every other page has its number */
@@ -2910,6 +2947,41 @@ static void splash_begin(void)                      /* the synth runs: the splas
     splash_t0 = fm1_ms;
     splash_fr = 0;
 }
+/* DUELL 1.3.3 (owner 2026-11-18: "any message like this should be full screen, and long enough on the screen that you can read it"): a notice of the
+ * unit's own state (the second core not playing: ui_input.c ui_notices) takes the whole screen, its words large, until any button, key or knob
+ * (notice_input, ui_input.c; used up by that, as the splash's) or NOTICE_MS after it was first drawn. MIDI never ends it. Under the splash it waits for it */
+#define NOTICE_MS 8000u
+static uint8_t notice_on, notice_drawn;
+static uint32_t notice_t0;
+static const char *notice_l1, *notice_l2;
+static void notice_show(const char *l1, const char *l2)
+{
+    notice_on = 1;
+    notice_drawn = 0;
+    notice_l1 = l1;
+    notice_l2 = l2;
+}
+static void notice_end(void)
+{
+    notice_on = 0;
+    ui.force = 1;                                       /* (the page drawn whole again) */
+}
+static void notice_draw(void)
+{
+    const aafont_t *f;
+    if (notice_drawn) {
+        if (fm1_ms - notice_t0 >= NOTICE_MS)
+            notice_end();
+        return;
+    }
+    notice_drawn = 1;
+    notice_t0 = fm1_ms;
+    f = text_w(&AF_L, notice_l1) <= 224 ? &AF_L : &AF_M;
+    lcd_fill(0, 0, 240, 240, T_BG);
+    draw_text_line(0, 92, 240, f, notice_l1, T_TEXT, T_BG, 1);
+    draw_text_line(0, 132, 240, &AF_M, notice_l2, T_MID, T_BG, 1);
+    lcd_sync();
+}
 static void splash_end(void)                        /* the UI takes the screen: all of it drawn again */
 {   /* item 162 (owner, test10: "a very brief flicker when the device started"): no whole-screen fill here any more. It blanked the panel (~77 ms of
      * SPI at 12 MHz), the page came a frame later and draw_frame filled the body AGAIN: splash -> blank screen -> page. Now the page is drawn over
@@ -3090,7 +3162,7 @@ static void confirm_text(char *a, char *b)          /* a, b hold 32 */
     case CF_CLEAR_MOTION:
         str_cpy(a, "CLEAR T1 PARAMETER LOCKS?", 32); a[7] = (char)('1' + k % NTRK);
         break;
-    case CF_RESTORE_ALL:                            /* SAVE > TOOLS: every slot back to its factory sound */
+    case CF_RESTORE_ALL:                            /* SAVE > TOOLS: every slot back to its default sound */
         str_cpy(a, "RESTORE ALL PATCHES?", 32);
         str_cpy(b, "Saved sounds are lost", 32);
         break;
@@ -3117,7 +3189,7 @@ static void confirm_text(char *a, char *b)          /* a, b hold 32 */
 /* MENU > SYSTEM > ERASE DATA's dialog (DUELL 0.2.2): exactly what goes and what stays, then NO / YES as every dialog. Item 119: at the floor (S 15) the same words take five lines of at most 200 px on a card 224 px wide
  * (x 8 .. 231); the card is 188 rows high, the canvas holds 124: two strips (it had been cut at row 143, the NO / YES buttons were not drawn) */
 static const char *const ERASE_LINES[5] = {"SETTINGS, favourites,", "autosave, saved patches,", "multis, patterns.",
-                                           "Factory sounds come back.", "This cannot be undone."};   /* (DUELL 1.1, item 91: the FM6 voice bank is erased too, its line is gone) */
+                                           "Default sounds come back.", "This cannot be undone."};   /* (DUELL 1.1, item 91: the FM6 voice bank is erased too, its line is gone) */
 #define ERASE_X 8
 #define ERASE_W 224
 #define ERASE_H 188
@@ -3264,6 +3336,11 @@ static void ui_draw(void)
     if (splash_on) {                                    /* the power-on splash (above): the page waits under it */
         splash_draw();
         if (splash_on)                                  /* (item 162: the frame the splash ends draws the page at once, no blank frame between) */
+            return;
+    }
+    if (notice_on) {                                    /* (1.3.3: a full-screen notice, above) */
+        notice_draw();
+        if (notice_on)
             return;
     }
     ui_draw_page(counting);

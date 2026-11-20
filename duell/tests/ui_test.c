@@ -5,7 +5,7 @@
  *   SOUNDS     a sound load (PRESETS knob / page, TOOLS INIT, user preset) changes the sound only: the
  *              steps, LEN DIV SWING GATE, ARP, SCL and the mix stay the track's. Power-on:
  *              every sequencer empty.
- *   PATTERNS   SAVE > PHRASES: KNOB 1 PAT (factory patterns, then user presets that hold one), OCT+
+ *   PATTERNS   SAVE > PHRASES: KNOB 1 PAT (default patterns, then user presets that hold one), OCT+
  *              LOAD; over the user's steps the REPLACE? dialog (OCT- / OCT+); the PRESETS hint.
  *   UNDO       a load keeps a copy of the track; SAVE held swaps back what the loads changed (again:
  *              redo); browsing keeps the copy from before the first load; power-on and projects: none.
@@ -217,7 +217,7 @@ static int at_home(void) { return cur_page()->fam == FAM_TRK; }   /* HOME's roun
 #include "../firmware/src/upreset.c"
 #include "../firmware/src/project.c"
 
-/* names the firmware no longer has (the SCALE quick layer, PATCHES' RESTORE dialog): kept only so that this file, and tests/gen_factory_multis.c which includes it, compile.
+/* names the firmware no longer has (the SCALE quick layer, PATCHES' RESTORE dialog): kept only so that this file, and tests/gen_default_multis.c which includes it, compile.
  * The tests that use them are stale like ui_old_uslot's: they need rewriting to the current UI (not done here) */
 enum { LAYER_SCL = LAYER_N, CF_RESTORE = CF_HOLD_MULTI + 1 };
 static const struct { uint8_t id[4]; } LY_SCL;
@@ -598,7 +598,7 @@ static int test_sound_loads(void)
                  !memcmp(t->step, before.step, sizeof t->step) && t->p[P_SLEN] == 32 && t->p[P_SDIV] == 1);
     bad += check("..ARP, the chord keys and the mix stay the track's", t->p[P_AMODE] == 2 && t->p[P_AOCT] == 3 && t->p[P_CHRD] == 2 &&
                  t->p[P_LEVEL] == 90);
-    bad += check("..TRANSPOSE comes with the sound (DUELL 1.1: the patch's): the factory sound's own 0, not the part's 5", t->p[P_TRANS] == 0 && !param_kept(P_TRANS));
+    bad += check("..TRANSPOSE comes with the sound (DUELL 1.1: the patch's): the default sound's own 0, not the part's 5", t->p[P_TRANS] == 0 && !param_kept(P_TRANS));
     bad += check("..and no warning about the sequence", !msg_is("T1 SEQ REPLACED"));
     for (i = 0; i < ENGINES[0]->npresets; i++)
         if (str_eq(ENGINES[0]->presets[i].name, "RAVE"))
@@ -669,7 +669,7 @@ static int test_sound_loads(void)
                   !ds_count(GONE5[k]);
         for (k = 0; k < NENGINES; k++)
             ok &= (uint32_t)ENGI_RETIRED(k) == (k == 1u || k == 4u || k == 8u || k == 10u || k == 13u);
-        bad += check("DIGITAL, SAMPLE, GRAIN, DRUM, SLICE (retired): no factory presets, never offered, their number is the silent placeholder", ok);
+        bad += check("DIGITAL, SAMPLE, GRAIN, DRUM, SLICE (retired): no default presets, never offered, their number is the silent placeholder", ok);
         set_engine_of(t, 4);                          /* a pick of a retired engine (the editor's ENG, INIT on such a part): ANALOG */
         bad += check("picking SAMPLE (retired): ANALOG, its first sound", t->eng_req == 0u && t->preset == 0u);
         set_engine_of(t, 10);
@@ -743,7 +743,7 @@ static int test_patterns(void)
                  msg_is("LOADED 12 BEAT") && str_eq(ui.msg2, "[SAVE] HOLD TO UNDO"));
     hold(B_SAVE);
     bad += check("SAVE held: the user's steps and LEN back", !memcmp(t->step, before.step, sizeof t->step) && t->p[P_SLEN] == 32);
-    /* a user preset's pattern: listed after the factory ones as U06, with its LEN DIV SWING GATE */
+    /* a user preset's pattern: listed after the default ones as U06, with its LEN DIV SWING GATE */
     t->p[P_SDIV] = 2;
     t->p[P_SSWING] = 40;
     up_store(5, "UPAT");
@@ -751,7 +751,7 @@ static int test_patterns(void)
     t->p[P_SSWING] = 0;
     up_store(6, "NOPAT");
     memset(up_rec(6)->note, 0, sizeof up_rec(6)->note);   /* .. a record with no pattern: not listed */
-    bad += check("user presets with a pattern are listed after the factory ones", pat_count() == NPATTERNS + 1u);
+    bad += check("user presets with a pattern are listed after the default ones", pat_count() == NPATTERNS + 1u);
     track_defaults_steps(t);
     turn(EN_K1, 20);                              /* (to the end of the list) */
     press(B_OCTUP);
@@ -766,7 +766,7 @@ static int test_patterns(void)
     /* the hint: PRESETS page K3 PAT, and a load moves the pick there */
     go_page(GR_BROWSE);
     turn(EN_K1, 1);
-    bad += check("PRESETS: a factory preset's suggested pattern becomes the pick", preset_pat_hint() >= 0 &&
+    bad += check("PRESETS: a default preset's suggested pattern becomes the pick", preset_pat_hint() >= 0 &&
                  ui.ppick == (uint8_t)preset_pat_hint());
     return bad;
 }
@@ -1297,9 +1297,9 @@ static int test_favorites(void)
     return bad;
 }
 
-/* 1.2 (Discussion #90): sound categories. The factory table covers every preset; PRESETS > LIST (KNOB 4) steps ALL FAV
- * BASS .. OTHER without a wrap and browses only that category (factory and user presets), kept with the settings in
- * favorites.factory[15][11] with favorites.filter 0 / 1 as before; the NAME screen's KNOB 3 sets a user preset's
+/* 1.2 (Discussion #90): sound categories. The default table covers every preset; PRESETS > LIST (KNOB 4) steps ALL FAV
+ * BASS .. OTHER without a wrap and browses only that category (default and user presets), kept with the settings in
+ * favorites.default[15][11] with favorites.filter 0 / 1 as before; the NAME screen's KNOB 3 sets a user preset's
  * category (from the sound's own), written with the name and kept by a rename; a record of before (version 2) gets
  * one by a rename, its sound unchanged; PROJECT's KNOB 3 a random name */
 static int test_categories(void)
@@ -1310,10 +1310,10 @@ static int test_categories(void)
     ui_power_on();
     memset(&favorites, 0, sizeof favorites);
     up_ram_reset();
-    for (e = 0; e < NENGINES; e++)                         /* DUELL: the factory sounds (sounds.c), DRUM never */
+    for (e = 0; e < NENGINES; e++)                         /* DUELL: the default sounds (sounds.c), DRUM never */
         for (k = 0; k < ds_count(e); k++)
             ok &= preset_cat(e, k) >= CAT_BASS && preset_cat(e, k) <= CAT_OTHER && preset_cat(e, k) <= CAT_OTHER;
-    bad += check("categories: every factory sound has one (BASS .. OTHER); an engine with none: its engine's",
+    bad += check("categories: every default sound has one (BASS .. OTHER); an engine with none: its engine's",
                  ok && preset_cat(0, 0) == CAT_BASS && preset_cat(10, 0) == CAT_PERC && preset_cat(13, 0) == CAT_PERC && preset_cat(ENGI_WAVE, 99) == CAT_OTHER &&
                  (ds_count(ENGI_FM6) || preset_cat(ENGI_FM6, 0) == CAT_OTHER) && preset_cat(0, 99) == CAT_OTHER);
     go_page(GR_BROWSE);
@@ -1325,7 +1325,7 @@ static int test_categories(void)
     for (n = 0, e = 0; e < NENGINES; e++)
         for (k = 0; eng_ok(e) && k < ds_count(e); k++)
             n += preset_cat(e, k) == CAT_BASS;
-    bad += check("  KNOB 4: ALL, FAV, then BASS: the list holds the factory basses only, the sound not loaded",
+    bad += check("  KNOB 4: ALL, FAV, then BASS: the list holds the default basses only, the sound not loaded",
                  list_mode() == 2u && str_eq(list_name(list_mode()), "BASS") && !favorites.filter && ui_lcat == CAT_BASS &&
                  total == n && n >= 5u && pos == total && TSEL->eng_req == 0u && TSEL->preset == 5u);
     ok = 1;
@@ -1337,15 +1337,15 @@ static int test_categories(void)
     turn(EN_K4, 20);
     bad += check("  .. right to OTHER and no further (no wrap)", list_mode() == LIST_N - 1u && str_eq(list_name(list_mode()), "OTHER"));
     turn(EN_PRESET, 1);
-    bad += check("  OTHER: the PRESETS knob loads a factory OTHER sound (GLASS SHARDS)", track_cat(TSEL) == CAT_OTHER);
+    bad += check("  OTHER: the PRESETS knob loads a default OTHER sound (GLASS SHARDS)", track_cat(TSEL) == CAT_OTHER);
     {   /* the settings: the category's byte, unknown = none; FAV clears it */
         persist_t p;
         list_set(1u + CAT_PAD);
         settings_export(&p);
-        ok = p.favorites.factory[15][11] == CAT_PAD && p.favorites.filter == 0u;
-        p.favorites.factory[15][11] = 9;
+        ok = p.favorites.defaults[15][11] == CAT_PAD && p.favorites.filter == 0u;
+        p.favorites.defaults[15][11] = 9;
         ok &= settings_import(&p, sizeof p) == 1 && list_mode() == 0u;
-        p.favorites.factory[15][11] = CAT_FX;
+        p.favorites.defaults[15][11] = CAT_FX;
         ok &= settings_import(&p, sizeof p) == 1 && list_mode() == 1u + CAT_FX;
         turn(EN_K4, -20);
         turn(EN_K4, 1);
@@ -1360,7 +1360,7 @@ static int test_categories(void)
     go_page(GR_USER);
     ui_old_uslot = 4;
     press(B_OCTUP);
-    bad += check("NAME: USER SAVE starts at the sound's category (a factory BASS)", name_on() && nm.cat == CAT_BASS);
+    bad += check("NAME: USER SAVE starts at the sound's category (a default BASS)", name_on() && nm.cat == CAT_BASS);
     turn(EN_K3, 1);
     ok = nm.cat == CAT_LEAD;
     turn(EN_K3, -5);
@@ -2955,7 +2955,7 @@ static int test_edit_cycle(void)
         ok += str_eq(PAGES[i].title, "ENGINE") && PAGES[i].fam == FAM_EDIT;
     bad += check("one ENGINE page, EDIT's (DUELL 3.6)", ok == 1);
     set_engine_of(TSEL, 0);
-    TSEL->p[P_TWTYPE] = 0;                              /* (0.2.31: ANALOG's first factory sound runs filter 2, which adds TWIN MOD and TWIN CHAIN; the order is tested with filter 2 off) */
+    TSEL->p[P_TWTYPE] = 0;                              /* (0.2.31: ANALOG's first default sound runs filter 2, which adds TWIN MOD and TWIN CHAIN; the order is tested with filter 2 off) */
     bad += check("EDIT cycle (ANALOG): EDIT 1 SUB OSC MULTI FILTER 1/2 2/2 TWIN FILTER VOICE 1/2 VOICE 2/2 ENGINE (no EDIT 2: its eighth card is unused)", engine_cycle(CYC_A, NELEM(CYC_A)));
     set_engine_of(TSEL, 1);
     bad += check("EDIT cycle (engine 1 asked for: DIGITAL retired in 0.2.14): ANALOG's", TSEL->eng_req == 0u && engine_cycle(CYC_A, NELEM(CYC_A)));
@@ -3009,7 +3009,7 @@ static int test_retired_engines(void)
     int bad = 0, ok;
     uint32_t g, i, k, n, tot, slot;
     char w[96];
-    bad += check("retired: DIGITAL 1, SAMPLE 4, GRAIN 8, DRUM 10, SLICE 13 are in no list (NENG_SHOWN 10), named \"-\", silent placeholders, no factory sound",
+    bad += check("retired: DIGITAL 1, SAMPLE 4, GRAIN 8, DRUM 10, SLICE 13 are in no list (NENG_SHOWN 10), named \"-\", silent placeholders, no default sound",
                  NENG_SHOWN == 10u && !eng_ok(1) && !eng_ok(4) && !eng_ok(8) && !eng_ok(10) && !eng_ok(13) && ENGINES[1] == ENGINES[4] &&
                  ENGINES[4] == ENGINES[8] && ENGINES[8] == ENGINES[10] && ENGINES[10] == ENGINES[13] &&
                  str_eq(ENGINES[4]->name, "-") && !ENGINES[4]->npresets && !ds_count(1) && !ds_count(4) && !ds_count(8) && !ds_count(10) && !ds_count(13) &&
@@ -3332,7 +3332,7 @@ static int test_bughunt_ui(void)
     ok = ui.confirm == CF_OVR_USER && !song.rec && !transport_req;
     press(B_OCTUP);
     bad += check("REC in the OVERWRITE? dialog does nothing; OCT+ then opens NAME", ok && name_on());
-    {   /* 2: UNDO of a sound load on an FM6 track: the track's own (edited) patch, not PTCH's factory one */
+    {   /* 2: UNDO of a sound load on an FM6 track: the track's own (edited) patch, not PTCH's default one */
         uint8_t mine[FP_SIZE + 1u], next[FP_SIZE + 1u];
         ui_power_on();
         track_select(1); frame();
@@ -4156,17 +4156,17 @@ static int test_wave_favorites(void)
     uint8_t ml[32], dg0;
     int ok;
     ui_power_on();
-    memcpy(ml, favorites.factory[14], sizeof ml);
-    dg0 = favorites.factory[1][0];
+    memcpy(ml, favorites.defaults[14], sizeof ml);
+    dg0 = favorites.defaults[1][0];
     ok = !favorite_has(ENGI_WAVE, 0) && favorite_set(ENGI_WAVE, 0, 1) && favorite_set(ENGI_WAVE, 9, 1) && favorite_has(ENGI_WAVE, 0) &&
          favorite_has(ENGI_WAVE, 9) && !favorite_has(ENGI_WAVE, 1) && !favorite_set(ENGI_WAVE, 128, 1);
-    ok &= !memcmp(ml, favorites.factory[14], sizeof ml) && favorites.factory[1][0] == dg0 &&
-          favorites.factory[1][16] == 1u && favorites.factory[1][17] == 2u;
+    ok &= !memcmp(ml, favorites.defaults[14], sizeof ml) && favorites.defaults[1][0] == dg0 &&
+          favorites.defaults[1][16] == 1u && favorites.defaults[1][17] == 2u;
     settings_export(&p);
     memset(&favorites, 0, sizeof favorites);
     ok &= settings_import(&p, sizeof p) == 1 && favorite_has(ENGI_WAVE, 0) && favorite_has(ENGI_WAVE, 9);
-    ok &= favorite_set(ENGI_WAVE, 0, 0) && favorite_set(ENGI_WAVE, 9, 0) && !favorites.factory[1][16] &&
-          !favorites.factory[1][17];
+    ok &= favorite_set(ENGI_WAVE, 0, 0) && favorite_set(ENGI_WAVE, 9, 0) && !favorites.defaults[1][16] &&
+          !favorites.defaults[1][17];
     return check("WAVE's favourites (engine 14): row 1 bytes 16..31, the MIDI LEARN map and DIGITAL's byte untouched, kept through a settings save", ok);
 }
 
@@ -4179,7 +4179,7 @@ static int test_engines_shown(void)
     ui_power_on();
     bad += check("power-on: track 2 is FM6 PAD (TRK_DEF, was DIGITAL PAD)", trk[1].eng_req == ENGI_FM6 &&
                  str_eq(ENGINES[ENGI_FM6]->presets[trk[1].preset].name, "PAD"));
-    for (i = 0; i < UP_SLOTS; i++)                      /* (0.2.17: the list is the 128 slots, a fresh unit shows the factory sounds in all) */
+    for (i = 0; i < UP_SLOTS; i++)                      /* (0.2.17: the list is the 128 slots, a fresh unit shows the default sounds in all) */
         seen |= 1u << sl_engine(i);
     total = UP_SLOTS;
     bad += check("PRESETS: the list holds every engine's presets but the retired DIGITAL SAMPLE GRAIN DRUM SLICE",
@@ -4230,9 +4230,9 @@ static int test_engines_shown(void)
         memset(&pe, 0, sizeof pe);
         pe.magic = PERSIST_MAGIC;
         pe.panel = PANEL_DEFAULT;
-        pe.favorites.factory[1][0] = 1u << 5 | 1u << 7;
+        pe.favorites.defaults[1][0] = 1u << 5 | 1u << 7;
         settings_import(&pe, (int)sizeof pe);
-        bad += check("favourites of DIGITAL presets: engine 1's byte cleared, none moved to FM6", !favorites.factory[1][0] &&
+        bad += check("favourites of DIGITAL presets: engine 1's byte cleared, none moved to FM6", !favorites.defaults[1][0] &&
                      !favorite_has(ENGI_FM6, 4) && !favorite_has(ENGI_FM6, 7));
         memset(&favorites, 0, sizeof favorites);
     }
@@ -4855,8 +4855,8 @@ static int test_idle_leds(void)
     menu_put(MI_ANIM, 2); settings_leds = LEDS_OFF; ui_leds();
     bad += check("  ANIM ON / OFF: none; LEDS OFF: no glow", ok && host_idle && !host_idle_glow);
     settings_export(&p);
-    ok = p.favorites.factory[15][10] == 1u && !(p.favorites.factory[15][30] & PREF_ANIM_OFF);
-    p.favorites.factory[15][10] = 0;
+    ok = p.favorites.defaults[15][10] == 1u && !(p.favorites.defaults[15][30] & PREF_ANIM_OFF);
+    p.favorites.defaults[15][10] = 0;
     ok &= settings_import(&p, sizeof p) == 1 && menu_get(MI_ANIM) == 0u;
     bad += check("  kept with the settings ([15][10] bit 0; 0, every older setting: ANIM ON)", ok);
     host_idle = 0;
@@ -4986,21 +4986,21 @@ static int test_screen_off(void)
     ok &= host_pw_n == n + 1u && host_pw[n] == 3u && host_bl && scrn.st == SCR_ON;
     bad += check("SCREEN OFF: a dialog, the count-in, UPDATE MODE keep it on and wake it; the crash screen at once", ok);
 
-    {   /* the setting with the settings: SCR_CODE in favorites.factory[15][27]; 1.1.5's codes: 0 (its 30 MIN, its
+    {   /* the setting with the settings: SCR_CODE in favorites.default[15][27]; 1.1.5's codes: 0 (its 30 MIN, its
          * default) now NEVER, 3 (its NEVER) NEVER, 2 1 7 as they were; 30 MIN is 4 now; unknown NEVER */
         persist_t p = {0};
         p.magic = PERSIST_MAGIC; p.panel = panel;
         menu_put(MI_SCROFF, 4u);
         settings_export(&p); ui_scr = 0;
-        ok = p.favorites.factory[15][27] == 7u && settings_import(&p, sizeof p) && scr_get() == 4u;
-        p.favorites.factory[15][27] = 0;
+        ok = p.favorites.defaults[15][27] == 7u && settings_import(&p, sizeof p) && scr_get() == 4u;
+        p.favorites.defaults[15][27] = 0;
         ok &= settings_import(&p, sizeof p) && scr_get() == 0u;
-        p.favorites.factory[15][27] = 3;              /* 1.1.5's NEVER */
+        p.favorites.defaults[15][27] = 3;              /* 1.1.5's NEVER */
         ok &= settings_import(&p, sizeof p) && scr_get() == 0u;
-        p.favorites.factory[15][27] = 2;              /* 5 MIN, as on 1.1.5 */
+        p.favorites.defaults[15][27] = 2;              /* 5 MIN, as on 1.1.5 */
         ok &= settings_import(&p, sizeof p) && scr_get() == 1u;
         menu_put(MI_SCROFF, 3u); ok &= ui_scr == 4u && scr_get() == 3u;
-        p.favorites.factory[15][27] = 6;              /* unknown: NEVER */
+        p.favorites.defaults[15][27] = 6;              /* unknown: NEVER */
         ok &= settings_import(&p, sizeof p) && scr_get() == 0u;
         ui_scr = 0x55; ok &= scr_get() == 0u;
         bad += check("SCREEN OFF: saved with the settings (0, 1.1.5's 30 MIN, and unknown = NEVER)", ok);
@@ -6184,7 +6184,7 @@ static int test_patch_accel(void)
 }
 
 /* DUELL 1.1 (owner 2026-10-27, HANDOFF_V2 item 141): ONE pitch setting, TRANSPOSE (TRN, P_TRANS, -24..+24 semitones), STORED WITH THE PATCH: VOICE 1/2 K4; the CHORD page is
- * K1 CHRD, K2 VOIC, K3 STRUM (item 144), K4 free; the KEY OFFSET is gone (ext.h X27 is STRUM now). A factory sound sets 0, a saved patch its own, undo swaps it, the keys follow it */
+ * K1 CHRD, K2 VOIC, K3 STRUM (item 144), K4 free; the KEY OFFSET is gone (ext.h X27 is STRUM now). A default sound sets 0, a saved patch its own, undo swaps it, the keys follow it */
 static int test_transpose_patch(void)
 {
     int bad = 0, ok, ok2 = 0;
@@ -6242,7 +6242,7 @@ static int test_transpose_patch(void)
     t->p[P_TRANS] = 7;
     ok &= kb_map(t, 0) == 60u;
     bad += check("  the keys follow it: F3 plays F1 at -24, C4 at +7 (no other octave is added)", ok);
-    /* stored with the patch: SAVE stores it, a factory sound sets its own (0), the saved patch brings its own back, undo swaps it */
+    /* stored with the patch: SAVE stores it, a default sound sets its own (0), the saved patch brings its own back, undo swaps it */
     song.sel = 0;
     t = TSEL;
     sl_load(sl);
@@ -6253,7 +6253,7 @@ static int test_transpose_patch(void)
     held = t->p[P_TRANS] = 5;                                                   /* (a change after the load: a load replaces it) */
     sl_load(sl);
     ok &= trn_fac == 0 && t->p[P_TRANS] == -24;
-    bad += check("  stored with the patch: saved at -24, a factory sound loaded between sets 0, the saved patch brings -24 back", ok && held == 5);
+    bad += check("  stored with the patch: saved at -24, a default sound loaded between sets 0, the saved patch brings -24 back", ok && held == 5);
     undo_swap();
     ok = t->p[P_TRANS] == 5;
     undo_swap();
@@ -6482,8 +6482,8 @@ static int test_click_menu(void)
         settings_export(&p);
         ui_rec_prefs = 0; frame();
         ok = settings_import(&p, (int)sizeof p) == 1 && (frame(), click_mode == CLICK_ON && click_lvl == 2u && cin_bars == 2u);
-        p.favorites.factory[15][28] = 3u | 3u << 2 | 1u << 4;   /* CLICK and LEVEL no value, COUNT-IN 1 BAR */
-        ok &= settings_import(&p, (int)sizeof p) == 1 && p.favorites.factory[15][28] == 1u << 4;
+        p.favorites.defaults[15][28] = 3u | 3u << 2 | 1u << 4;   /* CLICK and LEVEL no value, COUNT-IN 1 BAR */
+        ok &= settings_import(&p, (int)sizeof p) == 1 && p.favorites.defaults[15][28] == 1u << 4;
         frame();
         ok &= click_mode == CLICK_OFF && click_lvl == 1u && cin_bars == 1u;
         memset(&p.favorites, 0, sizeof p.favorites);   /* settings from before the favorites (PER3): the defaults */
@@ -6598,7 +6598,7 @@ static int test_usb_serial(void)
         usb_serial_apply();
         ok &= !usb_cdc_on && !usb.up && plain_desc();
         settings_export(&p);                            /* a 0.2.14 record with ON (the user's choice): ON, the console */
-        p.favorites.factory[15][30] &= (uint8_t)~PREF_SERIAL_OFF;
+        p.favorites.defaults[15][30] &= (uint8_t)~PREF_SERIAL_OFF;
         ok &= settings_import(&p, (int)sizeof p) == 1 && !(ui_prefs & PREF_SERIAL_OFF);
         usb_serial_apply();
         ok &= usb_cdc_on && dev_is(DEV_DESC);
@@ -6731,16 +6731,16 @@ static int test_flat_only(void)
     ok &= ui_prefs == 0u;
     bad += check("MENU: no STYLE, LARGE or HELP row; the cards are SURF (FLAT)", ok);
     settings_export(&p);
-    p.favorites.factory[15][29] = 1;                    /* LINE of an older setting */
-    p.favorites.factory[15][30] = (uint8_t)(p.favorites.factory[15][30] | 32u);       /* LARGE ON */
-    p.favorites.factory[15][24] = (uint8_t)(p.favorites.factory[15][24] | 8u);        /* HELP ON */
+    p.favorites.defaults[15][29] = 1;                    /* LINE of an older setting */
+    p.favorites.defaults[15][30] = (uint8_t)(p.favorites.defaults[15][30] | 32u);       /* LARGE ON */
+    p.favorites.defaults[15][24] = (uint8_t)(p.favorites.defaults[15][24] | 8u);        /* HELP ON */
     ok = settings_import(&p, (int)sizeof p) == 1;
     q = p;
     ok &= settings_import(&q, (int)sizeof q) == 1 && !memcmp(&p, &q, sizeof p);
     ui.force = 1; frame();
-    p.favorites.factory[15][29] = 2;                    /* the retired PIXEL, and an unknown value */
+    p.favorites.defaults[15][29] = 2;                    /* the retired PIXEL, and an unknown value */
     ok &= settings_import(&p, (int)sizeof p) == 1;
-    p.favorites.factory[15][29] = 7;
+    p.favorites.defaults[15][29] = 7;
     ok &= settings_import(&p, (int)sizeof p) == 1;
     ui.force = 1; frame();
     bad += check("an older setting with STYLE LINE (or PIXEL, or junk), LARGE ON, HELP ON: imported, ignored, FLAT drawn", ok);
@@ -6899,7 +6899,7 @@ static int test_cpu_bar(void)
     settings_export(&pr);
     menu_put(MI_CPU, 1);
     ok &= settings_import(&pr, sizeof pr) == 1 && !menu_get(MI_CPU);
-    pr.favorites.factory[15][24] = 7;                   /* an older record: its byte holds the three old bits only */
+    pr.favorites.defaults[15][24] = 7;                   /* an older record: its byte holds the three old bits only */
     ok &= settings_import(&pr, sizeof pr) == 1 && !menu_get(MI_CPU) && ui_prefs2 == (7u | 0x80u);   /* (+ 0.2.14's flag: its defaults done once) */
     bad += check("0.2.9 CPU METER OFF is saved with the settings (its own bit, the others stay) and read back; an older record loads ON", ok);
     ui_prefs2 = 0;
@@ -7323,9 +7323,9 @@ static int test_save_opens(void)
     /* hold SAVE on MULTIS */
     go_title("MULTIS");
     song.g[G_SLOT] = 12;
-    hold(B_SAVE);                                       /* (0.2.23: no slot is empty, M12 holds the factory DEAD BUFFER: a used slot like any other) */
-    bad += check("hold SAVE on MULTIS, a factory slot (M12 DEAD BUFFER): SAVE OVER <name>?", ui.confirm == CF_HOLD_MULTI && ui.confirm_trk == 11u &&
-                 project_factory(11));
+    hold(B_SAVE);                                       /* (0.2.23: no slot is empty, M12 holds the default DEAD BUFFER: a used slot like any other) */
+    bad += check("hold SAVE on MULTIS, a default slot (M12 DEAD BUFFER): SAVE OVER <name>?", ui.confirm == CF_HOLD_MULTI && ui.confirm_trk == 11u &&
+                 project_default(11));
     press(B_OCTDN);
     project_save_as(11, "KEEPME");
     go_title("MULTIS");

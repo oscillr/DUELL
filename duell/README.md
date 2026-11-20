@@ -31,7 +31,7 @@ Multi-engine synthesizer firmware for the M-VAVE FM-1. Please report what you fi
 
 ## Features
 
-- **Thirteen engines** (below), each with its own factory presets; every factory sound has a category (BASS, LEAD,
+- **Thirteen engines** (below), each with its own default presets; every default sound has a category (BASS, LEAD,
   PAD, PLUCK, KEYS, DRUM, FX, OTHER) to browse by
 - **Four tracks**, one synth part each with its own engine and sound (drums are the DRUM engine);
   8 voices shared between them. ALGORITHM selects the track on every page
@@ -81,7 +81,7 @@ Multi-engine synthesizer firmware for the M-VAVE FM-1. Please report what you fi
 - **Quick layers:** hold FX, GLO, SEL, EDIT, REC or SEQ for shortcuts on the keys and knobs, or double-tap it to
   keep the layer open; one-step undo (SAVE held); REC on every page; OCT + confirms, OCT - goes back; what can be
   pressed breathes softly instead of blinking
-- **Presets:** factory presets, 32 user preset slots and 4 projects, named on the device (an FM6
+- **Presets:** default presets, 32 user preset slots and 4 projects, named on the device (an FM6
   sound keeps its own patch in both); user presets get a category, and a project can get a random name; projects
   from every earlier version load. The PRESETS knob changes the sound from every page that is not a list.
   Turn the FM-1 off and on and the music is as you left it (MENU > RESTORE LAST, an autosave of its own,
@@ -285,7 +285,7 @@ In the order the device lists them:
 - **FM6**: classic 6-operator FM (Dexed-based): 32 algorithms, a full patch per track, edited in the
   web editor (which imports .syx files) or on the device: EDIT > OPERATOR (ratio or fixed frequency, fine, level),
   OP ENV (each stage's rate and level, drawn as the envelope) and OPERATOR 2 (mode, detune, velocity), one
-  operator at a time on the algorithm chart; macros on top; SLOT picks a factory patch (F1–F8), the track's own (OWN) or a voice of the bank the web editor sent (B1–B32)
+  operator at a time on the algorithm chart; macros on top; SLOT picks a default patch (F1–F8), the track's own (OWN) or a voice of the bank the web editor sent (B1–B32)
 - **PHASE**: phase distortion (ported from CrispyZebra)
 - **LOFI**: chiptune; pulse, triangle, saw, noise and a 4-bit wave RAM, stepped envelope, sweep, arpeggio
 - **SAMPLE**: multisampled instruments (PIANO, FLUTE, SAX) and 3 user sample slots
@@ -329,7 +329,7 @@ DUELL has ONE global scale for the whole instrument (both parts, every output mo
 K1 sets the SCALE, K2 the ROOT and K3 **OFF-SCALE**: **SNAP** (the default) moves a key or MIDI note outside the scale to the nearest scale
 note (a tie goes down), **PLAY** lets it sound as it is. The default scale is CHROMATIC (nothing to snap; OFF-SCALE is faded and says so).
 **TRN** (the part's, on the CHORD page) transposes the keys; the OCT - and OCT + buttons shift them by full octaves. The scale is a device setting:
-no patch, part, multi or factory sound stores it. The arp and the SEQUENCER steps follow it (steps move onto the scale, or in semitones
+no patch, part, multi or default sound stores it. The arp and the SEQUENCER steps follow it (steps move onto the scale, or in semitones
 when CHROMATIC).
 
 Available scales: chromatic (CHR), major (MAJ), natural minor (MIN), Dorian (DOR),

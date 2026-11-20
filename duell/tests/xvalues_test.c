@@ -650,7 +650,7 @@ static void t_matrix(void)
         t->p[P_TWTYPE] = TT_OFF;
         mod_dst_line(t, MD_RES2, b, &more);
         ok2 &= !strcmp(b, "DEST: TWIN RES") && more && !strcmp(more, "THE TWIN FILTER IS OFF");
-        ck("  .. their names (TWIN / CUTOFF, TWIN / RES, FILTER / DRIVE, FILTER / BLEND, SUB / LEVEL; TUNE and FDBK on COMB), the DEST lines (32 characters), N_MDST's factory names", ok2);
+        ck("  .. their names (TWIN / CUTOFF, TWIN / RES, FILTER / DRIVE, FILTER / BLEND, SUB / LEVEL; TUNE and FDBK on COMB), the DEST lines (32 characters), N_MDST's default names", ok2);
     }
     {   /* the lists */
         uint32_t i, seen[MD_N] = {0}, ok3 = 1, ok4 = 1;

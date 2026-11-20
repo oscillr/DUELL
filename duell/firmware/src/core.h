@@ -27,7 +27,7 @@ _Static_assert(NSHOWN <= NPART, "core.h: NSHOWN parts are shown, NPART parts exi
 #define PV_LEN 32                /* DUELL 1.1 (owner: no name is cut for length): the room of a value text that param_format (params.c) or a list name fills, with its 0; the longest name (a two-line RESONANT\nTRAPEZOID, TRI+PULSE\nRING SYNC: 19) is well inside; every buffer given to param_format is PV_LEN */
 #ifndef DUELL_TEST_MODE
 #define DUELL_TEST_MODE 0        /* DUELL developer switch (-DDUELL_TEST_MODE=1; env DUELL_TEST_MODE=1 for build.py / web/emu/build.sh / host_tests.sh): 1 builds in MENU > SYSTEM > TEST (the CPU test screen)
-                                  * (tools/gen_duell_multis.py must be run with the same switch; since 0.2.23 both builds hold the same sixteen factory multis); 0 (the release default) leaves it out */
+                                  * (tools/gen_duell_multis.py must be run with the same switch; since 0.2.23 both builds hold the same sixteen default multis); 0 (the release default) leaves it out */
 #endif
 #ifndef DUELL_BENCH
 #define DUELL_BENCH 0            /* DUELL developer switch (-DDUELL_BENCH=1; env DUELL_BENCH=1 + BENCH_TAG for tools/build.py): 1 builds in MENU > SYSTEM > BENCH, the
@@ -50,7 +50,7 @@ _Static_assert(NSHOWN <= NPART, "core.h: NSHOWN parts are shown, NPART parts exi
 #define ENGI_RETIRED(e) ((e) == 1u || (e) == 4u || (e) == 8u || (e) == 10u || (e) == 13u)
 #define NENG_RETIRED 5
 #define NENG_SHOWN (NENGINES - NENG_RETIRED)   /* the engines one can pick: PRESETS, the EDIT layer, the editor, in the display order of engines.c ENGINE_ORDER */
-#define UP_SLOTS 128u            /* stored patches (upreset.c): shadows of factory sounds and user patches, 128 in all */
+#define UP_SLOTS 128u            /* stored patches (upreset.c): shadows of default sounds and user patches, 128 in all */
 #define NELEM(a) (sizeof(a) / sizeof((a)[0]))
 /* DUELL 1.3 (owner 2026-11-12, design velocity-to-filter_2026-11-12.md): the hidden ACCENT LIFT of 1.1 (above velocity 110 the envelope opened the filter
  * by a fixed 24 steps, no control) is GONE. Velocity now reaches the filter only through the matrix: a slot VELOCITY > FILTER ENV MULTI CUTOFF scales each
@@ -99,7 +99,7 @@ typedef struct {
 
 enum {                          /* per-track parameters */
     P_LEVEL,                    /* DUELL 0.2.19 (owner, 2026-10-15): the MIXER LEVEL, the part's volume the player sets on the mixer: NOT part of a patch (a sound load,
-                                 * factory or stored, never touches it; param_kept), kept with a multi and the project, default unity (112 = 0 dB). The sound's own
+                                 * default or stored, never touches it; param_kept), kept with a multi and the project, default unity (112 = 0 dB). The sound's own
                                  * loudness is P_TRIM (below); the part plays at P_TRIM x P_LEVEL (fx.c part_lvl). Through 0.2.18 this one id was both */
     P_ATK, P_DEC, P_SUS, P_REL,
     P_ED_FLT, P_ED_PIT, P_ED_SHP, P_EQLG,      /* P_EQLG: Felucca's P_ED_FX (never read), now the EQ's LOW gain (DUELL, core.h PL_*) */
@@ -134,12 +134,12 @@ enum {                          /* per-track parameters */
     P_SQNT,                                    /* 1.2 (#162): QUANTIZE, the steps' recorded / nudged timing (ON: none) */
     P_SPRD,                                    /* (#148): SPREAD, the voices of a POLY / UNISON track around PAN (fx.c) */
     P_ITYPE, P_IA, P_IB, P_IC, P_IMIX,         /* 1.5 (#78, #177): the INSERT, its TYPE, three values and MIX (fx.c) */
-    P_BLEND,                                   /* the TWIN FILTER's BLEND (ext.h) on id 101, the retired ANALOG filter TYPE (1.5, #104: LP / BP / HP; every factory ANALOG sound is LP; the engine runs LP only, eng_analog.c, until its own filter goes) */
+    P_BLEND,                                   /* the TWIN FILTER's BLEND (ext.h) on id 101, the retired ANALOG filter TYPE (1.5, #104: LP / BP / HP; every default ANALOG sound is LP; the engine runs LP only, eng_analog.c, until its own filter goes) */
     P_ESYNC,                                   /* 1.5 (#175): ENV SYNC: ATK DEC REL as note values of the tempo (voice.c) */
     P_EQHG, P_EQHF,                            /* DUELL EQ: HIGH gain and freq (P_COUNT 113, P_E0 105: stores map by count) */
     P_DKCRV, P_CUT2, P_DKDEP, P_DKATK,         /* P_CUT2: the TWIN FILTER's CUTOFF 2 (ext.h) on id 106, the retired DUCK NOTE (0.2.24 / 0.2.25's EQ switch, then free) */
-    P_TRIM,                                    /* DUELL 0.2.19 (owner, 2026-10-15): the PATCH TRIM, the sound's own loudness, stored WITH a patch (a factory sound's tuned level, a patch record, a multi's
-                                                * part): loading a sound sets it, SAVE stores it, (PATCHES K4 RESTORE reloads the saved one; RESTORE ALL brings the factory one). On the id of the legacy DUCK HOLD (0.2.5: on no page, never read, always 0 in
+    P_TRIM,                                    /* DUELL 0.2.19 (owner, 2026-10-15): the PATCH TRIM, the sound's own loudness, stored WITH a patch (a default sound's tuned level, a patch record, a multi's
+                                                * part): loading a sound sets it, SAVE stores it, (PATCHES K4 RESTORE reloads the saved one; RESTORE ALL brings the default one). On the id of the legacy DUCK HOLD (0.2.5: on no page, never read, always 0 in
                                                 * a record): P_COUNT and every format keep their size; the multi version and the project revision moved so no HOLD is read as a trim (a patch record: PTF_TR).
                                                 * 0..127 as P_LEVEL (F_DB, 112 = 0 dB), default 104 (the old default level). Not morphed (morph.c pins End B to A) */
     P_DKRLS,                                   /* DUELL DUCK (SPEC 5c.4; fx.c duck_*): the sidechain (P_COUNT 119, P_E0 111). P_DKCRV: the RELEASE's CURVE (LIN, EXP); was the MIDI CH (merged into P_DKSRC) */
@@ -201,7 +201,7 @@ static const uint16_t BM_HZ[BM_N] = {40, 50, 63, 80, 100, 125, 160, 200, 250, 31
  * G_CR RATIO (0 = 1:1, the stage is not run; 1.5 2 3 4 6 10 20 INF), G_CA ATTACK (0.1 .. 100 ms), G_CL RELEASE (20 ms .. 2 s). They live in song.cp[0..3] and are a DEVICE setting (not in a multi, not in the
  * project): packed in the settings record's retired `rsv` word (settings_persist.c; cmp_set). The tables below are the nominal times; fx.c holds the shift triples that realise them (comp_stage) */
 /* DUELL 0.2.22 (owner, 2026-10-16): the sidechain's MIDI SETUP is a DEVICE setting, not part of a sound. GLO > SIDECHAIN: per part (K1 P1 CH, K2 P1 NOTE, K3 P2 CH, K4 P2 NOTE) the MIDI channel and the note
- * that start the DUCK of a part whose DUCK SRC is MIDI (fx.c duck_note, sc_midi[]). Kept in the settings record (favorites.factory[15][14..17], 0 = the default; ui.c ui_sc_set), never in a patch, a multi or the
+ * that start the DUCK of a part whose DUCK SRC is MIDI (fx.c duck_note, sc_midi[]). Kept in the settings record (favorites.default[15][14..17], 0 = the default; ui.c ui_sc_set), never in a patch, a multi or the
  * project, so a load leaves them alone; editable whatever the SRC is. Defaults: channel 10, note 36 (C2, the GM kick). The note 0 is ANY (every note of the channel) */
 #define SC_CH_DEF 9u
 #define SC_NOTE_DEF 36u
@@ -233,7 +233,7 @@ static inline uint32_t cmp_t40(uint32_t base, uint32_t i)   /* base x 10^(i/40),
 static uint32_t cmp_set;                                 /* the settings record's word for the compressor (settings_persist.c): 0xC8 << 24 | thr | ratio << 6 | atk << 10 | rel << 17; no tag = the defaults */
 /* DUELL 0.2.23 (owner, 2026-10-16): the master WIDTH, its own GLO page, a DEVICE setting like COMP (not in a patch, a multi or the project; a load never touches it):
  * G_WD the page WIDTH's K1 WIDTH (0..200 %, 100 = as it is: the stage is not run; fx.c width_stage). Pseudo id past COMP's; it lives in song.ms[0] and is stored in the settings record's
- * bytes favorites.factory[15][18..21] (ui.c ui_ms_set: a tag byte, then WIDTH; bytes of the FX layer's old key map, retired in 0.2.2: an untagged record = the defaults). It does not run
+ * bytes favorites.default[15][18..21] (ui.c ui_ms_set: a tag byte, then WIDTH; bytes of the FX layer's old key map, retired in 0.2.2: an untagged record = the defaults). It does not run
  * in DUEL (its sides are the two parts). 0.2.25 (owner): the master saturator of 0.2.23 / 0.2.24 (G_SD, the DRIVE) is removed; its stored byte [20] is ignored */
 #define G_WD (G_COUNT + 5)
 #define WD_DEF 100
@@ -765,7 +765,7 @@ static vmod_t vr_m[VR_RECS] TC_CTX_SECT;
 #define TSEL (&trk[song.sel])    /* the selected track */
 
 /* DUELL 0.2.14 GLO > MODULES (SPEC "Modules"): four DEVICE switches, ARP, SEQ, SENDS, PART FX, each ON (the default) or OFF. Kept in the
- * settings byte favorites.factory[15][10] bits 1..4 (ui.c ui_mods; a SET bit is OFF, so a new unit, ERASE DATA and every older record
+ * settings byte favorites.default[15][10] bits 1..4 (ui.c ui_mods; a SET bit is OFF, so a new unit, ERASE DATA and every older record
  * read all four ON), never in a patch, a multi or the project. ui_input copies them here every frame (ui.c mods_apply); the audio side
  * reads only this byte. The stored values of the arp, the steps, the sends and the part effects are never touched by a switch */
 #define MODS_ARP 1u              /* ARP OFF: no arp plays, whatever its MODE (seq.c: arp_mode below); the keys play directly */
@@ -820,12 +820,12 @@ static inline int32_t arp_hold(const track_t *t)
 }
 
 /* ONE GLOBAL SCALE (DUELL; owner design 2026-10-12, replaces SCALE LINK): SCALE and ROOT are settings of the instrument, not of a patch,
- * a part, a MULTI or a factory sound: scale_g (0 = CHROMATIC, the default; an unknown value reads as it) and root_g (0 = C), and the
+ * a part, a MULTI or a default sound: scale_g (0 = CHROMATIC, the default; an unknown value reads as it) and root_g (0 = C), and the
  * OFF-SCALE KEYS setting offscale_g: OS_SNAP (the default) moves a key or MIDI note outside the scale to the NEAREST scale note (a tie
  * goes DOWN) before it reaches the parts (seq.c note_snap); OS_PLAY lets it pass. Chromatic: nothing to snap. The per-part P_SCALE /
  * P_ROOT / P_QUANT ids stay reserved (patch, MULTI and editor formats do not change) but nothing reads them (a MULTI or an old patch
  * record that holds a scale is read and discarded). Kept with the settings,
- * favorites.factory[15][3] (bit 7 the format flag, bit 6 PLAY, bits 0-3 the scale) and [4] (the root): ui.c ui_scale_set / scale_sync;
+ * favorites.default[15][3] (bit 7 the format flag, bit 6 PLAY, bits 0-3 the scale) and [4] (the root): ui.c ui_scale_set / scale_sync;
  * a zero byte (a new unit, any older blob) is CHROMATIC, C, SNAP. EVERY consumer reads scale_of / root_of (or scale_mask, note_snap:
  * seq.c); the UI edits scale_g / root_g / offscale_g only (ui_input.c scale_knob, the SCL quick layer). A note already sounding keeps
  * its pitch (every source remembers the notes it started) */

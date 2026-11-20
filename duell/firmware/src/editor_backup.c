@@ -11,10 +11,10 @@
  * (OBJ_PATCH0 .. OBJ_PATCHX0..9): those ids are gone (a LIST does not list them, GET and PUT answer rc 1); an old archive of chunks is refused by the editor.
  *   LIST (no argument)        stops the transport, takes the snapshot, lists the other objects (ids 0..5, 8, 13..26, 32..34: 24 in all)
  *   LIST page                 (page 1 .. UP_SLOTS / ED_BK_PPAGE = 4; needs the LIST before) the saved patches of slots 32 (page - 1) .. 32 page - 1: count, then per saved
- *                             patch slot (the id byte), size u32, crc u32 (a slot that holds its factory sound is not listed: it has no record)
+ *                             patch slot (the id byte), size u32, crc u32 (a slot that holds its default sound is not listed: it has no record)
  *   GET 40 off count slot     (9 bytes: id, offset u32, count lo, count hi, slot) a piece of the record; the reply is the usual one with id 40
  *   PUT begin 40 size crc slot (13 bytes) / data / commit / abort as every object; the record goes in through up_put_raw (refused at commit, rc 2, when the store would not
- *                             read it: pt_rec_ok, the extension block's lengths included); size 0 = the slot's record removed (its factory sound is back, as RESTORE)
+ *                             read it: pt_rec_ok, the extension block's lengths included); size 0 = the slot's record removed (its default sound is back, as RESTORE)
  * Id 8 (the FM6 patch bank of 1.0..1.0.2) is listed empty and a PUT of it is accepted and dropped.
  * Ids 2..5 (Felucca's project slots A..D) are listed empty since DUELL's MULTI store took their flash (project.c multi.c);
  * a PUT of one from an older archive is accepted (whatever its length) and dropped.
@@ -26,7 +26,7 @@
  * archive (27 ids). They are read
  * where they live (a multi object from flash through st_current, a pattern object from the RAM mirror ps_bank, which is the truth while a
  * pattern write is pending), never from the staging RAM (the runtime snapshot of id 0 sits there). An object with no multi record is listed
- * with length 0, and a PUT of length 0 writes that empty object (the factory multis show again). A pattern object is never empty (every
+ * with length 0, and a PUT of length 0 writes that empty object (the default multis show again). A pattern object is never empty (every
  * slot holds a pattern): a PUT of length 0 gives its slots their defaults again.
  * A pattern restore replaces the mirror and clears its dirty bit, so a pending write cannot overwrite what was restored.
  * DUELL 0.2.14 (INFO 42 01 caps bit 3): ids 24..26 = the user wavetables USR1..USR3 (wtab.c; the object is wt_obj_t, 1228 bytes, read from the RAM
@@ -148,7 +148,7 @@ static const uint8_t *ed_bk_object(uint32_t id, uint32_t *len)
         return ED_BK_RAW;
     return 0;
 }
-/* slot k's stored record (up_raw_get, in pt_enc: the store's write scratch, free between writes, main loop only); *len 0: the slot holds its factory sound */
+/* slot k's stored record (up_raw_get, in pt_enc: the store's write scratch, free between writes, main loop only); *len 0: the slot holds its default sound */
 static const uint8_t *ed_bk_patch(uint32_t k, uint32_t *len)
 {
     *len = k < UP_SLOTS ? up_raw_get(k, pt_enc) : 0u;

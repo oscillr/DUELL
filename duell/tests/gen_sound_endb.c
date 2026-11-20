@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
-/* DUELL pre-loaded patches: End B as exact values (owner 2026-10-29). Host tool, uses the firmware's own code (like tests/gen_factory_multis.c):
+/* DUELL pre-loaded patches: End B as exact values (owner 2026-10-29). Host tool, uses the firmware's own code (like tests/gen_default_multis.c):
  *   build/host/gen_sound_endb dump [stereo]    for each of the 128 pre-loaded patches: load it as the PATCHES list does (set_engine_of + apply_preset_to: its values, End B
  *                                              rolled from the seed and AMOUNT), SAVE it with the patch save (upreset.c up_patch_save_part), print the PT_VER 4 record:
  *                                              "R <engine> <idx> <len> <hex>" and "O <engine> <idx> <the Original, one value per wide id>". The End B block (MBV) is inside the record; tools/convert_endb.py reads it.

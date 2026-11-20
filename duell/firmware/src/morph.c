@@ -6,7 +6,7 @@
  * ROLL CHAINED (owner, 2026-10-29: "every roll starts again from the original sound is not how it should work"): the player's ROLL of an end starts from the
  * sound that end has now (the result of its previous roll), so repeated rolls wander further; AMOUNT is the size of one step. Zero / off locks are those of
  * the saved patch (the Original); the tags' limits and the loudness windows stay measured against the Original (morph_roll_step; ROLL_CHAIN_CHANGE.md in
- * DUELL/release_drafts). A sound's saved or factory End B, a SAVE's re-make and the settings' fresh B still roll once from the Original (morph_roll_cfg).
+ * DUELL/release_drafts). A sound's saved or default End B, a SAVE's re-make and the settings' fresh B still roll once from the Original (morph_roll_cfg).
  *
  * SMART rules of the owner, 2026-10-28 (FIRMWARE_CHANGE_LIST_2026-10-28.md B.1): a smooth value rolls also from 0 (no wake-up coin); a matrix amount rolls only when it is not 0 (WILD wakes zeros); never rolled: switches and
  * choices, whole-semitone pitch (WILD only), the LFO LEVELs, SUB HARMONICS and the five stored values with no card and no sound (T_GONE); pitch that is not whole semitones rolls (LOFI SWEEP / VIBRATO / PULSE WIDTH,
@@ -1844,7 +1844,7 @@ static void morph_rebase_part(uint32_t pi)               /* ends = the Original,
         morph_roll_cfg(pi, 1u, (uint32_t)(morph_ld[1] | morph_ld[2] << 8), morph_ld[3], morph_ld[4]);
     } else if (morph_ld_n) {                             /* EDITABLE B: no roll saved, but values set by hand: End B is the Original with them on top ("seed 0 plus a list"; the roll below is for a sound with neither) */
                                                          /* (nothing to roll: B = entry 0, the Original) */
-    } else if (!t->user && t->preset < ds_count(t->eng_req)) {   /* DUELL: a factory sound (sounds.c): its own B, always
+    } else if (!t->user && t->preset < ds_count(t->eng_req)) {   /* DUELL: a default sound (sounds.c): its own B, always
                                                          * the same: its seed and AMOUNT, SMART / PITCH / ARP off, part 1's
                                                          * stream (on either part); PAN only where the mode lets it (3b).
                                                          * The part's AMOUNT knob stays the player's (a setting, kept over
@@ -1983,7 +1983,7 @@ static void morph_end_pure(morph_part_t *mp, const int8_t *st, const uint8_t *fs
     mrc = sv;
 }
 static uint32_t pin_count(const uint8_t *pn);
-/* chain 0: end x rolled from the Original (a sound's saved / factory End B, a SAVE's re-make, the settings' fresh B, the bench); chain 1: from the end as it
+/* chain 0: end x rolled from the Original (a sound's saved / default End B, a SAVE's re-make, the settings' fresh B, the bench); chain 1: from the end as it
  * is now (ROLL CHAINED, owner 2026-10-29: the player's ROLL, morph_roll_seed) */
 static void morph_roll_from(uint32_t pi, uint32_t x, uint32_t seed, uint32_t amount, uint32_t cfg, uint32_t chain)
 {

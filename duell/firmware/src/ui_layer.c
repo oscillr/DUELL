@@ -127,9 +127,9 @@ static uint32_t ly_seen(uint32_t l) { return LAYERS[l % LAYER_N].kind == LK_QUIC
 #define LY_OPEN 2u                     /* ui.ly_t0: the map opened (no tap any more) */
 #define LY_COMBO 4u                    /* .. by a combo */
 #define LY_DEAD 8u                     /* .. pressed where there is no layer: does nothing */
-#define layer_seen (favorites.factory[15][31])   /* bit l: layer l opened once (a byte no engine uses); bit 0 (LAYER_NONE's, never set
+#define layer_seen (favorites.defaults[15][31])   /* bit l: layer l opened once (a byte no engine uses); bit 0 (LAYER_NONE's, never set
                                                   * before): the QUICK EDIT layers LFO, ENV, ARP, one for the three (ly_seen) */
-/* (favorites.factory[15][14..23], 10 bytes: the FX layer's key map up to 0.2.1, retired in 0.2.2: not read or written any more, never reused) */
+/* (favorites.default[15][14..23], 10 bytes: the FX layer's key map up to 0.2.1, retired in 0.2.2: not read or written any more, never reused) */
 
 static struct {
     uint8_t l, trk, loaded, oct;       /* SET: the layer and the track of the snapshot; EDIT: a sound loaded since

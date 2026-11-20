@@ -58,8 +58,8 @@ export function parseNames(a) {                     // engine, count, names..., 
   for (let i = 0; i < a[1]; i++) { const [s, n] = rstr(a, pos); names.push(s); pos = n; }
   return { eng: a[0], names };
 }
-// UP_LIST: start, count, total, per slot (1 = it holds a sound, engine, name: every slot of DUELL 0.2.17 does, its saved record or else its factory sound),
-// then one category byte per slot, then (0.2.17) one SAVED byte per slot: 1 = a saved record (RESTORE applies), 0 = the factory sound. A unit that
+// UP_LIST: start, count, total, per slot (1 = it holds a sound, engine, name: every slot of DUELL 0.2.17 does, its saved record or else its default sound),
+// then one category byte per slot, then (0.2.17) one SAVED byte per slot: 1 = a saved record (RESTORE applies), 0 = the default sound. A unit that
 // sends no SAVED bytes (before 0.2.17) is read with saved = used.
 export function parseUpList(a) {
   const start = a[0], count = a[1], total = a[2], slots = []; let pos = 3;
@@ -69,7 +69,7 @@ export function parseUpList(a) {
   slots.forEach((s, i) => { s.saved = hasSaved ? !!a[pos + count + i] : s.used; });
   return { start, count, total, slots };
 }
-// UP_GET: slot, used, engine, name, P_COUNT x v14, 16 x (note, flags), kind (0), category, SAVED. A factory slot: its sound's values, no pattern.
+// UP_GET: slot, used, engine, name, P_COUNT x v14, 16 x (note, flags), kind (0), category, SAVED. A default slot: its sound's values, no pattern.
 export function parseUpGet(a, pcount) {
   const [name, p0] = rstr(a, 3); let pos = p0;
   const values = []; for (let i = 0; i < pcount; i++, pos += 2) values.push(rv14(a, pos));

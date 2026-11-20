@@ -4,7 +4,7 @@
 //   node web/test_editor.mjs      (use the emsdk node: the Homebrew one is broken here)
 import { L, ID, P_E0, descOf, valueText, inertReason, voiceWhy, isEnum, gdescOf, ginert, shimShown, dmdAfterMode, dstWhy, dstName, uncoveredPages, PART_TABS, GLOBAL_TABS, pageByTitle, matrixSlots, pageControls, enumOrder, matrixSecondShown, isBipolar, bipolarZero } from "./editor/layout.js";
 import { readFile } from "node:fs/promises";
-import { MockUnit, MockLink, defaultPart, factoryBrowse } from "./editor/mockunit.js";
+import { MockUnit, MockLink, defaultPart, defaultBrowse } from "./editor/mockunit.js";
 import { Unit, UnitError } from "./editor/unit.js";
 import { parseInfo } from "./editor/proto.js";
 import { loadItemIntoPart as loadItemIntoPartT } from "./editor/librarian.js";
@@ -149,23 +149,23 @@ async function connect(opt = {}) { const m = new MockUnit(opt), u = new Unit(new
   ok(!u.writable && /Nothing is written/.test(u.compat), "safety: a unit with another parameter count is read-only, with the reason");
   ok(await rejects(async () => u.writeParam(0, 5, 1), /Nothing is written/), "safety: writes to such a unit are refused before anything is sent");
 }
-// ---- patches: ONE list of 128 slots (DUELL 0.2.17): a slot is its saved record, else the factory sound at that browse position
+// ---- patches: ONE list of 128 slots (DUELL 0.2.17): a slot is its saved record, else the default sound at that browse position
 {
   const { m, u } = await connect();
   const list = await u.listSlots();
   ok(list.length === 128 && list.every((s) => s.used !== false) && list.filter((s) => s.saved).map((s) => s.name).join() === "WARM PAD,SUB BASS,BELL,WAVE LEAD",
-     "patches: 128 slots listed, every one holds a sound; four are saved (the others hold their factory sounds)");
-  {   // the factory fallback: slot i is the factory sound at browse position i, the order of docs/PATCH_NUMBERS.md (category, engine, name)
+     "patches: 128 slots listed, every one holds a sound; four are saved (the others hold their default sounds)");
+  {   // the default fallback: slot i is the default sound at browse position i, the order of docs/PATCH_NUMBERS.md (category, engine, name)
     const doc = (await readFile(new URL("../../docs/PATCH_NUMBERS.md", import.meta.url), "utf8")).split("\n")
       .map((l) => /^\| (\d+) \| ([^|]+?)( \(NEW\))? \|/.exec(l)).filter(Boolean).map((r) => [+r[1], r[2]]);
-    const fb = factoryBrowse();
+    const fb = defaultBrowse();
     ok(doc.length === 128 && fb.length === 128 && doc.every(([n, name], i) => n === i + 1 && fb[i].name === name), "patches: the browse order (category, engine, name) is the numbering of docs/PATCH_NUMBERS.md: 128 sounds, #1 .. #128");
-    ok(list.every((s, i) => s.saved || (s.name === fb[i].name && s.eng === fb[i].eng && s.cat === fb[i].cat)), "patches: every slot that is not saved lists its browse position's factory sound (name, engine, category)");
+    ok(list.every((s, i) => s.saved || (s.name === fb[i].name && s.eng === fb[i].eng && s.cat === fb[i].cat)), "patches: every slot that is not saved lists its browse position's default sound (name, engine, category)");
   }
-  ok((await u.factoryNames(0)).join() === L.ENG[0].sounds.map((s) => s[0]).join(), "patches: the factory sounds of an engine come from NAMES");
-  await u.loadSlot(1, 40); { const f = factoryBrowse()[40]; ok(u.parts[1].eng === f.eng && u.parts[1].preset === f.idx && m.selected === 1, "patches: loading a slot that holds its factory sound loads that sound into the chosen part"); }
+  ok((await u.defaultNames(0)).join() === L.ENG[0].sounds.map((s) => s[0]).join(), "patches: the default sounds of an engine come from NAMES");
+  await u.loadSlot(1, 40); { const f = defaultBrowse()[40]; ok(u.parts[1].eng === f.eng && u.parts[1].preset === f.idx && m.selected === 1, "patches: loading a slot that holds its default sound loads that sound into the chosen part"); }
   u.parts[1].p[ID.P_LEVEL] = 33; m.parts[1].p[ID.P_LEVEL] = 33; await u.saveSlot(1, 9, "MY SOUND");
-  ok(u.slots[9].name === "MY SOUND" && u.slots[9].saved && m.patches.get(9).p[ID.P_FREEA] === m.parts[1].p[ID.P_FREEA], "patches: UP_STORE saves the part's own sound over a slot that held a factory sound");
+  ok(u.slots[9].name === "MY SOUND" && u.slots[9].saved && m.patches.get(9).p[ID.P_FREEA] === m.parts[1].p[ID.P_FREEA], "patches: UP_STORE saves the part's own sound over a slot that held a default sound");
   m.parts[0].p[ID.P_LEVEL] = 77; m.parts[0].p[ID.P_PAN] = 12; await u.loadSlot(0, 9); ok(m.parts[0].p[ID.P_LEVEL] === 77 && m.parts[0].p[ID.P_PAN] === 12, "patches: a load keeps the part's LEVEL (the mixer level: a sound load never changes it), PAN and MUTE");
   { // 0.2.19: the trim is the patch's: a load sets it, a save stores it (and not the mixer level)
     m.parts[1].p[ID.P_TRIM] = 91; m.parts[1].p[ID.P_LEVEL] = 33; await u.saveSlot(1, 10, "TRIMMED");
@@ -175,19 +175,19 @@ async function connect(opt = {}) { const m = new MockUnit(opt), u = new Unit(new
     await u.restoreSlot(10);
   }
   await u.saveSlot(1, 9, "RENAMED 1"); ok(u.slots[9].name === "RENAMED 1" && u.slots.filter((s) => s.saved).length === 5, "patches: saving over a saved slot replaces it (no new slot)");
-  await u.restoreSlot(9); ok(!u.slots[9].saved && u.slots[9].name === factoryBrowse()[9].name, "patches: RESTORE: the saved sound is gone, the slot's factory sound is back");
+  await u.restoreSlot(9); ok(!u.slots[9].saved && u.slots[9].name === defaultBrowse()[9].name, "patches: RESTORE: the saved sound is gone, the slot's default sound is back");
   m.playing = true; ok(await rejects(() => u.saveSlot(0, 20, "X"), /stop playback/i), "patches: saving while the unit plays says to stop playback (rc 2), nothing written");
   ok(!m.patches.has(20), "patches: ... and nothing was saved");
   ok(await rejects(() => u.restoreSlot(5), /could not restore/) && m.patches.has(5), "patches: RESTORE of a saved slot while the unit plays is refused (rc 2), the record stays");
-  await u.restoreSlot(20); ok(!u.slots[20].saved, "patches: RESTORE of a slot that holds its factory sound is rc 0 and writes nothing (even playing)");
+  await u.restoreSlot(20); ok(!u.slots[20].saved, "patches: RESTORE of a slot that holds its default sound is rc 0 and writes nothing (even playing)");
   m.playing = false;
   ok(u.info.patchCap === 128 && u.info.caps === 63, "patches: the unit reports 128 slots (INFO tag 58 01) and caps 63");
   for (let s = 0; s < 128; s++) if (!u.slots[s].saved) await u.saveSlot(0, s, "F" + s);
   ok(u.slots.filter((x) => x.saved).length === 128, "patches: all 128 slots can be saved, one after the other (there is no full)");
   await u.saveSlot(0, 127, "LAST"); ok(u.slots[127].name === "LAST" && u.slots.every((x) => x.saved), "patches: with all 128 saved a slot is still written (over what it holds)");
   m.playing = true; ok(await rejects(() => u.restoreAll(), /could not restore/), "patches: RESTORE ALL while the unit plays is refused"); m.playing = false;
-  const n = await u.restoreAll(); const fb = factoryBrowse();
-  ok(n === 128 && u.slots.every((x, i) => !x.saved && x.name === fb[i].name) && m.patches.size === 0, "patches: RESTORE ALL: every saved slot restored, the 128 slots hold their factory sounds");
+  const n = await u.restoreAll(); const fb = defaultBrowse();
+  ok(n === 128 && u.slots.every((x, i) => !x.saved && x.name === fb[i].name) && m.patches.size === 0, "patches: RESTORE ALL: every saved slot restored, the 128 slots hold their default sounds");
   ok(await u.restoreAll() === 0, "patches: RESTORE ALL with nothing saved: nothing to do");
   { const old = new MockUnit({ savedFlags: false }); const uo = new Unit(new MockLink(old)); await uo.connect(); const l = await uo.listSlots(); ok(l.length === 128 && l.every((s) => s.saved === s.used), "patches: a unit that sends no SAVED bytes (before 0.2.17) is read with saved = used"); }
   { const old = new MockUnit({ caps: 3 }); const uo = new Unit(new MockLink(old)); await uo.connect(); ok(uo.info.patchCap === null && (await uo.listSlots()).length === 128, "patches: a unit without the capacity tag still lists its 128 slots"); }
@@ -195,10 +195,10 @@ async function connect(opt = {}) { const m = new MockUnit(opt), u = new Unit(new
 // ---- multis
 {
   const { m, u } = await connect();
-  const used = await u.multiUsed(); ok(used.length === 16 && used.every(Boolean), "multis: used flags of M01..M16 (PROJECT query; 0.2.23: all sixteen hold a factory multi)");
+  const used = await u.multiUsed(); ok(used.length === 16 && used.every(Boolean), "multis: used flags of M01..M16 (PROJECT query; 0.2.23: all sixteen hold a default multi)");
   const names = await u.readMultiObjects(); ok(names[2] === "TESTONE" && names[3] === "TESTTWO" && names[11] === "LIVE SET" && names[0] === null, "multis: stored names read from the multi objects");
   await u.renameMulti(2, "NEW NAME"); ok(u.multiNames[2] === "NEW NAME" && u.multiNames[3] === "TESTTWO" && m.multiStored[2] === "NEW NAME", "multis: rename writes the object; the partner multi in it is unchanged");
-  ok(await rejects(() => u.renameMulti(0, "FACTORY"), /not stored/), "multis: a factory (not stored) multi cannot be renamed: it says to save it first");
+  ok(await rejects(() => u.renameMulti(0, "DEFAULT"), /not stored/), "multis: a default (not stored) multi cannot be renamed: it says to save it first");
   ok(await rejects(() => u.renameMulti(2, "bad\u0001name"), /plain characters/) && await rejects(() => u.renameMulti(2, ""), /plain characters/) && await rejects(() => u.renameMulti(2, "THIRTEEN CHARS"), /plain characters/), "multis: names are 1..12 plain characters");
   await u.saveMulti(12); ok(m.multiStored[12] === "MULTI 13" && u.multis[12], "multis: save stores the slot (PROJECT save) and refreshes used");
   await u.loadMulti(3); ok(true, "multis: load re-reads both parts");
@@ -459,7 +459,7 @@ async function connect(opt = {}) { const m = new MockUnit(opt), u = new Unit(new
     // PRESET / loads reset the slots; a patch keeps them
     await u.setEngine(0, 0); m.parts[0].x[X.X_SUBLVL] = 77; m.parts[0].x[X.X_CYMODE] = 1; await u.saveSlot(0, 20, "SUBBY");
     m.parts[0].x[X.X_SUBLVL] = 3; await u.loadSlot(0, 20); ok(u.parts[0].x[X.X_SUBLVL] === 77 && u.parts[0].x[X.X_CYMODE] === 1, "scope 2: UP_STORE keeps the slots in the patch, UP_LOAD brings them back and the editor reads them");
-    await u.loadFactory(0, 0, 0); ok(u.parts[0].x.every((v, k) => v === L.XTP[k].def), "scope 2: a factory sound load puts every slot to its default");
+    await u.loadDefault(0, 0, 0); ok(u.parts[0].x.every((v, k) => v === L.XTP[k].def), "scope 2: a default sound load puts every slot to its default");
     // an old unit (no tag 59)
     const o = await connect({ scope2: false });
     ok(!o.u.hasX && o.u.info.nx === null && o.u.parts[0].x.every((v, k) => v === L.XTP[k].def), "scope 2: a unit without the tag: no slot is read, the defaults stand");

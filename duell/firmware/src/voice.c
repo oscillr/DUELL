@@ -94,7 +94,7 @@ static void track_lfo_tick(track_t *t) { lfo_tick(t, &t->lfo1, P_LRATE, P_LSYNC,
 
 /* DUELL 0.2.11 VOICE CAP (owner, 2026-10-14; SPEC 6.3): a heavy combination gets fewer voices per part, so the predicted
  * worst case of both parts stays under VC_BUDGET of the half (the loadcost scale of docs/CPU_ANALYSIS.md: model %, the device
- * reads ~10-25 % lower). The cost of a voice (0.1 % of the half): the engine's (its heaviest factory sound, 8 voices held, minus the
+ * reads ~10-25 % lower). The cost of a voice (0.1 % of the half): the engine's (its heaviest default sound, 8 voices held, minus the
  * idle mix over the voices it holds, CPU_ANALYSIS 2a, measured again: tests/cpu_scenarios_test.c P), + the multimode filter
  * 12 dB / 24 dB (2b: +14 / +28 % at 8 voices), and with the MORPH on that part:
  * + VC_MORPH (the hook), the filter as the heaviest of the sound and both ends (a bypassed filter that an end switches on counts,

@@ -13,7 +13,7 @@ New words (the rest are in GLOSSARY.md or design 1):
 
 ## Decided by the owner (2026-10-19)
 
-1. **The engines' own filters go:** ANALOG's VCF, TRIO's filter and NOISE FILT are removed from their engines. The player keeps the same amount of filter: filter 1 (the MULTI FILTER) and filter 2 (TWIN), on every engine. Factory sounds are updated; a sound change is fine as long as the same character can be reached. No backwards compatibility before the alpha.
+1. **The engines' own filters go:** ANALOG's VCF, TRIO's filter and NOISE FILT are removed from their engines. The player keeps the same amount of filter: filter 1 (the MULTI FILTER) and filter 2 (TWIN), on every engine. Default sounds are updated; a sound change is fine as long as the same character can be reached. No backwards compatibility before the alpha.
 2. **TRIO's filter stays as a filter-2 option on every engine**, no longer tied to TRIO.
 3. **Filter 1 is the MULTI FILTER** (design 1, question 1).
 4. **PARALLEL with BLEND in the first version**, so the extension block is reserved in the patch format before the alpha (design 1, question 2).
@@ -41,7 +41,7 @@ So DUELL's design gives filter 2 more of its own than the Virus does: it follows
   - filter 2: TRIO's gritty one, gentler at the top, with its slow drift.
 - LADDER and COMB complete filter 2's list.
 
-**The 43 affected factory sounds and 10 multis convert by a fixed table (section 1.5):**
+**The 43 affected default sounds and 10 multis convert by a fixed table (section 1.5):**
 - ANALOG: 19 sounds. Exact apart from rounding the cutoff to filter 1's coarser dial (about a tenth of an octave at most).
 - NOISE: 11 sounds. Exact apart from loudness, which the existing sound audit re-measures.
 - TRIO: 13 sounds. Exact apart from the random drift's new sequence.
@@ -88,7 +88,7 @@ Today on ANALOG, TRIO and NOISE every cutoff route drives the engine's own filte
 | AMP DEST FLT, ENV 2 FLT, LFO 1 FLT, LFO 2 FLT (`P_ED_FLT`, `P_E2FLT`, `P_LD_FLT`, `P_L2FLT`) | the engine's cutoff | filter 1's same four depths (the same ids), depth x 0.65 | filter 2's own ENV 2 / LFO 1 / LFO 2 amounts (x 0.65); filter 1's set to 0 (AMP FLT: a matrix route AENV > CUTOFF 2) |
 | matrix CUT (any source: AT, VEL, LFO ...) | the engine's cutoff | CUT (filter 1, and filter 2 through LINK), AMT x 0.65 | CUTOFF 2 (the new destination), AMT x 0.65 |
 | matrix to the engine's RES slot (ANALOG E6 "RES", NOISE E4) | the engine's resonance | FILTER RES (destination 38, filter 1), the same AMT on ANALOG, x 1.03 on NOISE | TWIN RES |
-| matrix to E5..E8 that were CUT / KTR / MODE / FREQ / TRK | those slots | CUT; MODE goes to FILTER MODE (46); KTR and TRK have no destination (none in the factory sounds) | MODE: none needed (filter 2's TYPE) |
+| matrix to E5..E8 that were CUT / KTR / MODE / FREQ / TRK | those slots | CUT; MODE goes to FILTER MODE (46); KTR and TRK have no destination (none in the default sounds) | MODE: none needed (filter 2's TYPE) |
 | engine KTR (ANALOG) / TRK (NOISE) | the engine's key follow | filter 1's KEY TRK (id 27): ANALOG KTR x 0.211, NOISE TRK x 0.496 | (TRIO had no key follow) filter 2 KEY TRK 0 |
 | the accent (velocity over 110 opens the filter with the envelope) | the engine's filter | filter 1, and filter 2 through LINK. Proposed rule for every engine whose filter was removed: the accent lifts **both** filters, so TRIO keeps it with LINK off | both filters |
 | CC74 / CC71 | the engine's CUT / RES | filter 1's CUT / RES, as on the other seven | the same; on a converted TRIO sound filter 1 is open, so CC74 then opens or closes filter 1 only |
@@ -109,19 +109,19 @@ Today on ANALOG, TRIO and NOISE every cutoff route drives the engine's own filte
 | | damping 2.0 (soft) to 0.145 | filter 1's damping today runs 1.414 to 0.145. **Proposal: widen it to 2.0 at the bottom (question 2)**: every ANALOG RES then converts 1 : 1 |
 | | DRIVE before the filter | stays in ANALOG (DRV). Exact |
 | | soft knee at 16,000, before the amp | filter 1's knee at 48,000, before the amp (pre-amp chain). At full level the two land at almost the same place (16,000 inside the engine is about 46,900 at the voice's level). Close, not proven: measure |
-| | BP level (ANALOG's band-pass peaks like its LP) | filter 1's BP is level-normalised. No factory ANALOG sound uses BP (all LP, CONFIRMED); a user BP sound changes level |
+| | BP level (ANALOG's band-pass peaks like its LP) | filter 1's BP is level-normalised. No default ANALOG sound uses BP (all LP, CONFIRMED); a user BP sound changes level |
 | TRIO | its SVF with an input that saturates above half scale, a band-pass state squeezed above +-49,152 (grit at loud resonance), damping only down to 0.25 (never sings), modes LP / BP / HP / NOTCH | **filter 2's LP, BP, HP, NOTCH, as they are** (section 2) |
 | | a slow random cutoff drift, drawn from the note's noise generator, which the pitched-noise oscillator shares | kept in filter 2's types, with a random generator of its own. **Lost: the exact random sequence**, so TRIO's NOIS sets are no longer bit for bit |
 | | runs one sample late (its step corrections) | that is the oscillators' affair and stays in TRIO. Nothing lost |
 | NOISE | the SVF morphing from LP to a narrow BP as RES rises | filter 1: MODE = RES x 64 / 127 (LP towards BP), RES as damping. The same filter, the same blend form |
-| | damping 2.0 to 0.10 | NOISE RES 117 and above clamps at filter 1's 0.145 (none in the factory sounds: the highest is 112) |
+| | damping 2.0 to 0.10 | NOISE RES 117 and above clamps at filter 1's 0.145 (none in the default sounds: the highest is 112) |
 | | a loudness make-up that follows the cutoff, the colour and the mode (up to x16) | **stays in NOISE**, now reading filter 1's cutoff, which the voice already computes before the engine renders (a small hand-over per block). Without it, a noise swept low gets much quieter |
 | | the band-pass level scaled by 1.5 times the square root of the damping | filter 1's BP is level-normalised, so resonant noise sounds change level (SEA ORGAN by about 8 dB, est.). The PATCH LEVEL is re-measured by the existing sound audit |
 | | DRFT also wanders the cutoff (up to +-16 semitones, about 0.7 s lag) | the engine hands the wander to filter 1, one block late (inaudible at that speed) |
-| | CRSH (sample and hold, fewer bits) **after** the filter | now before filter 1, so the filter smooths the steps. No factory sound loses anything: every ANLG / DUST sound has CRSH 0, and on LFSR / META that slot is CLK |
+| | CRSH (sample and hold, fewer bits) **after** the filter | now before filter 1, so the filter smooths the steps. No default sound loses anything: every ANLG / DUST sound has CRSH 0, and on LFSR / META that slot is CLK |
 | | META's DC blocker | stays in NOISE |
 
-### 1.4 The factory sounds affected (CONFIRMED: `tools/gen_duell_sounds.py --check`, today's numbers)
+### 1.4 The default sounds affected (CONFIRMED: `tools/gen_duell_sounds.py --check`, today's numbers)
 
 | Engine | Sounds |
 |---|---|
@@ -133,7 +133,7 @@ Today on ANALOG, TRIO and NOISE every cutoff route drives the engine's own filte
 - None sets the MULTI FILTER (all at its open default), and every ANALOG sound uses TYPE LP (CONFIRMED).
 - Their MORPH End B seeds roll different values after the change, so the seeds are re-picked by the sound audit tool, as was done in 0.2.9.
 
-**Multis with such a part (CONFIRMED, `tools/factory_multis.py`, `owner_multis.py`):**
+**Multis with such a part (CONFIRMED, `tools/default_multis.py`, `owner_multis.py`):**
 - M01 REESE SWAMP (#05 SQUELCH)
 - M03 PAD SPLIT (#44 EMBER GLOW; the multi opens its CUT to 71)
 - M04 DUB CHORD (#06 TIDAL SUB)
@@ -399,7 +399,7 @@ The existing CUT keeps meaning filter 1. With LINK on, it reaches filter 2 too.
 | 0. Proof | Offline renders, as design 1 section 5, **plus the converter run on all 43 sounds and the 13 multi parts: old / new pairs** for you to compare. New gate **G5**: you accept the 43 pairs, or name the ones you will fix yourself | nothing changes |
 | A. Format room | the extension block and the larger record (6 a chunk), multi and project too | **bit for bit** |
 | 1. TWIN core | filter 2 (LP / BP / HP / NOTCH TRIO-style, LADDER, COMB), DRIVE, ROUTE + BLEND, LINK + the four amounts, the four matrix destinations, morph rules, NOTES rows, pages and editor card after your layout approval. The chain moves before the amp only while TWIN is on | **bit for bit** while TYPE is OFF |
-| 2. Engine filters out + conversion | the three engines become like the other seven; filter 1's RES floor widened; NOISE's loudness and drift hand-over; the accent rule; the shrunk engine pages; the converter applied to the factory bank; the factory multis rebuilt and your multis converted; End B seeds re-picked; patch levels re-measured; test fingerprints re-made | **changes**: the 43 sounds and 10 multis by the table; the other 85 sounds only through the RES re-mapping (same sound) and, if question 3 says so, the move before the amp (resonant peaks on loud notes, envelope edges) |
+| 2. Engine filters out + conversion | the three engines become like the other seven; filter 1's RES floor widened; NOISE's loudness and drift hand-over; the accent rule; the shrunk engine pages; the converter applied to the default bank; the default multis rebuilt and your multis converted; End B seeds re-picked; patch levels re-measured; test fingerprints re-made | **changes**: the 43 sounds and 10 multis by the table; the other 85 sounds only through the RES re-mapping (same sound) and, if question 3 says so, the move before the amp (resonant peaks on loud notes, envelope edges) |
 | 3. Additions | FILTER FM, CLIP, FORMANT, MS-style, after the listening test | new types only |
 
 **Order:**
@@ -457,7 +457,7 @@ The existing CUT keeps meaning filter 1. With LINK on, it reaches filter 2 too.
 | NOISE LP > BP morph, make-up gain, BP scale, TRK 127 = 100 %, CRSH only in ANLG / DUST | `eng_noise.c` `noise_render` | CONFIRMED |
 | Dial step = 1.547 table steps; KEY TRK 63 = 100 %; kill zones in the last 4 steps | `core.h` UF_* comments; SPEC 2.5 | CONFIRMED |
 | The 43 sounds and their numbers; their filter values and routes | `tools/gen_duell_sounds.py --check`, `tools/duell_sounds.py` (read with a script) | CONFIRMED |
-| The 10 multis and which are yours | `tools/factory_multis.py`, `tools/owner_multis.py` | CONFIRMED |
+| The 10 multis and which are yours | `tools/default_multis.py`, `tools/owner_multis.py` | CONFIRMED |
 | Free ids 25, 26, 42, 106 | `core.h`, `params.c` | CONFIRMED |
 | MULTI FILTER 2/2 card order | `params.c` PAGES | CONFIRMED |
 | Engine card order without moving ids | `core.h` engine_t.uiord | CONFIRMED |

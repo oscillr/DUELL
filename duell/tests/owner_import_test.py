@@ -4,8 +4,8 @@
 
   python3 tests/owner_import_test.py        (from duell; needs build/gen from DUELL/gen_only.py; host_tests.sh runs it as `ownerimport`)
 
-1. round trip: all 128 factory sounds saved and read back as PATCH_RAW reads them, imported: 128 equal to the recipe sounds, nothing written;
-2. three knobs turned in three slots: exactly three sounds change in the resulting factory data (and only the turned values), everything else identical;
+1. round trip: all 128 default sounds saved and read back as PATCH_RAW reads them, imported: 128 equal to the recipe sounds, nothing written;
+2. three knobs turned in three slots: exactly three sounds change in the resulting default data (and only the turned values), everything else identical;
 3. the same import twice: the files are byte for byte the same; the unchanged export afterwards drops the entries again (undo);
 4b. the editor's duell-multis file: same record bytes out as in; a wrong CRC is skipped;
 4. a synthetic backup file with a changed multi: its record is kept byte for byte, listed in owner_multis.py, the unchanged neighbour is not;
@@ -66,7 +66,7 @@ def build(lst):
 a = tmp / "unchanged.json"
 subprocess.run([str(gen), str(a)], cwd=ROOT, check=True, capture_output=True)
 rc, out = run("--dry-run", "--out", str(tmp / "o1"), str(a))
-ok(rc == 0 and "128 patches read (0 edited, 128 equal to the recipe sound)" in out, "round trip: the 128 factory sounds, saved and read back, import as equal to the recipe sounds, nothing edited")
+ok(rc == 0 and "128 patches read (0 edited, 128 equal to the recipe sound)" in out, "round trip: the 128 default sounds, saved and read back, import as equal to the recipe sounds, nothing edited")
 j = json.loads(a.read_text())
 ok(len(j["patches"]) == 128 and all(zlib.crc32(base64.b64decode(p["record"])) == int(p["crc32"], 16) for p in j["patches"]), "the synthetic export has 128 records, each with its checksum")
 
@@ -85,7 +85,7 @@ fac = build(base_list)
 merged = [dict(next((o for o in own if (o["engine"], o["idx"]) == k), s)) for k, s in ctx.base.items()]
 new = build(merged)
 diffs = {k: (fac[k], new[k]) for k in fac if dict(fac[k]["pairs"]) != dict(new[k]["pairs"]) or fac[k]["name"] != new[k]["name"] or fac[k]["bamt"] != new[k]["bamt"]}
-ok(len(diffs) == 3, "the factory data built with the overlay differs from the recipes in exactly three sounds (%d)" % len(diffs))
+ok(len(diffs) == 3, "the default data built with the overlay differs from the recipes in exactly three sounds (%d)" % len(diffs))
 hit = True
 for slot, nm, v in edits:
     eng_i, idx = ctx.browse[slot - 1]
@@ -105,7 +105,7 @@ rc, out = run("--out", str(o2), str(a))
 ok(rc == 0 and "owner entry dropped" in out and load(o2 / "owner_sounds.py", "own3").OWNER_SOUNDS == [], "the unchanged export afterwards drops the entries (undo)")
 
 # 4: a multi
-fm = TOOLS / "factory_multis"
+fm = TOOLS / "default_multis"
 m3, m4 = (fm / "M03.bin").read_bytes(), (fm / "M04.bin").read_bytes()
 m3x = bytearray(m3)
 gbpm = 20 + 2 * ctx.fm.p_ids().get("G_BPM", 0) if False else None
@@ -120,7 +120,7 @@ bk = {"format": "duell-backup", "version": 4, "objects": [{"id": 14, "size": len
 o4 = tmp / "o4"
 o4.mkdir()
 rc, out = run("--out", str(o4), str(tmp / "backup.json"))
-ok(rc == 0 and "1 multis edited" in out and (o4 / "factory_multis" / "M03.bin").read_bytes() == bytes(m3x) and not (o4 / "factory_multis" / "M04.bin").exists(),
+ok(rc == 0 and "1 multis edited" in out and (o4 / "default_multis" / "M03.bin").read_bytes() == bytes(m3x) and not (o4 / "default_multis" / "M04.bin").exists(),
    "a backup file with a changed M03 and an unchanged M04: M03's record is kept byte for byte, M04 is not touched")
 om = load(o4 / "owner_multis.py", "om4").OWNER_MULTIS
 ok(len(om) == 1 and om[0]["slot"] == 3 and om[0]["name"] == "PAD SPLIT" and [p["sound"] for p in om[0]["parts"]] == ["EVOLVING PAD", "EMBER GLOW"] and om[0]["mode"] == "LAYER",
@@ -133,13 +133,13 @@ mf = {"format": "duell-multis", "version": 1, "firmware": FV, "created": "2026-0
 o4b = tmp / "o4b"
 o4b.mkdir()
 rc, out = run("--out", str(o4b), str(tmp / "m.duell-multis.json"))
-ok(rc == 0 and "1 multis edited" in out and (o4b / "factory_multis" / "M03.bin").read_bytes() == bytes(m3x), "a duell-multis file (editor export format): M03's record comes out byte for byte")
+ok(rc == 0 and "1 multis edited" in out and (o4b / "default_multis" / "M03.bin").read_bytes() == bytes(m3x), "a duell-multis file (editor export format): M03's record comes out byte for byte")
 mf["multis"][0]["crc"] ^= 1
 (tmp / "bad.duell-multis.json").write_text(json.dumps(mf))
 o4c = tmp / "o4c"
 o4c.mkdir()
 rc, out = run("--out", str(o4c), str(tmp / "bad.duell-multis.json"))
-ok("checksum" in out and not (o4c / "factory_multis" / "M03.bin").exists(), "a duell-multis entry with a wrong CRC is skipped, nothing written")
+ok("checksum" in out and not (o4c / "default_multis" / "M03.bin").exists(), "a duell-multis entry with a wrong CRC is skipped, nothing written")
 
 # 5: refusals (a record of another engine in slot 1; a name of another sound)
 j = json.loads(a.read_text())

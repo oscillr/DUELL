@@ -107,9 +107,9 @@ function showContents(rootId, objects, engines, hasMulti, oldPatchChunks = 0, ha
     h.textContent = title; h.style.margin = "8px 0 0"; h.style.fontWeight = "700";
     root.append(h, holder); fill(holder, list, none);
   };
-  add("Saved patches", d.patches.map((p) => `${p.name || "(no name)"}  ${engineShown(p.engineName)}`), d.notes.length ? d.notes[0] : hasPatches ? "No saved patches (every slot holds its factory sound)." : "Not in this file (made by firmware that cannot back up patches one at a time).");
+  add("Saved patches", d.patches.map((p) => `${p.name || "(no name)"}  ${engineShown(p.engineName)}`), d.notes.length ? d.notes[0] : hasPatches ? "No saved patches (every slot holds its default sound)." : "Not in this file (made by firmware that cannot back up patches one at a time).");
   add(hasMulti ? `Multis (${d.multis.length})` : "Multis (not in this file)", d.multis.map((m) => `${m.label}  ${m.name || "(no name)"}`),
-      hasMulti ? "No stored multis (the factory multis show)." : "Made by firmware that cannot back up multis.");
+      hasMulti ? "No stored multis (the default multis show)." : "Made by firmware that cannot back up multis.");
   add(hasMulti ? `Pattern slots (${d.patterns.length})` : "Pattern slots (not in this file)", d.patterns.map((p) => `${p.label}  ${p.name || "(no name)"}  ${p.length} steps`),
       hasMulti ? "No stored patterns." : "Made by firmware that cannot back up pattern slots.");
   return d;

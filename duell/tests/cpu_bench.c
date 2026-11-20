@@ -4,7 +4,7 @@
  * Host instructions per sample of the steady state (proc_pid_rusage, as cpu_scenarios_test.c: -O1 -fno-builtin, the device's memset / memcpy), in the loadcost
  * scale: 420 k instructions = one half buffer (128 frames) = 100 %, so 3281 a sample = 100 % and 33 a sample = 1 % (the device reads ~0.75-0.9 x of it).
  * Every figure is a difference against its own reference scene (the same scene with the thing off), each scene from a fresh power-on:
- *   VOICES   one held note, each factory sound of each engine (sends, INSERT, SAT, EQ, DUCK off, POLY): the engine's dearest sound and the mean of its sounds;
+ *   VOICES   one held note, each default sound of each engine (sends, INSERT, SAT, EQ, DUCK off, POLY): the engine's dearest sound and the mean of its sounds;
  *   PART     on one ANALOG voice: every INSERT type (A B C at 64, MIX full), SAT (the part's drive), EQ (three bands moved), DUCK (PUMP, depth 90);
  *   BUSES    both parts one ANALOG voice each, sending 100 to one effect (chorus, delay, reverb) in STEREO (the shared buses: the stereo chorus) and in DUEL
  *            (a bus per part, all mono): CHORUS, DELAY DIGITAL / PING-PONG / RANDOM / OCT UP, REVERB ROOM / SPRING / HALL / SHIM / RESO / PLATE, SHIM's
@@ -215,7 +215,7 @@ int main(void)
     printf("bench: DUELL load bench, host instructions a sample (-O1, the device's memset); 100 %% = %.0f (33 a sample = 1 %%; the device reads ~0.75-0.9 x)\n", FULL);
 
     /* VOICES */
-    printf("bench: --- VOICES: one held note (sends, INSERT, SAT, EQ, DUCK off), the engine's dearest factory sound and the mean of its sounds\n");
+    printf("bench: --- VOICES: one held note (sends, INSERT, SAT, EQ, DUCK off), the engine's dearest default sound and the mean of its sounds\n");
     s = blank(DM_STEREO);
     idle2 = run(&s);
     row("idle mix (STEREO, nothing playing)", idle2, "");

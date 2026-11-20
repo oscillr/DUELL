@@ -19,7 +19,7 @@
  *   CLICK      the switch SPLIT <-> STEREO: a ~50 ms dip (no sample step above the music's own), STEREO <-> LAYER none.
  *   CC 112     0-42 SPLIT, 43-85 STEREO, 86-127 LAYER on any channel; learned by MIDI LEARN: the user's.
  *   UI         HOME's MODE page (KNOB 1, the others nothing); the MIXER's PAN fixed in SPLIT, live in STEREO.
- *   SETTINGS   the MODE in the settings byte (favorites.factory[15][9]), saved, back after a power cycle (export,
+ *   SETTINGS   the MODE in the settings byte (favorites.default[15][9]), saved, back after a power cycle (export,
  *              import); the default writes nothing; an unknown code reads SPLIT.
  *   COST       host instructions per sample of a two-part render, STEREO against SPLIT (the folding), idle, the dip. */
 #define UI_TEST_NO_MAIN 1
@@ -1039,7 +1039,7 @@ static void t_settings(void)
     frames(2200);
     expect("  .. saved ~2 s later", !ui.mset_dirty);
     settings_export(&p);
-    expect("  .. in what the flash gets (settings_export)", p.favorites.factory[15][9] == DM_LAYER);
+    expect("  .. in what the flash gets (settings_export)", p.favorites.defaults[15][9] == DM_LAYER);
     ui_power_on();                                       /* the power cycle: RAM gone, SPLIT */
     expect("power cycle: RAM back to SPLIT", duell_mode_req == DM_SPLIT);
     expect("  .. the stored settings import", settings_import(&p, sizeof p) == 1);
@@ -1389,18 +1389,18 @@ static void t_midi_ch(void)
     frames(2200);
     expect("  .. saved ~2 s after the last change", !ui.mset_dirty);
     settings_export(&p);
-    expect("  .. in what the flash gets: [15][0] = 10, [15][1] = 5", p.favorites.factory[15][0] == 10u && p.favorites.factory[15][1] == 5u);
+    expect("  .. in what the flash gets: [15][0] = 10, [15][1] = 5", p.favorites.defaults[15][0] == 10u && p.favorites.defaults[15][1] == 5u);
     ui_power_on();
     frame();
     ok = midi_pch[0] == 0u && midi_pch[1] == 1u;
     settings_import(&p, sizeof p);
     frame();
     expect("power cycle: channels 1 / 2, then the stored settings give 10 / 5 back", ok && midi_pch[0] == 9u && midi_pch[1] == 4u);
-    p.favorites.factory[15][0] = p.favorites.factory[15][1] = 0;
+    p.favorites.defaults[15][0] = p.favorites.defaults[15][1] = 0;
     settings_import(&p, sizeof p);
     frame();
     expect("an older settings blob (both bytes 0): the defaults, channel 1 and 2", midi_pch[0] == 0u && midi_pch[1] == 1u);
-    p.favorites.factory[15][0] = 99;                       /* an unknown code reads as the default */
+    p.favorites.defaults[15][0] = 99;                       /* an unknown code reads as the default */
     settings_import(&p, sizeof p);
     frame();
     expect("an unknown code reads as the default", midi_pch[0] == 0u);

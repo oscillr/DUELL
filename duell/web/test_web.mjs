@@ -62,7 +62,7 @@ async function editorMock() {
   ok(descs === info.pcount, "editor: DESC for every parameter");
   {
     /* the SLICER (core.h P_SLCR..P_SLDEPTH = 45..48, just before P_E0; its descriptors: mockTables) is the
-       track's: a factory preset keeps it, as ui.c apply_preset_to does (param_kept) */
+       track's: a default preset keeps it, as ui.c apply_preset_to does (param_kept) */
     const sd = [];
     for (let i = 45; i < 49; i++) sd.push(E.parse[E.CMD.DESC](await rq(E.req.desc(0, i))));
     ok(sd.map((d) => d.label).join() === "SLCR,PAT,RATE,DEPTH" && sd[0].names.join() === "OFF,GATE,STUT",
@@ -72,12 +72,12 @@ async function editorMock() {
     const on = E.parse[E.CMD.DUMP](await rq(E.req.dump()), info);
     await rq(E.req.preset(0, 1));
     const off = E.parse[E.CMD.DUMP](await rq(E.req.dump()), info);
-    ok(on.p[45] === 2 && on.p[46] === 7 && off.p[45] === 2 && off.p[46] === 7 && off.preset === 1, "editor: a factory preset keeps the SLICER (the track's)");
+    ok(on.p[45] === 2 && on.p[46] === 7 && off.p[45] === 2 && off.p[46] === 7 && off.preset === 1, "editor: a default preset keeps the SLICER (the track's)");
     await rq(E.req.set(0, 45, 0));
   }
   {
     /* the modulation matrix (core.h P_M1SRC..P_M4AMT = 49..60, just before P_E0 61): SRC / DST / AMT x 4, the
-       DST names (20: more than 16) over DESC, every slot OFF after a factory preset (ui.c apply_preset_to) */
+       DST names (20: more than 16) over DESC, every slot OFF after a default preset (ui.c apply_preset_to) */
     const md = [];
     for (let i = 49; i < 73; i++) md.push(E.parse[E.CMD.DESC](await rq(E.req.desc(0, i))));   /* (DUELL: 8 slots, 49..72) */
     ok(md.map((d) => d.label).join() === [1, 2, 3, 4, 5, 6, 7, 8].map((k) => `SRC${k},DST${k},AMT${k}`).join()
@@ -92,10 +92,10 @@ async function editorMock() {
     await rq(E.req.preset(0, 2));
     const off = E.parse[E.CMD.DUMP](await rq(E.req.dump()), info);
     ok(on.p[52] === 1 && on.p[53] === 12 && on.p[54] === -30 && off.p.slice(49, 73).every((v) => v === 0),
-      "editor: a factory preset turns every matrix slot off");
+      "editor: a default preset turns every matrix slot off");
   }
   {
-    /* the chord keys (core.h P_CHRD, P_VOIC = 81, 82, just before P_E0 83): the track's, a factory preset keeps them */
+    /* the chord keys (core.h P_CHRD, P_VOIC = 81, 82, just before P_E0 83): the track's, a default preset keeps them */
     const c0 = E.parse[E.CMD.DESC](await rq(E.req.desc(0, 81)));
     const c1 = E.parse[E.CMD.DESC](await rq(E.req.desc(0, 82)));
     ok(c0.label === "CHRD" && c0.names.join() === "OFF,DIA3,DIA7,MAJ,MIN,DOM7,MAJ7,MIN7,SUS4,POW" && c0.def === 0 &&
@@ -105,10 +105,10 @@ async function editorMock() {
     await rq(E.req.set(0, 82, 4));
     await rq(E.req.preset(0, 3));
     const kept = E.parse[E.CMD.DUMP](await rq(E.req.dump()), info);
-    ok(kept.p[81] === 2 && kept.p[82] === 4 && kept.preset === 3, "editor: a factory preset keeps CHRD and VOIC (the track's)");
+    ok(kept.p[81] === 2 && kept.p[82] === 4 && kept.preset === 3, "editor: a default preset keeps CHRD and VOIC (the track's)");
     await rq(E.req.set(0, 81, 0));
     /* DUELL (step 3): ENV 2 (73..76), LFO 2 (77..80, 83..85) and the free ids (86..90) on Felucca's DIGITAL OP ENV / DRUM lane
-       ids; the sound's: a factory preset sets them back */
+       ids; the sound's: a default preset sets them back */
     const dl = [];
     for (let i = 73; i <= 90; i++) dl.push(E.parse[E.CMD.DESC](await rq(E.req.desc(0, i))));
     ok(dl.map((d) => d.label).join() === "ATK2,DEC2,SUS2,REL2,RATE2,WAVE2,PHS2,FADE2,CHRD,VOIC,SYNC2,TRIG2,POL2,-,-,-,-,-" &&
@@ -118,7 +118,7 @@ async function editorMock() {
     const lv = E.parse[E.CMD.DUMP](await rq(E.req.dump()), info);
     await rq(E.req.preset(0, 3));
     const lv2 = E.parse[E.CMD.DUMP](await rq(E.req.dump()), info);
-    ok(lv.p[73] === 40 && lv2.p[73] === 10, "editor: ENV 2 is the sound's: a factory preset sets ATK2 back to its default");
+    ok(lv.p[73] === 40 && lv2.p[73] === 10, "editor: ENV 2 is the sound's: a default preset sets ATK2 back to its default");
     await rq(E.req.set(0, 82, 0));
   }
   ok(E.CMD.SONG === 33 && E.CMD.UI_STATE === 34 && E.CMD.FAV_SET === 38, "editor: preferences preserve the existing SONG command");
@@ -335,12 +335,12 @@ async function editorSamplePresets() {
   const removed = E.parse[C.PRESET](await rq(E.req.preset(4, 4)));
   const kit = E.parse[C.DUMP](await rq(E.req.dump()), info);
   ok(removed.engine === 10 && removed.preset === 0 && kit.engine === 10 && eq(kit.p.slice(info.pe0), E.DRUM_KIT_E),
-    "SAMPLE: factory preset 4 (once PERC) loads DRUM's kit");
+    "SAMPLE: default preset 4 (once PERC) loads DRUM's kit");
   await rq(E.req.preset(4, 0));
   m.state.p[info.pe0] = 4;                        /* an old PERC sound (SET 4, no loop: the editor cannot set it now) */
   m.state.p[info.pe0 + 3] = 0;
   await rq(E.req.stepSet(5, { n: 1, notes: [42, 0, 0, 0], time: 0, flags: 1, vel: 99 }));
-  m.state.preset = 4;                             /* a project written before the factory preset was removed */
+  m.state.preset = 4;                             /* a project written before the default preset was removed */
   const sound = [...m.state.p], steps = JSON.stringify(m.state.step);
   await rq(E.req.project(1, 2), { timeout: 4000, retries: 0 });
   await rq(E.req.preset(4, 0));
@@ -368,7 +368,7 @@ async function editorSamplePresets() {
 }
 
 /* the mock's tables == the firmware's (build/host/desc.json from tests/descdump.c, written by run_tests.sh):
-   parameter descriptors, engines (titles, EDIT, presets), factory patterns, power-on sounds */
+   parameter descriptors, engines (titles, EDIT, presets), default patterns, power-on sounds */
 function mockTables() {
   {
     const m0 = E.makeMockDevice({ auto: false }), ph = m0.tables.ENG[9], dr = m0.tables.ENG[10];
@@ -417,7 +417,7 @@ function mockTables() {
   });
   m2.stop();
   cmp("firmware: G_ENGSEL names == engine names", fw.GP[fw.G_ENGSEL].names, fw.ENG.map((e) => e.name));
-  cmp("FM6 patches (init, factory, bank size)", T.FM6, fw.FM6);
+  cmp("FM6 patches (init, default, bank size)", T.FM6, fw.FM6);
   cmp("DRUM grid: the lanes' GM notes", [...E.LANE_NOTE], fw.LANE_NOTE);
   cmp("DRUM grid: the lane of GM 35..81", E.LANE_OF, fw.LANE_OF);
   const mj = join(DESC, "../menu.json");
@@ -1105,8 +1105,8 @@ async function editorTrackParam() {
    (cmds 68..71) against the mock, PTCH, the macros at the pe0 INFO gives */
 async function editorFm6() {
   const F6 = E.FM6;
-  ok(F6.FACTORY_PK.every((pk) => eq(F6.pack(F6.unpack(pk)), pk)) && eq(F6.pack(F6.unpack(F6.INIT_PK)), F6.INIT_PK),
-    "FM6: pack(unpack(x)) == x for the factory patches and the init voice");
+  ok(F6.DEFAULT_PK.every((pk) => eq(F6.pack(F6.unpack(pk)), pk)) && eq(F6.pack(F6.unpack(F6.INIT_PK)), F6.INIT_PK),
+    "FM6: pack(unpack(x)) == x for the default patches and the init voice");
   let inrange = true, seed = 7;
   for (let k = 0; k < 500; k++) {
     const pk = Array.from({ length: 128 }, () => (seed = (seed * 1103515245 + 12345) >>> 0) >>> 16 & 255);
@@ -1114,15 +1114,15 @@ async function editorFm6() {
     for (let i = 0; i < F6.SIZE; i++) inrange &&= i >= F6.NAME ? v[i] >= 32 && v[i] <= 126 : v[i] <= F6.max(i);
   }
   ok(inrange, "FM6: any 128 bytes unpack into range");
-  const voices = F6.FACTORY_PK.map((pk) => F6.unpack(pk));
+  const voices = F6.DEFAULT_PK.map((pk) => F6.unpack(pk));
   const bank = F6.bankSysex(voices), one = F6.singleSysex(voices[3]);
   ok(bank.length === 4104 && bank[0] === 0xF0 && bank[3] === 9 && bank[4103] === 0xF7 && one.length === 163 && one[5] === 0x1B,
     "FM6: a 32-voice bank SysEx is 4104 bytes, a single voice 163");
   let r = F6.parseSysex(bank);
-  ok(r.voices.length === 32 && !r.badSum && r.voices.slice(0, 8).every((x, k) => eq(F6.pack(x.v), F6.FACTORY_PK[k])) &&
+  ok(r.voices.length === 32 && !r.badSum && r.voices.slice(0, 8).every((x, k) => eq(F6.pack(x.v), F6.DEFAULT_PK[k])) &&
      r.voices[8].name === "INIT VOICE" && r.voices[1].name === "GLASS BELL", "FM6: bank SysEx round trip (names, checksum)");
   r = F6.parseSysex(Uint8Array.from([...one, ...one]));
-  ok(r.voices.length === 2 && eq(F6.pack(r.voices[1].v), F6.FACTORY_PK[3]), "FM6: two single-voice messages in one file");
+  ok(r.voices.length === 2 && eq(F6.pack(r.voices[1].v), F6.DEFAULT_PK[3]), "FM6: two single-voice messages in one file");
   const bad = Uint8Array.from(one); bad[161] ^= 1;
   ok(F6.parseSysex(bad).badSum === 1, "FM6: a wrong checksum is reported (the voice still read)");
   ok(F6.parseSysex(bank.subarray(6, 4102)).voices.length === 32 && F6.parseSysex(one.subarray(6, 161)).voices.length === 1,
@@ -1136,10 +1136,10 @@ async function editorFm6() {
   [...m.access.inputs.values()][0].onmidimessage = (e) => link.receive(e.data);
   const rq = (x) => link.request(x), C = E.CMD;
   const info = E.parse[C.INFO](await rq(E.req.info()));
-  ok(info.fm6 && info.fm6.factory === 8 && info.fm6.bank === 0 && info.fm6.caps === 3, "FM6: INFO tag (8 factory, no bank; FM6 v2 caps 3)");
+  ok(info.fm6 && info.fm6.defaults === 8 && info.fm6.bank === 0 && info.fm6.caps === 3, "FM6: INFO tag (8 default, no bank; FM6 v2 caps 3)");
   let list = E.parse[C.FM6_LIST](await rq(E.req.fm6List()));
-  ok(list.factory === 8 && list.bank === 0 && list.slots.length === 8 && list.slots[0].name === "TINE EP", "FM6: LIST names the factory patches, nbank 0");
-  const mine = F6.setName(F6.factory(2), "my bass");
+  ok(list.defaults === 8 && list.bank === 0 && list.slots.length === 8 && list.slots[0].name === "TINE EP", "FM6: LIST names the default patches, nbank 0");
+  const mine = F6.setName(F6.defaults(2), "my bass");
   let p = E.parse[C.FM6_PUT](await rq(E.req.fm6Put(1, 4, F6.pack(mine))));
   let g = E.parse[C.FM6_GET](await rq(E.req.fm6Get(1, 4)));
   const e0 = E.parse[C.FM6_ERASE](await rq(E.req.fm6Erase(4)));
@@ -1153,7 +1153,7 @@ async function editorFm6() {
   ok(!p.rc && F6.name(F6.unpack(g.packed)) === "MY BASS" && sv === 8, `FM6: send to the track: its own patch, SLOT (P_E0 + 7 = ${slotId}) OWN`);
   await rq(E.req.set(0, slotId, 1));
   g = E.parse[C.FM6_GET](await rq(E.req.fm6Get(0, 0)));
-  ok(eq(g.packed, F6.FACTORY_PK[1]), "FM6: SLOT F2 loads the factory patch");
+  ok(eq(g.packed, F6.DEFAULT_PK[1]), "FM6: SLOT F2 loads the default patch");
   await rq(E.req.set(0, slotId, 8));
   g = E.parse[C.FM6_GET](await rq(E.req.fm6Get(0, 0)));
   ok(F6.name(F6.unpack(g.packed)) === "MY BASS", "FM6: SLOT back to OWN brings the own patch back");
@@ -1165,14 +1165,14 @@ async function editorFm6() {
   E.parse[C.UP_STORE](await rq(E.req.upStore(20, "KEEP ME")));
   g = E.parse[C.FM6_GET](await rq(E.req.fm6Get(3, 20)));
   ok(!g.rc && eq(g.packed, F6.pack(edited)), "FM6: UP_STORE of an FM6 track keeps its patch (FM6_GET user 21)");
-  await rq(E.req.fm6Put(0, 0, F6.FACTORY_PK[0]));
+  await rq(E.req.fm6Put(0, 0, F6.DEFAULT_PK[0]));
   await rq(E.req.upLoad(20));
   g = E.parse[C.FM6_GET](await rq(E.req.fm6Get(0, 0)));
   sv = E.parse[C.GET](await rq(E.req.get(0, slotId))).value;
   ok(eq(g.packed, F6.pack(edited)) && sv === 8, "FM6: UP_LOAD plays it again, SLOT OWN");
   const u = await E.bank.get(rq, info, 20);
   ok(u.used && eq(u.fm6, F6.pack(edited)), "FM6: the librarian reads a user preset with its patch");
-  const other = F6.pack(F6.setName(F6.factory(5), "OTHER"));
+  const other = F6.pack(F6.setName(F6.defaults(5), "OTHER"));
   let rc = await E.bank.put(rq, 21, { ...u, name: "COPY", fm6: other }, info);
   g = E.parse[C.FM6_GET](await rq(E.req.fm6Get(3, 21)));
   ok(rc === 0 && !g.rc && eq(g.packed, other), "FM6: the librarian writes a user preset with its patch (UP_PUT, then FM6_PUT user)");
@@ -1208,8 +1208,8 @@ async function editorFm6Bank() {
   ok(info.fm6Bank === 32 && info.songLanes === 4 && info.fm6.caps === 3, "FM6 bank: INFO 56 01 32 after the SONG lanes tag");
   let list = await E.fm6Bank.list(rq);
   ok(list.n === 32 && !list.valid && list.name === "" && list.voices.every((v) => !v.used), "FM6 bank: LIST of an empty device: no bank");
-  /* a 32-voice file: the factory patches renamed VOICE 01..32 (the import path: parseSysex, then the packed records) */
-  const voices = Array.from({ length: 32 }, (_, k) => F6.setName(F6.factory(k % 8), `VOICE ${String(k + 1).padStart(2, "0")}`));
+  /* a 32-voice file: the default patches renamed VOICE 01..32 (the import path: parseSysex, then the packed records) */
+  const voices = Array.from({ length: 32 }, (_, k) => F6.setName(F6.defaults(k % 8), `VOICE ${String(k + 1).padStart(2, "0")}`));
   const file = F6.bankSysex(voices), parsed = F6.parseSysex(file), packed = E.fm6Bank.fromVoices(parsed.voices);
   ok(parsed.voices.length === 32 && packed.length === 32 && packed.every((pk, k) => eq(pk, F6.pack(voices[k]))) &&
      E.fm6Bank.nameOf("my fm bank.syx") === "MY FM BANK" && E.fm6Bank.nameOf("äbc.SYX") === " BC".trim(),
@@ -1311,7 +1311,7 @@ async function editorMidiLearn() {
 function fm6Tolerant(F6, voices, bank, one) {
   const U = (...xs) => Uint8Array.from(xs.flatMap((x) => Array.from(x)));
   const names = (r) => r.voices.map((x) => x.name);
-  const bankOk = (r, n = 32) => r.voices.length === n && r.voices.slice(0, 8).every((x, k) => eq(F6.pack(x.v), F6.FACTORY_PK[k]))
+  const bankOk = (r, n = 32) => r.voices.length === n && r.voices.slice(0, 8).every((x, k) => eq(F6.pack(x.v), F6.DEFAULT_PK[k]))
     && r.voices[1].name === "GLASS BELL" && r.voices[8].name === "INIT VOICE";
   const msg = (hdr, n, fill = 0) => { const d = new Array(n).fill(fill); return U(hdr, d, [F6.checksum(d), 0xF7]); };
   const otherMaker = U([0xF0, 0x41, 0x10, 0x42, 0x12, 0x40, 0, 0x7F, 0, 0x41, 0xF7]);
@@ -1342,7 +1342,7 @@ function fm6Tolerant(F6, voices, bank, one) {
   const raw = bank.subarray(6, 4102);
   r = F6.parseSysex(U(raw, raw, raw));
   ok(r.voices.length === 96 && bankOk({ voices: r.voices.slice(64) }) && !r.sysex, "FM6 import: raw 3 x 4096 bytes: 96 voices");
-  ok(names(F6.parseSysex(Uint8Array.from(F6.FACTORY_PK[1]))).join() === "GLASS BELL", "FM6 import: raw 128-byte packed voice");
+  ok(names(F6.parseSysex(Uint8Array.from(F6.DEFAULT_PK[1]))).join() === "GLASS BELL", "FM6 import: raw 128-byte packed voice");
   /* a file of the format's second generation: the supplement bank (format 6, 1120 bytes), the voices, a performance (format 1, 94 bytes),
      a universal LM block: only the voices kept */
   const lm = U([0xF0, 0x43, 0x00, 0x7E, 0x01, 0x28], Array.from("LM  8973PM", (c) => c.charCodeAt(0)), new Array(30).fill(0), [0, 0xF7]);
@@ -1384,12 +1384,12 @@ function fm6Tolerant(F6, voices, bank, one) {
   ok(c.short === 1 && c.voices.length === 30 && !c.corrupt.length, "FM6 import: a cut bank with a corrupt voice keeps the old rule (short)");
 }
 
-/* the 6-OP FM tab without the bank (1.0.3): import -> pick -> edit -> send to track; factory patches into the editor */
+/* the 6-OP FM tab without the bank (1.0.3): import -> pick -> edit -> send to track; default patches into the editor */
 function fm6TabNoBank() {
   const tab = html.slice(html.indexOf('<section class="panel" id="p-fm6"'), html.indexOf("</section>", html.indexOf('id="p-fm6"')));
   const code = html.slice(html.indexOf("let fm6v = FM6.init();"), html.indexOf('$("connect").addEventListener'));
   ok(["fm6import", "fm6file", "fm6imported", "fm6send", "fm6read", "fm6slot", "fm6load", "fm6keep"].every((id) => tab.includes(`id="${id}"`))
-    && !["fm6store", "fm6erase", "fm6bankexp"].some((id) => html.includes(`"${id}"`)), "FM6 tab: import, voices, send, factory load and the hint; no store / erase / bank export");
+    && !["fm6store", "fm6erase", "fm6bankexp"].some((id) => html.includes(`"${id}"`)), "FM6 tab: import, voices, send, default load and the hint; no store / erase / bank export");
   ok(!/TARGET\.BANK|fm6Erase|fm6Store|defaultSlot/.test(code), "FM6 tab: no bank requests");
   const tb = html.slice(html.indexOf("const TEXT = {"), html.indexOf("\n};", html.indexOf("const TEXT = {")) + 2);
   const T = vm.runInNewContext(tb.replace("const TEXT =", "(") + ")"), en = T.en, ja = T.ja;

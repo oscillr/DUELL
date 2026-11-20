@@ -72,7 +72,7 @@ export async function importDialog(app, o) {
       for (const n of o.notes || []) body.append(h("p", { class: "small", text: n }));
       for (const n of o.problems || []) body.append(h("p", { class: "warn small", text: n }));
       const approx = rows.filter((r) => r.on && r.it.kind === "approx").length;
-      if (approx) body.append(h("p", { class: "small", text: `${approx} of these ${approx > 1 ? "are" : "is"} a copy of a factory sound's values (its arp block and pattern are not part of it).` }));
+      if (approx) body.append(h("p", { class: "small", text: `${approx} of these ${approx > 1 ? "are" : "is"} a copy of a default sound's values (its arp block and pattern are not part of it).` }));
       // where they go
       const modeSel = h("select", { "aria-label": "Where the patches go", onchange: (e) => { st.mode = e.target.value; rows.forEach((r) => { r.manual = null; }); draw(); } },
         withNumbers ? h("option", { value: "same", text: "The same slot numbers as in the file" }) : null, h("option", { value: "from", text: "One after the other, from the slot ..." }));
@@ -90,7 +90,7 @@ export async function importDialog(app, o) {
         const chk = h("input", { type: "checkbox", checked: r.on, disabled: !!(it.damaged || it.error), "aria-label": `Import ${it.name}`, onchange: (e) => { r.on = e.target.checked; draw(); } });
         const sl = h("input", { type: "number", min: 1, max: UP_SLOTS, value: slot != null ? String(slot + 1) : "", disabled: !r.on, "aria-label": `Slot for ${it.name}`,
           onchange: (e) => { const n = +e.target.value - 1; r.manual = n >= 0 && n < UP_SLOTS ? n : null; draw(); } });
-        const rep = !r.on ? "" : slot == null ? "no slot" : `${now.label} ${now.saved ? `"${now.name}" (saved)` : `"${now.name}" (factory)`}`;
+        const rep = !r.on ? "" : slot == null ? "no slot" : `${now.label} ${now.saved ? `"${now.name}" (saved)` : `"${now.name}" (defaults)`}`;
         tbl.append(h("div", { class: "improw" + (r.on ? "" : " off"), role: "row" }, chk,
           h("span", { class: "n", text: it.damaged ? `${it.name || "?"} (damaged in the file)` : it.error ? `${it.name} (${it.error})` : it.name, title: it.number != null ? `from slot ${label(it.number - 1)}` : "" }),
           h("span", { text: it.engineName || "" }), h("span", { text: it.catName ? it.catName + (it.catGuessed ? " (guess)" : "") : "" }), sl, h("span", { class: "rep" + (rep && now?.saved ? " lose" : ""), text: rep })));
@@ -114,7 +114,7 @@ export async function importDialog(app, o) {
         const el = rowsEl[i]; if (!el) return;
         const slot = r.on ? t[k++] : null, now = slot != null ? LIB.describeSlot(u, slot) : null;
         const inp = el.querySelector("input[type=number]"); if (inp) inp.value = slot != null ? String(slot + 1) : "";
-        const rep = el.querySelector(".rep"); rep.textContent = !r.on ? "" : slot == null ? "no slot" : `${now.label} ${now.saved ? `"${now.name}" (saved)` : `"${now.name}" (factory)`}`;
+        const rep = el.querySelector(".rep"); rep.textContent = !r.on ? "" : slot == null ? "no slot" : `${now.label} ${now.saved ? `"${now.name}" (saved)` : `"${now.name}" (defaults)`}`;
         rep.classList.toggle("lose", !!(now && now.saved));
       });
       const { plan: pl } = plan(), lost = pl.savedLost, go = foot.querySelector("#impgo");
@@ -223,7 +223,7 @@ export function buildPatches(app, wrap) {
       h("button", { class: "ghost small", id: "expsel", hidden: true, text: "Download selection", onclick: () => exportSlots([...st.sel].sort((a, b) => a - b), "selection") }),
       h("button", { class: "ghost small", text: "Download all...", title: "Every patch you saved on the unit, in one file on this computer", onclick: exportBank })] : null,
     h("button", { class: "ghost small", text: "Load from unit", title: "Reads the list of slots from the unit again", onclick: load }),
-    h("button", { class: "ghost small danger", id: "restoreall", text: "Restore all...", title: "Every slot gets its factory sound back", onclick: doRestoreAll }));
+    h("button", { class: "ghost small danger", id: "restoreall", text: "Restore all...", title: "Every slot gets its default sound back", onclick: doRestoreAll }));
   const zone = h("div", { class: "patches" },
     h("div", { class: "pleft" }, bar1, bar2, lib ? null : h("p", { class: "warn small", text: "Downloading and importing whole patches need firmware 0.2.19 (this unit has an older one; update it with the installer)." }), list),
     h("div", { class: "pright" }, detail));
@@ -262,7 +262,7 @@ export function buildPatches(app, wrap) {
   function drawList() {
     const keep = list.scrollTop;
     clear(list); rowEls.clear();
-    const ra = bar2.querySelector("#restoreall"); if (ra) { ra.disabled = st.loading || !st.items.some((it) => it.saved); ra.title = ra.disabled ? "Every slot holds its factory sound already" : "Every slot gets its factory sound back"; }
+    const ra = bar2.querySelector("#restoreall"); if (ra) { ra.disabled = st.loading || !st.items.some((it) => it.saved); ra.title = ra.disabled ? "Every slot holds its default sound already" : "Every slot gets its default sound back"; }
     if (st.loading) { list.append(h("li", { class: "note", text: "Reading the patches from the unit ..." })); return; }
     const rows = st.items.filter(matches);
     for (const it of rows) {
@@ -323,14 +323,14 @@ export function buildPatches(app, wrap) {
     const a = LIB.describeSlot(u, src), b = LIB.describeSlot(u, dst);
     try {
       if (mode === "swap") {
-        if (!a.saved && !b.saved) { app.say(`${a.label} and ${b.label} both hold factory sounds; there is nothing to swap.`); return; }
+        if (!a.saved && !b.saved) { app.say(`${a.label} and ${b.label} both hold default sounds; there is nothing to swap.`); return; }
         const lines = LIB.swapLines(u, src, dst);
         if (!(await ask(a.saved && b.saved ? "Swap two patches" : "Move a patch", lines, a.saved && b.saved ? "Swap" : "Move", !(a.saved && b.saved) && (a.saved ? b.saved : a.saved)))) return;
         app.say("Swapping ..."); await LIB.swapSlots(u, src, dst); st.sel = new Set([dst]); st.cur = dst; load(); app.say(`${a.label} and ${b.label} are done.`, "good");
       } else {
         const plan = await LIB.planCopy(u, src, dst);
         if (plan.problems.length) { app.say(plan.problems[0], "warn"); return; }
-        const lines = LIB.confirmLines(plan); if (!a.saved) lines.push("It is a factory sound: only its values are copied (its arp block and pattern are not).");
+        const lines = LIB.confirmLines(plan); if (!a.saved) lines.push("It is a default sound: only its values are copied (its arp block and pattern are not).");
         if (!(await ask(`Copy ${a.label} to ${b.label}`, [`"${a.name}" is copied to ${b.label}; ${a.label} stays as it is.`, ...lines], b.saved ? "Overwrite" : "Copy", b.saved))) return;
         app.say("Copying ..."); const r = await LIB.runPlan(u, plan, {});
         if (r.failed) throw r.failed.error;
@@ -347,7 +347,7 @@ export function buildPatches(app, wrap) {
       const items = await LIB.readItems(u, slots, (i, n) => app.say(`Reading ${i} of ${n} ...`));
       const name = fileName(items, kind); saveText(app, name, LIB.fileText(u, items, "DUELL editor"));
       const approx = items.filter((i) => i.kind === "approx").length;
-      app.say(`Saved ${name} (${items.length} patch${items.length === 1 ? "" : "es"}).${approx ? ` ${approx} factory sound${approx === 1 ? " is" : "s are"} in it as a copy of the values.` : ""}`, "good");
+      app.say(`Saved ${name} (${items.length} patch${items.length === 1 ? "" : "es"}).${approx ? ` ${approx} defaults sound${approx === 1 ? " is" : "s are"} in it as a copy of the values.` : ""}`, "good");
     } catch (e) { app.fail(e); }
   }
   async function exportBank() {
@@ -358,14 +358,14 @@ export function buildPatches(app, wrap) {
     const go = await new Promise((resolve) => {
       const done = (v) => { dlg.close(); dlg.remove(); resolve(v); };
       dlg.append(h("h2", { text: "Download all saved patches" }), h("p", { text: "One file on this computer with every patch you saved on the unit, each with its slot number. Drop it on a unit's PATCHES tab to put them back in the same slots." }),
-        h("label", { class: "chk" }, inc, " Also include the factory sounds (a copy of their values, 128 patches in all)"),
+        h("label", { class: "chk" }, inc, " Also include the default sounds (a copy of their values, 128 patches in all)"),
         h("div", { class: "row end" }, h("button", { class: "ghost", text: "Cancel", onclick: () => done(false) }), h("button", { text: "Download", onclick: () => done(true) })));
       dlg.addEventListener("cancel", (e) => { e.preventDefault(); done(false); });
       document.body.append(dlg); dlg.showModal();
     });
     if (!go) return;
     const slots = inc.checked ? [...Array(UP_SLOTS).keys()] : saved;
-    if (!slots.length) { app.say("No patch is saved on the unit; the bank holds only factory sounds. Tick the box to export those too."); return; }
+    if (!slots.length) { app.say("No patch is saved on the unit; the bank holds only default sounds. Tick the box to export those too."); return; }
     await exportSlots(slots, "bank");
   }
   async function copyTo(slots) {
@@ -374,7 +374,7 @@ export function buildPatches(app, wrap) {
       intro: slots.length === 1 ? `"${LIB.describeSlot(u, first).name}" is copied; the original stays.` : `The ${slots.length} patches are copied one after the other from the slot you pick; the originals stay.`,
       describe: (n) => {
         if (n + slots.length > UP_SLOTS) return { lines: [`Not enough slots after #${n + 1}.`], bad: true };
-        const lines = slots.slice(0, 8).map((s, i) => `${label(s)} "${LIB.describeSlot(u, s).name}" -> ${label(n + i)}, replacing "${LIB.describeSlot(u, n + i).name}" (${LIB.describeSlot(u, n + i).saved ? "saved" : "factory sound"})`);
+        const lines = slots.slice(0, 8).map((s, i) => `${label(s)} "${LIB.describeSlot(u, s).name}" -> ${label(n + i)}, replacing "${LIB.describeSlot(u, n + i).name}" (${LIB.describeSlot(u, n + i).saved ? "saved" : "default sound"})`);
         if (slots.length > 8) lines.push(`... and ${slots.length - 8} more.`);
         return { lines, danger: slots.some((s, i) => LIB.describeSlot(u, n + i).saved) };
       } });
@@ -389,15 +389,15 @@ export function buildPatches(app, wrap) {
   }
   async function moveTo(slot) {
     const a = LIB.describeSlot(u, slot);
-    const to = await askSlot(app, { title: `Move ${a.label} to ...`, value: Math.min(UP_SLOTS - 1, slot + 1), okLabel: "Move", intro: `"${a.name}" moves to the slot you pick. ${a.label} shows its own factory sound again.`,
-      describe: (n) => { const b = LIB.describeSlot(u, n); return n === slot ? { lines: ["That is the slot it is in."], bad: true } : { lines: [`${b.label} "${b.name}" (${b.saved ? "saved" : "factory sound"}) is replaced.`], danger: b.saved }; } });
+    const to = await askSlot(app, { title: `Move ${a.label} to ...`, value: Math.min(UP_SLOTS - 1, slot + 1), okLabel: "Move", intro: `"${a.name}" moves to the slot you pick. ${a.label} shows its own default sound again.`,
+      describe: (n) => { const b = LIB.describeSlot(u, n); return n === slot ? { lines: ["That is the slot it is in."], bad: true } : { lines: [`${b.label} "${b.name}" (${b.saved ? "saved" : "default sound"}) is replaced.`], danger: b.saved }; } });
     if (to == null) return;
     const b = LIB.describeSlot(u, to);
     try {
       let doSwap = false;
       if (b.saved) {
         doSwap = await ask("Swap instead?", [`${b.label} holds "${b.name}". Swap puts it in ${a.label}; Replace loses it.`], "Swap");
-        if (!doSwap && !(await ask(`Replace ${b.label}?`, [`"${b.name}" is lost (it is not a factory sound).`], "Replace", true))) return;
+        if (!doSwap && !(await ask(`Replace ${b.label}?`, [`"${b.name}" is lost (it is not a default sound).`], "Replace", true))) return;
       }
       app.say("Moving ...");
       if (doSwap) await LIB.swapSlots(u, slot, to); else await LIB.moveSlot(u, slot, to);
@@ -422,7 +422,7 @@ export function buildPatches(app, wrap) {
     detail.append(h("p", { class: "small", text: `${engineLabel(it.eng)}${CATEGORIES[it.cat] ? " · " + CATEGORIES[it.cat] : ""}` }));
     detail.append(h("div", { class: "row" }, h("span", { text: "RECALL INTO" }), part, h("button", { text: "Recall", title: "The slot's sound replaces the part's sound on the unit (nothing is stored)", onclick: () => doLoad(it, +part.value) })));
     // CATEGORY (0.2.25): a stored patch's category is a byte of its record: read whole (PATCH_RAW), the byte changed, written whole
-    const catPick = h("select", { "aria-label": "Category of this patch", disabled: !it.saved || !lib, title: !it.saved ? "A factory sound's category is fixed. Save a sound to this slot to choose its category." : !lib ? "Needs firmware 0.2.19 or newer" : "",
+    const catPick = h("select", { "aria-label": "Category of this patch", disabled: !it.saved || !lib, title: !it.saved ? "A default sound's category is fixed. Save a sound to this slot to choose its category." : !lib ? "Needs firmware 0.2.19 or newer" : "",
       onchange: (e) => setCategory(it, +e.target.value, e.target) }, CATEGORIES.map((c, i) => h("option", { value: i, text: c })));
     catPick.value = it.cat;
     detail.append(h("div", { class: "row" }, h("span", { text: "CATEGORY" }), catPick));
@@ -444,8 +444,8 @@ export function buildPatches(app, wrap) {
     target.addEventListener("change", upd); nm.addEventListener("input", upd); upd();
     detail.append(h("div", { class: "row" }, h("span", { text: "SAVE AS" }), nm, sc), h("div", { class: "row" }, h("span", { text: "INTO" }), target, go));
     detail.append(h("div", { class: "row" }, h("button", { class: "ghost", text: "Rename...", onclick: () => doRename(it, +part.value) }),
-      it.saved ? h("button", { class: "ghost danger", text: "Restore factory sound...", title: "Take the stored sound out of this slot: the factory sound comes back", onclick: () => doRestore(it) }) : null));
-    if (lib) detail.append(h("div", { class: "row" }, h("button", { class: "ghost", text: "Download file", title: it.saved ? "A file on this computer with the patch whole" : "A file on this computer with a copy of this factory sound's values", onclick: () => exportSlots([it.slot], "patch") }),
+      it.saved ? h("button", { class: "ghost danger", text: "Restore default sound...", title: "Take the stored sound out of this slot: the default sound comes back", onclick: () => doRestore(it) }) : null));
+    if (lib) detail.append(h("div", { class: "row" }, h("button", { class: "ghost", text: "Download file", title: it.saved ? "A file on this computer with the patch whole" : "A file on this computer with a copy of this default sound's values", onclick: () => exportSlots([it.slot], "patch") }),
       h("button", { class: "ghost", text: "Copy to...", onclick: () => copyTo([it.slot]) }), it.saved ? h("button", { class: "ghost", text: "Move to...", onclick: () => moveTo(it.slot) }) : null));
   }
   async function doLoad(it, p) {
@@ -468,18 +468,18 @@ export function buildPatches(app, wrap) {
     } catch (e) { app.fail(e); }
   }
   async function doRename(it, p) {
-    // RENAME (owner, 0b): every patch, a factory one too: it is loaded into the part and saved to the unit under the new name (one short question)
-    const nn = await askText("Rename patch", [it.saved ? `"${it.name}" is loaded into PART ${p + 1} and saved again under the new name (PART ${p + 1}'s unsaved edits are lost).` : `"${it.name}" is a factory sound: it is loaded into PART ${p + 1} and saved to the unit under the new name (PART ${p + 1}'s unsaved edits are lost).`], it.name, "Rename");
+    // RENAME (owner, 0b): every patch, a default one too: it is loaded into the part and saved to the unit under the new name (one short question)
+    const nn = await askText("Rename patch", [it.saved ? `"${it.name}" is loaded into PART ${p + 1} and saved again under the new name (PART ${p + 1}'s unsaved edits are lost).` : `"${it.name}" is a default sound: it is loaded into PART ${p + 1} and saved to the unit under the new name (PART ${p + 1}'s unsaved edits are lost).`], it.name, "Rename");
     if (!nn) return;
     try { app.say("Renaming ..."); await u.loadSlot(p, it.slot); await u.saveSlot(p, it.slot, nn); u.parts[p].name = nn; await load(); app.say(`Renamed to "${nn}".`, "good"); } catch (e) { app.fail(e); }
   }
   async function doRestore(it) {
-    if (!(await ask("Restore patch", [`The saved sound "${it.name}" in ${label(it.slot)} is removed from the unit and the slot's factory sound comes back. Playback is stopped to write.`], "Restore", true))) return;
+    if (!(await ask("Restore patch", [`The saved sound "${it.name}" in ${label(it.slot)} is removed from the unit and the slot's default sound comes back. Playback is stopped to write.`], "Restore", true))) return;
     try { app.say("Restoring ..."); await u.restoreSlot(it.slot); await load(); app.say(`Restored ${label(it.slot)}.`, "good"); } catch (e) { app.fail(e); }
   }
   async function doRestoreAll() {
-    if (!(await ask("Restore all patches", ["Every slot gets its factory sound back. Every saved sound on the unit is lost (export the bank first if you want to keep them). Playback is stopped to write."], "Restore all", true))) return;
-    try { app.say("Restoring ..."); await u.restoreAll((i, n) => app.say(`Restoring ... ${i} of ${n}`)); await load(); app.say("Every slot holds its factory sound.", "good"); } catch (e) { app.fail(e); await load(); }
+    if (!(await ask("Restore all patches", ["Every slot gets its default sound back. Every saved sound on the unit is lost (export the bank first if you want to keep them). Playback is stopped to write."], "Restore all", true))) return;
+    try { app.say("Restoring ..."); await u.restoreAll((i, n) => app.say(`Restoring ... ${i} of ${n}`)); await load(); app.say("Every slot holds its default sound.", "good"); } catch (e) { app.fail(e); await load(); }
   }
 
   // ---- the wide view: all 128 slots on the full width, an overlay under the header. Drag: swap (Alt: copy)

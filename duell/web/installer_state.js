@@ -20,7 +20,7 @@ const NAMES = { backup: "the backup", install: "the DUELL install", return: "the
 export const ERASE = {
   label: "Erase my saved data after installing (start from scratch)",
   help: "Erases your settings (theme, scale, MIDI channels, favourites), the autosave, your patches, your multis and your patterns. " +
-        "The factory sounds, multis and patterns come back. This cannot be undone: back up first. " +
+        "The default sounds, multis and patterns come back. This cannot be undone: back up first. " +
         "Left off, your saved data stays and the unit comes back as you left it.",
   status: "Erasing your data ...",
   done: "Done. Your saved data was erased. The unit starts as new.",

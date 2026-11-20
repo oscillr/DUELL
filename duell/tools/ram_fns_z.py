@@ -91,4 +91,6 @@ if TWOCORE:
 # (2026-11-07, owner: no LED blackout at a save) the erase's LED steps (hal/fm1_flash.h fl_erase4k_led, fl_led_col): they run while the flash is off,
 # so they must be in RAM in every RAMPLACE build; the hot block has no room for them (its 228 B floor, rule G10) and its driver makes no calls
 NAMES = NAMES + ["fl_erase4k_led", "fl_led_col"]
+# (1.3.3, owner 2026-11-19: SAT under SPREAD on the left and the right) spread_run (range X) and spread_fx (the flash) both call it
+NAMES = NAMES + ["track_dist_lr"]   # (dist_swap is inlined)
 HI = 0x01C74000                                 # the stack guard (app_ram.ld _guard0): Z ends below it

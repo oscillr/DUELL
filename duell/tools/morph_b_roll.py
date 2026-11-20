@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
-"""DUELL 1.0: re-roll MORPH End B of every factory multi M01..M15 with the firmware's own ROLL B (working docs/MORPH_B_ROLL_V1.md).
+"""DUELL 1.0: re-roll MORPH End B of every default multi M01..M15 with the firmware's own ROLL B (working docs/MORPH_B_ROLL_V1.md).
 
     tools/morph_b_roll.py [--apply] [--note FILE]
 
 Builds and runs tests/morph_b_roll.c (the firmware's morph_roll_seed: the part's own AMOUNT knob, the multi's morph settings, SMART as stored; one seed for both
 parts as the ROLL B button gives; morph_new_seed from the fixed start 1717 + 7 * slot, so the result is repeatable), which prints each part's End B block as
-morph_blk_make writes it. --apply puts those 7 bytes into tools/factory_multis/Mnn.bin (End B's block is all that changes: End A, names, values, the
+morph_blk_make writes it. --apply puts those 7 bytes into tools/default_multis/Mnn.bin (End B's block is all that changes: End A, names, values, the
 hand-set B edits of a record stay), --note writes the per-multi note. Run from anywhere; needs build/gen (host_tests.sh makes it)."""
 import argparse
 import importlib.util
@@ -16,7 +16,7 @@ import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-spec = importlib.util.spec_from_file_location("fm", ROOT / "tools" / "factory_multis.py")
+spec = importlib.util.spec_from_file_location("fm", ROOT / "tools" / "default_multis.py")
 fm = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(fm)
 
@@ -55,7 +55,7 @@ def main():
         f = fm.DIR / ("M%02d.bin" % slot)
         b = bytearray(f.read_bytes())
         parts, _ = fm.parts_of(bytes(b))
-        ob = subprocess.check_output(["git", "show", "%s:duell/tools/factory_multis/M%02d.bin" % (OLD_REF, slot)], cwd=ROOT)   # the record before any re-roll
+        ob = subprocess.check_output(["git", "show", "%s:duell/tools/default_multis/M%02d.bin" % (OLD_REF, slot)], cwd=ROOT)   # the record before any re-roll
         for t, (_, _, at) in enumerate(parts):
             blk, seed, amt = blocks[(slot, t + 1)]
             old = bytes(ob[at + 4:at + 4 + fm.MB_N])

@@ -505,7 +505,7 @@ static void graph_insert(const track_t *t, uint16_t c)
  * "you do not know what E7 or SYNC is") the selected slot's destination in full, "DEST: WAVE SYNC" (M), and on a line of its
  * own (S) why it does nothing, or which bus a bus value moves (mod.c mod_dst_line) */
 /* a matrix source as the unit shows it: in full words (DUELL 1.1, owner), a two-word name with its break ("AMP\nENV") for the SOURCE card (ui_draw.c draw_column: two lines in S);
- * the stored N_MSRC names stay the keys (the factory sound tool, the editor). A name the card or the list row has no room for is cut by the drawing (ellipsis), never shortened */
+ * the stored N_MSRC names stay the keys (the default sound tool, the editor). A name the card or the list row has no room for is cut by the drawing (ellipsis), never shortened */
 static const char *msrc_shown(int32_t s)
 {
     s = clamp(s, 0, MS_N - 1);
@@ -2239,7 +2239,7 @@ static void engine_sound_row(int32_t y)
         up_slot_label(tag, s);
         sl_name(s, nm);
     } else {
-        str_cpy(tag, "--", sizeof tag);                  /* a sound from no slot: its factory name (no factory sound: INIT) */
+        str_cpy(tag, "--", sizeof tag);                  /* a sound from no slot: its default name (no default sound: INIT) */
         str_cpy(nm, ds_name(TSEL->eng_req % NENGINES, TSEL->preset), sizeof nm);
     }
     list_row(y, 1, tag, T_DIM, nm, T_TEXT, fav ? 212 : 232);

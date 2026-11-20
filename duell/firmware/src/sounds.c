@@ -1,20 +1,20 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
-/* DUELL factory sounds (owner, 2026-10-11): the sounds the browser lists, in place of Felucca's presets (engine_t.presets,
+/* DUELL default sounds (owner, 2026-10-11): the sounds the browser lists, in place of Felucca's presets (engine_t.presets,
  * which stay compiled for the host tests' renders and nothing else of the product reads).
  *
  * Format (build/gen/duell_sounds.h, written by tools/gen_duell_sounds.py from tools/duell_sounds.py): a sound is a name
  * (<= 12 characters), its engine, category (category.c CAT_*), flags, and a SPARSE list of (P_ id, value) pairs, two bytes
  * each, on top of INIT: every sound parameter at its default (params.c TP; the engine's EDIT defaults for P_E0..P_E7).
- * Arp settings and the trim are pairs like any other (ui.c apply_preset_to: a factory sound sets its TRIM, its loudness
+ * Arp settings and the trim are pairs like any other (ui.c apply_preset_to: a default sound sets its TRIM, its loudness
  * (0.2.19: the PATCH TRIM; the player's mixer LEVEL is not a sound's), and an arp sound lends the arp: ds_arp).
  *
- * Identity: sound k of engine e (k = its factory index, append-only per engine in duell_sounds.py) is DS_SOUNDS[DS_ENG_AT[e]
+ * Identity: sound k of engine e (k = its default index, append-only per engine in duell_sounds.py) is DS_SOUNDS[DS_ENG_AT[e]
  * + k]; t->preset holds k (as it held the preset number), favourites (favorites.c), saved copies (upreset.c up_shadow) and
  * the End B seed (ds_seed) use (e, k). An engine with no sound: k is 0 and the sound is INIT (ui.c apply_preset_to).
  * The browse order is DS_LIST (category-major: BASS LEAD PAD PLUCK KEYS FX OTHER, then ENGINE_ORDER, then name), engines
  * this build hides (eng_ok) left out.
  *
- * End B of a factory sound (morph.c morph_rebase_part): a sound loaded with no End B of its own (not a stored sound) rolls
+ * End B of a default sound (morph.c morph_rebase_part): a sound loaded with no End B of its own (not a stored sound) rolls
  * B from seed ds_seed(e, k) at AMOUNT ds_amount(e, k), SMART (never WILD), PITCH and ARP off, part 1's stream: the same B on
  * every load, on either part. Both are the sound's own (duell_sounds.py 'bseed', 'bamt': the AMOUNT by category, the seed
  * picked by tests/sound_audit.c SOUND_BSEED=1 so B sits within a few dB of A's loudness and its brightness in both SPLIT and
@@ -79,7 +79,7 @@ static uint32_t ds_list_n(void)
         n += (uint32_t)eng_ok(DS_SOUNDS[DS_LIST[i]].eng);
     return n;
 }
-static uint32_t ds_list_at(uint32_t n, uint32_t *k)    /* entry n -> its engine, *k its factory index */
+static uint32_t ds_list_at(uint32_t n, uint32_t *k)    /* entry n -> its engine, *k its default index */
 {
     uint32_t i;
     for (i = 0; i < DS_N; i++) {
@@ -114,14 +114,14 @@ static uint32_t ds_hash(uint32_t e, uint32_t k)
     x ^= x >> 12;
     return 1u + x % 65535u;
 }
-/* the End B seed of factory sound (e, k): 1..65535, fixed: its 'bseed', else the hash */
+/* the End B seed of default sound (e, k): 1..65535, fixed: its 'bseed', else the hash */
 static uint32_t ds_seed(uint32_t e, uint32_t k)
 {
     const ds_sound_t *s = ds_get(e, k);
     return s && s->bseed ? s->bseed : ds_hash(e, k);
 }
 #if !DUELL_BENCH
-/* the End B of factory sound (e, k) as exact values: its block (build/gen/duell_sounds.h DS_ENDB, the format of a patch record's End B, morph.c morph_bv_load), 0 = none (rolled from the seed).
+/* the End B of default sound (e, k) as exact values: its block (build/gen/duell_sounds.h DS_ENDB, the format of a patch record's End B, morph.c morph_bv_load), 0 = none (rolled from the seed).
  * The bench builds keep the seed roll (flash) */
 static const uint8_t *ds_endb(uint32_t e, uint32_t k)
 {
@@ -132,7 +132,7 @@ static const uint8_t *ds_endb(uint32_t e, uint32_t k)
     return DS_ENDB_AT[g + 1u] > DS_ENDB_AT[g] ? DS_ENDB + DS_ENDB_AT[g] : 0;
 }
 #endif
-/* the End B AMOUNT of factory sound (e, k) (%) */
+/* the End B AMOUNT of default sound (e, k) (%) */
 static uint32_t ds_amount(uint32_t e, uint32_t k)
 {
     const ds_sound_t *s = ds_get(e, k);

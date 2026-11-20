@@ -2,8 +2,8 @@
  * Copyright (C) 2026 OSCILL/R (DUELL). Part of DUELL, a modified version of Felucca. */
 /* DUELL TWO-CORE, stage 1 (DUELL_TWOCORE=1 only; docs/TWOCORE_STAGE1.md "Job 5"): the job core 1 plays, and the runner core 0 calls every block.
  * Included by fx.c after mix_part (it needs the stages, mixpart_t and blockstate_t) and before mix_gather and mix_block (they read tcr.skip2 and call the
- * runner). Stage 1 = core 1 plays part 2 (voices, part effects, part mix into its own pscr / pacc / track); core 0 plays part 1, then waits for part 2 or
- * takes it over, then gathers, sends, master. Bus B (DUEL) stays on core 0.
+ * runner). Since the voice split (owner 2026-11-05, THE VOICE SPLIT below) no part owns a core: core 0 deals every voice of both parts to the core that is
+ * less busy, each block. (Stage 1, before 2026-11-05: core 1 played part 2 and core 0 part 1; replaced.) Bus B (DUEL) stays on core 0.
  *
  * THE JOB (tc_job_run, core 1, called by tc_c1_step after its claim): the stages of mix_part / tests/twocore_sim.c run_part in their order. Its inputs are a
  * static context core 0 fills before tc_post (tc_ctx: the block's snapshot), not a pointer into core 0's stack; n and a 16-bit hash of the snapshot are in
@@ -84,7 +84,7 @@ static tcm_cfg_t tcm_cfg = { TCR_SLACK_TICKS, TCR_CALM_TICKS, TCR_LATE_RUN, TCR_
 _Static_assert(TCR_VWIN_K <= TCR_VWIN_MAX && (TCR_VWIN_MAX & (TCR_VWIN_MAX - 1u)) == 0, "twocore_run.c: the window's ring");
 
 _Static_assert(HALF_FRAMES % CTL == 0 && TCR_BLOCKS >= 1, "twocore_run.c: a half is whole blocks");
-_Static_assert(NLIVE == 2, "twocore_run.c: stage 1 plays part 1 on core 0 and part 2 on core 1");
+_Static_assert(NLIVE == 2, "twocore_run.c: the runner deals the voices of two parts");
 _Static_assert(sizeof(blockstate_t) % 4u == 0, "twocore_run.c: the snapshot's hash reads whole words");
 
 /* the budget's cost table (budget.c, included after fx.c; budget.h declares the functions): the deadline reads part 2's cost at its current settings */

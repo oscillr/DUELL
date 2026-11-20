@@ -111,7 +111,7 @@
 #                   draws, lights its LEDs, keeps a save across instances, plays a song bit for bit as the same file
 #                   built with cc (web/emu/native_check.c); the cost of 1 s of a heavy song against real time.
 # PHYS (tests/phys_test.c): stability over the whole parameter and pitch range, the worst-case cost against
-#                   the heaviest factory preset, demos in build/phys_demo/; tests/phys_ref.cpp compares the
+#                   the heaviest default preset, demos in build/phys_demo/; tests/phys_ref.cpp compares the
 #                   fixed-point models with DaisySP's float originals when DaisySP is there (DAISYSP=path).
 # DRUM (tests/drum_test.c) and DIGITAL -> FM6 (tests/fm4_test.c, digital_test.c, fm4_div0_test.c): removed in 0.2.14 with the engines (core.h ENGI_RETIRED).
 # NOISE (tests/noise_test.c): the engine (src/eng_noise.c): COLR's slope (white, pink, brown), the filter and the
@@ -119,7 +119,7 @@
 #                   corners, a note from silence the same twice, the cost per voice; demos in build/noise_demo/.
 # FM6 (tests/fm6_test.c): the 6-operator FM engine (src/eng_fm6.c, src/fm6_core.c): the 32 algorithms' carriers, the
 #                   operator envelopes (stages, rates, the voice ending), bit-stable notes, a click-free retrigger, no DC /
-#                   clipping over the factory patches, the macros' directions, PTCH, pack / unpack and the SysEx
+#                   clipping over the default patches, the macros' directions, PTCH, pack / unpack and the SysEx
 #                   layouts, the 6-voice cap, the cost per voice; demos in build/fm6_demo/.
 # ROBUST (tests/robust_test.c): damaged or crafted stored data and editor requests: engine numbers past the last refused, a retained older
 #                   RAM project bounded, user preset patterns inside their fields, malformed requests never stop PLAY.
@@ -345,7 +345,7 @@ if command -v node >/dev/null 2>&1; then
     run "web pages: editor protocol + samples, package builder, update protocol" node web/test_web.mjs
     run "web backup: capture, validation before writes, restore order" node web/test_backup.mjs
     run "web duell-backup: file, checks, restore plan / order / verify against a simulated unit" node web/test_duellbackup.mjs
-    run "web wavetable: WAV converter (FFT, saw / square / Serum-like files, factory renders back), protocol client against a simulated unit" node web/test_wavetable.mjs
+    run "web wavetable: WAV converter (FFT, saw / square / Serum-like files, default renders back), protocol client against a simulated unit" node web/test_wavetable.mjs
 else
     echo "== skip web tests (no node)"
 fi

@@ -427,8 +427,8 @@ static int defaults_0214_test(void)
          rp_get(RP_LEVEL) == 1u && rp_get(RP_COUNTIN) == 0u && !(ui_prefs & ~(uint32_t)(PREF_ACCEL | PREF_SERIAL_OFF)) &&
          ui_prefs2 == (PREF_DEFAULTS >> 16);
     settings_save(); settings_poll();
-    ok &= !persist_pending && st_load(OBJ_SETTINGS, &q, sizeof q) == (int)sizeof q && (q.favorites.factory[15][24] & 0x80u) &&
-          (q.favorites.factory[15][30] & (PREF_ACCEL | PREF_SERIAL_OFF)) == (PREF_ACCEL | PREF_SERIAL_OFF) && (q.favorites.factory[15][28] & 3u) == 1u;
+    ok &= !persist_pending && st_load(OBJ_SETTINGS, &q, sizeof q) == (int)sizeof q && (q.favorites.defaults[15][24] & 0x80u) &&
+          (q.favorites.defaults[15][30] & (PREF_ACCEL | PREF_SERIAL_OFF)) == (PREF_ACCEL | PREF_SERIAL_OFF) && (q.favorites.defaults[15][28] & 3u) == 1u;
     bad += check("0.2.14 a new unit: KNOB ACCEL ON, CLICK REC, USB SERIAL OFF, the flag set; saved so", ok);
     /* the user's choices on a 0.2.14 unit stick: ACCEL OFF, CLICK OFF, USB SERIAL ON, saved, a power cycle */
     menu_put(MI_ACCEL, 0); menu_put(MI_CLICK, 0); menu_put(MI_SERIAL, 0);
@@ -446,10 +446,10 @@ static int defaults_0214_test(void)
     reset();
     d14_boot();
     settings_export(&p);
-    p.favorites.factory[15][30] = 8u;        /* (ACCEL clear, SERIAL clear = ON, the retired bit 8 (was USB LEVEL FIXED): kept as it is) */
-    p.favorites.factory[15][28] = 2u << 4;               /* CLICK OFF, LEVEL MID, COUNT-IN 2 BARS */
-    p.favorites.factory[15][24] = 0x40u | 0x02u;         /* MODE RECALL ON, STEP PREVIEW ON; the flag clear */
-    p.favorites.factory[15][10] = 0xFFu;                 /* ANIM IDLE (bit 0) and bits 1-7 set */
+    p.favorites.defaults[15][30] = 8u;        /* (ACCEL clear, SERIAL clear = ON, the retired bit 8 (was USB LEVEL FIXED): kept as it is) */
+    p.favorites.defaults[15][28] = 2u << 4;               /* CLICK OFF, LEVEL MID, COUNT-IN 2 BARS */
+    p.favorites.defaults[15][24] = 0x40u | 0x02u;         /* MODE RECALL ON, STEP PREVIEW ON; the flag clear */
+    p.favorites.defaults[15][10] = 0xFFu;                 /* ANIM IDLE (bit 0) and bits 1-7 set */
     ok = st_save(OBJ_SETTINGS, &p, sizeof p) == 0;
     d14_boot();
     ok &= first_boot_pending == 0u && d14_new() && (ui_prefs & 8u) && rp_get(RP_COUNTIN) == 2u &&
@@ -462,12 +462,12 @@ static int defaults_0214_test(void)
     ok &= settings_import(&q, (int)sizeof q) == 1 && !memcmp(&q, &persist_saved, sizeof persist_saved) && persist_is_saved(&q);   /* (importing twice changes nothing) */
     bad += check("0.2.14 an older record: ACCEL ON, CLICK OFF -> REC, USB SERIAL ON -> OFF once; the rest kept, [15][10] bits 1-7 cleared", ok);
     /* .. with CLICK ON / REC and USB SERIAL OFF stored: kept (only the old default changes) */
-    p.favorites.factory[15][28] = 2u;                    /* CLICK ON */
-    p.favorites.factory[15][30] = PREF_SERIAL_OFF | PREF_ACCEL;
+    p.favorites.defaults[15][28] = 2u;                    /* CLICK ON */
+    p.favorites.defaults[15][30] = PREF_SERIAL_OFF | PREF_ACCEL;
     st_save(OBJ_SETTINGS, &p, sizeof p);
     d14_boot();
     ok = rp_get(RP_CLICK) == 2u && (ui_prefs & PREF_SERIAL_OFF) && (ui_prefs & PREF_ACCEL) && (ui_prefs2 & 0x80u);
-    p.favorites.factory[15][28] = 1u;                    /* CLICK REC */
+    p.favorites.defaults[15][28] = 1u;                    /* CLICK REC */
     st_save(OBJ_SETTINGS, &p, sizeof p);
     d14_boot();
     ok &= rp_get(RP_CLICK) == 1u;
@@ -619,7 +619,7 @@ int main(void)
         ok = ed_rep[0] == 4 && settings_hold == 3u && erases == 2;
         rest();
         ok &= erases == 3 && st_load(OBJ_SETTINGS, &q, sizeof q) == (int)sizeof q &&
-              hold_from_stored(q.bold) == 3u && (q.favorites.factory[15][30] & PREF_ACCEL) && leds_from_stored(q.zoom) == LEDS_OFF;
+              hold_from_stored(q.bold) == 3u && (q.favorites.defaults[15][30] & PREF_ACCEL) && leds_from_stored(q.zoom) == LEDS_OFF;
         bad += check("MENU_SET stopped, HOLD (4 values): rc 4, saved once it rested, the others kept", ok);
         before = erases;
         ed_repn = 0; ed_menu_handle(ED_MENU_SET, hold_06, 3);
@@ -681,7 +681,7 @@ int main(void)
     settings.palette = 3;
     settings.zoom = 1;
     persist_saved.bold = 1;                       /* (an earlier firmware's font weight: kept as saved) */
-    favorites.factory[8][0] = 1;
+    favorites.defaults[8][0] = 1;
     favorites.user = 1u << 31;
     song.playing = 1;
     settings_save();
@@ -697,7 +697,7 @@ int main(void)
     bad += check("STOP: latest settings saved and request cleared", !persist_pending && erases == 1u &&
                   st_load(OBJ_SETTINGS, &p, sizeof p) == (int)sizeof p && p.palette == palette_to_stored(2) &&
                   p.zoom == 1u && p.bold == 1u &&
-                  p.favorites.factory[8][0] == 1 && p.favorites.user == (1u << 31) &&
+                  p.favorites.defaults[8][0] == 1 && p.favorites.user == (1u << 31) &&
                   !memcmp(&p.panel, &panel, sizeof panel));
     settings_save();
     bad += check("unchanged settings do not erase", !persist_pending && erases == 1u);
@@ -718,11 +718,11 @@ int main(void)
                   st_load(OBJ_SETTINGS, &p, sizeof p) == (int)sizeof p && p.palette == palette_to_stored(1));
 
     {   /* DUELL 0.2.11: a settings write (an erase stops the audio ~40 ms) waits for silence, not only for the transport: the
-         * one-time "layer seen" bit (ui_layer.c layer_opened, favorites.factory[15][31]) on a layer's first open while played */
-        uint8_t seen0 = favorites.factory[15][31];
+         * one-time "layer seen" bit (ui_layer.c layer_opened, favorites.default[15][31]) on a layer's first open while played */
+        uint8_t seen0 = favorites.defaults[15][31];
         before = erases;
         song.playing = 0; transport_req = 0; fm1_in.notes = 0; fm1_in.buttons = 0;
-        favorites.factory[15][31] = (uint8_t)(seen0 | 0x10u);
+        favorites.defaults[15][31] = (uint8_t)(seen0 | 0x10u);
         trk[1].v[1].active = 1;                               /* a voice sounding (stopped transport) */
         settings_save();
         bad += check("a voice sounding: seen bit queued, no erase", persist_pending && erases == before);
@@ -735,8 +735,8 @@ int main(void)
         fm1_in.buttons = 0;
         settings_poll();
         bad += check("silent: written once, the seen bit saved", !persist_pending && erases == before + 1u &&
-                      st_load(OBJ_SETTINGS, &p, sizeof p) == (int)sizeof p && (p.favorites.factory[15][31] & 0x10u));
-        favorites.factory[15][31] = seen0; settings_save();   /* (put back, saved: later checks start clean) */
+                      st_load(OBJ_SETTINGS, &p, sizeof p) == (int)sizeof p && (p.favorites.defaults[15][31] & 0x10u));
+        favorites.defaults[15][31] = seen0; settings_save();   /* (put back, saved: later checks start clean) */
         before = erases;
     }
     /* (DUELL: the PROJECT slots and the user preset banks are gone; their failed-save flows are not tested here any more) */

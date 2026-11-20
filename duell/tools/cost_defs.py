@@ -5,7 +5,7 @@
 (reads the run's results.csv). One place holds: the engines, the feature list (what is switched on ALONE from the baseline), every test as a config, the console words a config
 becomes, and the model that turns a cost table back into a predicted CPU figure (used by the fit's validation).
 
-A config (dict) is one scene: engine, cores, keys, mode, and the settings switched on. The baseline is: the engine's dearest factory sound cleaned (multimode filter bypassed, no TWIN,
+A config (dict) is one scene: engine, cores, keys, mode, and the settings switched on. The baseline is: the engine's dearest default sound cleaned (multimode filter bypassed, no TWIN,
 SUB, matrix, MORPH, INSERT, SAT, EQ, DUCK, arp, sends), POLY, LAYER, MODULES SENDS off, no master stage, KEY SENSE off, the NOTES budget held open, both parts the same sound.
 Units of the CPU figure: the unit's `avg` column = core 0's audio interrupt time in % of one half buffer (TIMER5's nested time taken out: the CPU bar). The budget table's unit is
 host instructions a sample, 3281.25 = 100 % (budget.h), so instr = % x 32.8125.
@@ -86,7 +86,7 @@ SOUND_COUNTS_FALLBACK = {"ANALOG": 20, "PHASE": 11, "LOFI": 9, "VOICE": 8, "TRIO
 
 
 def sound_counts():
-    """the factory sounds of each engine: sounds.c DS_ENG_AT from build/gen/duell_sounds.h; else the numbers seen in the 1.1.0-test5 tree"""
+    """the default sounds of each engine: sounds.c DS_ENG_AT from build/gen/duell_sounds.h; else the numbers seen in the 1.1.0-test5 tree"""
     try:
         t = open(os.path.join(HERE, "..", "build", "gen", "duell_sounds.h")).read()
         m = re.search(r"DS_ENG_AT\[[^\]]*\]\s*=\s*\{([^}]*)\}", t)
@@ -355,10 +355,10 @@ def build_plan(quick=False, sounds=True, cal1=False):
         if mode == "STEREO" and quick:
             continue
         add("G", "ANALOG", 1, "G_BASE_" + mode, 2, base_cfg(K=2, mode=mode), rep_f, f"ANALOG baseline, {mode}, 2 keys")
-    if sounds and not quick:                                                            # S: every factory sound of every engine, up to 4 keys, one core
+    if sounds and not quick:                                                            # S: every default sound of every engine, up to 4 keys, one core
         for e, n in sound_counts().items():
             for s in range(n):
-                add("S", e, 1, f"S{s}", 4, base_cfg(eng=e, sound=s, K=4), 1, f"{e} factory sound {s}, 4 keys")
+                add("S", e, 1, f"S{s}", 4, base_cfg(eng=e, sound=s, K=4), 1, f"{e} default sound {s}, 4 keys")
     for i, (e, cores, k, mode, patch) in enumerate(HOLD, 1):                            # H: held out
         if cal1 and cores != 1:
             continue

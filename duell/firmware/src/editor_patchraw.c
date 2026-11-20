@@ -2,7 +2,7 @@
 /* DUELL 0.2.19, the editor's PATCH_RAW (EDITOR_PROTOCOL.md "PATCH_RAW (84)"; INFO tag 5A 01 caps, bit 0): a patch slot's STORED RECORD (upreset.c) read and written
  * whole, bit for bit, so a patch can be exported to a file and imported into any slot without losing anything (UP_PUT drops End B, the arp / keys /
  * sequencer block and an FM6 sound's patch; UP_GET shows only the values). One command, an op byte first; every reply starts op, slot, rc:
- *   0 INFO   slot                              -> 0, slot, rc, saved (0/1), length (2 x 7 bit), CRC-32 (5 x 7 bit) of the record; a slot that holds its factory sound
+ *   0 INFO   slot                              -> 0, slot, rc, saved (0/1), length (2 x 7 bit), CRC-32 (5 x 7 bit) of the record; a slot that holds its default sound
  *                                                 answers saved 0, length 0, CRC 0 (there is no record; UP_GET gives its values)
  *   1 READ   slot, offset (2 x 7 bit), count   -> 1, slot, rc, offset (2), count, pack7 data (count 1..112; reading never touches the flash and works while playing)
  *   2 BEGIN  slot, length (2 x 7 bit), CRC (5) -> 2, slot, rc          the length is PT_FIX .. PT_WORST

@@ -74,7 +74,7 @@ static void boot(void)
 static int stored_seen(void)                            /* the bit as the flash holds it */
 {
     static persist_t p;
-    return st_load(OBJ_SETTINGS, &p, sizeof p) > 0 && ((p.favorites.factory[15][24] >> 5) & 1u);
+    return st_load(OBJ_SETTINGS, &p, sizeof p) > 0 && ((p.favorites.defaults[15][24] >> 5) & 1u);
 }
 static int page_is(uint32_t n)                          /* page n is up: the title (SETUP on the questions 1 and 5, else GUIDE) and the footer's counter (n/5; the MENU's copy: n-1 of 3) */
 {
@@ -258,7 +258,7 @@ int main(void)
     /* an older settings record (0.2.10: bit 5 of [15][24] never written): shown once */
     memset(&pb, 0, sizeof pb);
     settings_export(&pb);
-    pb.favorites.factory[15][24] = 0x10u;               /* (an older record: CPU METER OFF set, bit 5 clear) */
+    pb.favorites.defaults[15][24] = 0x10u;               /* (an older record: CPU METER OFF set, bit 5 clear) */
     pb.palette = palette_to_stored(3u);
     memset(nor, 0xFF, sizeof nor);
     expect("an older (0.2.10) settings record is stored", st_save(OBJ_SETTINGS, &pb, sizeof pb) == 0);

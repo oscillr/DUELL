@@ -4,7 +4,7 @@
 
   python3 tools/gen_stress_suite.py            writes tools/bench_suites/STRESS-ALL.txt
 
-A stress sound is the engine's dearest factory sound (`sound N ENGINE DEAR`, which strips it) with everything put back ON by `set`, on both parts:
+A stress sound is the engine's dearest default sound (`sound N ENGINE DEAR`, which strips it) with everything put back ON by `set`, on both parts:
   MULTI filter 24 dB, resonant, MODE moved; TWIN filter LP in PARALLEL, BLEND BOTH, its own LFO / ENV depths; SUB pulse at full level with HARMONICS; the CYCLE envelope;
   both LFOs at their fastest; all 8 matrix slots from LFO 1 / LFO 2 / S&H / CYCLE at full depth to PITCH, CUT, SHP, AMP, PAN, SAT, RES and an engine value; SAT, an INSERT;
   SPREAD at the top; all three sends at the top; MORPH rolled to an End B at 100 % with the fader in the middle.

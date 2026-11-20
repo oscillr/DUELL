@@ -98,7 +98,7 @@ static uint32_t request(uint32_t cmd, const uint8_t *a, uint32_t n)
     return rep_n;
 }
 
-/* a bank: per voice a packed record (a factory patch renamed "<tag> k"), the used mask */
+/* a bank: per voice a packed record (a default patch renamed "<tag> k"), the used mask */
 typedef struct {
     uint8_t v[FM6_NBANK][FM6_PACKED];
     uint32_t used;
@@ -111,7 +111,7 @@ static void make_bank(bank_t *b, char tag, uint32_t used, const char *name)
     for (k = 0; k < FM6_NBANK; k++) {
         uint8_t v[FP_SIZE + 1u];
         char nm[11];
-        fm6_unpack(FM6_FACTORY[(k + (uint32_t)tag) % FM6_NFACTORY], v);
+        fm6_unpack(FM6_DEFAULT[(k + (uint32_t)tag) % FM6_NDEFAULT], v);
         snprintf(nm, sizeof nm, "%c VOICE %02u", tag, (unsigned)(k + 1u));
         memcpy(v + FP_NAME, nm, 10);
         v[FP_ALG] = (uint8_t)((k * 7u + (uint32_t)tag) % 32u);   /* (each voice its own bytes) */
@@ -427,7 +427,7 @@ static int slot_test(void)
         trk[2].p[P_E7] = FM6_OWN;
         fm6_slot[2] = FM6_OWN;
         fm6_pack(fm6_patch[2], own);
-        own[110] = 30;                                    /* (an own patch: no factory one) */
+        own[110] = 30;                                    /* (an own patch: no default one) */
         {
             uint8_t v[FP_SIZE + 1u];
             fm6_unpack(own, v);
@@ -457,8 +457,8 @@ static int slot_test(void)
     ok &= trk[0].p[P_E7] == FM6_OWN + 6 && fm6_slot[0] == FM6_OWN + 6 && patch_is(0, b.v[5]);
     bad += check("SET B2 (no voice there) on B6: refused, SLOT back to B6, its voice kept", ok);
     slot_to(0, 2);
-    ok = trk[0].p[P_E7] == 2 && patch_is(0, FM6_FACTORY[2]);
-    bad += check("  .. F3 from there: the factory patch as always", ok);
+    ok = trk[0].p[P_E7] == 2 && patch_is(0, FM6_DEFAULT[2]);
+    bad += check("  .. F3 from there: the default patch as always", ok);
     return bad;
 }
 
@@ -498,7 +498,7 @@ static int keep_test(void)
         int32_t s;
         uint8_t x[FM6_PACKED];
         project_capture(p);
-        memcpy(x, FM6_FACTORY[3], FM6_PACKED);
+        memcpy(x, FM6_DEFAULT[3], FM6_PACKED);
         x[110] = 17;                                      /* (an own patch) */
         ok = 1;
         for (s = FM6_OWN + 1; s <= (int32_t)(FM6_OWN + FM6_NBANK); s++) {
@@ -510,9 +510,9 @@ static int keep_test(void)
             ok &= patch_is(0, x) && trk[0].p[P_E7] == FM6_OWN;
         }
         p->t[0].p[P_E7] = 2;
-        memcpy(p->fm6[0], FM6_FACTORY[2], FM6_PACKED);
+        memcpy(p->fm6[0], FM6_DEFAULT[2], FM6_PACKED);
         p->sum = proj_sum(p);
-        ok &= !project_restore_runtime(p) && trk[0].p[P_E7] == 2 && patch_is(0, FM6_FACTORY[2]);
+        ok &= !project_restore_runtime(p) && trk[0].p[P_E7] == 2 && patch_is(0, FM6_DEFAULT[2]);
         bad += check("a project with a stored SLOT 9..40: its own patch, SLOT OWN (never a bank voice); F3 as before", ok);
     }
     {   /* a user preset record with a stored SLOT 13 (1.0.2's B5): with its patch, that patch; without, the init voice */
@@ -535,7 +535,7 @@ static int keep_test(void)
         uint8_t x[FM6_PACKED];
         track_t *t = &trk[0];
         int32_t s;
-        memcpy(x, FM6_FACTORY[1], FM6_PACKED);
+        memcpy(x, FM6_DEFAULT[1], FM6_PACKED);
         x[110] = 9;
         {
             uint8_t v[FP_SIZE + 1u];

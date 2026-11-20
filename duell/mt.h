@@ -218,8 +218,8 @@ static uint64_t phrase_child(uint32_t e, uint32_t pi, uint32_t k)
     if (!(pid = fork())) {
         int16_t keep[P_COUNT];
         fresh(e, pi);
-        trk[0].preset = 0xFFu;                          /* (DUELL: no factory sound, sounds.c: its load rolls B at the
-                                                         * AMOUNT set below, not the factory sound's fixed B) */
+        trk[0].preset = 0xFFu;                          /* (DUELL: no default sound, sounds.c: its load rolls B at the
+                                                         * AMOUNT set below, not the default sound's fixed B) */
         busy(&trk[0]);
         if (k) {
             mph[0].amount = (uint8_t)(k == 3u ? 40u : k == 2u ? 60u : 0u);   /* (v2: a load rolls a B at the AMOUNT: set before) */

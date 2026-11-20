@@ -141,7 +141,7 @@ static uint32_t eng_step(uint32_t e, int32_t dir)
     return eng_vis((eng_rank(e % NENGINES) + (dir > 0 ? 1u : NENG_SHOWN - 1u)) % NENG_SHOWN);
 }
 
-#include "sounds.c"              /* DUELL: the factory sounds the browser lists (build/gen/duell_sounds.h) */
+#include "sounds.c"              /* DUELL: the default sounds the browser lists (build/gen/duell_sounds.h) */
 
 /* DUELL's 32 default patterns: the content the 32 slots P01..P32 of SAVE > PATTERNS hold on a new unit and after ERASE (patslot.c
  * ps_default; they are ordinary slots, all overwritable, no second list: the arp's SEQ mode, the sequencer and the editor read the
@@ -151,7 +151,7 @@ static uint32_t eng_step(uint32_t e, int32_t dir)
  * the note the SEQUENCER arp mode reads as offset 0: arp_seq_notes uses note - 60), so a pattern works on any engine and
  * in the SEQ arp on the held notes; in the step sequencer it plays from C4 (OCT- / SCL TRANS move it; it is the same bar
  * for a bass, a pad or a lead). 0 = rest. Flags: 1 accent, 2 slide, 4 tie (holds the previous note).
- * Names: at most 12 characters from the unit's set. `PAT(n)` of a factory sound (preset_t.pat) is the number n of this list (P01 = 1).
+ * Names: at most 12 characters from the unit's set. `PAT(n)` of a default sound (preset_t.pat) is the number n of this list (P01 = 1).
  * The table of idioms is in SPEC.md (PATTERNS). */
 #define ROOT 60
 #define O(x) (ROOT + (x))
@@ -269,7 +269,7 @@ static const struct {
 #define NPATTERNS (sizeof PATTERNS / sizeof PATTERNS[0])
 
 /* the parts at power-on (engine, preset, PATTERNS[n - 1] in the sequencer, 0 = empty: all are): bass, pad (lead and drums: the hidden parts 3 and 4, gone, memory trim 1).
- * DUELL: the preset is the engine's factory sound k (sounds.c; ANALOG 4 = SQUELCH), INIT for an engine with none yet
+ * DUELL: the preset is the engine's default sound k (sounds.c; ANALOG 4 = SQUELCH), INIT for an engine with none yet
  * (FM6 until its sounds come); the host renders (tests/hostsim.c host_preset) still read Felucca's presets with it */
 static const uint8_t TRK_DEF[NPART][3] = {{0, 4, 0}, {ENGI_FM6, 4, 0}   /* ANALOG ACID, FM6 PAD (was DIGITAL PAD) */
 #if NPART > 2

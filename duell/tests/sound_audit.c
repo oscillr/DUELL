@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
-/* DUELL factory sound audit (host_tests.sh sounds): every factory sound (firmware/src/sounds.c, tools/duell_sounds.py) loaded
+/* DUELL default sound audit (host_tests.sh sounds): every default sound (firmware/src/sounds.c, tools/duell_sounds.py) loaded
  * on part 1 as ui.c apply_preset_to loads it (INIT: TP's and the engine's defaults, then its pairs, its arp too), C3 at
  * velocity 100 held 4 s, 1 s of release, in STEREO (the power-on mode). The measure is tests/loudness.h's: ear-weighted
  * (1-pole HP 100 Hz, LP 6 kHz), over the loudest 1.5 s window of a sound that sustains and the loudest 0.5 s window of one
@@ -7,7 +7,7 @@
  * its body, not its onset. Every sound is measured with the one note (owner, 2026-10-11: a pad measured as a three-note
  * chord was trimmed ~5 dB under the others and heard "very quiet"); PAD and KEYS also show the peak of C3 E3 G3 (CHORD PK,
  * information: a chord is ~5 dB over its note on any polysynth, the master limiter takes its peaks).
- * End B: the factory sound's own (morph.c morph_rebase_part: its 'bseed' and 'bamt', SMART), the fader at B, rendered the
+ * End B: the default sound's own (morph.c morph_rebase_part: its 'bseed' and 'bamt', SMART), the fader at B, rendered the
  * same way in STEREO and in SPLIT (the roll differs between them: PAN / SPREAD draw only in STEREO) and compared with A in
  * the same mode (SPLIT's part sits differently in the mix): its loudness change (dB) and its brightness against A's (a
  * factor, tests/loudness.h).
@@ -72,7 +72,7 @@ static const char *const AUDIT_RISERS[] = {"WHITE OUT", "MOOR WIND", "LESLIE STO
 static const char *const AUDIT_KEEP[] = {0};   /* keep-as-designed: exempt from quiet body, falls away, quiet vs others (BACKSPIN until
                                                 * 0.2.8: retired with SLICE; none now) */
 
-typedef struct { uint32_t e, k, mode, b, seed, amt, chord, tap; } au_t;   /* b: 0 End A (the sound), 1 its factory End B, 2 seed / amt */
+typedef struct { uint32_t e, k, mode, b, seed, amt, chord, tap; } au_t;   /* b: 0 End A (the sound), 1 its default End B, 2 seed / amt */
 static void au_setup(void *v)
 {
     const au_t *a = v;
@@ -83,7 +83,7 @@ static void au_setup(void *v)
     if (!a->chord)
         trk[0].p[P_CHRD] = 0;                 /* (chord keys of a pad: the audit's one note stays one note, as it was trimmed) */
     if (a->b) {
-        morph_ready(0);                       /* (first use: the load's rebase rolls the factory End B) */
+        morph_ready(0);                       /* (first use: the load's rebase rolls the default End B) */
         if (a->b == 2u)
             morph_roll_cfg(0, 1u, a->seed, a->amt, a->mode != DM_SPLIT ? MC_STEREO : 0u);
         mph[0].fader = 127;
@@ -193,7 +193,7 @@ int main(void)
     uint32_t n, N = ds_list_n();
     static au_t a[6u * 256u];
     static lz_t L[6u * 256u];
-    printf("sounds: DUELL factory sounds, part 1, C3 velocity 100 held %.0f s + %.0f s release, STEREO; dBFS before MASTER; "
+    printf("sounds: DUELL default sounds, part 1, C3 velocity 100 held %.0f s + %.0f s release, STEREO; dBFS before MASTER; "
            "LOUD = weighted, in the loudest 1.5 s (S) / 0.5 s (D: not sustained) window; L1 L3 = level at 1 s / 3 s, MED = median "
            "of seconds 1-6, T-3 = s to within 3 dB of the plateau, TAP = loudest 0.5 s of a 1 s note, SPLIT = MED of the active "
            "side; End B in STEREO / SPLIT against A\n", AUDIT_HOLD, LZ_TAIL);
@@ -240,7 +240,7 @@ int main(void)
         if (only && !str_eq(s->name, only))
             continue;
         if (ds_value(s, P_LTRIG, 0) != 1 || ds_value(s, P_L2TRIG, 0) != 1)   /* (def 0: a sound that leaves it out fails) */
-            why = "FAIL (LFO TRIG not FREE)";   /* DUELL 0.2.2: every factory sound sets both LFOs FREE itself */
+            why = "FAIL (LFO TRIG not FREE)";   /* DUELL 0.2.2: every default sound sets both LFOs FREE itself */
         else if (A->nan || T->nan)
             why = "FAIL (NaN / crash)";
         else if (A->loud < -60)

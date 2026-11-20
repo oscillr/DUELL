@@ -7,7 +7,7 @@
  *      values it regenerates), the fader at A; the writes stay in the multi store's two ranges;
  *   2. sixteen slots, each its own, through a power cycle; rewriting one leaves its pair partner as it was; ERASE (dialog);
  *   3. a power cut during a slot write leaves both multis of the pair as they were (A/B, the commit record last);
- *   5. the factory multis; 6. (0.2.12) 0.2.11's six (0.2.13: M01 M02 M07..M10) played from the keys in LAYER, the transport stopped and with PLAY: both parts answer
+ *   5. the default multis; 6. (0.2.12) 0.2.11's six (0.2.13: M01 M02 M07..M10) played from the keys in LAYER, the transport stopped and with PLAY: both parts answer
  *      a key, follow another key, stop or stay latched on the release, and nothing plays without a key.
  *   build/host/multi_test            (DUELL/host_tests.sh "multi") */
 #define UI_TEST_NO_MAIN 1
@@ -190,7 +190,7 @@ static void keys_drive(void)
 {
     static pr_t r[NSHOWN], q[NSHOWN], p[NSHOWN], z[NSHOWN];
     uint32_t c4, d4, e4, g4, k, ok, sec = (uint32_t)(FS / CTL), chord;
-    memset(nor, 0xFF, sizeof nor);                   /* (the factory multis, nothing saved) */
+    memset(nor, 0xFF, sizeof nor);                   /* (the default multis, nothing saved) */
     power_cycle();
     c4 = pr_key(60); d4 = pr_key(62); e4 = pr_key(64); g4 = pr_key(67);
     chord = 1u << c4 | 1u << e4 | 1u << g4;
@@ -327,7 +327,7 @@ static void editb_worst_multi(void)
             project_load(13u);
             frames(50);
             ck("  without hand-set values it says PARAMETER LOCKS CUT (26 of the 128 events fit)", rc == 0 && amsg && motion.count == 26u);
-            ck("  (erased again)", project_erase(13u) == 0 && project_factory(13));
+            ck("  (erased again)", project_erase(13u) == 0 && project_default(13));
 }
 
 int main(void)
@@ -380,11 +380,11 @@ int main(void)
     go_title("MULTIS");
     song.g[G_SLOT] = 11;
     frame();
-    ck("SAVE > MULTI is SAVE's page, sixteen slots (KNOB 1 M01..M16), all sixteen the factory multis (0.2.23; M11 EERIE SIGNAL)", cur_page()->graph == GR_SLOTS &&
-       cur_page()->fam == FAM_SAVE && GP[G_SLOT].max == 16 && project_used(10) && project_factory(10) && str_eq(mu_names[10], "EERIE SIGNAL"));
+    ck("SAVE > MULTI is SAVE's page, sixteen slots (KNOB 1 M01..M16), all sixteen the default multis (0.2.23; M11 EERIE SIGNAL)", cur_page()->graph == GR_SLOTS &&
+       cur_page()->fam == FAM_SAVE && GP[G_SLOT].max == 16 && project_used(10) && project_default(10) && str_eq(mu_names[10], "EERIE SIGNAL"));
     watch = 1;
-    press_k(EN_K4);                                  /* SAVE: a used (factory) slot: OVERWRITE M11?, then the NAME screen */
-    ck("SAVE over the factory M11 asks OVERWRITE M11?", ui.confirm == CF_OVR_PROJ);
+    press_k(EN_K4);                                  /* SAVE: a used (default) slot: OVERWRITE M11?, then the NAME screen */
+    ck("SAVE over the default M11 asks OVERWRITE M11?", ui.confirm == CF_OVR_PROJ);
     press(B_OCTUP);
     ck("  OCT+ opens NAME (placeholder MULTI M11)", name_on() && str_eq(nm.ph, "MULTI M11"));
     str_cpy(nm.s, "DUEL JAM", sizeof nm.s);
@@ -401,8 +401,8 @@ int main(void)
     memcpy(patch, fm6_patch[1], sizeof patch);
     mref = motion;
     power_cycle();
-    ck("after a power cycle: M11 DUEL JAM listed, M12 and M01 still the factory multis; the state is the power-on one", project_used(10) &&
-       !project_factory(10) && project_factory(11) && project_factory(0) && str_eq(mu_names[10], "DUEL JAM") && trk[0].eng_req != 3u &&
+    ck("after a power cycle: M11 DUEL JAM listed, M12 and M01 still the default multis; the state is the power-on one", project_used(10) &&
+       !project_default(10) && project_default(11) && project_default(0) && str_eq(mu_names[10], "DUEL JAM") && trk[0].eng_req != 3u &&
        song.g[G_BPM] != 137 && duell_mode_req != DM_LAYER);
     go_title("MULTIS");
     song.g[G_SLOT] = 11;
@@ -460,7 +460,7 @@ int main(void)
                 ok &= g[w].wid == el[pi][w].wid && g[w].val == el[pi][w].val;
         }
         ck("  LOAD M14: both parts' three values come back with End B exactly as saved (the fader at A)", ok && mph[0].fader == 0u);
-        ck("  (M14 erased again: its factory multi is back)", project_erase(13u) == 0 && project_factory(13));
+        ck("  (M14 erased again: its default multi is back)", project_erase(13u) == 0 && project_default(13));
 
     }
 
@@ -583,7 +583,7 @@ int main(void)
     ck("ERASE asks first (ERASE M12?)", ui.confirm == CF_ERASE_MULTI);
     press(B_OCTUP);
     power_cycle();
-    ck("  OCT+: ERASED; after a power cycle M12 is its factory multi again (DEAD BUFFER), its partner M11 kept", project_factory(11) &&
+    ck("  OCT+: ERASED; after a power cycle M12 is its default multi again (DEAD BUFFER), its partner M11 kept", project_default(11) &&
        str_eq(mu_names[11], "DEAD BUFFER") && project_used(10) && str_eq(mu_names[10], "MULTI K"));
     go_title("MULTIS");
     song.g[G_SLOT] = 4;
@@ -615,7 +615,7 @@ int main(void)
         midi_in_event(0x0Cu | 0xC0u << 8 | 40u << 16);        /* PC 40: no multi */
         events_block(CTL); frame();
         ok = song.g[G_BPM] == 99;
-        midi_in_event(0x0Cu | 0xC0u << 8 | 11u << 16);        /* PC 11 ch 1: M12, erased above: its factory multi (DEAD BUFFER, 120) */
+        midi_in_event(0x0Cu | 0xC0u << 8 | 11u << 16);        /* PC 11 ch 1: M12, erased above: its default multi (DEAD BUFFER, 120) */
         events_block(CTL); frame();
         ok &= song.g[G_BPM] == 120 && proj_cur == 11u && str_eq(mu_names[11], "DEAD BUFFER");
         song.g[G_BPM] = 99;
@@ -626,7 +626,7 @@ int main(void)
         events_block(CTL);
         midi_in_event(0x0Cu | 0xC0u << 8 | 11u << 16);
         events_block(CTL); frame();
-        ck("LAYER: PC 40: nothing; PC 11 ch 1 loads M12 (its factory multi, then the one saved there, TEMPO 123)", ok && song.g[G_BPM] == 123 &&
+        ck("LAYER: PC 40: nothing; PC 11 ch 1 loads M12 (its default multi, then the one saved there, TEMPO 123)", ok && song.g[G_BPM] == 123 &&
            proj_cur == 11u);
 
         duell_mode_req = DM_SPLIT;
@@ -634,11 +634,11 @@ int main(void)
         set_engine_of(&trk[1], ENGI_FM6);
         trk[1].p[P_LEVEL] = 55;
         memcpy(p0, trk[0].p, sizeof p0);
-        e = ds_list_at(3, &kk);                          /* (program 3 = slot 3 = the factory sound at browse position 3) */
+        e = ds_list_at(3, &kk);                          /* (program 3 = slot 3 = the default sound at browse position 3) */
         for (i = 0; i < sizeof TRS_PC; i++)
             um_byte(TRS_PC[i]);
         events_block(CTL); frame();
-        ok = e < NENGINES && trk[1].eng_req == e && trk[1].preset == kk && !trk[1].user &&   /* (DUELL: a factory sound's */
+        ok = e < NENGINES && trk[1].eng_req == e && trk[1].preset == kk && !trk[1].user &&   /* (DUELL: a default sound's */
              trk[1].p[P_TRIM] == ds_value(ds_get(e, kk), P_TRIM, TP[P_TRIM].def) &&          /* TRIM is its loudness; 0.2.19: the mixer level 55 stays) */
              trk[1].p[P_LEVEL] == 55 &&
              !memcmp(trk[0].p, p0, sizeof p0) && song.sel == 0u;
@@ -648,11 +648,11 @@ int main(void)
         midi_in_event(0x0Cu | 0xC1u << 8 | 5u << 16);
         events_block(CTL); frame();
         ok &= trk[1].user == 6u && trk[1].eng_req == trk[0].eng_req;
-        midi_in_event(0x0Cu | 0xC1u << 8 | 7u << 16);         /* bank 1 kept: slot 7 holds no saved sound, its factory sound loads */
+        midi_in_event(0x0Cu | 0xC1u << 8 | 7u << 16);         /* bank 1 kept: slot 7 holds no saved sound, its default sound loads */
         events_block(CTL); frame();
         {
             uint32_t k7, e7 = ds_list_at(7, &k7);
-            ck("SPLIT: PC 3 ch 2 (TRS) = slot 3 on part 2 only (TRIM: the sound's; the mixer LEVEL stays); bank 1 + PC 5 = slot 5 (saved); PC 7 = slot 7 (the factory sound)",
+            ck("SPLIT: PC 3 ch 2 (TRS) = slot 3 on part 2 only (TRIM: the sound's; the mixer LEVEL stays); bank 1 + PC 5 = slot 5 (saved); PC 7 = slot 7 (the default sound)",
                ok && trk[1].user == 0u && trk[1].eng_req == e7 && trk[1].preset == k7 && slot_of(&trk[1]) == 7u);
         }
 
@@ -668,7 +668,7 @@ int main(void)
            ok && mph[0].fader == 40u && mph[1].fader == 40u && trk[0].mw == 40u && trk[1].mw == 40u);
     }
 
-    /* 5: the factory multis M01..M16 (build/gen/duell_multis.h, tools/factory_multis.py; DUELL 0.2.23: all sixteen slots, M16 the STRESS TEST;
+    /* 5: the default multis M01..M16 (build/gen/duell_multis.h, tools/default_multis.py; DUELL 0.2.23: all sixteen slots, M16 the STRESS TEST;
      * 0.2.24: the owner's COLD CHAPEL, ACID ETHER and GARGLE ACID of 0.2.22 back in M06, M09, M14; 0.2.25: COLD CHAPEL in M13): in ROM, shown while the slot is empty in flash */
     {
         static const char *const FN[16] = {"REESE SWAMP", "NIGHT ORGAN", "PAD SPLIT", "DUB CHORD", "WHISPER TIDE", "TINE STRINGS", "FINAL REEL",
@@ -681,7 +681,7 @@ int main(void)
                                               {"EVOLVING PAD", "SINGING BOWL"}, {"GROWL BASS", "SQUELCH"}, {"MARBLE RUN", "TABLA TALK"},
                                               {"PAN WHISTLE", "DIGITAL PAD"}};
         static const uint8_t MD[16] = {DM_LAYER, DM_LAYER, DM_LAYER, DM_LAYER, DM_LAYER, DM_LAYER, DM_LAYER, DM_LAYER, DM_LAYER,
-                                       DM_LAYER, DM_LAYER, DM_LAYER, DM_LAYER, DM_LAYER, DM_LAYER, DM_LAYER};   /* (0.2.25: no factory multi in DUEL; M08 MONO DUEL, the only one, is spare: the owner's HAZY TENSOR, LAYER) */
+                                       DM_LAYER, DM_LAYER, DM_LAYER, DM_LAYER, DM_LAYER, DM_LAYER, DM_LAYER};   /* (0.2.25: no default multi in DUEL; M08 MONO DUEL, the only one, is spare: the owner's HAZY TENSOR, LAYER) */
         static const uint8_t BPM[16] = {124, 121, 97, 117, 77, 77, 71, 117, 120, 120, 120, 120, 71, 127, 107, 137};
         static const uint8_t SPL[16] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};          /* (the splits: F4 + 1, compared with the key as played) */
         static const uint8_t XF[16] = {0, 0, 0, 0, 0, 0, 58, 0, 0, 0, 0, 0, 0, 0, 0, 0};   /* (M07: the owner's FINAL REEL, XFADE 58; 1.0: M01..M05, M08..M15 are the owner's duell-multis-13 records) */
@@ -694,11 +694,11 @@ int main(void)
         power_cycle();
         ok = 1;
         for (k = 0; k < MU_SLOTS; k++)
-            ok &= project_used(k) && project_factory(k) && str_eq(mu_names[k], FN[k]);
-        ck("empty flash: M01..M16 are the factory multis (0.2.25: REESE SWAMP, NIGHT ORGAN .. WOOD & SKIN, STRESS TEST; M08 the owner's HAZY TENSOR, M13 his COLD CHAPEL)", ok);
+            ok &= project_used(k) && project_default(k) && str_eq(mu_names[k], FN[k]);
+        ck("empty flash: M01..M16 are the default multis (0.2.25: REESE SWAMP, NIGHT ORGAN .. WOOD & SKIN, STRESS TEST; M08 the owner's HAZY TENSOR, M13 his COLD CHAPEL)", ok);
         ok = 1;
         ui_prefs2 |= PREF_MODE_RECALL >> 16;           /* (0.2.11: the MODE is read back from the multi) */
-        for (k = 0; k < MU_SLOTS; k++) {              /* each part's engine + factory index names the intended sound */
+        for (k = 0; k < MU_SLOTS; k++) {              /* each part's engine + default index names the intended sound */
             project_load(k);
             for (pi = 0; pi < NSHOWN; pi++)
                 ok &= str_eq(ds_name(trk[pi].eng_req, trk[pi].preset), SN[k][pi]) && (morph_seed_of(pi, 1) != 0u) &&
@@ -739,14 +739,14 @@ int main(void)
         song.g[G_SLOT] = 1;
         frame();
         press_k(EN_K3);
-        ck("ERASE of an unchanged factory slot: ALREADY FACTORY, no dialog, nothing written", msg_is("ALREADY FACTORY") && !ui.confirm &&
+        ck("ERASE of an unchanged default slot: ALREADY DEFAULT, no dialog, nothing written", msg_is("ALREADY DEFAULT") && !ui.confirm &&
            !memcmp(before, nor, sizeof nor));
         song.playing = 0;
         song.g[G_BPM] = 151;
         project_save_as(3, "MY STAB");                /* M04 DUB CHORD overwritten (0.2.23; WIRED SNAIL before) */
         power_cycle();
-        ck("SAVE over M04: after a power cycle it holds MY STAB (not factory), M03 M05 M06 still factory", str_eq(mu_names[3], "MY STAB") &&
-           !project_factory(3) && project_factory(2) && project_factory(4) && project_factory(5));
+        ck("SAVE over M04: after a power cycle it holds MY STAB (not default), M03 M05 M06 still default", str_eq(mu_names[3], "MY STAB") &&
+           !project_default(3) && project_default(2) && project_default(4) && project_default(5));
         project_load(3);
         ck("  and loads the saved one (TEMPO 151)", song.g[G_BPM] == 151);
         go_title("MULTIS");
@@ -756,20 +756,20 @@ int main(void)
         press(B_OCTUP);
         power_cycle();
         project_load(3);
-        ck("ERASE of the overwrite restores DUB CHORD (after a power cycle too); it loads again", project_factory(3) &&
+        ck("ERASE of the overwrite restores DUB CHORD (after a power cycle too); it loads again", project_default(3) &&
            str_eq(mu_names[3], "DUB CHORD") && str_eq(ds_name(trk[0].eng_req, trk[0].preset), "BIG STAB") && song.g[G_BPM] != 151);
         n = project_rename(5, "STACK 2");
         power_cycle();
-        ck("rename of the factory M06 (TINE STRINGS) stores it under the new name; the music of the record is the factory one", n == 0u &&
-           str_eq(mu_names[5], "STACK 2") && !project_factory(5) && project_used(5));
+        ck("rename of the default M06 (TINE STRINGS) stores it under the new name; the music of the record is the default one", n == 0u &&
+           str_eq(mu_names[5], "STACK 2") && !project_default(5) && project_used(5));
         project_load(5);
         ck("  and it loads STRING MACH + TINE ROOM as before", str_eq(ds_name(trk[0].eng_req, trk[0].preset), "STRING MACH") &&
            str_eq(ds_name(trk[1].eng_req, trk[1].preset), "TINE ROOM"));
     }
 
 
-    /* 3b: MENU > SYSTEM > TEST (developer builds) over the factory multis. (Until 0.2.22 also the CPU TEST multis M13..M16 of these builds; since
-     * 0.2.23 they are the test scenes of tests/scenes.h and every slot holds a musical factory multi, M16 the STRESS TEST) */
+    /* 3b: MENU > SYSTEM > TEST (developer builds) over the default multis. (Until 0.2.22 also the CPU TEST multis M13..M16 of these builds; since
+     * 0.2.23 they are the test scenes of tests/scenes.h and every slot holds a musical default multi, M16 the STRESS TEST) */
     {
         char b[24];
         uint32_t f0;
@@ -794,7 +794,7 @@ int main(void)
         turn(EN_K3, 2);
         ck("  2 detents right: M03 skipped through, M04 (stepping), loaded: M04 DUB CHORD", proj_cur == 3u && msg_is("LOADED M04 DUB CHORD"));
         turn(EN_K3, 6);
-        ck("  6 more right: M10 WIRED SNAIL (the factory multis stepped through)", proj_cur == 9u && msg_is("LOADED M10 WIRED SNAIL"));
+        ck("  6 more right: M10 WIRED SNAIL (the default multis stepped through)", proj_cur == 9u && msg_is("LOADED M10 WIRED SNAIL"));
         turn(EN_K3, 1);
         ck("  one more right: M11 EERIE SIGNAL (VOICE VESPERS + WHEEL JAZZ CLUB)", proj_cur == 10u &&
            trk[0].eng_req == 5u && trk[1].eng_req == 7u && str_eq(ds_name(trk[0].eng_req, trk[0].preset), "VESPERS") &&
@@ -866,7 +866,7 @@ int main(void)
     }
 
     /* 4: the first start (DUELL 0.1). A unit whose settings sector holds nothing valid (erased, stock firmware's data, garbage) starts in
-     * VIOLET, MODE LAYER, factory multi M01 loaded as the page's LOAD does it; the settings are then saved, so the next start is
+     * VIOLET, MODE LAYER, default multi M01 loaded as the page's LOAD does it; the settings are then saved, so the next start is
      * an ordinary one (the default sounds are back only if nobody saved: here the saved settings win); an older / other valid
      * settings blob keeps its theme and mode, nothing is forced */
     {
@@ -884,7 +884,7 @@ int main(void)
         m01_bpm = (uint32_t)song.g[G_BPM];
         m01_mode = duell_mode_req;
         memcpy(g_copy, song.g, sizeof g_copy);
-        ck("M01 is the factory REESE SWAMP (0.2.13; read through the factory path)", str_eq(mu_names[0], "REESE SWAMP") && project_factory(0));
+        ck("M01 is the default REESE SWAMP (0.2.13; read through the default path)", str_eq(mu_names[0], "REESE SWAMP") && project_default(0));
 
         for (sector = 0; sector < 3u; sector++) {     /* 0 erased flash, 1 garbage (stock firmware's data), 2 zeros */
             memset(nor, 0xFF, sizeof nor);
@@ -954,7 +954,7 @@ int main(void)
                 frames(2400);
                 settings_poll();                      /* (the main loop's call: frame() makes none) */
             }
-            ck("  the settings are saved (a valid record in the flash now)", (st_load(OBJ_SETTINGS, &pb, sizeof pb) > 0) && pb.favorites.factory[15][9] == DM_LAYER);
+            ck("  the settings are saved (a valid record in the flash now)", (st_load(OBJ_SETTINGS, &pb, sizeof pb) > 0) && pb.favorites.defaults[15][9] == DM_LAYER);
             /* the next start: an ordinary one, theme and mode as saved */
             power_cycle();
             memset(&settings, 0, sizeof settings);
@@ -975,11 +975,11 @@ int main(void)
         memset(&pb, 0, sizeof pb);
         settings_export(&pb);
         pb.palette = palette_to_stored(4u);
-        pb.favorites.factory[15][9] = DM_STEREO;
-        pb.favorites.factory[15][26] = 1u;
-        pb.favorites.factory[15][3] = 0x80u | 5u;          /* the global scale (format flag + scale 5) and root 7 */
-        pb.favorites.factory[15][4] = 7u;
-        pb.favorites.factory[15][30] &= (uint8_t)~128u;    /* RESTORE LAST ON (bit 7 clear, as every older blob) */
+        pb.favorites.defaults[15][9] = DM_STEREO;
+        pb.favorites.defaults[15][26] = 1u;
+        pb.favorites.defaults[15][3] = 0x80u | 5u;          /* the global scale (format flag + scale 5) and root 7 */
+        pb.favorites.defaults[15][4] = 7u;
+        pb.favorites.defaults[15][30] &= (uint8_t)~128u;    /* RESTORE LAST ON (bit 7 clear, as every older blob) */
         ck("an older DUELL settings record (theme 4, STEREO, 0.1 beta's HOME view, a scale) is stored", st_save(OBJ_SETTINGS, &pb, sizeof pb) == 0);
         {
             uint32_t pass;
@@ -996,7 +996,7 @@ int main(void)
                 memset(&settings, 0, sizeof settings);
                 first_boot_pending = 0;
                 if (pass) {
-                    pb.favorites.factory[15][30] |= 128u;
+                    pb.favorites.defaults[15][30] |= 128u;
                     ck("  RESTORE LAST OFF stored (a settings blob)", st_save(OBJ_SETTINGS, &pb, sizeof pb) == 0);
                     power_cycle();
                     memset(&settings, 0, sizeof settings);
@@ -1028,7 +1028,7 @@ int main(void)
         settings_init();
         project_load(0);
         trk[1].p[P_MUTE] = 1;
-        ck("  (M01 overwritten with part 2 muted)", project_save(0) == 0 && !project_factory(0));
+        ck("  (M01 overwritten with part 2 muted)", project_save(0) == 0 && !project_default(0));
         project_load(0);
         ck("  a LOAD of that multi keeps its stored mute (part 2 MUTED on the GLO page)", trk[1].p[P_MUTE] == 1 && !trk[0].p[P_MUTE]);
         /* DUELL 0.2.14: the shorter record of the first DUELL builds (no user_hi) is no record any more: refused, the unit starts as a new one */
@@ -1037,7 +1037,7 @@ int main(void)
         memset(&pb, 0, sizeof pb);
         settings_export(&pb);
         pb.palette = palette_to_stored(4u);
-        pb.favorites.factory[15][26] = 1u;
+        pb.favorites.defaults[15][26] = 1u;
         ck("  the shorter older record (without the patches' favourites 32..127) is stored", st_save(OBJ_SETTINGS, &pb, (uint32_t)(sizeof pb - sizeof pb.favorites.user_hi)) == 0);
         power_cycle();
         memset(&settings, 0, sizeof settings);
@@ -1046,7 +1046,7 @@ int main(void)
         settings_init();
         frames(100);
         ck("  and it is refused (0.2.14): the unit starts as new (its default theme, the home byte 0), nothing of the record taken over, no crash",
-           settings.palette != palette_from_stored(pb.palette) && favorites.factory[15][26] == 0u && menu_get(MI_HOMEPG) == 0u);
+           settings.palette != palette_from_stored(pb.palette) && favorites.defaults[15][26] == 0u && menu_get(MI_HOMEPG) == 0u);
     }
 
 
@@ -1131,7 +1131,7 @@ int main(void)
         /* the option in the settings: an older blob (bit clear) reads KEEP; LOAD survives a save and a power cycle */
         memset(&pb, 0, sizeof pb);
         settings_export(&pb);
-        pb.favorites.factory[15][24] = 0x07u;
+        pb.favorites.defaults[15][24] = 0x07u;
         memset(nor, 0xFF, sizeof nor);
         ck("  an older settings blob (bits 0-2 only) is stored", st_save(OBJ_SETTINGS, &pb, (uint32_t)sizeof pb) == 0);
         power_cycle();
@@ -1141,14 +1141,14 @@ int main(void)
         ck("  ..reads MODE RECALL KEEP (editor id 27 value 0), the other three flags kept", menu_get(MI_MODERECALL) == 0u && (ui_prefs2 & 7u) == 7u);
         menu_put(MI_MODERECALL, 1);
         settings_export(&pb);
-        ck("  LOAD is saved in bit 6 of favorites.factory[15][24]", pb.favorites.factory[15][24] == (0x47u | 0x80u));   /* (+ 0.2.14's defaults flag, bit 7) */
+        ck("  LOAD is saved in bit 6 of favorites.default[15][24]", pb.favorites.defaults[15][24] == (0x47u | 0x80u));   /* (+ 0.2.14's defaults flag, bit 7) */
         memset(&favorites, 0, sizeof favorites);
         ck("  ..and imported again as LOAD", settings_import(&pb, (int)sizeof pb) && menu_get(MI_MODERECALL) == 1u);
         ui_prefs2 &= (uint8_t)~(PREF_MODE_RECALL >> 16);
     }
 
     {   /* DUELL 0.2.14: a multi record of firmware before (version 2 or 1, or another P_COUNT) in flash is no multi: its slot lists as empty,
-         * a LOAD changes nothing and does not crash, a factory slot shows its factory multi, the next SAVE replaces the old record */
+         * a LOAD changes nothing and does not crash, a default slot shows its default multi, the next SAVE replaces the old record */
         static uint8_t old[MU_REC_MAX], keep[MU_REC_MAX];
         uint32_t len, cut = 0, o, v, ok2 = 1;
         char nm[PROJ_NAME_LEN + 1u];
@@ -1169,14 +1169,14 @@ int main(void)
             mu_obj_read(o);
             mu_note(o);
             trk[0].p[P_LEVEL] = 55;
-            /* (0.2.23: every slot has a factory multi, so the slot shows that one; a slot with none would list "--" and load nothing) */
-            ok2 &= project_used(10u) && project_factory(10u) && project_info(10u, nm) && !strcmp(nm, "EERIE SIGNAL");
+            /* (0.2.23: every slot has a default multi, so the slot shows that one; a slot with none would list "--" and load nothing) */
+            ok2 &= project_used(10u) && project_default(10u) && project_info(10u, nm) && !strcmp(nm, "EERIE SIGNAL");
             project_load(10u);                       /* (the old record is there: DAMAGED, nothing loaded, no crash) */
             ok2 &= trk[0].p[P_LEVEL] == 55;
             trk[0].p[P_LEVEL] = 77;
         }
-        ck("a multi record of version 2 / 1 or another P_COUNT in M11: no multi; the slot shows its factory multi (EERIE SIGNAL), a LOAD changes nothing", ok2);
-        /* a factory slot (M01) holding such a record shows its factory multi */
+        ck("a multi record of version 2 / 1 or another P_COUNT in M11: no multi; the slot shows its default multi (EERIE SIGNAL), a LOAD changes nothing", ok2);
+        /* a default slot (M01) holding such a record shows its default multi */
         o = 0;
         mu_obj_read(o);
         {
@@ -1190,9 +1190,9 @@ int main(void)
         }
         mu_obj_read(o);
         mu_note(o);
-        ok2 &= project_used(0u) && project_factory(0u) && project_info(0u, nm) && !strcmp(nm, "REESE SWAMP");
-        ck("  a factory slot (M01) holding one shows its factory multi (REESE SWAMP) and loads it", ok2 && (project_load(0u), 1));
-        ok2 = project_save_as(10u, "NEW ONE") == 0 && project_used(10u) && !project_factory(10u) && project_info(10u, nm) && !strcmp(nm, "NEW ONE");
+        ok2 &= project_used(0u) && project_default(0u) && project_info(0u, nm) && !strcmp(nm, "REESE SWAMP");
+        ck("  a default slot (M01) holding one shows its default multi (REESE SWAMP) and loads it", ok2 && (project_load(0u), 1));
+        ok2 = project_save_as(10u, "NEW ONE") == 0 && project_used(10u) && !project_default(10u) && project_info(10u, nm) && !strcmp(nm, "NEW ONE");
         ck("  a SAVE over the old record replaces it, the multi loads again", ok2);
         project_erase(10u);
     }
@@ -1321,7 +1321,7 @@ int main(void)
         }
         ck("  the sound and steps of the worst multi always fit (_Static_assert in multi.c): 1838 bytes with the 60 bytes of slots (item 138: NX 28)", MU_G_AT + 2u * G_COUNT + NSHOWN * (MU_PART_FIX + NSTEP * PS_STEP + FM6_PACKED) + 1u + 3u == 1838u);
     }
-    keys_drive();                                    /* 6: the factory multis played from the keys (0.2.12; 0.2.23's set) */
+    keys_drive();                                    /* 6: the default multis played from the keys (0.2.12; 0.2.23's set) */
     editb_worst_multi();                             /* 7: cloud job G, the worst multi through SAVE (it leaves the state changed: last) */
     printf(bad ? "multi: FAILED (%d)\n" : "multi: all ok\n", bad);
     return bad ? 1 : 0;

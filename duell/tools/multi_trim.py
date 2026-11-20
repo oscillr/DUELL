@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
-"""DUELL 1.0: level balance of the factory multis by TRIM (working docs/VOLUME_CHECK_V1.md).
+"""DUELL 1.0: level balance of the default multis by TRIM (working docs/VOLUME_CHECK_V1.md).
 
     tools/multi_trim.py MEASURE.txt [--target DB] [--window DB] [--apply]
 
@@ -8,7 +8,7 @@ MEASURE.txt is the output of build/host/multi_loudness (tests/multi_loudness.c: 
 A multi whose LOUD is more than WINDOW dB from TARGET gets BOTH parts' TRIM moved by the same number of steps (0.5 dB each), so the ratio between its
 two parts is unchanged; nothing else of the record changes. A part's TRIM stays 0..127, and TRIM + LEVEL together stay within the +7.5 dB the mixer
 allows (fx.c lvl_of); the peak (before MASTER) stays at or under -1 dBFS, which can leave a loud-peaked multi under the window; a multi that cannot get all the way is moved as far as both parts allow and reported. M16 STRESS TEST (a CPU test) is skipped.
-Prints the plan (slot, LOUD, steps, TRIM before -> after); --apply writes tools/factory_multis/Mnn.bin."""
+Prints the plan (slot, LOUD, steps, TRIM before -> after); --apply writes tools/default_multis/Mnn.bin."""
 import argparse
 import importlib.util
 import re
@@ -16,7 +16,7 @@ from pathlib import Path
 
 PEAK_CEIL = -1.0
 ROOT = Path(__file__).resolve().parent.parent
-spec = importlib.util.spec_from_file_location("fm", ROOT / "tools" / "factory_multis.py")
+spec = importlib.util.spec_from_file_location("fm", ROOT / "tools" / "default_multis.py")
 fm = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(fm)
 

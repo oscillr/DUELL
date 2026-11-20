@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
-/* DUELL 0.2.14: a factory table's recipe encoded as the bytes of a user table (the converter's encoding, web/editor/wavetable.js ampToByte):
+/* DUELL 0.2.14: a default table's recipe encoded as the bytes of a user table (the converter's encoding, web/editor/wavetable.js ampToByte):
  * per frame, each harmonic's magnitude over the frame's strongest, 255 + 16 log2(ratio) rounded, 0 under -66 dB. Needs eng_wave.c (included before). */
 static void wtab_encode(uint32_t tb, uint8_t *bytes)
 {

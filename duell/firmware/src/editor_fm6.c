@@ -2,13 +2,13 @@
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
 /* Editor protocol: the FM6 patches (EDITOR_PROTOCOL.md "FM6 patches", cmds 68..71). A patch travels as the
  * 128-byte packed record (every byte 7-bit: no pack7). Targets: 0 a track's own patch (index 0..3), 1 the patch bank
- * (retired in 1.0.3: GET / PUT / ERASE answer rc 3, "no bank"; LIST counts 0 bank slots), 2 a factory patch
- * (0..FM6_NFACTORY-1, read only), 3 a user preset's patch (0..UP_SLOTS-1: an FM6 user preset; up_fm6.c).
+ * (retired in 1.0.3: GET / PUT / ERASE answer rc 3, "no bank"; LIST counts 0 bank slots), 2 a default patch
+ * (0..FM6_NDEFAULT-1, read only), 3 a user preset's patch (0..UP_SLOTS-1: an FM6 user preset; up_fm6.c).
  * 1.4.1: the voice bank (EDITOR_PROTOCOL.md "FM6 voice bank", cmds 74..77; fm6_vbank.c), written whole: BEGIN, a
  * WRITE per voice, END with the name and the CRC; LIST its names. */
 enum { ED_FM6_GET = 68, ED_FM6_PUT, ED_FM6_LIST, ED_FM6_ERASE };
 enum { ED_FM6B_BEGIN = 74, ED_FM6B_WRITE, ED_FM6B_END, ED_FM6B_LIST };
-enum { ED_FM6_TRACK, ED_FM6_BANK, ED_FM6_FACTORY, ED_FM6_USER };
+enum { ED_FM6_TRACK, ED_FM6_BANK, ED_FM6_DEFAULT, ED_FM6_USER };
 #define ED_FM6_NOBANK 3u                                   /* rc: this firmware has no patch bank */
 
 static void ed_fm6_name(const uint8_t *pk)       /* the record's name, trailing spaces off */
@@ -36,8 +36,8 @@ static int ed_fm6_handle(uint32_t cmd, const uint8_t *a, uint32_t n)
                 fm6_pack(fm6_patch[a[1]], pk);
             else if (a[0] == ED_FM6_BANK)
                 rc = ED_FM6_NOBANK;
-            else if (a[0] == ED_FM6_FACTORY && a[1] < FM6_NFACTORY)
-                memcpy(pk, FM6_FACTORY[a[1]], FM6_PACKED);
+            else if (a[0] == ED_FM6_DEFAULT && a[1] < FM6_NDEFAULT)
+                memcpy(pk, FM6_DEFAULT[a[1]], FM6_PACKED);
             else if (a[0] == ED_FM6_USER && a[1] < UP_SLOTS)
                 rc = upf_get(a[1], pk) ? 2u : 0u;          /* (2: not an FM6 preset, or none stored with it) */
             else
@@ -54,7 +54,7 @@ static int ed_fm6_handle(uint32_t cmd, const uint8_t *a, uint32_t n)
             fm6_unpack(a + 2, v);                          /* (every value into its range) */
             fm6_set_patch(a[1], v);
             fm6_adopt(a[1]);                               /* the track's own patch now: SLOT OWN (F n if it is that
-                                                            * factory patch unchanged); fm6_poll keeps it */
+                                                            * default patch unchanged); fm6_poll keeps it */
             fm6_env_look(a[1], FM6_LOOK_NEW);              /* (DUELL 1.1: a new voice: the AMP ENV knobs on the numbers of its carriers) */
             ui.force = 1;
         } else if (!rc && a[0] == ED_FM6_BANK) {
@@ -69,13 +69,13 @@ static int ed_fm6_handle(uint32_t cmd, const uint8_t *a, uint32_t n)
         }
         ed_b(n ? a[0] : 127u); ed_b(n > 1u ? a[1] : 127u); ed_b(rc);
         return 1;
-    case ED_FM6_LIST:                                      /* -> factory count, bank count (0), then per slot: used, name */
+    case ED_FM6_LIST:                                      /* -> default count, bank count (0), then per slot: used, name */
         if (n)
             return 0;
-        ed_b(FM6_NFACTORY); ed_b(0);
-        for (i = 0; i < FM6_NFACTORY; i++) {
+        ed_b(FM6_NDEFAULT); ed_b(0);
+        for (i = 0; i < FM6_NDEFAULT; i++) {
             ed_b(1);
-            ed_fm6_name(FM6_FACTORY[i]);
+            ed_fm6_name(FM6_DEFAULT[i]);
         }
         return 1;
     case ED_FM6_ERASE:                                     /* bank index -> index, rc (no bank: 3) */

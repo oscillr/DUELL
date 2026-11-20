@@ -34,12 +34,12 @@
  * (voice.c uf_run; ufilt). Our own code: the approach (band-limited levels of a wavetable, a polyBLEP at sync resets) is the
  * textbook one.
  *
- * USER TABLES (DUELL 0.2.14): after the 26 factory tables, TABLE 26..28 are three user slots USR1..USR3 (wtab.c stores them in flash, the
+ * USER TABLES (DUELL 0.2.14): after the 26 default tables, TABLE 26..28 are three user slots USR1..USR3 (wtab.c stores them in flash, the
  * editor writes them: EDITOR_PROTOCOL "User wavetables"). A slot holds a table as the recipe's own source data: for each of the WV_F frames the
  * harmonics 1 .. 64, ONE BYTE each (wt_obj_t), a log amplitude relative to the frame's strongest: 0 off, b >= 1 -> 2^(-(255 - b) / 16)
- * (wt_q16, a 16 entry table and a shift). The build is the factory one: wv_frame takes the harmonics from wv_user instead of wv_recipe
+ * (wt_q16, a 16 entry table and a shift). The build is the default one: wv_frame takes the harmonics from wv_user instead of wv_recipe
  * and goes on (the same scaling to the frame's peak, the same sums, the same WV_RMS gain), so everything downstream (levels, fades, voices) is
- * as for a factory table and the factory tables' bytes do not change. An EMPTY slot plays a sine in every frame and is named EMPTY. The slot's
+ * as for a default table and the default tables' bytes do not change. An EMPTY slot plays a sine in every frame and is named EMPTY. The slot's
  * name (up to 8 characters) is the TABLE's shown name; a card shows five. A new table in a slot that is playing fades out and builds again (wv_uver).
  * Phases are not kept (all sine), 19 frames and 64 harmonics: that is what a user table is. */
 static char wv_uname[3][9] = {"USR1", "USR2", "USR3"};   /* the user slots' shown names (wt_names) */
@@ -51,7 +51,7 @@ static const char *const N_WV_TABLE[] = {"SAWSQ", "PWM", "HARM", "ODD", "ORGAN",
                                          /* 0.2.14: the user slots: the shown name is the user's (wt_names: up to 8 characters, EMPTY when unused) */
                                          wv_uname[0], wv_uname[1], wv_uname[2]};
 #define WV_NT NELEM(N_WV_TABLE)
-#define WV_NTF 26u               /* the factory tables; TABLE WV_NTF .. WV_NT - 1 are the user slots */
+#define WV_NTF 26u               /* the default tables; TABLE WV_NTF .. WV_NT - 1 are the user slots */
 #define WV_NU 3u                 /* user slots */
 #define WV_F 19u                 /* frames a table */
 #define WV_NL 5u                 /* levels a frame */
@@ -911,7 +911,7 @@ static __attribute__((noinline)) void wave_steps(track_t *t, voice_t *v, vmod_t 
 
 static const preset_t WAVE_PRESETS[] = {
     /* name, {TABLE, POS, BEND, SYNC, -, DTN, STEPS, -}, {A D S R}, fenv, mono: the host tests' renders and costs (tests/regress.c);
-     * DUELL's factory sounds are tools/duell_sounds.py's. The last one is the costliest voice: SYNC, BEND and DTN at once (E5 was the engine's own SUB until cloud job J) */
+     * DUELL's default sounds are tools/duell_sounds.py's. The last one is the costliest voice: SYNC, BEND and DTN at once (E5 was the engine's own SUB until cloud job J) */
     {"SAW PAD", {0, 10, 0, 0, 0, 9, 0, 0}, {40, 90, 100, 70}, 0, 0, FX(0, 40, 20, 50), PAT(5)},
     {"PWM STRING", {1, 40, 0, 0, 0, 0, 0, 0}, {30, 90, 100, 60}, 0, 0, FX(0, 50, 20, 60), PAT(5)},
     {"HARM KEYS", {2, 70, 0, 0, 0, 0, 0, 0}, {0, 80, 40, 50}, 0, 0, FX(0, 20, 20, 40), PAT(7)},

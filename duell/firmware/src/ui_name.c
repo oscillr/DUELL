@@ -22,7 +22,7 @@
  *   KNOB 1       the cursor; KNOB 2 the character at the cursor (SPACE A..Z 0..9 - . _ / # +; at the end: a new one).
  *   KNOB 3       (1.2, Discussion #90) USER: the sound's category (BASS LEAD PAD PLUCK KEYS DRUM FX OTHER, category.c),
  *                shown in the field's title row and written with the name (PRESETS > LIST filters by it); it starts at
- *                the slot's own (a rename) or the sound's (a save: its user preset's, its factory preset's).
+ *                the slot's own (a rename) or the sound's (a save: its user preset's, its default preset's).
  *                PROJECT: a random name too (as KNOB 4).
  *   KNOB 4       every NAME screen (SAVE > USER, MULTI, the overwrite dialogs, SAVE held 'SAVE AS NEW SOUND?'): a new random
  *                name per detent, either direction (an adjective and a noun, NM_RA / NM_RB, at most 12; the field takes it

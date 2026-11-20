@@ -6,7 +6,7 @@
  * The patch is the sound: every track has one (fm6_patch, the generic 155-byte single-voice layout: six
  * operators with their 4-rate / 4-level envelopes, keyboard level and rate scaling, velocity, ratio or
  * fixed frequency, detune; 32 algorithms, feedback, LFO, pitch envelope, transpose). It is edited in the
- * web editor (EDITOR_PROTOCOL.md FM6_*: a .syx voice sent to a track), loaded from the factory slots, and saved inside
+ * web editor (EDITOR_PROTOCOL.md FM6_*: a .syx voice sent to a track), loaded from the default slots, and saved inside
  * projects (FUN8) and user presets (up_fm6.c). Whatever is loaded becomes the track's patch.
  * On the device the eight EDIT values are macros on top of it:
  *   ALG   PAT = the patch's algorithm, 1..32 another one
@@ -16,8 +16,8 @@
  *   MEG   the modulators' envelope times: + slower (rates down to 40 steps), - faster
  *   VMOD  added to the modulators' velocity sensitivity (0..7)
  *   DTUN  spreads the carriers apart in pitch (up to about +-36 cents between the outer ones)
- *   SLOT  F1..F8 load a factory patch; OWN (8) is the track's own patch: what a project, a user preset or the
- *         editor put there. A load shows F n when the patch is that factory one unchanged, else OWN (fm6_adopt).
+ *   SLOT  F1..F8 load a default patch; OWN (8) is the track's own patch: what a project, a user preset or the
+ *         editor put there. A load shows F n when the patch is that default one unchanged, else OWN (fm6_adopt).
  *         B1..B32 (9..40, 1.4.1) load a voice of the 32-voice bank in flash (fm6_vbank.c) as F n do; a bank slot
  *         without a voice is skipped by the knob (params.c enum_step) and refused anywhere else (fm6_poll).
  *         Turning SLOT from OWN to F n / B n keeps the own patch aside; back to OWN brings it back (fm6_poll).
@@ -36,25 +36,25 @@
  * voice_t.s[] is too small), per part the patch, the patch through the macros (fm6_eff, rebuilt in the audio ISR when either
  * changes) and the LFO (once a block). */
 #include "fm6_core.c"
-#include "felucca_fm6.h"         /* tools/gen_fm6_patches.py: FM6_INIT, FM6_FACTORY[] */
+#include "felucca_fm6.h"         /* tools/gen_fm6_patches.py: FM6_INIT, FM6_DEFAULT[] */
 
 #define ENGI_FM6 12u             /* engines.c ENGINES[] (append-only) */
 #define FM6_POLY 12              /* engine_t.poly: the voices a part's memory is given for FM6 (owner, 2026-11-06: "12"). The 6 of before was the original Felucca author's number, nothing measured behind it. What SOUNDS is
                                   * the voice pool's (budget.c) */
 #define FM6_POLY_COMB 6          /* .. and with a TWIN COMB on the part (owner, 2026-11-06: "limit fm-6 to 6, if it's with comb"): the COMB's lines start after these 6 records (chain_f2.c f2_line), where they
                                   * always did: 711 samples a line, lowest COMB note 62 Hz. Records 7 .. 12 and the lines are the SAME memory: fm6_comb says whose it is this block */
-#define FM6_OWN FM6_NFACTORY     /* SLOT: the track's own patch (F1..F8 before it) */
+#define FM6_OWN FM6_NDEFAULT     /* SLOT: the track's own patch (F1..F8 before it) */
 #define FM6_NBANK 32u            /* SLOT: B1..B32 after OWN, the voice bank (fm6_vbank.c) */
-/* DUELL 0.2.17: FM6_NXF more factory patches (felucca_fm6.h FM6_XFACTORY: F9, F10) at SLOT 41 and up, AFTER B32, so the SLOT values of
+/* DUELL 0.2.17: FM6_NXF more default patches (felucca_fm6.h FM6_XDEFAULT: F9, F10) at SLOT 41 and up, AFTER B32, so the SLOT values of
  * F1..F8, OWN (8) and B1..B32 (9..40) mean what they meant. Like a bank slot a stored value is never one of them (params.c param_fit:
- * above OWN is OWN, the patch comes with the project / the record), the factory sounds that use them (FM BASS 2, TUBE BELLS) load them */
+ * above OWN is OWN, the patch comes with the project / the record), the default sounds that use them (FM BASS 2, TUBE BELLS) load them */
 #define FM6_XBASE (FM6_OWN + FM6_NBANK + 1u)
 #define FM6_PACKED 128u
 
 static uint8_t fm6_patch[NTRK][FP_SIZE + 1u];   /* the tracks' patches (main loop writes, then fm6_pgen) */
 static volatile uint8_t fm6_pgen[NTRK];          /* +1 after each write of fm6_patch[t] */
 static uint8_t fm6_slot[NTRK];                   /* the SLOT value last loaded (main loop); 0xFF = none */
-static uint8_t fm6_own[NTRK][FM6_PACKED] __attribute__((section(".pool")));   /* the own patch while SLOT shows a factory one (fm6_poll) */
+static uint8_t fm6_own[NTRK][FM6_PACKED] __attribute__((section(".pool")));   /* the own patch while SLOT shows a default one (fm6_poll) */
 static uint8_t fm6_own_ok;                       /* bit tr: fm6_own[tr] holds it */
 static struct {                                  /* the patch through the macros: the audio ISR's copy */
     uint8_t p[FP_SIZE + 1u];
@@ -83,12 +83,12 @@ static int32_t fm6_bank_slot(int32_t s)
 {
     return s > (int32_t)FM6_OWN && s <= (int32_t)(FM6_OWN + FM6_NBANK) ? s - (int32_t)FM6_OWN - 1 : -1;
 }
-/* SLOT value s is one of the factory patches behind the bank (F9..): its number in FM6_XFACTORY, else -1 */
+/* SLOT value s is one of the default patches behind the bank (F9..): its number in FM6_XDEFAULT, else -1 */
 static int32_t fm6_xslot(int32_t s)
 {
     return s >= (int32_t)FM6_XBASE && s < (int32_t)(FM6_XBASE + FM6_NXF) ? s - (int32_t)FM6_XBASE : -1;
 }
-/* SLOT value s can load: a factory slot (F1..F8, F9..), OWN, or a bank slot with a voice */
+/* SLOT value s can load: a default slot (F1..F8, F9..), OWN, or a bank slot with a voice */
 static int fm6_slot_ok(int32_t s)
 {
     int32_t k = fm6_bank_slot(s);
@@ -274,17 +274,17 @@ static void fm6_set_patch(uint32_t tr, const uint8_t *v)
     fm6_pgen[tr]++;
 }
 
-/* SLOT value s < FM6_NFACTORY: that factory patch into track tr; a bank slot: its voice (0 = loaded; 1 = the bank
+/* SLOT value s < FM6_NDEFAULT: that default patch into track tr; a bank slot: its voice (0 = loaded; 1 = the bank
  * has none there, nothing changed) */
 static int fm6_load_slot(uint32_t tr, uint32_t s)
 {
     uint8_t v[FP_SIZE + 1u], pk[FM6_PACKED];
     int32_t k = fm6_bank_slot((int32_t)s), x = fm6_xslot((int32_t)s);
     if (x >= 0) {
-        memcpy(pk, FM6_XFACTORY[x], FM6_PACKED);
+        memcpy(pk, FM6_XDEFAULT[x], FM6_PACKED);
     } else if (k < 0) {
-        s %= FM6_NFACTORY;
-        memcpy(pk, FM6_FACTORY[s], FM6_PACKED);
+        s %= FM6_NDEFAULT;
+        memcpy(pk, FM6_DEFAULT[s], FM6_PACKED);
     } else if (!fm6_slot_ok((int32_t)s) || !fm6_bank_read || fm6_bank_read((uint32_t)k, pk)) {
         return 1;
     }
@@ -295,20 +295,20 @@ static int fm6_load_slot(uint32_t tr, uint32_t s)
     return 0;
 }
 
-/* the SLOT value a patch shows: the factory patch it equals unchanged (F n; the one at the SLOT s it had first, then on from there;
- * then F9.. behind the bank), else OWN. The search unpacks up to FM6_NFACTORY + FM6_NXF patches: a project load does it before it
+/* the SLOT value a patch shows: the default patch it equals unchanged (F n; the one at the SLOT s it had first, then on from there;
+ * then F9.. behind the bank), else OWN. The search unpacks up to FM6_NDEFAULT + FM6_NXF patches: a project load does it before it
  * turns the interrupts off (project.c) */
 static int32_t fm6_adopt_slot(const uint8_t *patch, int32_t s)
 {
     uint8_t v[FP_SIZE + 1u];
-    uint32_t k, f = s >= 0 && s < (int32_t)FM6_NFACTORY ? (uint32_t)s : 0u;
-    for (k = 0; k < FM6_NFACTORY; k++) {
-        fm6_unpack(FM6_FACTORY[(f + k) % FM6_NFACTORY], v);
+    uint32_t k, f = s >= 0 && s < (int32_t)FM6_NDEFAULT ? (uint32_t)s : 0u;
+    for (k = 0; k < FM6_NDEFAULT; k++) {
+        fm6_unpack(FM6_DEFAULT[(f + k) % FM6_NDEFAULT], v);
         if (!memcmp(v, patch, FP_SIZE))
-            return (int32_t)((f + k) % FM6_NFACTORY);
+            return (int32_t)((f + k) % FM6_NDEFAULT);
     }
     for (k = 0; k < FM6_NXF; k++) {
-        fm6_unpack(FM6_XFACTORY[k], v);
+        fm6_unpack(FM6_XDEFAULT[k], v);
         if (!memcmp(v, patch, FP_SIZE))
             return (int32_t)(FM6_XBASE + k);
     }
@@ -316,7 +316,7 @@ static int32_t fm6_adopt_slot(const uint8_t *patch, int32_t s)
 }
 
 /* track tr's patch was just put in as its own (a project, a user preset, the editor, a conversion): an FM6 track's
- * SLOT shows the factory patch it equals unchanged (F n; the SLOT it had first), else OWN; nothing reloads over it
+ * SLOT shows the default patch it equals unchanged (F n; the SLOT it had first), else OWN; nothing reloads over it
  * (fm6_poll) */
 static void fm6_adopt(uint32_t tr)
 {
@@ -332,17 +332,17 @@ static void fm6_adopt(uint32_t tr)
     fm6_env_look(tr, FM6_LOOK_KEEP);                 /* (a project, a user preset: its own AMP ENV knobs stay) */
 }
 
-/* a factory sound load put a SLOT value in (a preset, an engine change): its patch (OWN: the patch stays) */
+/* a default sound load put a SLOT value in (a preset, an engine change): its patch (OWN: the patch stays) */
 static void fm6_track_loaded(const track_t *t)
 {
     uint32_t tr = (uint32_t)(t - trk);
     if (tr < NTRK && t->eng_req == ENGI_FM6) {
         fm6_own_ok &= (uint8_t)~(1u << tr);
-        if ((t->p[P_E7] >= 0 && t->p[P_E7] < (int32_t)FM6_NFACTORY) || fm6_xslot(t->p[P_E7]) >= 0)
+        if ((t->p[P_E7] >= 0 && t->p[P_E7] < (int32_t)FM6_NDEFAULT) || fm6_xslot(t->p[P_E7]) >= 0)
             fm6_load_slot(tr, (uint32_t)t->p[P_E7]);
         else
             fm6_adopt(tr);
-        fm6_env_look(tr, FM6_LOOK_NEW);              /* (a factory sound: the AMP ENV knobs on the numbers of its patch) */
+        fm6_env_look(tr, FM6_LOOK_NEW);              /* (a default sound: the AMP ENV knobs on the numbers of its patch) */
     }
 }
 
@@ -358,7 +358,7 @@ static void fm6_init(void)
     }
 }
 
-/* main loop: SLOT turned (a knob, the editor, MIDI, motion) -> that factory patch or bank voice; from OWN the own
+/* main loop: SLOT turned (a knob, the editor, MIDI, motion) -> that default patch or bank voice; from OWN the own
  * patch is kept aside (fm6_own), and turning back to OWN brings it back. A bank slot without a voice (the editor, a
  * MIDI CC) is refused: SLOT goes back to what it was, nothing loads */
 static void fm6_poll(void)
@@ -374,7 +374,7 @@ static void fm6_poll(void)
         fm6_env_look(tr, FM6_LOOK_FOLLOW);           /* (the AMP ENV knobs follow an edit of the patch or the ALG macro) */
         if (s == fm6_slot[tr])
             continue;
-        if (s < 0 || (s >= (int32_t)FM6_NFACTORY && fm6_bank_slot(s) < 0 && fm6_xslot(s) < 0)) {   /* OWN */
+        if (s < 0 || (s >= (int32_t)FM6_NDEFAULT && fm6_bank_slot(s) < 0 && fm6_xslot(s) < 0)) {   /* OWN */
             if (fm6_own_ok & bit) {
                 uint8_t v[FP_SIZE + 1u];
                 fm6_unpack(fm6_own[tr], v);
@@ -613,7 +613,7 @@ static const char *const N_FM6_PATCH[] = {"F1", "F2", "F3", "F4", "F5", "F6", "F
                                           "B24", "B25", "B26", "B27", "B28", "B29", "B30", "B31", "B32", "F9", "F10", "F11", 0};
 _Static_assert(NELEM(N_FM6_PATCH) == FM6_OWN + FM6_NBANK + FM6_NXF + 2u, "a SLOT name per value");
 
-/* {ALG, FB, MLVL, MRAT, MEG, VMOD, DTUN, SLOT}: the factory patch F1..F8 as it is, DTUN on the pad */
+/* {ALG, FB, MLVL, MRAT, MEG, VMOD, DTUN, SLOT}: the default patch F1..F8 as it is, DTUN on the pad */
 static const preset_t FM6_PRESETS[] = {
     {"TINE EP", {0, 0, 0, 0, 0, 0, 0, 0}, {0, 0, 127, 0}, 0, 0, FX(0, 45, 25, 35), PAT(6)},
     {"BELL", {0, 0, 0, 0, 0, 0, 0, 1}, {0, 0, 127, 0}, 0, 0, FX(0, 10, 30, 70), PAT(7)},

@@ -198,7 +198,7 @@ static int preferences(void)
         host_wire[n - 53] == 0x4d && host_wire[n - 52] == 1 &&
         host_wire[n - 51] == 64u && host_wire[n - 50] == 1 &&   /* (64 kept: 41 01 says 128) */
         host_wire[n - 49] == 0x42 && host_wire[n - 48] == 1 && host_wire[n - 47] == 63 &&   /* (the cloud plan's job A: bit 5, the patch store as logical records, object 40 + a slot; DUELL 0.2.15: bit 4, the patch store's chunks 6..15 as backup ids 27..31 and 35..39; DUELL 0.2.14: bit 2, multis and pattern slots in the backup; bit 3, the user wavetables 24..26 and cmds 81..83) */
-        host_wire[n - 46] == 0x46 && host_wire[n - 45] == 1 && host_wire[n - 44] == FM6_NFACTORY &&
+        host_wire[n - 46] == 0x46 && host_wire[n - 45] == 1 && host_wire[n - 44] == FM6_NDEFAULT &&
         host_wire[n - 43] == 0 &&                        /* (no bank since 1.0.3) */
         host_wire[n - 42] == 0x53 && host_wire[n - 41] == 1 && host_wire[n - 40] == 3 &&
         host_wire[n - 39] == 0x50 && host_wire[n - 38] == 1 && host_wire[n - 37] == 3 &&   /* FM6 v2: no bank, preset patches */
@@ -228,8 +228,8 @@ static int preferences(void)
     bad += check("FAV_SET marks FM6 as a normal engine (DUELL: DRUM is hidden: refused)", host_wire[5] == 3 && favorite_has(ENGI_FM6, 0));
     request(ED_FAV_GET, a, 4);
     bad += check("FAV_GET reads the bounded favorite range", host_wire[5] == 0 && host_wire[10] == 1);
-    a[0] = NENGINES; a[1] = 127; request(ED_FAV_SET, a, 4);          /* (DUELL 0.2.17: every slot of the 128 holds a sound, the factory one or a saved one) */
-    bad += check("a slot that holds its factory sound can be starred (FAV is the slot's)", host_wire[5] == 3 && favorite_has(NENGINES, 127));
+    a[0] = NENGINES; a[1] = 127; request(ED_FAV_SET, a, 4);          /* (DUELL 0.2.17: every slot of the 128 holds a sound, the default one or a saved one) */
+    bad += check("a slot that holds its default sound can be starred (FAV is the slot's)", host_wire[5] == 3 && favorite_has(NENGINES, 127));
     up_store(127, "Saved"); request(ED_FAV_SET, a, 4);
     bad += check("  and a saved sound in it keeps the star without changing its sound", host_wire[5] == 3 && favorite_has(NENGINES, 127));
     a[1] = 0; a[2] = 1; request(ED_FAV_SET, a, 4);                   /* (the slot past the last: refused) */
@@ -425,7 +425,7 @@ static int samples(void)
     song.playing = 0; up_store(0, "SAVED"); song.playing = 1;
     bad += check("slot RESTORE (UP_ERASE) of a saved slot reports failure when audio cannot stop, and keeps it",
                  request(ED_UP_ERASE, a, 1) == 8u && host_wire[6] == 2 && up_used(0));
-    bad += check("  a slot that holds its factory sound already answers rc 0 and writes nothing (even playing)",
+    bad += check("  a slot that holds its default sound already answers rc 0 and writes nothing (even playing)",
                  (a[0] = 1, request(ED_UP_ERASE, a, 1) == 8u) && host_wire[6] == 0 && !up_used(1));
     song.playing = 0; up_put(0, 0);
     return bad;
@@ -449,7 +449,7 @@ static int malformed_saves(void)
     return bad;
 }
 
-/* FM6 patches (cmds 68..71): a track's own patch, the retired bank ("no bank"), the factory patches, the user presets'
+/* FM6 patches (cmds 68..71): a track's own patch, the retired bank ("no bank"), the default patches, the user presets'
  * patches (target 3), malformed frames */
 static int fm6_patches(void)
 {
@@ -457,11 +457,11 @@ static int fm6_patches(void)
     uint8_t a[2 + FM6_PACKED], pk[FM6_PACKED];
     uint32_t n, i;
     reset();
-    a[0] = ED_FM6_FACTORY; a[1] = 3;
+    a[0] = ED_FM6_DEFAULT; a[1] = 3;
     n = request(ED_FM6_GET, a, 2);
-    bad += check("FM6_GET factory 4: the packed record", n == 5u + 3u + FM6_PACKED + 1u && host_wire[7] == 0 &&
-                 !memcmp(host_wire + 8, FM6_FACTORY[3], FM6_PACKED));
-    memcpy(pk, FM6_FACTORY[3], FM6_PACKED);
+    bad += check("FM6_GET default 4: the packed record", n == 5u + 3u + FM6_PACKED + 1u && host_wire[7] == 0 &&
+                 !memcmp(host_wire + 8, FM6_DEFAULT[3], FM6_PACKED));
+    memcpy(pk, FM6_DEFAULT[3], FM6_PACKED);
     memcpy(pk + 118, "MY PATCH  ", 10);
     trk[1].eng_req = ENGI_FM6;
     trk[1].p[P_E7] = 3;
@@ -475,15 +475,15 @@ static int fm6_patches(void)
     a[1] = 1;
     n = request(ED_FM6_GET, a, 2);
     bad += check("FM6_GET part B: as sent", host_wire[7] == 0 && !memcmp(host_wire + 8, pk, FM6_PACKED));
-    a[0] = ED_FM6_TRACK; a[1] = 1; memcpy(a + 2, FM6_FACTORY[5], FM6_PACKED);
+    a[0] = ED_FM6_TRACK; a[1] = 1; memcpy(a + 2, FM6_DEFAULT[5], FM6_PACKED);
     request(ED_FM6_PUT, a, sizeof a);
-    bad += check("FM6_PUT of a factory patch unchanged: SLOT shows it (F6)", trk[1].p[P_E7] == 5 && fm6_slot[1] == 5u);
+    bad += check("FM6_PUT of a default patch unchanged: SLOT shows it (F6)", trk[1].p[P_E7] == 5 && fm6_slot[1] == 5u);
     trk[1].p[P_E7] = FM6_OWN;                            /* (back to MY PATCH for the SLOT trip below) */
     a[0] = ED_FM6_TRACK; a[1] = 1; memcpy(a + 2, pk, FM6_PACKED);
     request(ED_FM6_PUT, a, sizeof a);
     trk[1].p[P_E7] = 1;
     fm6_poll();
-    bad += check("SLOT OWN -> F2 loads the factory patch", !memcmp(fm6_patch[1] + FP_NAME, FM6_FACTORY[1] + 118, 10));
+    bad += check("SLOT OWN -> F2 loads the default patch", !memcmp(fm6_patch[1] + FP_NAME, FM6_DEFAULT[1] + 118, 10));
     trk[1].p[P_E7] = 6;
     fm6_poll();
     trk[1].p[P_E7] = FM6_OWN;
@@ -506,14 +506,14 @@ static int fm6_patches(void)
                                "FM6_ERASE: rc 3, no bank", host_wire[i == 2u ? 6 : 7] == 3u);
     }
     n = request(ED_FM6_LIST, a, 0);
-    {   /* factory 8, bank 0, then used + name per factory slot */
-        uint32_t p = 7, k, ok = host_wire[5] == FM6_NFACTORY && host_wire[6] == 0;
-        for (k = 0; k < FM6_NFACTORY && p < n; k++) {
+    {   /* default 8, bank 0, then used + name per default slot */
+        uint32_t p = 7, k, ok = host_wire[5] == FM6_NDEFAULT && host_wire[6] == 0;
+        for (k = 0; k < FM6_NDEFAULT && p < n; k++) {
             ok &= host_wire[p++] == 1u;
             while (host_wire[p]) p++;
             p++;
         }
-        bad += check("FM6_LIST: 8 factory names, nbank 0", ok && k == FM6_NFACTORY && p == n - 1u);
+        bad += check("FM6_LIST: 8 default names, nbank 0", ok && k == FM6_NDEFAULT && p == n - 1u);
     }
     /* target 3: an FM6 user preset's patch */
     song.sel = 1;
@@ -623,7 +623,7 @@ static int user_preset_roundtrip(void)
         ok &= host_wire[p] == 0u && host_wire[p + 1u] == CAT_PAD;
         a[0] = 2; a[1] = 2;
         n = request(ED_UP_LIST, a, 2);
-        ok &= host_wire[5] == 2u && host_wire[6] == 2u && host_wire[n - 3u] == 0u && host_wire[n - 2u] == 1u && host_wire[n - 4u] == CAT_PAD;   /* (the categories, then SAVED: slot 2 factory 0, slot 3 saved 1) */
+        ok &= host_wire[5] == 2u && host_wire[6] == 2u && host_wire[n - 3u] == 0u && host_wire[n - 2u] == 1u && host_wire[n - 4u] == CAT_PAD;   /* (the categories, then SAVED: slot 2 default 0, slot 3 saved 1) */
         bad += check("UP_PUT with a category (after the kind's 16 bytes; past the last: rc 1), UP_GET and UP_LIST give it", ok);
         k = k0;
     }
@@ -871,7 +871,7 @@ static int menu_protocol(void)
     const char *json = getenv("MENU_JSON");
     FILE *jf = json ? fopen(json, "w") : 0;
     reset();
-    settings_defaults(favorites.factory[15]);          /* (a new unit: persist_boot with no settings) */
+    settings_defaults(favorites.defaults[15]);          /* (a new unit: persist_boot with no settings) */
     cmp_set = 0, cmp_last = 0xFFFFFFFFu, cmp_sync();   /* (0.2.21: and the compressor's first look: the defaults, THRESH -17 dB .. as the frame does) */
     ms_last = 0xFFFFFFFFu, ms_sync();                  /* (0.2.23: WIDTH and DRIVE's first look: the defaults, 100 % and 0) */
     if (jf) fprintf(jf, "[");
@@ -935,7 +935,7 @@ static int menu_protocol(void)
     /* MENU_SET: each setting, applied as the menu applies it; RAM only here (no flash: rc 3). A new unit (0.2.14's defaults: ui_prefs
      * ACCEL | SERIAL OFF = 0x44, ui_prefs2 the flag 0x80, CLICK REC) */
     reset();
-    settings_defaults(favorites.factory[15]);
+    settings_defaults(favorites.defaults[15]);
     ui.force = 0;
     ok = ui_prefs == 0x44u && ui_prefs2 == 0x80u && ui_rec_prefs == 1u;
     ok &= menu_set(0, 2) == 3 && host_wire[6] == 0 && ed_rv(host_wire + 7) == 2 && settings.palette == 2u &&
@@ -960,7 +960,7 @@ static int menu_protocol(void)
     ok &= menu_set(19, 1) == 3 && ui_prefs2 == 0x82u && menu_set(20, 1) == 3 && ui_prefs2 == 0x86u;   /* (1.2: their own byte) */
     ok &= menu_set(21, 1) == 1 && song.g[G_ROUTE] == 0 &&       /* (MIDI IN, id 21: retired, an unknown id) */  menu_set(22, 4387) == 0 && song.g[G_TUNE] == 4387;   /* (1.2: the
                                                          * project's, rc 0: in the music, no settings record) */
-    ok &= menu_set(23, 1) == 1 && favorites.factory[15][26] == 0u && ui_prefs2 == 0x86u && ui_scr == 1u;   /* (OVERVIEW, id 23: retired in DUELL 0.2.14, an unknown id: rc 1) */
+    ok &= menu_set(23, 1) == 1 && favorites.defaults[15][26] == 0u && ui_prefs2 == 0x86u && ui_scr == 1u;   /* (OVERVIEW, id 23: retired in DUELL 0.2.14, an unknown id: rc 1) */
     ok &= menu_set(25, 1) == 3 && ui_home_pg == HP_MAC1_CODE &&   /* (2026-11-15: value 1 is MACROS 1/2) */ ui_prefs2 == 0x86u;                       /* (DUELL 0.1: HOME OPENS, its own byte) */
     ok &= menu_set(26, 1) == 3 && (ui_prefs2 & 0x10u) && ui_prefs2 == 0x96u && ui_home_pg == HP_MAC1_CODE;   /* (DUELL 0.2.9: CPU METER OFF, bit 4 of its byte; set = OFF, clear = ON) */
     ok &= menu_set(27, 1) == 3 && (ui_prefs2 & 0x40u) && ui_prefs2 == 0xD6u;                     /* (DUELL 0.2.11 MODE RECALL ON, 0.2.14 MULTI LOAD SETS MODE: bit 6 of its byte) */
@@ -988,7 +988,7 @@ static int menu_protocol(void)
              sc_get(0) == 4u && sc_get(1) == 0u && sc_get(2) == 0u && sc_get(3) == 127u;
         memset(&pe, 0, sizeof pe);
         settings_export(&pe);
-        ok &= pe.favorites.factory[15][14] == 5u && pe.favorites.factory[15][15] == 1u && pe.favorites.factory[15][16] == 1u && pe.favorites.factory[15][17] == 128u && song.g[G_BPM] == song.g[G_BPM];
+        ok &= pe.favorites.defaults[15][14] == 5u && pe.favorites.defaults[15][15] == 1u && pe.favorites.defaults[15][16] == 1u && pe.favorites.defaults[15][17] == 128u && song.g[G_BPM] == song.g[G_BPM];
         bad += check("MENU_SET 38..41 (SIDECHAIN): P1 CH, P1 NOTE, P2 CH, P2 NOTE set, clamped (1..16, 0..127), applied to the audio side's copy and stored in the settings record (bytes 14..17)", ok);
         menu_set(38, 10); menu_set(39, 36); menu_set(40, 10); menu_set(41, 36);
         ok = sc_midi[0] == 9u && sc_midi[1] == 36u && sc_midi[2] == 9u && sc_midi[3] == 36u;

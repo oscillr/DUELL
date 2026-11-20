@@ -38,7 +38,7 @@ Clearing a learned line (OCT-, CLEAR) gives its number back to the shipped line 
 
 ## Settings record
 
-`persist_t` ends with `map[128]` and `map_tail[64]` (zero, reserved); `favorites.factory[14]` (the old learn table's 32 bytes) is the header: `[0]` version 1, `[1]` flags (bit 0: differs from the shipped list), `[2]` the shipped list's
+`persist_t` ends with `map[128]` and `map_tail[64]` (zero, reserved); `favorites.defaults[14]` (the old learn table's 32 bytes) is the header: `[0]` version 1, `[1]` flags (bit 0: differs from the shipped list), `[2]` the shipped list's
 revision (`MIDI_MAP_DEFAULTS_REV`, from the csv), `[3..31]` zero. Another size is no record; another version starts with the shipped list. **This job is the only owner of the record; nothing else is added to it.**
 
 ## Tests

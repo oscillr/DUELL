@@ -160,7 +160,7 @@ The rule (the owner's): DUCK SRC = PART may be on ONE part only. The part with P
 - Audio (`fx.c duck_part`, `blockstate_t.duck_key[]`): the ducked part reads the other part's key follower of the block before, from the block's snapshot (`blk_snap` copies `duck_st[].key` before either part runs). One direction, no waiting. A ducked part 1 read the key of the block before already: bit for bit the same. A ducked part 2 read part 1's key of THIS block: now one block (0.73 ms) older.
 - `tests/duckpart_test.c` (`./host_tests.sh duckpart`) renders the old path (the old `duck_part` verbatim, key read live) and the new one: part 2 ducked by part 1 (a plucked chord every 58 ms keys a held chord): largest sample difference 309 (output peak 18,597), the RMS of the difference 51.6 dB below the output; part 1 ducked by part 2: no difference. It also checks the rule (set, norm, hide, MIDI).
 - Goldens changed by it: `multi_render_golden.txt` M02 at faders 0 / 63 / 127 (M02 has PUMP depth 61 on part 1 and PART depth 32 on part 2: part 1's PUMP is forced OFF and the key is a block old). No other render depends on DUCK SRC PART. regenerated, with a comment in the file.
-- Factory data with PART on BOTH parts: none. Checked: the factory sounds (`tools/duell_sounds.py`: ten sounds with a ducker, all PUMP), the sixteen factory multis (`tools/factory_multis/M01..M16.bin`), the owner multis (`tools/owner_multis.py`: five, their records are the same files), the test scenes (`tests/scenes`, `tests/scenes/spare`). Only two multis have PART at all, one part each, so the rule changes only the ducker of the OTHER part: M02 (part 2 PART depth 32; part 1 PUMP depth 61 is lost) and M04 (part 1 PART depth 70; part 2 has PUMP at depth 0: nothing is lost). Nothing was changed in the data.
+- Default data with PART on BOTH parts: none. Checked: the default sounds (`tools/duell_sounds.py`: ten sounds with a ducker, all PUMP), the sixteen default multis (`tools/default_multis/M01..M16.bin`), the owner multis (`tools/owner_multis.py`: five, their records are the same files), the test scenes (`tests/scenes`, `tests/scenes/spare`). Only two multis have PART at all, one part each, so the rule changes only the ducker of the OTHER part: M02 (part 2 PART depth 32; part 1 PUMP depth 61 is lost) and M04 (part 1 PART depth 70; part 2 has PUMP at depth 0: nothing is lost). Nothing was changed in the data.
 
 ### 7.2 A random generator per part (blockers b and c)
 
@@ -192,7 +192,7 @@ One table (top of `budget.c`), in the units of `tests/bench_baseline.txt` (host 
 
 | item | % of the time budget, margin applied | source |
 |---|---|---|
-| one voice, engine only: ANALOG 6.9, FM6 8.0, PHASE 6.0, LOFI 4.2, VOICE 8.1, TRIO 7.0, WHEEL 7.5, PHYS 16.6, NOISE 6.8, WAVE 6.8 | | bench `voice/<ENGINE>` less the 12 dB filter (every factory sound runs it, KEY TRK 32) |
+| one voice, engine only: ANALOG 6.9, FM6 8.0, PHASE 6.0, LOFI 4.2, VOICE 8.1, TRIO 7.0, WHEEL 7.5, PHYS 16.6, NOISE 6.8, WAVE 6.8 | | bench `voice/<ENGINE>` less the 12 dB filter (every default sound runs it, KEY TRK 32) |
 | multimode filter a voice: 12 dB 1.4, 24 dB 2.5 | | `uf_test.c` figures (4.8 % and 8.6 % for 4 voices) |
 | MORPH on the part a voice 0.6, an engine choice cross-faded +2.3 | | the 0.2.11 VOICE CAP's figures |
 | INSERT: SOFT 2.8, HARD 2.5, FOLD 2.6, FUZZ 2.8, CRUSH 1.7, PHASR 3.4, FLANG 2.6, CHOR 2.7, TAPE 3.3, VINYL 3.3 | | bench `insert/*` |
@@ -218,9 +218,9 @@ The task asked for `floor((limit - global - other fixed - this fixed - other voi
 
 `budget_poll()` (main loop, next to `vcap_poll`) stores the numbers in `bnotes[]` (voice.c). `trk_nvoice()` is now `min(engine limit, old VOICE CAP, bnotes)`, so a new note over the number steals within the part exactly as at an engine's own limit (the oldest released voice, else the oldest held one, never the lowest note: restarted in place, no cut). New: `voice_trim()` (called at the start of `voice_alloc` and `mono_play`, only while `bnotes` is set): voices above the part's number, left from before it dropped, fade out with `voice_kill` (the one-block fade, 0.73 ms) at the part's next note-on. Functions touched in voice.c: `trk_nvoice` (it only reads `bnotes`; used by `voice_alloc`, `mono_play`, `trk_note_off_1`'s UNISON count and the new `voice_trim`), `voice_alloc`, `mono_play`, new `voice_trim`; main.c `main` (one call). None is in the hot list (`tools/hot_fns.py` unchanged). `UNISON` parts get fewer unison voices when the number is below 8, as they did under the old cap.
 
-The old VOICE CAP code is kept and still applies, as the stricter of the two. It was NOT removed: in the 16 factory multis the budget is stricter or equal in all 32 parts (table below), so it could go, but its tests (`cpuscen` section C, the P table) need the Mac's instruction counter and could not be run here. Remove it after `./host_tests.sh cpuscen` runs on the Mac with the budget in `ui_test.c`'s frame.
+The old VOICE CAP code is kept and still applies, as the stricter of the two. It was NOT removed: in the 16 default multis the budget is stricter or equal in all 32 parts (table below), so it could go, but its tests (`cpuscen` section C, the P table) need the Mac's instruction counter and could not be run here. Remove it after `./host_tests.sh cpuscen` runs on the Mac with the budget in `ui_test.c`'s frame.
 
-### 8.4 NOTES a part, the 16 factory multis (default effects as loaded; and in cpuscen's state, MORPH on End B)
+### 8.4 NOTES a part, the 16 default multis (default effects as loaded; and in cpuscen's state, MORPH on End B)
 
 | multi | parts | mode | as loaded | MORPH on | old cap |
 |---|---|---|---|---|---|
@@ -239,13 +239,13 @@ The old VOICE CAP code is kept and still applies, as the stricter of the two. It
 | M13 COLD CHAPEL | WAVE / PHYS | LAYER | 2 / 2 | 2 / 2 | 8 / 3 |
 | M14 GARGLE ACID | WAVE / ANALOG | LAYER | 3 / 3 (mono) | 3 / 3 | 8 / 8 |
 | M15 WOOD & SKIN | LOFI / PHYS | LAYER | 2 / 2 | 2 / 2 | 8 / 3 |
-| M16 STRESS TEST | PHYS / WAVE | LAYER | 1 / 1 | 1 / 1 | 3 / 8 |
+| M16 SLOW THAW | FM6 / PHASE | LAYER | not measured | not measured | not measured |
 
 (`./host_tests.sh budget` prints the full table with the global and part costs and the reasons.) One core with a margin of 1.15 and a limit of 80 % gives 2 to 3 notes a part for most multis, as CPU_PLAN section 3 (one core) said; M07 and M12 as loaded fit 8 + 8 (pool-limited). The MORPH column is lower because an End B that switches a filter on or changes the slope costs every voice (the 0.2.11 cap counted it too).
 
 ### 8.5 What exceeds the budget
 
-With 4 + 4 notes held (cpuscen's scene, MORPH on, fader in the middle) these change sound against the unbudgeted render because a part has fewer than 4 notes: M02 to M07, M10 to M13, M15, M16 (12 of 16). M01, M08, M09, M14 do not change (mono or unison parts play one note). With the notes the budget allows held, every multi renders bit for bit the same with the budget on and off, except M10 (its arp's release tails sound 6 voices from 2 held notes: over the budget in voices, so it changes). No factory data was changed. `ui_test.c`'s frame does not call `budget_poll`, so every existing test and golden stays as it was; only the firmware's main loop and `budget_test` do.
+With 4 + 4 notes held (cpuscen's scene, MORPH on, fader in the middle) these change sound against the unbudgeted render because a part has fewer than 4 notes: M02 to M07, M10 to M13, M15, M16 (12 of 16). M01, M08, M09, M14 do not change (mono or unison parts play one note). With the notes the budget allows held, every multi renders bit for bit the same with the budget on and off, except M10 (its arp's release tails sound 6 voices from 2 held notes: over the budget in voices, so it changes). No default data was changed. `ui_test.c`'s frame does not call `budget_poll`, so every existing test and golden stays as it was; only the firmware's main loop and `budget_test` do.
 
 ### 8.6 Test
 
@@ -257,5 +257,5 @@ Not measured: the absolute accuracy on the unit (the table is the Mac's bench x 
 
 `cloud/base` = `cloud/partstate2` (d1cadf6, job 3) with `cloud/notes2` (4cfcdf8, job 4, the NOTES budget) merged in. Both sit on `cloud/partstate` (a7f3944), so later jobs start here.
 - Conflicts: only text. `host_tests.sh` (the usage line, the `duckpart` / `twocore` and `budget` comment blocks, the default list, the test cases: both sets kept; `budget` follows `twocore` in the default list) and this file (job 4's section 7 became section 8, with its inner numbers and the references to it in `host_tests.sh` and `docs/CPU_PLAN.md`). `voice.c` merged without a conflict (job 3: the generators per part, ENV SYNC steps in `track_t`; job 4: `trk_nvoice`, `voice_alloc`, `mono_play`, `voice_trim`: different functions). No golden or fingerprint was regenerated by the merge.
-- Checked on the merged tree: the budget's printed NOTES of the 16 factory multis (loaded and MORPH) and its bit-for-bit-within-budget lines are identical to `cloud/notes2` alone: the per-part generators and the one-sided ducking do not change them (the budget test's multis render the same with the budget on and off, whatever the generator).
+- Checked on the merged tree: the budget's printed NOTES of the 16 default multis (loaded and MORPH) and its bit-for-bit-within-budget lines are identical to `cloud/notes2` alone: the per-part generators and the one-sided ducking do not change them (the budget test's multis render the same with the budget on and off, whatever the generator).
 - From `cloud/notes` nothing was brought over: `cloud/notes2` already has `part_notes_shown` and the per-item reason (`part_notes_reason`, `NR_*`), the same thing as `cloud/notes`' `BR_*` / `part_notes_why`.

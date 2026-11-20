@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 /* DUELL 0.2.19's PATCH_RAW (editor_patchraw.c, upreset.c up_put_raw / up_raw_get; EDITOR_PROTOCOL.md "PATCH_RAW (84)") against simulated NOR flash:
- *   1. a fresh unit: every slot holds its factory sound (INFO saved 0, READ refused);
+ *   1. a fresh unit: every slot holds its default sound (INFO saved 0, READ refused);
  *   2. READ gives the stored record whole with its slot and revision bytes zero, in 112 byte pieces, its CRC-32; the biggest record there is (an FM6 sound with
  *      its patch, End B, the SEQ arp block with 16 steps) travels and comes back bit for bit in another slot, decodes the same (values, name, patch, arp block)
  *      and loads the same sound; only the chunk's own sectors are written;
@@ -142,7 +142,7 @@ static uint32_t pr_all(uint32_t slot, const uint8_t *rec, uint32_t len)   /* beg
         rc = pr_data(slot, off, rec + off, len - off > 112u ? 112u : len - off);
     return rc ? rc : pr_end(slot, 4);
 }
-/* INFO + READ of a slot: 1 saved (rec/len filled, the CRC checked), 0 factory, -1 an error */
+/* INFO + READ of a slot: 1 saved (rec/len filled, the CRC checked), 0 default, -1 an error */
 static int pr_read(uint32_t slot, uint8_t *rec, uint32_t *len)
 {
     uint8_t i0[2] = {0, (uint8_t)slot};
@@ -222,9 +222,9 @@ int main(void)
     /* 1: a fresh unit */
     {
         uint8_t g[5] = {1, 5, 0, 0, 8};
-        ck("fresh unit: a slot holds its factory sound: INFO saved 0, length 0, CRC 0", pr_read(5, A, &la) == 0 && rep[3] == 0);
+        ck("fresh unit: a slot holds its default sound: INFO saved 0, length 0, CRC 0", pr_read(5, A, &la) == 0 && rep[3] == 0);
         call(g, 5);
-        ck("  READ of it: rc 1 (there is no record; UP_GET gives the factory values)", rep[2] == 1u);
+        ck("  READ of it: rc 1 (there is no record; UP_GET gives the default values)", rep[2] == 1u);
     }
 
     /* 2: the biggest record there is, read, written to another slot, compared */
@@ -311,7 +311,7 @@ int main(void)
     transport_req = 1;
     ok &= pr_data(20, 112, A + 112, 112) == 3u && pr_end(20, 4) == 3u;
     ck("while the sequencer plays (or starts): begin, a piece and the commit are refused (rc 3)", ok);
-    ck("  nothing was written (the flash is unchanged, no erase), the slot is still on its factory sound", erases == e0 && !memcmp(snap, nor, sizeof nor) && !up_used(20));
+    ck("  nothing was written (the flash is unchanged, no erase), the slot is still on its default sound", erases == e0 && !memcmp(snap, nor, sizeof nor) && !up_used(20));
     ok = pr_read(70, C, &lc) == 1 && !memcmp(C + 7, "RENAMED", 7);
     transport_req = 0;
     ck("  INFO and READ work while it plays (they do not touch the flash)", ok);
@@ -415,7 +415,7 @@ int main(void)
             if (rc != 1u) { printf("patchraw:   (%s: rc %u)\n", bads[t].what, rc); ok = 0; }
         }
         ck("a record the store would not read is refused at the commit (rc 1): old form (no unknown flag bit is left: 0.2.19 uses bit 2 as PTF_TR), engine 99, empty name, control character, value byte 200, text after the name, wrong length field", ok);
-        ck("  ..and nothing was written (no erase, the flash is as it was, the slot still holds its factory sound)", erases == e0 && !memcmp(snap, nor, sizeof nor) && !up_used(33));
+        ck("  ..and nothing was written (no erase, the flash is as it was, the slot still holds its default sound)", erases == e0 && !memcmp(snap, nor, sizeof nor) && !up_used(33));
     }
 
     /* 5: a flash failure, then a power cut at every step of a write */
@@ -498,7 +498,7 @@ int main(void)
         for (k = 0, good = 0; k < UP_SLOTS; k++)
             good += pr_read(k, G, &gl) == 1 && G[7] == 'Z' && flash_rec(k)[3] >= 1u;
         ck("  a rewrite of all 128 (a newer revision each): rc 0, all read back", !rc && good == UP_SLOTS);
-        ck("  every slot is saved (UP_LIST's SAVED), RESTORE of one brings its factory sound back and READ then says so", up_used(5) && sl_restore(5) == 0 && pr_read(5, G, &gl) == 0 && pr_read(6, G, &gl) == 1);
+        ck("  every slot is saved (UP_LIST's SAVED), RESTORE of one brings its default sound back and READ then says so", up_used(5) && sl_restore(5) == 0 && pr_read(5, G, &gl) == 0 && pr_read(6, G, &gl) == 1);
     }
 
     /* 7: the extension block travels whole: slots, hand-set B edits and the tags this firmware does not know, bit for bit, through READ and a write into another slot;

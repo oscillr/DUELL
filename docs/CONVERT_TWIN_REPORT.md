@@ -7,9 +7,9 @@ Columns: peak and RMS are new minus old (dB). Centroid is the spectral centroid 
 difference of the 1/3-octave band levels, over the bands within 40 dB of the loudest band of either render. Outlier: RMS change above 1.5 dB or a band above 3 dB.
 Outliers are listed first in every table.
 
-Counts: 128 factory sounds in the list. 43 TWIN sounds (ANALOG 19, TRIO 13, NOISE 11), 6 WAVE sounds with a SUB, 5 PHASE or WHEEL sounds with a SUB
+Counts: 128 default sounds in the list. 43 TWIN sounds (ANALOG 19, TRIO 13, NOISE 11), 6 WAVE sounds with a SUB, 5 PHASE or WHEEL sounds with a SUB
 that the conversion drops, 74 others (these only get filter 1's RES step, if filter 1 runs). The brief counted 85 "other" sounds, this list has 79 outside
-the 43 + 6 (74 + the 5 SUB sounds). 35 multis (16 factory, 14 test scenes, 5 X scenes) at three faders: 105 renders, all 105 hash-changed.
+the 43 + 6 (74 + the 5 SUB sounds). 35 multis (16 default, 14 test scenes, 5 X scenes) at three faders: 105 renders, all 105 hash-changed.
 
 ## 1. The 43 TWIN sounds
 
@@ -195,7 +195,7 @@ rest: 74 compared, 2 outliers (RMS > 1.5 dB or a band > 3 dB)
 
 VOWEL PAD and RESO SWEEP (WAVE) carry a route LFO 1 to SUB: it now moves SUB LEVEL by the same amount, which is a different law than WAVE's own SUB knob.
 
-## 5. Multis (16 factory, 14 test scenes, 5 X scenes, faders 0 / 63 / 127)
+## 5. Multis (16 default, 14 test scenes, 5 X scenes, faders 0 / 63 / 127)
 
 multis: 105 compared, 71 outliers (RMS > 1.5 dB or a band > 3 dB)
 

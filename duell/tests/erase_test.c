@@ -5,7 +5,7 @@
  *   2. YES erases the settings, favourites, autosave, patches (+ shadow copies), multis, pattern slots, user wavetables and (DUELL 1.1, item 91)
  *      the FM6 voice bank sector (the velocity calibration is KEPT, item 103: the unit's, not user data); the stock firmware's regions are untouched; the restart is due ~0.7 s later (the main loop reboots); nothing is
  *      written meanwhile (settings_poll / autosave);
- *   3. the next start is a fresh unit: VIOLET, LAYER, factory multi M01 (0.2.13: REESE SWAMP), no patches, the 32 default patterns and the factory multis back;
+ *   3. the next start is a fresh unit: VIOLET, LAYER, default multi M01 (0.2.13: REESE SWAMP), no patches, the 32 default patterns and the default multis back;
  *   4. a power cut after any number of erases: every object whole or empty, the settings still valid until the very last
  *      object has gone, the unit boots; running it again finishes;
  *   5. the editor op: only the exact token "ERASE ALL" (wrong token, wrong length: rc 1, nothing written), not while playing (rc 3).
@@ -94,7 +94,7 @@ static void fill(void)                                /* every kind of user data
     ui_prefs = 0; ui_rec_prefs = 2u;                  /* (0.2.14: the user's KNOB ACCEL OFF, USB SERIAL ON, CLICK ON, the flag set) */
     ui_prefs2 = (uint8_t)(ui_prefs2 | PREF_DEFAULTS >> 16);
     favorites.user = 0x1234u;
-    favorites.factory[0][0] = 0x55u;
+    favorites.defaults[0][0] = 0x55u;
     persist_pending = 1;
     flush();
     st_save(OBJ_AUTOSAVE, junk, sizeof junk);
@@ -342,7 +342,7 @@ int main(void)
     ck("  0.2.14's defaults: KNOB ACCEL ON, CLICK REC, USB SERIAL OFF (the user's OFF / ON / ON before the erase gone)",
        (ui_prefs & PREF_ACCEL) && (ui_prefs & PREF_SERIAL_OFF) && rp_get(RP_CLICK) == 1u && (ui_prefs2 & (PREF_DEFAULTS >> 16)));
     frames(160);
-    ck("  MODE is LAYER and factory multi M01 (REESE SWAMP since 0.2.13) is loaded", duell_mode_req == DM_LAYER && project_cur_slot() == 0u && first_boot_pending == 0u &&
+    ck("  MODE is LAYER and default multi M01 (REESE SWAMP since 0.2.13) is loaded", duell_mode_req == DM_LAYER && project_cur_slot() == 0u && first_boot_pending == 0u &&
        str_eq(proj_name, "REESE SWAMP"));
     ck("  no patches, no user favourites; the pattern slots hold their 32 defaults again (none saved, none empty)", up_count() == 0u && !ps_changed(2) && !ps_changed(12) && favorites.user == 0u &&
        ({ char b0[13], b1[13]; ps_name(2, b0); ps_name(31, b1); str_eq(b0, PATTERNS[2].name) && str_eq(b1, PATTERNS[31].name); }));
@@ -358,8 +358,8 @@ int main(void)
            blank && kept_ok() && velo_kept() &&
            !memcmp(nor + st_sector(OBJ_VELO, 0), snap + st_sector(OBJ_VELO, 0), 4096u) && !memcmp(nor + st_sector(OBJ_VELO, 1), snap + st_sector(OBJ_VELO, 1), 4096u));
     }
-    ck("  the factory multis M01..M16 show again (nothing stored in the slots; M05 and M12 were saved over)",
-       project_factory(0) && project_factory(3) && project_factory(4) && project_factory(9) && project_factory(11) && project_factory(15));
+    ck("  the default multis M01..M16 show again (nothing stored in the slots; M05 and M12 were saved over)",
+       project_default(0) && project_default(3) && project_default(4) && project_default(9) && project_default(11) && project_default(15));
     frames(2400);
     ck("  the settings are written again (the next start is an ordinary one)", ({ persist_t tmp_rec; st_load(OBJ_SETTINGS, &tmp_rec, sizeof tmp_rec) > 0; }));
 

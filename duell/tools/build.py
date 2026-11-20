@@ -24,7 +24,7 @@ raw key readings over the USB serial console; it is never in a release or a norm
 duell-<VERSION>-bench-<TAG>.fwsc (no duell-latest.fwsc / duell-version.json then: a bench package is never the latest).
 DUELL_BENCH=1 builds MENU > SYSTEM > BENCH (src/bench.c, docs/BENCH_GUIDE.md; bench suite stage 0: e.g. BENCH_TAG=BENCHC0 with
 DUELL_RAMPLACE=1). DUELL_CORE1_PROBE=1 (BENCH-B's core 1 probe) is not in this line (core.h stops such a build).
-DUELL_TWOCORE (default 1 in every non-bench build since 1.0, with DUELL_RAMPLACE=1; 0 = one core; not with DUELL_CORE1_PROBE): the second core plays part 2, started at every power-on and left alone for the session after a fault (docs/TWOCORE_STAGE1.md, CPU_PLAN.md).
+DUELL_TWOCORE (default 1 in every non-bench build since 1.0, with DUELL_RAMPLACE=1; 0 = one core; not with DUELL_CORE1_PROBE): the second core shares the voices of both parts (the voice split: every voice on the less busy core), started at every power-on and left alone for the session after a fault (docs/TWOCORE_STAGE1.md, CPU_PLAN.md).
 DUELL_HOTRAM (default 3 in every build since 0.2.14; 0 = all in flash; 1, 2, 4..8 need a BENCH_TAG: the experiment builds R1..R8; 4..6 are R3 without some functions, 7 = group 1 only padded to R3's size, 8 = R3 without group 1): the functions of tools/hot_fns.py's groups 1..n run from RAM:
 felucca.c is compiled as always, their sections .text.<name> are renamed .hotx.<name> in felucca_hot.o, and the link uses
 firmware/app_hot.ld instead of app.ld (the RAM code block at the top of RAM, in call reach of the flash); the no-calls rule of
@@ -52,7 +52,7 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-if os.environ.get("DUELL_BENCH") != "1":        # DUELL 1.0: a release (or any non-bench) build runs part 2 on core 1 by default (the automatic one-core fallback is in twocore.c);
+if os.environ.get("DUELL_BENCH") != "1":        # DUELL 1.0: a release (or any non-bench) build runs two cores by default (the voice split: every voice on the less busy core) (the automatic one-core fallback is in twocore.c);
     os.environ.setdefault("DUELL_TWOCORE", "1")  # DUELL_TWOCORE=0 / DUELL_RAMPLACE=0 in the environment give the one-core build (the reference of the tests); set before the
     os.environ.setdefault("DUELL_RAMPLACE", "1") # tools imported below read the environment at import (tools/ram_place.py, hot_fns.py)
     os.environ.setdefault("DUELL_HOTRAM", "3")
@@ -140,7 +140,7 @@ def tc_all(*cmds):
 
 
 def generate():
-    """generated headers (UI fonts, icons, keycaps, palettes, tables, factory sounds and multis; DUELL 0.2.9: no samples)"""
+    """generated headers (UI fonts, icons, keycaps, palettes, tables, default sounds and multis; DUELL 0.2.9: no samples)"""
     GEN.mkdir(parents=True, exist_ok=True)
     for old in ("felucca_font.h", "felucca_icons.h", "felucca_samples.h"):   # headers of the bitmap font and icon atlas, the samples (0.2.9)
         (GEN / old).unlink(missing_ok=True)
@@ -153,10 +153,10 @@ def generate():
             [tools / "gen_splash_logo.py", GEN / "splash_logo.h"],   # the splash lockup mask (assets/splash_logo.svg)
             [tools / "gen_tables.py", GEN / "felucca_tables.h"],
             [tools / "gen_fm6_patches.py", GEN / "felucca_fm6.h"],
-            [tools / "gen_duell_sounds.py", GEN / "duell_sounds.h"],   # DUELL factory sounds (tools/duell_sounds.py)
+            [tools / "gen_duell_sounds.py", GEN / "duell_sounds.h"],   # DUELL default sounds (tools/duell_sounds.py)
             [tools / "gen_midi_map.py", GEN / "midi_map_defaults.h"],   # the shipped MIDI map (docs/MIDI_MAP_DEFAULTS.csv; cloud job C: gen_only.py had it, this list did not)
             [tools / "gen_duell_multis.py", GEN / "duell_multis.h"],
-            [tools / "gen_words.py", SRC / "firmware" / "words.tsv", SRC / "web" / "words", GEN / "ann_words.h"]]   # DUELL 1.4: the screen reader's words file and its link (fm1-reader)  # DUELL factory multis M01..M04 (tools/factory_multis); M13..M16 too with DUELL_TEST_MODE=1 (env, as the -D below)
+            [tools / "gen_words.py", SRC / "firmware" / "words.tsv", SRC / "web" / "words", GEN / "ann_words.h"]]   # DUELL 1.4: the screen reader's words file and its link (fm1-reader)  # DUELL default multis M01..M04 (tools/default_multis); M13..M16 too with DUELL_TEST_MODE=1 (env, as the -D below)
     procs = [subprocess.Popen([sys.executable, *map(str, c)], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                               text=True) for c in cmds]
     failed = []

@@ -1,10 +1,10 @@
-# tests/multi_render_test.c: FNV-1a 64 of each factory multi's output (3-note chords on both parts, fader 0 / 63 / 127).
-# Written on 0.2.16's sounds (114): the 14 new factory sounds of 0.2.17 must not change it.
-# Re-baselined on purpose in 0.2.22: the reverb LOW CUT's new range (20 Hz .. 2 kHz) and default (75 = 299 Hz; the factory multis carry it): 40 of the 42 renders; with LOCUT 0 all 42 are the 0.2.21 ones.
-# 0.2.23: M01..M16 the sixteen factory multis of 0.2.23 (new); Snn_NAME the test scenes (tests/scenes.h): the 0.2.22 hashes of Mnn, unchanged.
+# tests/multi_render_test.c: FNV-1a 64 of each default multi's output (3-note chords on both parts, fader 0 / 63 / 127).
+# Written on 0.2.16's sounds (114): the 14 new default sounds of 0.2.17 must not change it.
+# Re-baselined on purpose in 0.2.22: the reverb LOW CUT's new range (20 Hz .. 2 kHz) and default (75 = 299 Hz; the default multis carry it): 40 of the 42 renders; with LOCUT 0 all 42 are the 0.2.21 ones.
+# 0.2.23: M01..M16 the sixteen default multis of 0.2.23 (new); Snn_NAME the test scenes (tests/scenes.h): the 0.2.22 hashes of Mnn, unchanged.
 # 0.2.24: the owner's COLD CHAPEL, ACID ETHER, GARGLE ACID back (M06, M09, M14 = the S07, S06, S08 records, loaded with recall), FINAL REEL M08 -> M07,
 # MONO DUEL M09 -> M08, M03 PAD SPLIT's pad CUT opened; Xnn_NAME the spare multis of 0.2.23 (tests/scenes/spare): their 0.2.23 hashes as M06 / M07 / M14.
-# 0.2.24: BASS MONO is a unit setting, ON at 200 Hz on a new unit: the factory multis render with it (their STEREO / LAYER hashes re-made once); the test scenes set it OFF (hashes as before).
+# 0.2.24: BASS MONO is a unit setting, ON at 200 Hz on a new unit: the default multis render with it (their STEREO / LAYER hashes re-made once); the test scenes set it OFF (hashes as before).
 # 0.2.25: the part EQ in 32-bit multiplies with its rounding carried (fx.c eq_run): the 33 renders of the multis and scenes with an EQ re-made once (M12, M13, M15, M16, S05, S13..S16, X07, X14).
 # 0.2.25: each EQ band on its own; the HIGH band runs whenever its gain is set (0.2.24 ran it only with MID Q off its middle): M02, M03, M08, M13, M16, S13..S16 re-made once.
 # 0.2.25: SHIM's PITCH BOTH removed (owner): M16 STRESS TEST, the one multi that stored it, plays UP: its three renders re-made once.
@@ -37,10 +37,10 @@
 
 # hunt4 (release_drafts/HUNT4.md): PHASE's moving DCW no longer steps at the block seams (eng_phase.c phase_render_0): S14 TEST 2 PHASE, S15 TEST 3 HEAVY and X14 SEVENOAKS re-made.
 
-# 1.0: the owner's duell-multis-13 file (13 records, byte for byte) is the factory M01..M05 and M08..M15 (M06, M07, M16 unchanged): their 39 renders re-made once; the test scenes are unchanged.
+# 1.0: the owner's duell-multis-13 file (13 records, byte for byte) is the default M01..M05 and M08..M15 (M06, M07, M16 unchanged): their 39 renders re-made once; the test scenes are unchanged.
 # 1.0 volume check (release_drafts/VOLUME_CHECK_V1.md): the TRIM of both parts of M01 M02 M04 M05 M06 M07 M08 M13 M15 moved by the same dB (tools/multi_trim.py): their 27 renders are made again (one re-base for 1.0 in all).
 # 1.0 MORPH B (release_drafts/MORPH_B_ROLL_V1.md): End B of M01..M15 rolled again with the firmware's ROLL B (tools/morph_b_roll.py, fixed seeds): their fader 63 and 127 renders (30) made again; fader 0 (End A) is unchanged.
-# 1.0 owner's answers: M04 DUB CHORD's TRIM one more step down (peak ceiling) and its seed k = 20: its three renders made again. M05 / M11 name VOICE sounds by their closed-up factory indices (CROONER left the bank): same sound, same hashes.
+# 1.0 owner's answers: M04 DUB CHORD's TRIM one more step down (peak ceiling) and its seed k = 20: its three renders made again. M05 / M11 name VOICE sounds by their closed-up default indices (CROONER left the bank): same sound, same hashes.
 M01 f0 3ec7e3e3c1f62b63
 M01 f63 1e5136f71a2fe70e
 M01 f127 fdab6c0ed44ec5ba

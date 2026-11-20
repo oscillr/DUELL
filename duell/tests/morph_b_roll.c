@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
-/* DUELL 1.0: ROLL B of every factory multi by the firmware's own roll (morph.c morph_roll_seed: the part's AMOUNT, the multi's settings, SMART as stored), one seed for both
+/* DUELL 1.0: ROLL B of every default multi by the firmware's own roll (morph.c morph_roll_seed: the part's AMOUNT, the multi's settings, SMART as stored), one seed for both
  * parts as the ROLL B button gives (morph_new_seed from a fixed start, 1717 + 7 * slot: repeatable). Prints, per slot and part, the End B block morph_blk_make writes
- * (7 bytes, hex) and the seed: tools/morph_b_roll.py puts those 7 bytes into tools/factory_multis/Mnn.bin and nothing else. By hand, not in the default list. */
+ * (7 bytes, hex) and the seed: tools/morph_b_roll.py puts those 7 bytes into tools/default_multis/Mnn.bin and nothing else. By hand, not in the default list. */
 #define UI_TEST_NO_MAIN 1
 #define FELUCCA_FLASH 1
 #define HOST_IRQ_HOOK 1

@@ -167,9 +167,9 @@ ok(await athrows(() => captureBackup((r, o) => { const x = new MockUnit(); x.pla
 }
 {   // 0.2.25, the owner's report: "The backup failed. Nothing was saved. Object 13: damaged multi." (firmware 0.2.23 with an editor that refused version 6)
   const { readFileSync } = await import("node:fs");
-  const recs = ["M01", "M02"].map((n) => readFileSync(new URL(`../tools/factory_multis/${n}.bin`, import.meta.url)));
+  const recs = ["M01", "M02"].map((n) => readFileSync(new URL(`../tools/default_multis/${n}.bin`, import.meta.url)));
   const ob = new Uint8Array(8 + recs[0].length + recs[1].length); ob.set([0x4D, 0x55, 0x4C, 0x31, recs[0].length & 255, recs[0].length >> 8, recs[1].length & 255, recs[1].length >> 8]); ob.set(recs[0], 8); ob.set(recs[1], 8 + recs[0].length);
-  ok(recs[0][0] === MULTI_VERSION && MULTI_VERSION === 8 && checkObject(13, ob) === null, "objects: a multi object as the firmware writes it (version 8 now, End B as values, 127 values: the factory records M01, M02) passes");
+  ok(recs[0][0] === MULTI_VERSION && MULTI_VERSION === 8 && checkObject(13, ob) === null, "objects: a multi object as the firmware writes it (version 8 now, End B as values, 127 values: the default records M01, M02) passes");
   const oldCheck = (b) => { const at = 8; return b[at] > 2 ? "damaged multi" : null; };   // the 0.2.23 editor's rule (MUL_VER 2, b[at] > MUL_VER refused)
   ok(oldCheck(ob) === "damaged multi", "the 0.2.23 editor's multi check refused every version 6 record: that was the owner's 'Object 13: damaged multi'");
   const u = new MockUnit(); u.objs.set(13, ob);
@@ -317,7 +317,7 @@ const KEYS = [1000, 1001, 1005, 1064];
   ok((await begin(0, 0, 77))[2] === 3, "PUT 40 while playing: rc 3");
   U.playing = false;
   await begin(0, 0, 77);
-  ok((await rq([67, [2, 40]]))[2] === 0 && !U.patches.has(77), "PUT 40 of size 0 removes the slot's record (its factory sound is back)");
+  ok((await rq([67, [2, 40]]))[2] === 0 && !U.patches.has(77), "PUT 40 of size 0 removes the slot's record (its default sound is back)");
   await rq([65, []]);
   const get = (slot, off, n, extra = []) => rq([66, [40, ...bkU32(off), n & 127, n >> 7, slot, ...extra]]);
   U.setRecord(4, rec);

@@ -222,7 +222,7 @@ static __attribute__((noinline)) int mod_e_inert(const track_t *t, uint32_t k)
  * MODE, PHYS MODEL, NOISE MODE, FM6 ALG (WHEEL's REG and ROTR stay: the engine ramps them). The ids stay (append-only) and a stored route to one plays as
  * before: the unit and the editor only no longer offer it (mod_dst_offered).
  * 1.0 (owner, 2026-10-21): the LFO master depths DEPTH (DEP1) and DEPTH2 (DEP2) are removed the same way: invisible in the list, the engine keeps them
- * and the ids stay (LFO 1 / LFO 2 LEVEL knobs come on the LFO pages after the release). The factory sounds no longer route to them */
+ * and the ids stay (LFO 1 / LFO 2 LEVEL knobs come on the LFO pages after the release). The default sounds no longer route to them */
 static __attribute__((noinline)) int mod_dst_removed(uint32_t eng, int32_t d)
 {
     const engine_t *e = ENGINES[eng % NENGINES];
@@ -957,7 +957,7 @@ static __attribute__((noinline)) const char *mod_dst_name(const track_t *t, int3
         int comb = t->p[P_TWTYPE] == TT_COMB;
         return v == MD_CUT2 ? (comb ? "TWIN\nTUNE" : "TWIN\nCUTOFF") : v == MD_RES2 ? (comb ? "TWIN\nFEEDBACK" : "TWIN\nRES") : v == MD_DRIVE ? "FILTER\nDRIVE" : v == MD_BLEND ? "FILTER\nBLEND" : "SUB\nLEVEL";
     }
-    if (v == MD_LEVEL)                    /* 0.2.25 layout round (owner): TRIM is shown PATCH LEVEL everywhere; the code in 5 characters (N_MDST keeps TRIM: the factory sound tool's key) */
+    if (v == MD_LEVEL)                    /* 0.2.25 layout round (owner): TRIM is shown PATCH LEVEL everywhere; the code in 5 characters (N_MDST keeps TRIM: the default sound tool's key) */
         return "PATCH\nLEVEL";
     if (v == MD_RES)                      /* T0229 (owner): FRES is FILTER RES, in two lines on the DEST card (ui_draw.c draw_column), one line in the rows (N_MDST keeps FRES) */
         return "MULTI\nRES";   /* (1.0, owner 2026-10-21: the filters are MULTI and TWIN, not 1 and 2; the DEST card has MULTI over RES in its two small lines, the matrix row MULTI RES) */
@@ -995,7 +995,7 @@ static __attribute__((noinline)) const char *mod_dst_name(const track_t *t, int3
     default: break;
     }
     if (v == MD_CUT)
-        return "MULTI\nCUTOFF";              /* (1.0, owner 2026-10-21: MULTI over CUTOFF on the DEST card; the matrix row cannot hold MULTI CUTOFF in 64 px and says MULTI CUT; N_MDST keeps CUT: the factory sound tool's key) */
+        return "MULTI\nCUTOFF";              /* (1.0, owner 2026-10-21: MULTI over CUTOFF on the DEST card; the matrix row cannot hold MULTI CUTOFF in 64 px and says MULTI CUT; N_MDST keeps CUT: the default sound tool's key) */
     return N_MDST[v];
 }
 

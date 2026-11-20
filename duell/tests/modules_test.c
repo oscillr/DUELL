@@ -81,7 +81,7 @@ static void flush(void)                                 /* the settings written 
 static int stored_mods(void)                            /* the bits as the flash holds them */
 {
     static persist_t p;
-    return st_load(OBJ_SETTINGS, &p, sizeof p) > 0 ? (int)((p.favorites.factory[15][10] >> 1) & 15u) : -1;
+    return st_load(OBJ_SETTINGS, &p, sizeof p) > 0 ? (int)((p.favorites.defaults[15][10] >> 1) & 15u) : -1;
 }
 static int card_is(uint32_t c, const char *label, const char *val)   /* the card's cache key: "LABEL|VALUE|UNIT..." */
 {
@@ -236,9 +236,9 @@ static void test_settings(void)
     set(MODS_ALL, 1u);
     settings_save();
     flush();
-    expect(" (a record with all OFF saved)", st_load(OBJ_SETTINGS, &p, sizeof p) > 0 && ((p.favorites.factory[15][10] >> 1) & 15u) == 15u);
-    p.favorites.factory[15][10] = 0xFFu;
-    p.favorites.factory[15][24] &= 0x7Fu;
+    expect(" (a record with all OFF saved)", st_load(OBJ_SETTINGS, &p, sizeof p) > 0 && ((p.favorites.defaults[15][10] >> 1) & 15u) == 15u);
+    p.favorites.defaults[15][10] = 0xFFu;
+    p.favorites.defaults[15][24] &= 0x7Fu;
     st_save(OBJ_SETTINGS, &p, sizeof p);
     boot();
     expect("an older record (no 0.2.14 flag), its bits 1..7 set: read all four ON once, ANIM IDLE kept, bits 1..5 and 7 cleared, bit 6 (KEY VELOCITY ON) the 1.1 default",
@@ -498,7 +498,7 @@ static int32_t max_step(uint32_t a, uint32_t from, uint32_t to)   /* the largest
     return m;
 }
 /* two parts holding chords, STEREO with HALL, PING-PONG and the delay's modulation (every side mix), or DUEL; sends 0 / 1 */
-static void plain_twin(track_t *t)                      /* 0.2.31: the refined factory sounds run filter 2 and the SUB layer; these scenes compare two renders of the same notes and want the plain sound */
+static void plain_twin(track_t *t)                      /* 0.2.31: the refined default sounds run filter 2 and the SUB layer; these scenes compare two renders of the same notes and want the plain sound */
 {
     t->p[P_TWTYPE] = 0;
     XV(t, X_SUBLVL) = 0;

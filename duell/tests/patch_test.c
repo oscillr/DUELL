@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 /* DUELL PATCHES (upreset.c the compact PATCH store and the slot layer, SAVE > PATCHES, SPEC 3.6; 0.2.17: ONE list of 128 slots, a slot is its saved
- * record or else the factory sound at that browse position) against simulated NOR flash; a few fast checks:
+ * record or else the default sound at that browse position) against simulated NOR flash; a few fast checks:
  *   1. a saved record is a sparse record in the patch store only (22 chunks: 0xC8000..0xCDFFF, 0xDC000..0xDFFFF, 0x9F000 / 0xFE000, 0xA6000..0xC5FFF):
  *      small, equal after a power cycle (values, name, End B block, FM6 patch); overwrite and RESTORE; a power cut during a write
  *      leaves the old record;
@@ -8,8 +8,8 @@
  *      always fit, whatever was stored before (small records first, then all overwritten in place; 128 FM6-size ones); there is no 'full': with all
  *      128 saved any slot is still written; a power cut at every step of a save loses only that one;
  *      the payload ends at sector offset 0xF00; the store's RAM is a directory, not a mirror;
- *   3. the slots: a fresh unit holds the factory sound in all 128 (nothing written), SAVE overwrites the slot it is told to (K1 in the dialog picks it,
- *      the slot the sound came from is offered), RESTORE brings the factory sound back bit for bit, RESTORE ALL, MIDI program change = the slot,
+ *   3. the slots: a fresh unit holds the default sound in all 128 (nothing written), SAVE overwrites the slot it is told to (K1 in the dialog picks it,
+ *      the slot the sound came from is offered), RESTORE brings the default sound back bit for bit, RESTORE ALL, MIDI program change = the slot,
  *      FAV is the slot's, a power cut at every step of a SAVE, a RESTORE and a RESTORE ALL;
  *   4. the page: ONE list of 128 slots (the number, the name), K1 steps and loads, K2 TYPE a filter, K3 FAV, K4 RESTORE drawn on the slot the part plays (reloads its saved version).
  *   build/host/patch_test            (DUELL/host_tests.sh "patch") */
@@ -413,7 +413,7 @@ int main(void)
             ok = ak_get(a_slot, &a) && a.g == (AK_ARP | AK_KEYS | AK_SEQ) && a.arp[0] == AM_SEQ && a.seq[0] == 12 && !memcmp(&a.st[0], &st0[0], 0);
             ck("  and it still decodes (SEQ, LEN 12)", ok);
         }
-        /* a factory sound that sets an arp, saved with its arp switched off / edited (the part plays it: no slot record loaded): the player's edit is what is saved and loaded */
+        /* a default sound that sets an arp, saved with its arp switched off / edited (the part plays it: no slot record loaded): the player's edit is what is saved and loaded */
         for (i = 0; i < DS_N; i++)
             if (DS_SOUNDS[i].flags & DSF_ARP) {
                 fe = DS_SOUNDS[i].eng;
@@ -425,17 +425,17 @@ int main(void)
         ok = t->p[P_AMODE] != 0;
         t->p[P_AMODE] = 0;
         up_store_trk(t, 42u, "SHADOW", 0);
-        apply_preset_to(t, fk);                                 /* the factory sound again: its arp is on */
+        apply_preset_to(t, fk);                                 /* the default sound again: its arp is on */
         ok &= t->p[P_AMODE] != 0;
         up_load(42u);
-        ck("a factory sound saved with its arp switched off loads with the arp off (not the factory's)", ok && t->p[P_AMODE] == 0);
+        ck("a default sound saved with its arp switched off loads with the arp off (not the default's)", ok && t->p[P_AMODE] == 0);
         apply_preset_to(t, fk);
         t->p[P_ARATE] = (int16_t)(t->p[P_ARATE] == 4 ? 5 : 4);
         want[0] = t->p[P_ARATE];
         up_store_trk(t, 42u, "SHADOW", 0);
         apply_preset_to(t, fk);
         up_load(42u);
-        ck("  an edited rate is saved and loads (not the factory's)", t->p[P_ARATE] == want[0] && t->p[P_AMODE] != 0);
+        ck("  an edited rate is saved and loads (not the default's)", t->p[P_ARATE] == want[0] && t->p[P_AMODE] != 0);
         /* record sizes: a plain sound, with an ordinary arp, with a SEQ arp */
         apply_preset_to(t, 2u);                                   /* a plain sound: its record; then with an ordinary arp (UP, 3 values changed) */
         for (i = 0; i < NSTEP; i++)
@@ -659,7 +659,7 @@ int main(void)
                 power_cycle();
             }
         }
-        /* RESTORE and RESTORE ALL: the other slots keep their slots and edits; the restored one is its factory sound; a SAVE after works */
+        /* RESTORE and RESTORE ALL: the other slots keep their slots and edits; the restored one is its default sound; a SAVE after works */
         for (k = 0; k < UP_SLOTS; k++)
             up_put(k, 0);
         for (k = 70; k < 73u; k++) {
@@ -675,7 +675,7 @@ int main(void)
         for (i = 0; i < NX; i++)
             ok &= up_xval(&r, i) == (int)(i + 72u) % 100 - 50;
         ok &= r.xb_n == 1u && r.xb[0].wid == 72u && r.xb[0].val == 12;
-        ck("  RESTORE of one slot: the others keep their 16 slots and their edit; the restored slot is its factory sound again", ok);
+        ck("  RESTORE of one slot: the others keep their 16 slots and their edit; the restored slot is its default sound again", ok);
         power_cycle();
         r = *up_rec(70u);
         ck("  and after a power cycle too", up_used(70u) && up_used(72u) && !up_used(71u) && up_xval(&r, 3) == (int)(3u + 70u) % 100 - 50 && r.xb_n == 1u);
@@ -769,7 +769,7 @@ int main(void)
         kk = pt_bytes();
         watch = 1;
         wrote = stray = 0;
-        trk[0].user = 0;                              /* the part plays a factory sound: SAVE offers its slot; with all 128 saved any slot still takes it */
+        trk[0].user = 0;                              /* the part plays a default sound: SAVE offers its slot; with all 128 saved any slot still takes it */
         k = (uint32_t)up_patch_save_part(0, 77u);
         ck("  with all 128 slots saved a SAVE over any slot works (there is no 'full'): written in the patch store only, still 128", k == 0u && wrote && !stray &&
            up_count() == UP_SLOTS && up_used(77) && trk[0].user == 78u);
@@ -830,7 +830,7 @@ int main(void)
                 big = pt_rd16(pt_raw(k)) > big ? pt_rd16(pt_raw(k)) : big;
             }
             printf("patch: 128 FM6 sounds: %u bytes of records (%u a record, biggest %u), 128 x 75 B plain sounds would be %u\n", tot, tot / 128u, big, 128u * 75u);
-            ck("128 FM6-size patches (the factory FM6 sounds with their patch) all store, about 190 bytes each", n == UP_SLOTS && up_count() == UP_SLOTS && tot / 128u < 260u);
+            ck("128 FM6-size patches (the default FM6 sounds with their patch) all store, about 190 bytes each", n == UP_SLOTS && up_count() == UP_SLOTS && tot / 128u < 260u);
             for (c = 0, mx = 0; c < PT_NCH; c++)
                 mx = pt_len[c] > mx ? pt_len[c] : mx;
             printf("patch: the fullest chunk holds %u of %u bytes\n", mx, (unsigned)PT_CAP);
@@ -948,13 +948,13 @@ int main(void)
         }
     }
 
-    /* 3: the slots: a fresh unit holds the factory sound in all 128 */
+    /* 3: the slots: a fresh unit holds the default sound in all 128 */
     memset(nor, 0xFF, sizeof nor);
     power_cycle();
     song.playing = 0;
     {
         uint32_t fe, fk, same = 0, named = 0;
-        ck("a fresh unit: nothing saved, no chunk written, the factory sounds fill all 128 slots (ds_list_n() = 128 = UP_SLOTS)",
+        ck("a fresh unit: nothing saved, no chunk written, the default sounds fill all 128 slots (ds_list_n() = 128 = UP_SLOTS)",
            up_count() == 0u && pt_bytes() == 0u && ds_list_n() == UP_SLOTS && UP_SLOTS == 128u);
         for (k = 0; k < UP_SLOTS; k++) {
             char nmk[13];
@@ -973,29 +973,29 @@ int main(void)
                 memcpy(v1, trk[0].p, sizeof keep);
                 memcpy(trk[0].p, keep, sizeof keep);
             }
-            /* a part that loads the factory sound the old way (the browse position's engine and index) is what sl_values says */
+            /* a part that loads the default sound the old way (the browse position's engine and index) is what sl_values says */
             set_engine_of(&trk[1], fe);
             apply_preset_to(&trk[1], fk);
             for (i = 0; i < P_COUNT; i++)
                 ok &= v1[i] == trk[1].p[i] || (i >= P_AMODE && i <= P_AORDER) || i == P_CHRD || i == P_VOIC || param_kept(i) || i == P_LEVEL ||
                       (fe == ENGI_FM6 && i >= P_ATK && i <= P_REL && trk[1].p[i] == fm6_env_value(&trk[1], i - P_ATK));   /* (item 138: FM6's AMP ENV knobs are its carriers' numbers, FM6_ENV_MAP_V2) */
-            ok &= v1[P_TRIM] == trk[1].p[P_TRIM];   /* (0.2.19: the factory sound's trim; the mixer level is no sound's) */
+            ok &= v1[P_TRIM] == trk[1].p[P_TRIM];   /* (0.2.19: the default sound's trim; the mixer level is no sound's) */
             same += ok;
             named += nmk[0] != 0 && !str_eq(nmk, "INIT");
         }
-        ck("  every slot's name, engine, category and values are its browse position's factory sound's (sl_values equals a factory load)", same == UP_SLOTS && named == UP_SLOTS);
-        {   /* load slot k on part 1: the same as the PATCHES list loads (the engine, the factory index, the values) */
+        ck("  every slot's name, engine, category and values are its browse position's default sound's (sl_values equals a default load)", same == UP_SLOTS && named == UP_SLOTS);
+        {   /* load slot k on part 1: the same as the PATCHES list loads (the engine, the default index, the values) */
             uint32_t good = 0;
             for (k = 0; k < UP_SLOTS; k += 5u) {
                 song.sel = 0;
                 sl_load(k);
                 good += sl_fac(k, &fe, &fk) && trk[0].eng_req == fe && trk[0].preset == fk && !trk[0].user && slot_of(&trk[0]) == k;
             }
-            ck("  sl_load(k) plays the factory sound (engine, index), the part is in slot k (no record: user 0)", good == (UP_SLOTS + 4u) / 5u);
+            ck("  sl_load(k) plays the default sound (engine, index), the part is in slot k (no record: user 0)", good == (UP_SLOTS + 4u) / 5u);
         }
     }
 
-    /* 3a: SAVE then reload equals the saved sound; RESTORE brings the factory sound back bit for bit */
+    /* 3a: SAVE then reload equals the saved sound; RESTORE brings the default sound back bit for bit */
     {
         int16_t fac[P_COUNT], sv[P_COUNT], trn_fac;
         uint8_t blk[7];
@@ -1008,17 +1008,17 @@ int main(void)
         trk[0].p[P_E2] = (int16_t)(trk[0].p[P_E2] > 30 ? 5 : 77);
         trk[0].p[P_TRANS] = -24;                       /* (DUELL 1.1, owner 2026-10-27: TRANSPOSE is the patch's: a bass two octaves down) */
         memcpy(sv, trk[0].p, sizeof sv);
-        ck("SAVE (slot 42 over its factory sound): written, the part plays that slot, a record exists", up_patch_save_part(0, sl) == 0 && up_used(sl) && trk[0].user == sl + 1u &&
+        ck("SAVE (slot 42 over its default sound): written, the part plays that slot, a record exists", up_patch_save_part(0, sl) == 0 && up_used(sl) && trk[0].user == sl + 1u &&
            up_count() == 1u && slot_of(&trk[0]) == sl);
         power_cycle();
         sl_load(97u);                                  /* another sound, then back */
-        trn_fac = trk[0].p[P_TRANS];                   /* (the factory sound's TRANSPOSE) */
+        trn_fac = trk[0].p[P_TRANS];                   /* (the default sound's TRANSPOSE) */
         sl_load(sl);
         ok = trk[0].user == sl + 1u && trk[0].eng_req == e0;
         for (i = 0; i < P_COUNT; i++)
             ok &= param_kept(i) ? 1 : trk[0].p[i] == sv[i];
-        ck("  after a power cycle: loading the slot gives the saved sound back (every sound value, its name = the factory name it came from)", ok);
-        ck("  TRANSPOSE is the patch's: the factory sound loaded between set the part to its own 0, the saved patch brings -24 back", trn_fac == 0 && trk[0].p[P_TRANS] == -24 &&
+        ck("  after a power cycle: loading the slot gives the saved sound back (every sound value, its name = the default name it came from)", ok);
+        ck("  TRANSPOSE is the patch's: the default sound loaded between set the part to its own 0, the saved patch brings -24 back", trn_fac == 0 && trk[0].p[P_TRANS] == -24 &&
            !param_kept(P_TRANS));
         {
             char nmk[13];
@@ -1027,18 +1027,18 @@ int main(void)
         }
         (void)blk;
         k = (uint32_t)sl_restore(sl);
-        ck("RESTORE: the record is gone, the part that played it plays the factory sound again", (k == 0u || k == 3u) && !up_used(sl) && up_count() == 0u && trk[0].user == 0u &&
+        ck("RESTORE: the record is gone, the part that played it plays the default sound again", (k == 0u || k == 3u) && !up_used(sl) && up_count() == 0u && trk[0].user == 0u &&
            trk[0].eng_req == e0 && trk[0].preset == f0);
         ok = 1;
         for (i = 0; i < P_COUNT; i++)
             ok &= param_kept(i) ? 1 : trk[0].p[i] == fac[i];
-        ck("  bit for bit the factory sound (every sound value as it was before the SAVE)", ok);
+        ck("  bit for bit the default sound (every sound value as it was before the SAVE)", ok);
         power_cycle();
-        ck("  after a power cycle: still the factory sound in the slot, no chunk holds a record", !up_used(sl) && pt_bytes() == PT_HDR * 0u + pt_bytes() && up_count() == 0u);
-        ck("RESTORE of a slot that holds its factory sound: rc 0, nothing written", (watch = 1, wrote = stray = 0, sl_restore(sl)) == 0 && !wrote && !stray && (watch = 0, 1));
+        ck("  after a power cycle: still the default sound in the slot, no chunk holds a record", !up_used(sl) && pt_bytes() == PT_HDR * 0u + pt_bytes() && up_count() == 0u);
+        ck("RESTORE of a slot that holds its default sound: rc 0, nothing written", (watch = 1, wrote = stray = 0, sl_restore(sl)) == 0 && !wrote && !stray && (watch = 0, 1));
     }
 
-    /* 3a2: K4 RESTORE (PATCHES, owner 2026-10-26): the part reloads the SAVED version of its slot, edits gone, the record stays, never the factory sound */
+    /* 3a2: K4 RESTORE (PATCHES, owner 2026-10-26): the part reloads the SAVED version of its slot, edits gone, the record stays, never the default sound */
     {
         int16_t sv[P_COUNT];
         uint32_t sl = 41u, nrec;
@@ -1054,7 +1054,7 @@ int main(void)
         ok = trk[0].user == sl + 1u && up_used(sl) && up_count() == nrec && slot_of(&trk[0]) == sl;
         for (i = 0; i < P_COUNT; i++)
             ok &= param_kept(i) ? 1 : trk[0].p[i] == sv[i];
-        ck("K4 RESTORE of an edited saved slot: the saved record's values back, the record still stored, not the factory sound", ok);
+        ck("K4 RESTORE of an edited saved slot: the saved record's values back, the record still stored, not the default sound", ok);
         undo_swap();
         ck("  one undo brings the unsaved edit back", trk[0].p[P_REL] == (sv[P_REL] > 60 ? 7 : 71));
         sl_load(97u);
@@ -1063,7 +1063,7 @@ int main(void)
         (void)sl_restore(sl);
     }
 
-    /* 3b: RESTORE ALL; the parts that play a saved slot get their factory sound */
+    /* 3b: RESTORE ALL; the parts that play a saved slot get their default sound */
     {
         uint32_t sl;
         song.sel = 0;
@@ -1083,20 +1083,20 @@ int main(void)
         k = (uint32_t)sl_restore_all();
         watch = 0;
         ck("RESTORE ALL: every record gone (rc 0 or 3), written in the patch store only", (k == 0u || k == 3u) && up_count() == 0u && !stray);
-        ck("  the parts that played saved slots play their factory sound (user 0, the slot's engine and index)", trk[0].user == 0u && trk[1].user == 0u &&
+        ck("  the parts that played saved slots play their default sound (user 0, the slot's engine and index)", trk[0].user == 0u && trk[1].user == 0u &&
            slot_of(&trk[0]) == 30u && slot_of(&trk[1]) == 9u);
         power_cycle();
-        ck("  after a power cycle: still no record anywhere, every slot its factory sound", up_count() == 0u && pt_bytes() == 0u + pt_bytes() && !up_used(30));
+        ck("  after a power cycle: still no record anywhere, every slot its default sound", up_count() == 0u && pt_bytes() == 0u + pt_bytes() && !up_used(30));
         ck("RESTORE ALL on a unit that holds none: rc 0 and no write", (watch = 1, wrote = stray = 0, sl_restore_all()) == 0 && !wrote && !stray && (watch = 0, 1));
     }
 
     /* 3c: a power cut at EVERY step of a SAVE, of a RESTORE and of a RESTORE ALL (every 5th programmed byte, every byte near the commit records):
-     * each slot is its old content or the new one (a saved record or the factory sound), never anything half; the other slots are untouched.
+     * each slot is its old content or the new one (a saved record or the default sound), never anything half; the other slots are untouched.
      * The 479-cut-point style of the 0.2.15 test, over the three operations; a second RESTORE ALL always finishes the job. */
     {
         uint32_t cuts[3] = {0, 0, 0}, bad_cut = 0, a, sl, cb, total_b, newer[3] = {0, 0, 0};
         for (a = 0; a < 3u; a++) {
-            sl = a == 0u ? 63u : 66u;                   /* SAVE over slot #64 (a factory sound); RESTORE of slot #67 (a saved one: 66 = 6 x 11) */
+            sl = a == 0u ? 63u : 66u;                   /* SAVE over slot #64 (a default sound); RESTORE of slot #67 (a saved one: 66 = 6 x 11) */
             total_b = 0;
             for (cb = 0; cb <= total_b + 40u; cb += (cb + 60u > total_b || cb < 40u) ? 1u : 5u) {
                 uint32_t had, nrec = 0, base_ok = 1;
@@ -1130,11 +1130,11 @@ int main(void)
                         if (k % 11u == 0u)
                             base_ok &= up_value(up_rec(k), P_REL) == (int)(20 + k);
                     }
-                if (a == 0u) {                          /* SAVE: slot 64 is its factory sound or the new record, all the saved ones intact */
+                if (a == 0u) {                          /* SAVE: slot 64 is its default sound or the new record, all the saved ones intact */
                     int is_new = up_used(sl);
                     ok = base_ok && nrec == had + (is_new ? 1u : 0u) && (!is_new || up_value(up_rec(sl), P_REL) == 5);
                     newer[0] += is_new;
-                } else if (a == 1u) {                   /* RESTORE of slot 67: its record or its factory sound */
+                } else if (a == 1u) {                   /* RESTORE of slot 67: its record or its default sound */
                     int is_new = !up_used(sl);
                     ok = base_ok && nrec == had - (is_new ? 1u : 0u);
                     newer[1] += is_new;
@@ -1169,7 +1169,7 @@ int main(void)
             pc_recall(0u, k, k & 1u);
             good += sl_fac(k, &fe, &fk) && trk[0].eng_req == fe && trk[0].preset == fk && slot_of(&trk[0]) == k;
         }
-        ck("MIDI program change n (bank 0 or 1) loads slot n: the factory sound of that browse position", good == (UP_SLOTS + 8u) / 9u);
+        ck("MIDI program change n (bank 0 or 1) loads slot n: the default sound of that browse position", good == (UP_SLOTS + 8u) / 9u);
         song.sel = 0;
         sl_load(20u);
         trk[0].p[P_REL] = 33;
@@ -1192,7 +1192,7 @@ int main(void)
         ok &= preset_favorite();
         sl_restore(8u);
         ok &= preset_favorite();
-        ck("  it stays through a SAVE and a RESTORE (the slot holds a factory sound, then a saved one, then the factory one again)", ok && favorite_has(NENGINES, 8u));
+        ck("  it stays through a SAVE and a RESTORE (the slot holds a default sound, then a saved one, then the default one again)", ok && favorite_has(NENGINES, 8u));
         up_put(20u, 0);
     }
 
@@ -1234,9 +1234,9 @@ int main(void)
     trk[0].p[P_E4] = (int16_t)(trk[0].p[P_E4] + 7);
     ui.msg_t = 0;
     ui.force = 1; frame();
-    ck("the slot the part plays (a factory sound, edited): the RESTORE card is drawn", ui.col[3][0] != 0x7f && ui.col[0][0] != 0x7f);
+    ck("the slot the part plays (a default sound, edited): the RESTORE card is drawn", ui.col[3][0] != 0x7f && ui.col[0][0] != 0x7f);
     turn(EN_K4, 1);
-    ck("K4 RESTORE there: the dialog RESTORE #11 TO LAST SAVE?, the factory sound is the saved version", ui.confirm == CF_RESTORE && ui.confirm_trk == 10u);
+    ck("K4 RESTORE there: the dialog RESTORE #11 TO LAST SAVE?, the default sound is the saved version", ui.confirm == CF_RESTORE && ui.confirm_trk == 10u);
     press(B_OCTDN);
     ck("  OCT-: nothing changes", !ui.confirm);
     hold(B_SAVE);
@@ -1310,7 +1310,7 @@ int main(void)
        trk[0].user == 13u && !strncmp(ui.msg, "SAVED", 5) && pl_cursor(&total) == 12u && total == UP_SLOTS && up_rec(12)->engine == trk[0].eng_req);
     kk = 12u;
     turn(EN_K4, 1);
-    ck("K4 RESTORE on a saved slot: the dialog RESTORE #13 TO <factory name>?", ui.confirm == CF_RESTORE && ui.confirm_trk == 12u);
+    ck("K4 RESTORE on a saved slot: the dialog RESTORE #13 TO <default name>?", ui.confirm == CF_RESTORE && ui.confirm_trk == 12u);
     {
         char a1[32], b1[32];
         confirm_text(a1, b1);
@@ -1353,7 +1353,7 @@ int main(void)
         ck("TYPE FAV lists the starred slots, before and after a SAVE over one", ok);
         up_put(5u, 0);
     }
-    {   /* a sound that is in no slot (an engine change): the cursor and FAV say so, SAVE offers the slot its factory sound belongs to */
+    {   /* a sound that is in no slot (an engine change): the cursor and FAV say so, SAVE offers the slot its default sound belongs to */
         select_engine(ENGI_FM6);
         frame();
         ok = slot_of(&trk[0]) < UP_SLOTS || trk[0].user == 0u;
@@ -1361,7 +1361,7 @@ int main(void)
         up_patch_save_part(0, ds_list_rank(ENGI_FM6, 1u) < UP_SLOTS ? ds_list_rank(ENGI_FM6, 1u) : 0u);
         select_engine(0u);
         apply_preset_to(&trk[0], 1u);
-        ck("an engine change loads the engine's factory sound; its slot, if still the factory sound, is the cursor's", ok && trk[0].user == 0u);
+        ck("an engine change loads the engine's default sound; its slot, if still the default sound, is the cursor's", ok && trk[0].user == 0u);
         for (k = 0; k < UP_SLOTS; k++)
             up_put(k, 0);
     }
@@ -1415,7 +1415,7 @@ int main(void)
         const uint8_t *raw;
         set_engine_of(t, 0u);
         apply_preset_to(t, 3u);
-        ck("TRIG: a factory sound loads with both LFOs FREE (the default)", t->p[P_LTRIG] == 1 && t->p[P_L2TRIG] == 1);
+        ck("TRIG: a default sound loads with both LFOs FREE (the default)", t->p[P_LTRIG] == 1 && t->p[P_L2TRIG] == 1);
         t->p[P_LTRIG] = t->p[P_L2TRIG] = 0;
         ck("TRIG: a NOTE patch stores", up_store_trk(t, 50u, "LFO NOTE", 0) == 0);
         len_note = pt_rd16(pt_raw(50u));
@@ -1452,7 +1452,7 @@ int main(void)
         track_t *t = &trk[0];
         set_engine_of(t, 0u);
         apply_preset_to(t, 3u);
-        ck("CURVE: a factory sound loads with the ducker's EXP release (the default)", t->p[P_DKCRV] == 1 && TP[P_DKCRV].def == 1);
+        ck("CURVE: a default sound loads with the ducker's EXP release (the default)", t->p[P_DKCRV] == 1 && TP[P_DKCRV].def == 1);
         t->p[P_DKCRV] = 0;
         ck("CURVE: a LIN patch stores", up_store_trk(t, 52u, "CURVE LIN", 0) == 0);
         t->p[P_DKCRV] = 1;

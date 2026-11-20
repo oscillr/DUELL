@@ -707,7 +707,7 @@ static void t_pages(void)
     ck("pages: MOD 2 after MOD (LFO's family): KNOB 1 the slot 5..8, KNOB 2..4 its SRC DST AMT", ok);
     ui_power_on();
     TSEL->p[P_M1SRC] = TSEL->p[P_M2SRC] = TSEL->p[P_M3SRC] = TSEL->p[P_M4SRC] = MS_ENV;   /* (0.2.24: the matrix stays packed; MATRIX 5-8 is in the round only while slots 1..4 are used) */
-    TSEL->p[P_M1AMT] = TSEL->p[P_M2AMT] = TSEL->p[P_M3AMT] = TSEL->p[P_M4AMT] = 0;       /* (0.2.31: the first ANALOG factory sound brings routes of its own: the test starts from empty amounts) */
+    TSEL->p[P_M1AMT] = TSEL->p[P_M2AMT] = TSEL->p[P_M3AMT] = TSEL->p[P_M4AMT] = 0;       /* (0.2.31: the first ANALOG default sound brings routes of its own: the test starts from empty amounts) */
     TSEL->p[P_M5SRC] = TSEL->p[P_M6SRC] = TSEL->p[P_M7SRC] = TSEL->p[P_M8SRC] = 0;
     TSEL->p[P_M5AMT] = TSEL->p[P_M6AMT] = TSEL->p[P_M7AMT] = TSEL->p[P_M8AMT] = 0;
     go_title("MATRIX 5-8");

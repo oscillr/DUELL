@@ -138,7 +138,7 @@ static void power_cycle(void)
     multi_boot();
     frame();
     for (k = 0; k < MU_SLOTS; k++)                      /* DUELL 0.2.23: the scenes these cases were written for (0.2.22's multis, tests/scenes.h), */
-        if (LC_SCENE[k])                                /* saved in the slots they had (M11 M12: the factory ones of today) */
+        if (LC_SCENE[k])                                /* saved in the slots they had (M11 M12: the default ones of today) */
             scene_put(k, LC_SCENE[k]);
 }
 static void load_old(uint32_t k)                        /* a load as then: the CPU TEST multis (M13..M16) with their MODE, the others in the unit's */
@@ -524,7 +524,7 @@ static void divcost(void)
 static void table(void)
 {
     divcost();
-    static const uint8_t MS[8] = {2, 3, 4, 5, 12, 13, 14, 15};   /* (the four emulator-made factory multis: M03..M06 since 0.2.13, M01..M04 before) */
+    static const uint8_t MS[8] = {2, 3, 4, 5, 12, 13, 14, 15};   /* (the four emulator-made default multis: M03..M06 since 0.2.13, M01..M04 before) */
     uint32_t e, k, from;
     printf("loadcost: steady scene = M15 TEST 3 HEAVY (SPLIT) with 4 + 4 notes held; extra = worst half (4 blocks) minus the steady half, "
            "of %.0f instr\n", HALF_BUDGET);
