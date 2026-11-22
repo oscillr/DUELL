@@ -1,10 +1,12 @@
-# DUELL 1.3.6
+# DUELL 1.3.7
 
 **DUELL**
 **MultiMorphing Bitimbral Synthesizer**
 **by OSCILL/R**
 
-DUELL 1.3.6 runs on the M-VAVE FM-1 and the M-VAVE SMK-37 (Pro, Elite and MKE-P37).
+DUELL 1.3.7 runs on the M-VAVE FM-1 and the M-VAVE SMK-37 (Pro, Elite and MKE-P37).
+
+**Changed in 1.3.7:** DUELL's source builds again on the Firmware Hub's VIBE FM converter. Nothing changes on the unit: if you run 1.3.5 or 1.3.6, you do not need to update.
 
 **New in 1.3.6: built on GitHub.** GitHub builds every package from the source at this release and signs it, so anyone can check that the file they install is exactly the public code. The Firmware Hub shows it as "Built from source on GitHub". Nothing changes on the unit: if you run 1.3.5, you do not need to update.
 

@@ -6,6 +6,13 @@ by OSCILL/R
 
 Each release: a one-line summary, then New, Fixed, Compatibility, Install, Files.
 
+## DUELL 1.3.7
+
+The same firmware as 1.3.6, built and signed by GitHub.
+
+- **Fixed:** the source builds on the Firmware Hub's VIBE FM converter (an imitated FM-1): the SMK-37 switches get their FM-1 values and a save uses the plain flash erase when the converter's hardware layer has no LED-keeping erase. 1.3.6 fixed only the first of these errors.
+- **Install:** nothing changes on the unit; the FM-1 and SMK-37 packages are the same code as 1.3.6. Updating is not needed.
+
 ## DUELL 1.3.6
 
 The same firmware as 1.3.5, built and signed by GitHub.
